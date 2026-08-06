@@ -1,0 +1,1185 @@
+{
+  "workflowId": "300000326940081",
+  "workflowCode": "ORA_HCM_LEARNING_TEAM_RECOMMENDATIONS_ADVISOR",
+  "name": "Team Learning Recommendations Advisor",
+  "description": "Lists out learning based on prioritized recommendations that you can assign to your directs or your organization.",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1768279646219"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Invoke Action?"
+          },
+          "outcomes": {
+            "true": "1768282160445",
+            "false": "1771180619047"
+          },
+          "code": "INVOKE_ACTION",
+          "convergenceTargetId": "end",
+          "id": "1768279646219",
+          "inputs": [
+            {
+              "id": "1768279646220_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context?.$app?.$OraMessageHint === 'InvokeAction'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Submit Form?"
+          },
+          "outcomes": {
+            "true": "1768283972227",
+            "false": "1768278698401"
+          },
+          "code": "SUBMIT_FORM",
+          "convergenceTargetId": "end",
+          "id": "1768282160445",
+          "inputs": [
+            {
+              "id": "1768282160447_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$app.$OraAction != null && $context.$app.$OraAction.includes('oraFormSubmit')}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Get User Info",
+            "toolCode": "ORA_USER_SESSION_TOOL"
+          },
+          "outcomes": {
+            "success": "1768284072506"
+          },
+          "code": "GET_USER_INFO",
+          "convergenceTargetId": "1768330607062",
+          "id": "1768283972227",
+          "inputs": [],
+          "type": "TOOL"
+        },
+        {
+          "metadata": {
+            "name": "Person Information Payload",
+            "returnType": "object",
+            "sourceCode": "let thisPersonNumber = $context.$nodes.GET_USER_INFO.$output.items[0].PersonNumber;\n\nlet payload = {\n    \"filters\":[\n        {\n            \"name\":\"PersonNumber\",\n            \"term\": thisPersonNumber\n        }\n    ],\n    \"securityFilters\": { \"type\": \"QuickAction\", \"value\": \"EmploymentInformation\", \"context\": \"MyClientGroups\" },\n    \"displayFields\": [\n        \"DisplayName\",\n        \"AssignmentId\",\n        \"PersonId\",\n        \"PersonNumber\"\n    ]\n};\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "1768284144718"
+          },
+          "code": "PERSON_INFORMATION_PAYLOAD",
+          "convergenceTargetId": "1768330607062",
+          "id": "1768284072506",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_WORKERSEARCH",
+            "functionName": "search_for_workers",
+            "name": "Get Person Information"
+          },
+          "outcomes": {
+            "success": "1771182421978"
+          },
+          "code": "GET_PERSON_INFORMATION",
+          "convergenceTargetId": "1768330607062",
+          "id": "1768284144718",
+          "inputs": [
+            {
+              "id": "1768286437618_1",
+              "name": "vQuery",
+              "type": "string",
+              "value": "{{$context.$nodes.PERSON_INFORMATION_PAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Extract Learning Item Details",
+            "returnType": "object",
+            "sourceCode": "let oraAction = $context.$app.$OraAction;\n\nconst query = oraAction.replace(/^\"+|\"+$/g, '').trim(); \n\nlet params = {}; \n\nfor (const pair of query.split('&')) { \n  if (!pair) continue; \n  const eq = pair.indexOf('='); \n  const key = (eq >= 0 ? pair.slice(0, eq) : pair).trim(); \n  let value = eq >= 0 ? pair.slice(eq + 1) : '';  \n  params[key] = value;\n}\n\nreturn params;"
+          },
+          "outcomes": {
+            "success": "1768325010993"
+          },
+          "code": "EXTRACT_LEARNING_ITEM_DETAILS",
+          "convergenceTargetId": "1768282227592",
+          "id": "1768278698401",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Action Type"
+          },
+          "outcomes": {
+            "recommend": "1768325085428",
+            "assign": "1778225000001"
+          },
+          "code": "ACTION_TYPE",
+          "convergenceTargetId": "end",
+          "id": "1768325010993",
+          "inputs": [
+            {
+              "id": "1768325010994_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_LEARNING_ITEM_DETAILS.$output.result.actionType}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Assignment Date Rules",
+            "returnType": "object",
+            "sourceCode": "const currentDateText = String($context.$system.$currentDate || '').slice(0, 10);\n\nfunction parseDateText(value) {\n  const text = String(value || '').slice(0, 10);\n  const match = text.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);\n  if (!match) {\n    return null;\n  }\n  return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));\n}\n\nfunction formatDate(date) {\n  return date.toISOString().slice(0, 10);\n}\n\nlet currentDate = parseDateText(currentDateText);\nif (!currentDate) {\n  currentDate = new Date();\n  currentDate = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), currentDate.getUTCDate()));\n}\nconst minimumDueDateValue = new Date(currentDate.getTime());\nminimumDueDateValue.setUTCDate(minimumDueDateValue.getUTCDate() + 1);\nconst minimumDueDate = formatDate(minimumDueDateValue);\n\nconst result = {\n  assignmentStartDate: formatDate(currentDate),\n  minimumDueDate: minimumDueDate,\n  validationMessage: 'Assignment due date must be after the assigned on date. Select ' + minimumDueDate + ' or a later date.'\n};\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1768278932045"
+          },
+          "code": "PREPARE_ASSIGNMENT_DATE_RULES",
+          "id": "1778225000001",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_RECORD"
+              ],
+              "enableActions": false,
+              "enableCommunications": false,
+              "customNotes": "Instructions\n- Create exactly one editable Record form and nothing else.\n- Context: assignment for learning item “{{$context.$nodes.EXTRACT_LEARNING_ITEM_DETAILS.$output.result.learningItemTitle}}”.\n- Form id: \"<<learningItemId>>_assign\", where learningItemId = {{$context.$nodes.EXTRACT_LEARNING_ITEM_DETAILS.$output.result.learningItemId}}.\n- Use the same learningItemId to construct stable, unique field ids.\n- This version supports assigning to My Directs only.\n- The recipient field is mandatory and must always be displayed, even though there is only one selectable option.\n- Do not hide, collapse, infer, or omit the recipient field.\n- Minimum allowed assignment due date is {{$context.$nodes.PREPARE_ASSIGNMENT_DATE_RULES.$output.result.minimumDueDate}}.\n- Date validation message is \"{{$context.$nodes.PREPARE_ASSIGNMENT_DATE_RULES.$output.result.validationMessage}}\".\n\nRequired fields\n- Render exactly these 3 fields in this exact order:\n  1. {\n       id: \"<<learningItemId>>_assign_assignmentDueDate\",\n       label: \"Assignment Due Date\",\n       type: \"date\",\n       value: \"{{$context.$nodes.PREPARE_ASSIGNMENT_DATE_RULES.$output.result.minimumDueDate}}\",\n       minDate: \"{{$context.$nodes.PREPARE_ASSIGNMENT_DATE_RULES.$output.result.minimumDueDate}}\",\n       minValue: \"{{$context.$nodes.PREPARE_ASSIGNMENT_DATE_RULES.$output.result.minimumDueDate}}\",\n       minimumDate: \"{{$context.$nodes.PREPARE_ASSIGNMENT_DATE_RULES.$output.result.minimumDueDate}}\"\n     }\n  2. {\n       id: \"<<learningItemId>>_assign_assignmentNotes\",\n       label: \"Notes\",\n       type: \"text\",\n       value: \"\"\n     }\n  3. {\n       id: \"<<learningItemId>>_assign_assignTo\",\n       label: \"Who should receive this assignment?\",\n       type: \"select\",\n       value: \"DIRECTS\",\n       options: [\n         { label: \"My Directs\", value: \"DIRECTS\" }\n       ]\n     }\n\nValidation\n- The Assignment Due Date control must not allow dates before {{$context.$nodes.PREPARE_ASSIGNMENT_DATE_RULES.$output.result.minimumDueDate}}.\n- Today and past dates are invalid.\n- If the UI supports date constraints, apply the minimum date using all provided minimum-date properties.\n\nPresentation hints\n- Title the form: “Assign Learning”.\n- Left-align labels, inputs, and the submit button.\n- Show the third field exactly as a dropdown/select control with the label “Who should receive this assignment?”.\n\nNotes\n- Preserve exact id formatting; ensure all ids include the resolved learningItemId.\n- Keep labels clear and manager-friendly; do not fabricate additional fields or options.\n- Output only the form widget. Do not output prose, explanations, summaries, or validation text."
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Render Assignment Form"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RENDER_ASSIGNMENT_FORM",
+          "convergenceTargetId": "1768325056621",
+          "id": "1768278932045",
+          "inputs": [
+            {
+              "id": "1768278932046_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Render a deterministic manager assignment form.\n\nOutput exactly one editable Record form and nothing else.\nDo not summarize, explain, or omit any required field.\n\nContext\n- Learning item title: {{$context.$nodes.EXTRACT_LEARNING_ITEM_DETAILS.$output.result.learningItemTitle}}\n- Learning item id: {{$context.$nodes.EXTRACT_LEARNING_ITEM_DETAILS.$output.result.learningItemId}}\n- Minimum allowed assignment due date: {{$context.$nodes.PREPARE_ASSIGNMENT_DATE_RULES.$output.result.minimumDueDate}}\n- Date validation message: {{$context.$nodes.PREPARE_ASSIGNMENT_DATE_RULES.$output.result.validationMessage}}\n\nForm requirements\n- Form id must be \"<<learningItemId>>_assign\".\n- Render exactly 3 fields in this order:\n  1. Assignment Due Date\n  2. Notes\n  3. Who should receive this assignment?\n- Assignment Due Date must be a date picker.\n- Assignment Due Date default value must be the minimum allowed assignment due date.\n- Assignment Due Date must allow only future dates starting from the minimum allowed assignment due date.\n- Do not allow today or any past date to be selected.\n- The third field must be visible in the form.\n- The third field must be a select/dropdown control.\n- The third field must be shown even when there is only one allowed option.\n- The only allowed option is label \"My Directs\" with value \"DIRECTS\".\n- Default selected value must be \"DIRECTS\".\n\nDo not add or remove fields."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_RECORD"
+              ],
+              "enableActions": false,
+              "enableCommunications": false,
+              "customNotes": "Instructions\n- Create a single editable Record (form).\n- Context: recommendation for learning item “{{$context.$nodes.EXTRACT_LEARNING_ITEM_DETAILS.$output.result.learningItemTitle}}”.\n- Form id: \"<<learningItemId>>_recommend\", where learningItemId = {{$context.$nodes.EXTRACT_LEARNING_ITEM_DETAILS.$output.result.learningItemId}}.\n- Use the same learningItemId to construct stable, unique field ids.\n- This version supports My Directs only. Do not add a recipient selector.\n\nFields\n- [\n    {\n      id: \"<<learningItemId>>_recommend_recommendationComments\",\n      label: \"Why are you recommending this learning item?\",\n      type: \"text\",\n      value: \"\"\n    }\n  ]\n\nPresentation hints\n- Title the form: “Recommend Learning”\n- Left-align labels, inputs, and the submit button.\n\nNotes\n- Preserve exact id formatting; ensure all ids include the resolved learningItemId.\n- Keep labels clear and manager-friendly; do not fabricate additional fields or options."
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Render Recommendation Form"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RENDER_RECOMMENDATION_FORM",
+          "id": "1768325085428",
+          "inputs": [
+            {
+              "id": "1768325085430_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an intelligent assistant helping a line manager collect the details needed to recommend a learning item to their team."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Hint"
+          },
+          "outcomes": {
+            "Query": "1771006814203",
+            "Init": "1771006814203"
+          },
+          "code": "HINT",
+          "convergenceTargetId": "end",
+          "id": "1767810068924",
+          "inputs": [
+            {
+              "id": "1767810068927_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.SET_HINT.$output.result}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MESSAGES_LIST"
+              ],
+              "enableActions": false,
+              "enableCommunications": false,
+              "customNotes": "Ask Oracle query responses must be plain natural-language text only. Do not render cards, widgets, oraInfoDisplay, XML, JSON, markdown tables, or action controls."
+            }
+          },
+          "metadata": {
+            "name": "Render Query Response",
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            }
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RENDER_QUERY_RESPONSE",
+          "id": "1767810215894",
+          "inputs": [
+            {
+              "id": "1767810215897_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are answering an Ask Oracle question for a manager about team learning recommendations.\n\nReturn plain text only. Do not output cards, oraInfoDisplay, XML, JSON, markdown fences, or action markup.\n\nUser question:\n{{$context.$system.$inputMessage}}\n\nPrepared recommendation data, authoritative:\n{{$context.$nodes.PREPARE_RECOMMENDATIONS_DISPLAY.$output.result}}\n\nRules:\n- Answer only from the prepared recommendation data above.\n- Do not recompute ranking, filtering, recommendation counts, row order, or eligibility.\n- The prepared rows are already sorted from highest recommendationCount to lowest.\n- Preserve learning titles, learning formats, summaries, dates, and recommendation counts exactly as provided.\n- Do not include internal ids, action commands, JSON keys, implementation details, or URLs unless explicitly asked.\n- Keep the response concise and conversational: start with the direct answer, then add one short supporting sentence when helpful.\n- If the prepared data is empty or does not contain enough information to answer the user question, respond with an appropriate generic natural-language message based on the question and available data. Do not use a fixed canned fallback sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Init Hint"
+          },
+          "outcomes": {
+            "InitDisplay": "1767402953115",
+            "InitCommunications": "1768431814963",
+            "FillParameters": "1768415183500",
+            "Summary": "1771181398586",
+            "Query": "1767810215894"
+          },
+          "code": "INIT_HINT",
+          "convergenceTargetId": "end",
+          "id": "1768345424498",
+          "inputs": [
+            {
+              "id": "1768345424504_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$variables.appHint}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_CARD"
+              ],
+              "enableActions": true,
+              "enableCommunications": false,
+              "customNotes": "TASK: Render deterministic recommendation cards from prepared_display only.\n\nINPUT:\n- prepared_display.rows are already selected, sorted, and limited from highest recommendationCount to lowest.\n- Do not recompute ranking, filtering, grouping, sorting, or action payloads.\n- Render rows strictly in the array order provided by prepared_display.rows, using displayOrder only as an ordering guard.\n\nOUTPUT STRUCTURE:\n- Output exactly one <oraInfoDisplay> tag per row, in prepared_display.rows order.\n- Each <oraInfoDisplay> tag must contain exactly one cardWidget.\n- If prepared_display.rows is empty, output exactly one <oraInfoDisplay> tag containing a single cardWidget with:\n  - subject: prepared_display.emptyStateTitle\n  - summary: prepared_display.emptyStateDescription\n  - badgeText: \"Recommended Learning\"\n  - variant: \"info\"\n  - no link\n\nWIDGET CONFIGURATION:\n- For each row in prepared_display.rows, map fields exactly as follows:\n  - subject: row.learningTitle\n  - summary: row.summary\n  - badgeText: row.learningFormat\n  - variant: \"info\"\n  - link:\n    - text: \"Assign\"\n    - action: row.assignAction\n- Do not add timestamp.\n- Do not add secondary links.\n- Do not invent recommendation categories or reasons.\n\nIMPORTANT:\n- Preserve exact field values and row order from prepared_display.\n- Output valid widget markup only; do not output raw JSON snippets or prose outside <oraInfoDisplay> tags."
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Render  Recommendations"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RENDER_RECOMMENDATIONS",
+          "convergenceTargetId": "1768415033143",
+          "id": "1767402953115",
+          "inputs": [
+            {
+              "id": "1767402953117_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Render recommendation cards using the prepared display model only.\n\nRender cards strictly in prepared_display.rows array order. The rows are already sorted from highest recommendationCount to lowest; do not reorder them.\n\n<prepared_display>{{$context.$nodes.PREPARE_RECOMMENDATIONS_DISPLAY.$output.result}}</prepared_display>"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [],
+              "enableActions": false,
+              "enableCommunications": true
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Render Email Communication"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RENDER_EMAIL_COMMUNICATION",
+          "id": "1768431814963",
+          "inputs": [
+            {
+              "id": "1768431814965_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Goal\nGenerate one email communication suggestion that a manager can send to their team, highlighting suggested learnings.\n\nInputs\n- Data (learning items payload):\n  <data>{{$context.$nodes.GET_LEARNING_ITEMS_FROM_CATALOG.$output}}</data>\n- Sender full name:\n  <sender>{{$context.$app.$OraUserContext.fullName}}</sender>\n\nValidation and extraction\n- If data.items is missing/not an array/empty, proceed with an empty HTML list and a neutral topic.\n- For each learning item row, extract:\n  - title: learningItemTitle (required, non-empty)\n  - link: learningItemDetailsDeepLink (required, non-empty; use as href)\n  - note: learningItemTypeMeaning (optional; if present, include after the title in parentheses)\n- Build anchors:\n  - <a href=\"learningItemDetailsDeepLink\">learningItemTitle</a>\n  - If note exists, render as “ (note)”\n- Collect learningItemShortDescription from available rows to derive a concise topic (short phrase summarizing common themes). If none, use “recommended learning opportunities”.\n\nEmail body requirements (rich text HTML)\n- Greeting: “Hello Team,”\n- One-line intro referencing the topic, e.g.: “Here are some learning items we can enroll in to build <topic>.”\n- Unordered list of items as:\n  <ul>\n    <li><a href=\"...\">Title</a>(optional note)</li>\n    ...\n  </ul>\n- Valediction and signature on separate lines:\n  Thanks,\n  <sender>\n- Ensure valid HTML; escape special characters in titles/notes, keep URLs intact.\n\nTitle, description, and action text\n- Title: Suggested Learnings\n- Description: One sentence indicating the manager is suggesting learnings to the team based on the topic.\n- Action text: Send\n\nConstraints and style\n- Do not fabricate fields. Skip items missing required title or link.\n- Keep the topic concise and the tone professional yet approachable."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [],
+              "enableActions": false,
+              "enableCommunications": true
+            }
+          },
+          "metadata": {
+            "name": "Fill Email Parameters"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FILL_EMAIL_PARAMETERS",
+          "convergenceTargetId": "1768417093760",
+          "id": "1768415183500",
+          "inputs": [
+            {
+              "id": "1768415183502_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Data:\n{{$context.$nodes.GET_LEARNING_ITEMS_FROM_CATALOG.$output}}\n\n Fill the parameters in {{$context.$app.$OraCommParamsToFill}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Set Hint",
+            "returnType": "string",
+            "sourceCode": "let hint = $context?.$app?.$OraMessageHint;\nlet result = (hint == null || hint === \"Query\") ? \"Query\" : \"Init\";\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1767810068924"
+          },
+          "code": "SET_HINT",
+          "id": "1771180619047",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"string\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_LEARNING_LEARNINGITEMSEARCHES",
+            "functionName": "findByLearningItemIds",
+            "processJson": true,
+            "name": "Get Learning Items From Catalog"
+          },
+          "outcomes": {
+            "success": "1772054204015"
+          },
+          "code": "GET_LEARNING_ITEMS_FROM_CATALOG",
+          "convergenceTargetId": "1772054204015",
+          "id": "1771015732507",
+          "inputs": [
+            {
+              "id": "1772054204013_1",
+              "name": "learningItemIds",
+              "type": "string",
+              "value": "{{$context.$nodes.PARSE_LEARNING_ITEM_IDS.$output.result.learningItemIds}}"
+            },
+            {
+              "id": "1772054204014_2",
+              "name": "limit",
+              "type": "integer",
+              "value": "{{$context.$variables.maxRecommendations}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Parse Learning Item Ids",
+            "returnType": "object",
+            "sourceCode": "const facets = $context.$nodes.GET_LEARNING_RECOMMENDATIONS.$output.facets;\nlet objectTitleFacet = null;\nif (Array.isArray(facets)) {\n  for (let facetIndex = 0; facetIndex < facets.length; facetIndex += 1) {\n    let facet = facets[facetIndex];\n    if (facet && facet.name === \"objectTitle\") {\n      objectTitleFacet = facet;\n      break;\n    }\n  }\n}\nlet ids = [];\nif (objectTitleFacet && Array.isArray(objectTitleFacet.values)) {\n  for (let valueIndex = 0; valueIndex < objectTitleFacet.values.length && ids.length < 4; valueIndex += 1) {\n    let id = Number(objectTitleFacet.values[valueIndex] && objectTitleFacet.values[valueIndex].value);\n    if (Number.isInteger(id) && Number.isFinite(id)) {\n      ids.push(id);\n    }\n  }\n}\nlet result = {\n  learningItemIds: JSON.stringify(ids)\n};\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1771015732507"
+          },
+          "code": "PARSE_LEARNING_ITEM_IDS",
+          "convergenceTargetId": "1771015732507",
+          "id": "1771015692096",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_LEARNING_LEARNINGRECOMMENDATIONS",
+            "functionName": "recommendationAggregations",
+            "name": "Get Learning Recommendations"
+          },
+          "outcomes": {
+            "success": "1771015692096"
+          },
+          "code": "GET_LEARNING_RECOMMENDATIONS",
+          "convergenceTargetId": "1771015692096",
+          "id": "1771006952162",
+          "inputs": [
+            {
+              "id": "1771006996248_1",
+              "name": "securityFilterType",
+              "type": "string",
+              "value": "{{$context.$variables.securityFilterType}}"
+            },
+            {
+              "id": "1771006996250_2",
+              "name": "facets",
+              "type": "string",
+              "value": "{{$context.$variables.facets}}"
+            },
+            {
+              "id": "1771006996251_3",
+              "name": "recommendationCategories",
+              "type": "string",
+              "value": "{{$context.$variables.recommendationCategories}}"
+            },
+            {
+              "id": "1772054204017_4",
+              "name": "resourceType",
+              "type": "string",
+              "value": "{{$context.$variables.resourceType}}"
+            },
+            {
+              "id": "1772054204018_5",
+              "name": "recommendationStatus",
+              "type": "string",
+              "value": "{{$context.$variables.recommendationStatus}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Set Run Context"
+          },
+          "outcomes": {
+            "success": "1771006952162"
+          },
+          "code": "SET_RUN_CONTEXT",
+          "convergenceTargetId": "1771006952162",
+          "id": "1771006814203",
+          "inputs": [
+            {
+              "id": "1771178992957",
+              "name": "maxRecommendations",
+              "scope": "JOB",
+              "type": "integer",
+              "value": "4"
+            },
+            {
+              "id": "1772054204020",
+              "name": "securityFilterType",
+              "scope": "JOB",
+              "type": "string",
+              "value": "MANAGER"
+            },
+            {
+              "id": "1772054204021",
+              "name": "facets",
+              "scope": "JOB",
+              "type": "array",
+              "value": "[\"objectTitle\"]"
+            },
+            {
+              "id": "1772054204022",
+              "name": "recommendationCategories",
+              "scope": "JOB",
+              "type": "array",
+              "value": "[\n  \"ORA_WLF_RECOM_CUR_JOB_GAP\",\n  \"ORA_WLF_RECOM_CORE_SKILL_GAP\",\n  \"ORA_WLF_RECOM_DEVLPNG_SKILLS\",\n  \"ORA_WLF_RECOM_LRN_DEPARTMENT\",\n  \"ORA_WLF_RECOM_POPLR_JOB\",\n  \"ORA_WLF_RECOM_MGR_PEERS\",\n  \"ORA_WLF_RECOM_TRND_CUR_ROLE\",\n  \"ORA_WLF_RECOM_TRND_MGR_PEERS\"\n]"
+            },
+            {
+              "id": "1772054204023",
+              "name": "resourceType",
+              "scope": "JOB",
+              "type": "array",
+              "value": "[\"LEARNING_ITEMS\"]"
+            },
+            {
+              "id": "1772054204024",
+              "name": "recommendationStatus",
+              "scope": "JOB",
+              "type": "array",
+              "value": "[\n  \"ORA_WLF_RECOM_STATUS_NEW\",\n  \"ORA_WLF_RECOM_STATUS_ENGAGED\"\n]"
+            },
+            {
+              "id": "1771184687006",
+              "name": "appHint",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$app.$OraMessageHint}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Recommendations Display",
+            "returnType": "object",
+            "sourceCode": "const facets = $context.$nodes.GET_LEARNING_RECOMMENDATIONS.$output.facets;\nlet objectTitleFacet = null;\nif (Array.isArray(facets)) {\n  for (let facetIndex = 0; facetIndex < facets.length; facetIndex += 1) {\n    let facet = facets[facetIndex];\n    if (facet && facet.name === \"objectTitle\") {\n      objectTitleFacet = facet;\n      break;\n    }\n  }\n}\nlet facetValues = [];\nif (objectTitleFacet && Array.isArray(objectTitleFacet.values)) {\n  facetValues = objectTitleFacet.values;\n}\nlet countsById = {};\nfor (let valueIndex = 0; valueIndex < facetValues.length; valueIndex += 1) {\n  let entry = facetValues[valueIndex];\n  let id = Number(entry && entry.value);\n  if (Number.isInteger(id) && Number.isFinite(id) && countsById[id] == null) {\n    let parsedCount = Number(entry && entry.count);\n    countsById[id] = Number.isFinite(parsedCount) ? parsedCount : 0;\n  }\n}\nlet items = [];\nif (Array.isArray($context.$nodes.GET_LEARNING_ITEMS_FROM_CATALOG.$output.items)) {\n  items = $context.$nodes.GET_LEARNING_ITEMS_FROM_CATALOG.$output.items;\n}\nlet candidateRows = [];\nfor (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {\n  let item = items[itemIndex];\n  let learningItemId = Number(item && item.learningItemId);\n  let learningTitle = String((item && item.learningItemTitle) || \"\").trim();\n  let learningFormat = String((item && (item.learningItemDisplayTypeMeaning || item.learningItemTypeMeaning)) || \"\").trim();\n  let summary = String((item && (item.liShortDescription || item.learningItemDescription || item.learningItemTitle)) || \"\").trim();\n  let recommendationCount = countsById[learningItemId];\n  if (learningTitle && learningFormat && summary && Number.isFinite(recommendationCount)) {\n    let assignAction = 'ora.Invoke(assignLearning, \"learningItemId=' + learningItemId + '&learningItemTitle=' + encodeURIComponent(learningTitle) + '&actionType=assign\")';\n    candidateRows.push({\n      learningItemId: learningItemId,\n      learningTitle: learningTitle,\n      learningFormat: learningFormat,\n      summary: summary,\n      recommendationCount: recommendationCount,\n      assignAction: assignAction\n    });\n  }\n}\nlet rows = [];\nwhile (candidateRows.length > 0 && rows.length < 4) {\n  let bestIndex = 0;\n  for (let candidateIndex = 1; candidateIndex < candidateRows.length; candidateIndex += 1) {\n    let current = candidateRows[candidateIndex];\n    let best = candidateRows[bestIndex];\n    let isBetter = false;\n    if (current.recommendationCount > best.recommendationCount) {\n      isBetter = true;\n    } else if (current.recommendationCount === best.recommendationCount && current.learningTitle.localeCompare(best.learningTitle) < 0) {\n      isBetter = true;\n    }\n    if (isBetter) {\n      bestIndex = candidateIndex;\n    }\n  }\n  rows.push(candidateRows[bestIndex]);\n  candidateRows.splice(bestIndex, 1);\n}\nfor (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {\n  rows[rowIndex].displayOrder = rowIndex + 1;\n}\nlet result = {\n  asOfDate: $context.$system.$currentDate,\n  totalDisplayed: rows.length,\n  emptyStateTitle: \"No recommended learning available\",\n  emptyStateDescription: \"No high-value learning recommendations are available for your directs right now.\",\n  rows: rows\n};\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1768345424498"
+          },
+          "code": "PREPARE_RECOMMENDATIONS_DISPLAY",
+          "convergenceTargetId": "1768345424498",
+          "id": "1772054204015",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Render Summary"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RENDER_SUMMARY",
+          "id": "1771181398586",
+          "inputs": [
+            {
+              "id": "1771181398587_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Use the prepared display model only.\n\nIf prepared_display.rows is empty, output exactly: No recommended learning at this time.\n\nOtherwise output one concise sentence summarizing the displayed recommendations for the manager's directs.\n- Mention the number of recommendations shown.\n- Mention that they are the highest-value recommendations by count.\n- Do not invent recommendation categories or additional reasons.\n- Do not exceed 30 words.\n\n<prepared_display>{{$context.$nodes.PREPARE_RECOMMENDATIONS_DISPLAY.$output.result}}</prepared_display>"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Action"
+          },
+          "outcomes": {
+            "recommend": "1768330767735",
+            "assign": "1768282262700"
+          },
+          "code": "ACTION",
+          "convergenceTargetId": "end",
+          "id": "1771182421978",
+          "inputs": [
+            {
+              "id": "1771182421979_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$app.$OraAction.includes(\"_assign_assignmentDueDate\") ? \"assign\" : \"recommend\"}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "Assign To"
+          },
+          "outcomes": {
+            "DIRECTS": "1768284347480"
+          },
+          "code": "ASSIGN_TO",
+          "convergenceTargetId": "end",
+          "id": "1768336668235",
+          "inputs": [
+            {
+              "id": "1768336668239_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_SUBMITTED_DETAILS.$output.result.assignTo}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_LEARNING_LEARNINGENROLLMENTS",
+            "errorNodeId": "1768294504322",
+            "functionName": "createEnrollment_ManagerDirects",
+            "name": "Enroll Directs"
+          },
+          "outcomes": {
+            "success": "1768294504322"
+          },
+          "code": "ENROLL_DIRECTS",
+          "convergenceTargetId": "1768336699191",
+          "id": "1768284347480",
+          "inputs": [
+            {
+              "id": "1768284371674_1",
+              "name": "learningItemId",
+              "type": "number",
+              "value": "{{$context.$nodes.EXTRACT_SUBMITTED_DETAILS.$output.result.learningItemId}}"
+            },
+            {
+              "id": "1768284371675_2",
+              "name": "managerPersonId",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PERSON_INFORMATION.$output.items[0].PersonId}}"
+            },
+            {
+              "id": "1768284371675_3",
+              "name": "assignmentType",
+              "type": "string",
+              "value": "ORA_REQUIRE_ASSIGNMENT"
+            },
+            {
+              "id": "1768284371676_4",
+              "name": "assignmentStartDate",
+              "type": "string",
+              "value": "{{$context.$system.$currentDate}}"
+            },
+            {
+              "id": "1768284371677_5",
+              "name": "assignmentDueDate",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_SUBMITTED_DETAILS.$output.result.assignmentDueDate}}"
+            },
+            {
+              "id": "1768284371678_6",
+              "name": "assignmentJustification",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_SUBMITTED_DETAILS.$output.result.assignmentJustification}}"
+            },
+            {
+              "id": "1768284371679_7",
+              "name": "assignmentNotes",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_SUBMITTED_DETAILS.$output.result.assignmentNotes}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Set Directs Enrollment Response"
+          },
+          "outcomes": {
+            "success": "1768336809771"
+          },
+          "code": "SET_DIRECTS_ENROLLMENT_RESPONSE",
+          "convergenceTargetId": "1768336699191",
+          "id": "1768294504322",
+          "inputs": [
+            {
+              "id": "1768294510864",
+              "name": "enrollmentResponse",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.ENROLL_DIRECTS.$output}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [],
+              "enableActions": false,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Render Assignment Summary"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RENDER_ASSIGNMENT_SUMMARY",
+          "convergenceTargetId": "1768336950760",
+          "id": "1768336809771",
+          "inputs": [
+            {
+              "id": "1768336809776_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "If enrollment_response is empty, output exactly: Assignment was not possible.\n\nOtherwise:\n- Extract learningAssignmentProfileCriteria from enrollment_response.\n- Format assignmentDueDate as YYYY-MM-DD.\n- Output exactly:\n  Successfully assigned to <learningAssignmentProfileCriteria.assignmentProfileCriteriaCount> of your <learningAssignmentProfileCriteria.assignmentProfileCriteriaTypeMeaning> with due on <assignmentDueDate>.\n\nDo not include any other text.\n\nINPUT:\n<enrollment_response>{{$context.$variables.enrollmentResponse}}</enrollment_response>"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_LEARNING_LEARNINGENROLLMENTS",
+            "errorNodeId": "1768294471991",
+            "functionName": "createEnrollment_ManagerOrg",
+            "name": "Enroll All Reports"
+          },
+          "outcomes": {
+            "success": "1768294471991"
+          },
+          "code": "ENROLL_ALL_REPORTS",
+          "convergenceTargetId": "1768336740618",
+          "id": "1768284563366",
+          "inputs": [
+            {
+              "id": "1768284582993_1",
+              "name": "learningItemId",
+              "type": "number",
+              "value": "{{$context.$nodes.EXTRACT_SUBMITTED_DETAILS.$output.result.learningItemId}}"
+            },
+            {
+              "id": "1768284582994_2",
+              "name": "managerPersonId",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PERSON_INFORMATION.$output.items[0].PersonId}}"
+            },
+            {
+              "id": "1768284582995_3",
+              "name": "assignmentType",
+              "type": "string",
+              "value": "ORA_REQUIRE_ASSIGNMENT"
+            },
+            {
+              "id": "1768284582997_4",
+              "name": "assignmentStartDate",
+              "type": "string",
+              "value": "{{$context.$system.$currentDate}}"
+            },
+            {
+              "id": "1768284582998_5",
+              "name": "assignmentDueDate",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_SUBMITTED_DETAILS.$output.result.assignmentDueDate}}"
+            },
+            {
+              "id": "1768284582999_6",
+              "name": "assignmentJustification",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_SUBMITTED_DETAILS.$output.result.assignmentJustification}}"
+            },
+            {
+              "id": "1768284583000_7",
+              "name": "assignmentNotes",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_SUBMITTED_DETAILS.$output.result.assignmentNotes}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Set All Reports Enrollments Response"
+          },
+          "outcomes": {
+            "success": "1768336809771"
+          },
+          "code": "SET_ALL_REPORTS_ENROLLMENTS_RESPONSE",
+          "convergenceTargetId": "1768336740618",
+          "id": "1768294471991",
+          "inputs": [
+            {
+              "id": "1768294482585",
+              "name": "enrollmentResponse",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.ENROLL_ALL_REPORTS.$output}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Extract Enrollment Details",
+            "returnType": "object",
+            "sourceCode": "const input = $context.$app.$OraAction;\nlet formValues = {};\nlet formId = '';\nconst match = input.match(/<oraFormSubmit\\s+id=[\"']([^\"']*)[\"'][^>]*>(.*?)<\\/oraFormSubmit>/s);\n\nif (match) {\n  formId = match[1];\n  formValues = match[2];\n}\n\nconst formParts = formId.split(\"_\");\nconst learningItemId = formParts[0];\nconst actionType = formParts[1];\n\nif (typeof formValues === 'string') {\n  try {\n    formValues = JSON.parse(formValues);\n  } catch (e) {\n    formValues = [];\n  }\n}\n\nlet submittedDetails = {};\nfor (let valueIndex = 0; valueIndex < formValues.length; valueIndex += 1) {\n  let field = formValues[valueIndex];\n  let matched = String(field.id).match(/assign_([^\">]+)$/);\n  if (matched) {\n    submittedDetails[matched[1]] = field.value;\n  }\n}\n\nfunction parseDateText(value) {\n  const text = String(value || '').slice(0, 10);\n  const match = text.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);\n  if (!match) {\n    return null;\n  }\n  return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));\n}\n\nfunction formatDate(date) {\n  return date.toISOString().slice(0, 10);\n}\n\nconst currentDateText = String($context.$system.$currentDate || '').slice(0, 10);\nlet currentDate = parseDateText(currentDateText);\nif (!currentDate) {\n  currentDate = new Date();\n  currentDate = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), currentDate.getUTCDate()));\n}\nconst minimumDueDateValue = new Date(currentDate.getTime());\nminimumDueDateValue.setUTCDate(minimumDueDateValue.getUTCDate() + 1);\nconst minimumDueDate = formatDate(minimumDueDateValue);\nconst submittedDueDate = String(submittedDetails.assignmentDueDate || '').slice(0, 10);\nconst submittedDate = parseDateText(submittedDueDate);\nconst assignmentDueDateInvalid = !submittedDate || submittedDueDate < minimumDueDate;\n\nsubmittedDetails.learningItemId = learningItemId;\nsubmittedDetails.actionType = actionType;\nsubmittedDetails.assignTo = submittedDetails.assignTo || \"DIRECTS\";\nsubmittedDetails.assignmentMinimumDueDate = minimumDueDate;\nsubmittedDetails.assignmentDueDateInvalid = assignmentDueDateInvalid;\nsubmittedDetails.assignmentValidationMessage = assignmentDueDateInvalid\n  ? 'Assignment due date must be after the assigned on date. Select ' + minimumDueDate + ' or a later date.'\n  : '';\n\nreturn submittedDetails;"
+          },
+          "outcomes": {
+            "success": "1778225000002"
+          },
+          "code": "EXTRACT_SUBMITTED_DETAILS",
+          "convergenceTargetId": "1778225000002",
+          "id": "1768282262700",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Assignment Date Invalid?"
+          },
+          "outcomes": {
+            "true": "1778225000003",
+            "false": "1768336668235"
+          },
+          "code": "VALIDATE_ASSIGNMENT_DUE_DATE",
+          "id": "1778225000002",
+          "inputs": [
+            {
+              "id": "1778225000002_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_SUBMITTED_DETAILS.$output.result.assignmentDueDateInvalid === true}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_TEXT"
+              ],
+              "enableActions": false,
+              "enableCommunications": false,
+              "customNotes": "Output only the assignment date validation message. Do not add any extra text."
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Render Assignment Date Validation"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RENDER_ASSIGNMENT_DATE_VALIDATION",
+          "id": "1778225000003",
+          "inputs": [
+            {
+              "id": "1778225000003_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Output exactly this validation message and nothing else:\n{{$context.$nodes.EXTRACT_SUBMITTED_DETAILS.$output.result.assignmentValidationMessage}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [],
+              "enableActions": false,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Render Recommendation Response"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RENDER_RECOMMENDATION_RESPONSE",
+          "convergenceTargetId": "1771182634889",
+          "id": "1768331857795",
+          "inputs": [
+            {
+              "id": "1768331857797_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "If recommendation_response is empty, output exactly: Recommendation was not possible.\n\nOtherwise:\n- Extract profileCriteria from recommendation_response.\n- Output exactly:\n  Successfully recommended to your <profileCriteria.sourceTypeMeaning>.\n\nDo not include any other text.\n\nINPUT:\n<recommendation_response>{{$context.$nodes.CREATE_RECOMMENDATION.$output}}</recommendation_response>"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_LEARNING_LEARNINGRECOMMENDATIONS",
+            "errorNodeId": "1768331857795",
+            "functionName": "create_wlfRecommendationProfiles",
+            "name": "Create Recommendation"
+          },
+          "outcomes": {
+            "success": "1768331857795"
+          },
+          "code": "CREATE_RECOMMENDATION",
+          "convergenceTargetId": "1768331857795",
+          "id": "1768331811526",
+          "inputs": [
+            {
+              "id": "1768331830951_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.RECOMMENDATION_PAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Recommendation Payload",
+            "returnType": "object",
+            "sourceCode": "const details = $context.$nodes.EXTRACT_RECOMMENDATION_DETAILS.$output.result;\nconst recommendationTitle = [\"Recommendation by\", $context.$nodes.GET_USER_INFO.$output.items[0].DisplayName].join(\" - \");\n\nlet payload = {\n    \"recommendationProfileTitle\": recommendationTitle,\n    \"priority\": \"ORA_WLF_RECOM_PRIORITY_DEFAULT\",\n    \"recommendationProfileType\": \"ORA_WLF_RECOM_TYPE_SPECIFIC\",\n    \"recommendationComments\": details.recommendationComments,\n    \"profileCriteria\": [\n        {\n            \"sourceType\": details.assignTo,\n            \"sourceId\": $context.$nodes.GET_PERSON_INFORMATION.$output.items[0].PersonId\n        }\n    ],\n    \"resourceConfig\": [\n        {\n            \"objectCategory\": \"LEARNING_ITEMS\",\n            \"objectId\": details.learningItemId\n        }\n    ],\n    \"recommenderConfig\": [\n        {\n            \"recommendationCategory\": \"ORA_WLF_RECOM_COLLEAGUE\"\n        }\n    ],\n    \"startDate\": $context.$system.$currentDate,\n    \"recommendAs\": \"ORA_RECOM_SELF\",\n    \"processingRule\": \"ORA_WLF_RECOM_PRULE_ONE_TIME\",\n    \"dataSecurityPrivilege\": \"ORA_MANAGER\"\n}\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "1768331811526"
+          },
+          "code": "RECOMMENDATION_PAYLOAD",
+          "convergenceTargetId": "1768331811526",
+          "id": "1768331578533",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Extract Recommendation Details",
+            "returnType": "object",
+            "sourceCode": "const input = $context.$app.$OraAction;\nlet formValues = {};\nlet formId = '';\nconst match = input.match(/<oraFormSubmit\\s+id=[\"']([^\"']*)[\"'][^>]*>(.*?)<\\/oraFormSubmit>/s);\n\nif (match) {\n  formId = match[1];\n  formValues = match[2];\n}\n\nconst formParts = formId.split(\"_\");\nconst learningItemId = formParts[0];\nconst actionType = formParts[1];\n\nif (typeof formValues === 'string') {\n  try {\n    formValues = JSON.parse(formValues);\n  } catch (e) {\n    formValues = [];\n  }\n}\n\nlet submittedDetails = {};\nfor (let valueIndex = 0; valueIndex < formValues.length; valueIndex += 1) {\n  let field = formValues[valueIndex];\n  let matched = String(field.id).match(/recommend_([^\">]+)$/);\n  if (matched) {\n    submittedDetails[matched[1]] = field.value;\n  }\n}\n\nsubmittedDetails.learningItemId = learningItemId;\nsubmittedDetails.actionType = actionType;\nsubmittedDetails.assignTo = \"ORA_DIRECTS\";\n\nreturn submittedDetails;"
+          },
+          "outcomes": {
+            "success": "1768331578533"
+          },
+          "code": "EXTRACT_RECOMMENDATION_DETAILS",
+          "convergenceTargetId": "1768331578533",
+          "id": "1768330767735",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1771184310565",
+          "name": "appHint",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1772054204024",
+          "name": "securityFilterType",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1772054204025",
+          "name": "facets",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1772054204026",
+          "name": "recommendationCategories",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1772054204027",
+          "name": "resourceType",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "name": "recommendationStatus",
+          "type": "array"
+        },
+        {
+          "id": "1768294444011",
+          "name": "enrollmentResponse",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1762468970673",
+          "name": "userQuery",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1762468942904",
+          "name": "maxRecommendations",
+          "scope": "JOB",
+          "type": "integer"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.75
+      },
+      "code": "ORA_LLM_PREMIUM",
+      "model": "OPEN_AI_GPT_4_1_MINI",
+      "modelName": "GPT-4.1 mini",
+      "provider": "CERT_PREMIUM"
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": "",
+    "agentsValueMappings": [],
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": [],
+    "dtRunProfiles": {
+      "activeProfileId": "37313c9c-777a-4497-b3f2-0a86221fa11a",
+      "profiles": [
+        {
+          "id": "37313c9c-777a-4497-b3f2-0a86221fa11a",
+          "name": "New run profile 1",
+          "type": "agentic-app",
+          "agenticAppMode": "initDisplay"
+        }
+      ]
+    }
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "LEARNING",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": true,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"2\""
+  }
+}

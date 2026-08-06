@@ -1,0 +1,899 @@
+{
+  "workflowId": "300000327004243",
+  "workflowCode": "ORA_MAINTENANCE_MATERIAL_SHORTAGE_ANALYST",
+  "name": "Maintenance Material Shortage Analyst",
+  "description": "Evaluates item requirements against available-to-transact inventory across multiple organizations for maintenance work orders. Recommends transfer, substitution, or purchase actions, and presents actionable information on shortages.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1767911367795"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_MAINTENANC_WORKORDERASSIGNMENTSEQUENCES",
+            "functionName": "oraScmMnt_materialAssignments_materialShortageForWo",
+            "processJson": true,
+            "name": "Material Shortage Details for Work Order"
+          },
+          "outcomes": {
+            "success": "1770726604386"
+          },
+          "code": "MATERIAL_SHORTAGE_DETAILS_FOR_WORK_ORDER",
+          "id": "1767889948424",
+          "inputs": [
+            {
+              "id": "1771403398952_1",
+              "name": "WorkOrderNumber",
+              "type": "string",
+              "value": "{{$context.$variables.WorkOrderNumberList}}"
+            },
+            {
+              "id": "1771403398952_2",
+              "name": "materialAvailableStatus",
+              "type": "string",
+              "value": "'ORA_P','ORA_N'"
+            },
+            {
+              "id": "1771403398953_3",
+              "name": "pLimit",
+              "type": "integer"
+            },
+            {
+              "id": "1771403398954_4",
+              "name": "pOffset",
+              "type": "integer"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Extract Context",
+            "returnType": "object",
+            "sourceCode": "const appContext =\n  $context?.$app?.$OraAppContext ??\n  $context?.$triggers?.REST?.$input?.OraAppContext ??\n  null;\n\nlet OrganizationId = null;\nlet WorkOrderNumber = null;\n\nif (appContext != null) {\n  if (typeof appContext === 'object') {\n    OrganizationId = appContext?.OrganizationId ?? null;\n    WorkOrderNumber = appContext?.WorkOrderNumber ?? null;\n  } else if (typeof appContext === 'number') {\n    OrganizationId = String(appContext);\n  } else if (typeof appContext === 'string') {\n    const s = appContext.trim();\n    if (s) {\n      if (s.startsWith('{') || s.startsWith('[')) {\n        // JSON string\n        try {\n          const obj = JSON.parse(s);\n          OrganizationId = obj?.OrganizationId ?? null;\n          WorkOrderNumber = obj?.WorkOrderNumber ?? null;\n        } catch {\n          // Malformed JSON -> fall through to plain handling\n          const parts = s.split(',').map(p => p.trim());\n          OrganizationId = parts[0] || s || null;\n          WorkOrderNumber = parts[1] || null;\n        }\n      } else if (s.includes(',')) {\n        const parts = s.split(',').map(p => p.trim());\n        OrganizationId = parts[0] || null;\n        WorkOrderNumber = parts[1] || null;\n      } else {\n        // Plain single value -> treat as OrganizationId\n        OrganizationId = s;\n      }\n    }\n  } else {\n    const s = String(appContext).trim();\n    if (s) OrganizationId = s;\n  }\n}\n\nreturn { OrganizationId, WorkOrderNumber };"
+          },
+          "outcomes": {
+            "success": "1771401821360"
+          },
+          "code": "EXTRACT_CONTEXT",
+          "id": "1767911367795",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check Shortage Still Exists For Refresh Flow"
+          },
+          "outcomes": {
+            "true": "1767899319345",
+            "false": "1771808647160"
+          },
+          "code": "CHECK_SHORTAGE_STILL_EXISTS_FOR_REFRESH_FLOW",
+          "convergenceTargetId": "end",
+          "id": "1770726604386",
+          "inputs": [
+            {
+              "id": "1770726604387_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.MATERIAL_SHORTAGE_DETAILS_FOR_WORK_ORDER.$output?.items?.[0]?.MaterialAssignment?.count > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Set Work Order Shortage Details Information"
+          },
+          "outcomes": {
+            "success": "1767900597797"
+          },
+          "code": "SET_WORK_ORDER_SHORTAGE_DETAILS_INFORMATION",
+          "convergenceTargetId": "1770726906177",
+          "id": "1767899319345",
+          "inputs": [
+            {
+              "id": "1767899333024",
+              "name": "WorkOrderItemShortageDetails",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.MATERIAL_SHORTAGE_DETAILS_FOR_WORK_ORDER.$output.items[0].MaterialAssignment.items}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1768178057217"
+                  },
+                  "id": "start_1767900597797",
+                  "code": "START_1767900597797",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1767900597797",
+                  "code": "END_1767900597797",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "name": "Append Additional Information",
+                    "returnType": "object",
+                    "sourceCode": "let retValue = {};\n\nlet WorkOrderNumber = $context.$nodes.MATERIAL_SHORTAGE_DETAILS_FOR_WORK_ORDER.$output.items[0].WorkOrderNumber;\nlet WorkOrderId = $context.$nodes.MATERIAL_SHORTAGE_DETAILS_FOR_WORK_ORDER.$output.items[0].WorkOrderId;\nlet WorkOrderType = $context.$nodes.MATERIAL_SHORTAGE_DETAILS_FOR_WORK_ORDER.$output.items[0].WorkOrderType;\nlet WorkOrderSubType = $context.$nodes.MATERIAL_SHORTAGE_DETAILS_FOR_WORK_ORDER.$output.items[0].WorkOrderSubType;\nlet OrganizationId = $context.$nodes.MATERIAL_SHORTAGE_DETAILS_FOR_WORK_ORDER.$output.items[0].OrganizationId;\nlet WorkOrderDescription = $context.$nodes.MATERIAL_SHORTAGE_DETAILS_FOR_WORK_ORDER.$output.items[0].WorkOrderDescription;\nlet AssetNumber = $context.$nodes.MATERIAL_SHORTAGE_DETAILS_FOR_WORK_ORDER.$output.items[0].AssetNumber;\nlet RequiredDate = $context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$currentItem.RequiredDate;\nlet OperationSequenceNumber =   $context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$currentItem.OperationSequenceNumber;\nlet WoOperationId =   $context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$currentItem.WoOperationId;\nlet OperationName =   $context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$currentItem.OperationName;\nlet OperationDescription =   $context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$currentItem.OperationDescription;\nlet WoOperationMaterialId =   $context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$currentItem.WoOperationMaterialId;\nlet MaterialSequenceNumber = $context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$currentItem.MaterialSequenceNumber;\nlet ItemNumber =   $context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$currentItem.ItemNumber;\nlet InventoryItemId =   $context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$currentItem.InventoryItemId;\nlet ItemDescription =   $context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$currentItem.Description;\nlet UOM =   $context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$currentItem.UnitOfMeasure;\nlet RequiredQuantity =   $context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$currentItem.RequiredQuantity;\nlet OpenQuantity =   $context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$currentItem.OpenQuantity;\nlet ShortageQuantity =   $context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$currentItem.ShortageQuantity;\nlet SubstituteItem = null;\nif (RequiredQuantity === OpenQuantity && OpenQuantity === ShortageQuantity) {\n  SubstituteItem = ((($context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.CHECK_SUBSTITUTE_FOR_ITEM.$output?.items) || []).find(it => Number(it?.AvailableToTransactQuantity) >= RequiredQuantity) || {}).ItemNumber ?? null;\n}\nlet OrgsWithStock = ( $context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.CHECK_ON_HAND_FOR_ORIGINAL_ITEM_ACROSS_ORGS?.$output?.items ?? []).filter(r => (Number(r?.OnhandQuantity ?? 0) || 0) > 0).length;\nlet LeadTime = $context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.LEAD_TIME.$output?.items?.[0]?.FixedLeadTime ?? null;\n\nretValue = {WorkOrderNumber,WorkOrderId,WorkOrderType,WorkOrderSubType,OrganizationId,WorkOrderDescription,AssetNumber,RequiredDate,OperationSequenceNumber,WoOperationId,OperationName,OperationDescription,WoOperationMaterialId,MaterialSequenceNumber,ItemNumber,InventoryItemId,ItemDescription,UOM,RequiredQuantity,OpenQuantity,ShortageQuantity,SubstituteItem,OrgsWithStock,LeadTime};\n\nreturn retValue;"
+                  },
+                  "outcomes": {
+                    "success": "end_1767900597797"
+                  },
+                  "code": "APPEND_ADDITIONAL_INFORMATION",
+                  "id": "1767915614100",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_OTHER_SUBSTITUTEITEMA",
+                    "functionName": "oraScmOtherSubstituteitema_substituteitemavailabilitydetails",
+                    "processJson": true,
+                    "name": "Check Substitute for Item"
+                  },
+                  "outcomes": {
+                    "success": "1768182350033"
+                  },
+                  "code": "CHECK_SUBSTITUTE_FOR_ITEM",
+                  "id": "1768178057217",
+                  "inputs": [
+                    {
+                      "id": "1770110927154_1",
+                      "name": "pOrganizationId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$currentItem.OrganizationId}}"
+                    },
+                    {
+                      "id": "1770110927155_2",
+                      "name": "pItemId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$currentItem.InventoryItemId}}"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_MAINTENANC_ITEMSV2",
+                    "functionName": "oraScmMnt_getItemDetails",
+                    "processJson": true,
+                    "name": "Lead Time"
+                  },
+                  "outcomes": {
+                    "success": "1767915614100"
+                  },
+                  "code": "LEAD_TIME",
+                  "id": "1768417045199",
+                  "inputs": [
+                    {
+                      "id": "1771496942986_1",
+                      "name": "dynamicParam",
+                      "type": "string",
+                      "value": "{{\"q=ItemId=\"+$context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$currentItem.InventoryItemId+\" AND OrganizationId=\"+$context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$currentItem.OrganizationId}}"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_PRODUCTMAN_ONHANDQTY",
+                    "functionName": "getall_onhandQuantityDetails",
+                    "processJson": true,
+                    "name": "Check On Hand for Original Item Across Orgs"
+                  },
+                  "outcomes": {
+                    "success": "1768417045199"
+                  },
+                  "code": "CHECK_ON_HAND_FOR_ORIGINAL_ITEM_ACROSS_ORGS",
+                  "convergenceTargetId": "1769755627572",
+                  "id": "1768182350033",
+                  "inputs": [
+                    {
+                      "id": "1769757616943_1",
+                      "name": "ItemId",
+                      "type": "integer",
+                      "value": "{{$context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$currentItem.InventoryItemId}}"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                }
+              ],
+              "rootNode": "start_1767900597797"
+            },
+            "loopType": "PARALLEL",
+            "name": "Check Substitutes for Items in Work Order"
+          },
+          "outcomes": {
+            "success": "1772180871368"
+          },
+          "code": "CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER",
+          "convergenceTargetId": "1770726906177",
+          "id": "1767900597797",
+          "inputs": [
+            {
+              "id": "1767900597799_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$variables.WorkOrderItemShortageDetails}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "name": "Context Type"
+          },
+          "outcomes": {
+            "Summary": "1767899549598",
+            "Query": "1770021084670",
+            "InitDisplay": "1767890498815",
+            "InvokeAction": "1768252755373",
+            "InitSubtitle": "1770888505330"
+          },
+          "code": "CONTEXT_TYPE",
+          "convergenceTargetId": "end",
+          "id": "1767890394180",
+          "inputs": [
+            {
+              "id": "1767890394181_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.OraMessageHint}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "Summarize Work Order Shortages"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SUMMARIZE_WORK_ORDER_SHORTAGES",
+          "id": "1767899549598",
+          "inputs": [
+            {
+              "id": "1767899549600_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "- Use  `Shortage` Array to identify shortage material requirements.\n  -  Value : {{$context.$variables.WorkOrderItemShortageDetails}} \n\n- If `Shortage` array is null or empty, return below no data found message:  \n  - `No Work Order material shortages found for the time period`\n- Under no circumstances should you ask for further clarification or request user input if no events are present. Only display the message.\n\n- If data found:\n - Generate one concise, newspaper-style headline (≤ 30 words) highlighting the most critical shortage.\n - Do not list multiple bullets. Do not explain. Do not include internal identifier in display."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Query"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "QUERY",
+          "id": "1770021084670",
+          "inputs": [
+            {
+              "id": "1770021084673_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "### App/Agent Purpose\n\nThis workflow agent helps identify and resolve material shortages that can prevent maintenance work orders from progressing. It analyzes current shortages on the provided work order, reviews material availability, recommends substitutes or transfers when possible, and enables timely action to address parts needs and reduce maintenance delays.\n\n---\n\n### Maintenance Management Context\n\nMaintenance operations rely on work orders created for assets needing preventive or corrective work. Each work order may involve multiple operations, each with specific resource and material requirements. Estimated costs are based on planned requirements; actual costs reflect executed transactions. This process operates within an organization context, where ensuring material readiness and continuity is essential for minimizing downtime.\n\n#### Key Maintenance Terms  \n- **Work Order:** (e.g., WO, work order number, wo#) — Schedule of required maintenance for an asset, including all associated operations, materials, and resources.\n- **Asset:** (e.g., Asset Number, assetnum, asset#) — The equipment or item being maintained.\n- **Operation:** (operation, OP, op, step, steps) — A distinct task or phase within a work order potentially requiring specific materials.\n- **Organization:** (Organization Code, Org, etc.) — The entity or facility managing the maintenance process.\n\n---\n\n### Data Provided\n\n- **Work Order Shortage Data:**  \n  `{{$context.$variables.WorkOrderItemShortageDetails}}` — Material shortages for the current work order.\n- **Chat History:**  \n  `{{$context.$system.$chatHistory}}`\n\n---\n\n### Task\n\n- Answer the user's query from:  \n  `{{$context.$system.$inputMessage}}` using only the data and context above.\n- Do **not** infer or fabricate information.\n\n---\n\n### Response Rules\n\n- When provided work order `{{$context.$variables.ContextWorkOrderNumber}}` is present, focus only on shortages for this work order\n  If the user asks about another work order, clearly state this app only works for the specific work order in context.\n- Recommendation summary can be formed using below logic:\n   - If `SubstituteItem` is available: recommend “Substitute Item”\n   - If `OrgsWithStock` > 0: recommend “Request Transfer” \n   - If no Substitute Item and no Orgs With Stock: recommend “Requisition Part”\n   - If `Shortage` is 0: there is no shortage\n- Use only readable names, codes, and descriptions in your response. Do **not** include any internal IDs or technical identifiers.\n- Provide a concise summary or table listing material shortages, their quantities, and recommended actions (such as use of substitute, transfer request, or requisition).\n- If there are no material shortages for the provided work order and User Query, state this explicitly.\n- Do not mention data source or dataset names.\n- Only answer what the user asks in inputMessage; do not suggest other actions or next steps.\n- Do not fabricate or infer missing inputs.\n"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MULTIRECORD"
+              ],
+              "enableActions": true,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "name": "Display Shortages for Work Order"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "DISPLAY_SHORTAGES_FOR_WORK_ORDER",
+          "id": "1767890498815",
+          "inputs": [
+            {
+              "id": "1767890498817_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "- Use the `Shortage` array (`{{$context.$variables.WorkOrderItemShortageDetails}}`) to identify work order material shortages.\n\n- If the `Shortage` array is null or empty:\n  - Return a table with a single column `Information` and one row:  \n    `No Work Order material shortages found for the time period`\n  - Do not ask for clarification or request user input. Only display the specified message.\n\n- If data is present:\n  - Display the results as a `multiRecordWidget` table with the following columns:\n    - Op Seq\n    - Material Seq (`MaterialSequenceNumber`)\n    - Item Number\n    - Item Description\n    - Required Date (date only, without time)\n    - UOM\n    - Required\n    - Open\n    - Shortage\n    - Lead Time\n    - Substitute Item\n    - Orgs With Stock\n    - Recommendation\n     - Recommendation rules:\n      - If Shortage is 0: do not display any recommendation.\n      - If SubstituteItem is available: show \"Substitute Item\" as a badge with warning priority.\n      - Else if OrgsWithStock > 0: show \"Request Transfer\" as a badge with medium priority.\n      - Else: show \"Requisition Part\" as a badge with medium priority.\n  - Generate actionable Insight as per below rules:\n    - Show an Actionable Insight only when SubstituteItem is available.\n    - For rows where SubstituteItem is available, populate the Action column with:\n      - text: Update Substitute\n      - command: ora.Invoke(UpdateSubstitute,{ActionCode: UpdateSubstitute, WorkOrderId, WoOperationId, WoOperationMaterialId, SubstituteItem})\n    - For rows where SubstituteItem is not available, leave the Action column empty.\n\n- Return only the table.\n- Set the overall `title` as `Material Shortages  —  {{$context.$variables.ContextWorkOrderNumber}} `\n- Do not include any internal identifiers (ID) or extra commentary."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Take Shortage Action",
+            "returnType": "object",
+            "sourceCode": "const rawInput =\n  $context?.$app?.$OraAction ??\n  $context?.$triggers?.REST?.$input?.OraAction ??\n  null;\n\nlet ActionCode = null,\n    WorkOrderId = null,\n    WoOperationId = null,\n    WoOperationMaterialId = null,\n    SubstituteItem = null;\n\nif (rawInput != null) {\n  try {\n    const parsed =\n      typeof rawInput === 'object' ? rawInput : JSON.parse(String(rawInput));\n\n    ActionCode = parsed?.ActionCode ?? null;\n    WorkOrderId = parsed?.WorkOrderId ?? null;\n    WoOperationId = parsed?.WoOperationId ?? null;\n    WoOperationMaterialId = parsed?.WoOperationMaterialId ?? null;\n    SubstituteItem = parsed?.SubstituteItem ?? null;\n  } catch {\n    // Fallback: comma-separated values\n    const parts = String(rawInput).split(',').map(s => s.trim());\n    [ActionCode, WorkOrderId, WoOperationId, WoOperationMaterialId, SubstituteItem] =\n      [parts[0] ?? null, parts[1] ?? null, parts[2] ?? null, parts[3] ?? null, parts[4] ?? null];\n  }\n}\n\nconst retValue = {\n  ActionCode,\n  WorkOrderId,\n  WoOperationId,\n  WoOperationMaterialId,\n  SubstituteItem,\n};\n\nreturn retValue;"
+          },
+          "outcomes": {
+            "success": "1768253008150"
+          },
+          "code": "TAKE_SHORTAGE_ACTION",
+          "id": "1768252755373",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Action Type"
+          },
+          "outcomes": {
+            "UpdateSubstitute": "1768253403605",
+            "Purchase": "add_Purchase_1768253008150",
+            "RequestTransfer": "add_RequestTransfer_1768253008150"
+          },
+          "code": "ACTION_TYPE",
+          "convergenceTargetId": "end",
+          "id": "1768253008150",
+          "inputs": [
+            {
+              "id": "1768253008151_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.TAKE_SHORTAGE_ACTION.$output.result.ActionCode}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_MAINTENANCE_WO",
+            "functionName": "oraScmMnt_updateWorkOrderOperationMaterial_SubstituteItem",
+            "name": "Update Substitute Item"
+          },
+          "outcomes": {
+            "success": "1768259652878"
+          },
+          "code": "UPDATE_SUBSTITUTE_ITEM",
+          "id": "1768253403605",
+          "inputs": [
+            {
+              "id": "1769763210761_1",
+              "name": "WorkOrderId",
+              "type": "string",
+              "value": "{{$context.$nodes.TAKE_SHORTAGE_ACTION.$output.result.WorkOrderId}}"
+            },
+            {
+              "id": "1769763210763_2",
+              "name": "WoOperationId",
+              "type": "string",
+              "value": "{{$context.$nodes.TAKE_SHORTAGE_ACTION.$output.result.WoOperationId}}"
+            },
+            {
+              "id": "1769763210764_3",
+              "name": "WoOperationMaterialId",
+              "type": "string",
+              "value": "{{$context.$nodes.TAKE_SHORTAGE_ACTION.$output.result.WoOperationMaterialId}}"
+            },
+            {
+              "id": "1769763210765_4",
+              "name": "ItemNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.TAKE_SHORTAGE_ACTION.$output.result.SubstituteItem}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Status of Substitution"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "STATUS_OF_SUBSTITUTION",
+          "id": "1768259652878",
+          "inputs": [
+            {
+              "id": "1768259652880_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Check the status and output of the REST call using `{{$context.$nodes.UPDATE_SUBSTITUTE_ITEM.$status}}` and `{{$context.$nodes.UPDATE_SUBSTITUTE_ITEM.$output}}`.\n\n- If the substitute update is successful, provide a message in this format:  \n  `Substitute updated successfully from original item {ItemNumber} to substitute item {SubstituteItem} on Work Order Number: {WorkOrderNumber}, Operation: {OperationName}, Op Seq: {OperationSequenceNumber}, Material Sequence Number: {MaterialSequenceNumber}`\n\n- If the update fails, provide a message in this format:  \n  `Failed to update substitute for original item {ItemNumber} to substitute item {SubstituteItem} on Work Order Number: {WorkOrderNumber}, Op Seq: {OperationSequenceNumber}, Material Sequence Number: {MaterialSequenceNumber}. REST error: {REST_error_message}`\n\nUse `{{$context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$output}}` and `{{$context.$nodes.TAKE_SHORTAGE_ACTION.$output.result}}` to obtain and populate the parameter values.\n\nDo not display any internal identifiers (IDs).  \nDo not provide suggestions or explanations.  \nReturn only the final message as per the relevant status, with all parameters populated."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "description": "Add node for Purchase case branch",
+            "name": "Add (Purchase Case)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_Purchase_1768253008150",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "description": "Add node for RequestTransfer case branch",
+            "name": "Add (RequestTransfer Case)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_RequestTransfer_1768253008150",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Subtitle"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SUBTITLE",
+          "id": "1770888505330",
+          "inputs": [
+            {
+              "id": "1770888505332_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Generate a subtitle string based on the following rules, using the values for Organization Code (`{{$context.$variables.OrganizationCode}}`) and Work Order Number (` {{$context.$variables.ContextWorkOrderNumber}} `):\n\n- If both organization code and work order number are present, not null, not the string \"null\", and not empty, use:  \n  `Material Shortages | Organization: {{$context.$variables.OrganizationCode}} | Work Order: {{$context.$variables.ContextWorkOrderNumber}} `\n- If only organization code is present, not null, not the string \"null\", and not empty, use:  \n  `Material Shortages| Organization: {{$context.$variables.OrganizationCode}}`\n- If only work order number is present, not null, not the string \"null\", and not empty, use:  \n  `Material Shortages | Work Order: {{$context.$variables.ContextWorkOrderNumber}} `\n- Otherwise, use:  \n  `Material Shortages`\n\nReturn only the generated subtitle string. Do not return literal strings \"null\", null, empty values, or curly braces in the subtitle string."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "User Query"
+          },
+          "outcomes": {
+            "true": "1771221801724",
+            "false": "1771221556387"
+          },
+          "code": "USER_QUERY",
+          "convergenceTargetId": "1767889948424",
+          "id": "1771221484114",
+          "inputs": [
+            {
+              "id": "1771221484116_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{($context.$app.$OraMessageHint ?? $context.$triggers.REST.$input.OraMessageHint) === 'Query'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Org Context Passed"
+          },
+          "outcomes": {
+            "true": "1769758234324",
+            "false": "add_false_1771221556387"
+          },
+          "code": "ORG_CONTEXT_PASSED",
+          "convergenceTargetId": "1767889948424",
+          "id": "1771221556387",
+          "inputs": [
+            {
+              "id": "1771221556388_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_CONTEXT.$output.result.OrganizationId != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1767889948424"
+          },
+          "id": "add_false_1771221556387",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_SCMFOUNDAT_INVENTORYORGQRY",
+            "functionName": "SearchInventoryOrgBasedonDynFilter",
+            "name": "Get Org Code"
+          },
+          "outcomes": {
+            "success": "1767889764723"
+          },
+          "code": "GET_ORG_CODE",
+          "convergenceTargetId": "1771221686440",
+          "id": "1769758234324",
+          "inputs": [
+            {
+              "id": "1769758275950_1",
+              "name": "plimit",
+              "type": "string",
+              "value": "25"
+            },
+            {
+              "id": "1769758275951_2",
+              "name": "poffset",
+              "type": "string",
+              "value": "0"
+            },
+            {
+              "id": "1769758275952_3",
+              "name": "dynamicFilter",
+              "type": "string",
+              "value": "{{\"OrganizationId=\"+$context.$nodes.EXTRACT_CONTEXT.$output.result.OrganizationId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Set Organization Code"
+          },
+          "outcomes": {
+            "success": "1767889948424"
+          },
+          "code": "SET_ORGANIZATION_CODE",
+          "convergenceTargetId": "1771221686440",
+          "id": "1767889764723",
+          "inputs": [
+            {
+              "id": "1772531975988",
+              "name": "WorkOrderNumberList",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{\"'\"+$context.$variables.ContextWorkOrderNumber+\"'\"}}"
+            },
+            {
+              "id": "1769762314670",
+              "name": "OrganizationCode",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_CONTEXT.$output.result.OrganizationId?$context.$nodes.GET_ORG_CODE.$output?.items?.[0]?.OrganizationCode:null}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Extract Work Order Data from User Query"
+          },
+          "outcomes": {
+            "success": "1771222089644"
+          },
+          "code": "EXTRACT_WORK_ORDER_DATA_FROM_USER_QUERY",
+          "id": "1771221801724",
+          "inputs": [
+            {
+              "id": "1771221801726_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Extract data from the user query: `{{$context.$system.$inputMessage}}` and build a valid REST `q` parameter (`pQparam`) for searching work orders, which can be directly used in a REST call.\n\n**Build pQparam:**\n- Extract relevant parameter values and construct `pQparam` using valid Oracle REST Query Language (RQL) syntax.\n- For BETWEEN clauses, always use parentheses.  \n  Example: `(PlannedStartDate BETWEEN '2025-02-09' AND '2025-02-10')`\n- The current date `CurrentDate` value is `{{$context.$system.$currentDate}}`. \n- If `OrganizationId` is available (`{{$context.$variables.OrganizationId}}`), MUST always include the below clause:  \n  `OrganizationId = {{$context.$variables.OrganizationId}}`\n- If `WorkOrderNumber` is available (` {{$context.$variables.ContextWorkOrderNumber}}`), MUST include the clause:  \n  `WorkOrderNumber = '{{$context.$variables.ContextWorkOrderNumber}}'`\n\n**Important Constraints:**\n- For any user query, do **not** include or infer shortage, inventory, substitute, transfer, requisition, or fulfillment fields or logic in the `q` param—use only fields that are directly searchable on the WorkOrder REST API.\n  - Business logic for material shortage or resolution (such as transfer, substitute, requisition) will be applied later and never in this q parameter.\n- **Do not** append any additional clause like:  \n  - `onHandQuantity < RequiredQuantity`\n  - `RequirementQuantity > IssuedQuantity`\n  - `ShortageQuantity > 0`\n  - `TransferLocationId`\n  - `IsPurchasable`\n  - `SupplierId`\n  - `SubstituteItemNumber`\n  - or any similar field not directly supported in work order searches.\n\n**Examples:**  \n1) Get item and material shortage (Both `OrganizationId` and `WorkOrderNumber` are available))\n`pQparam` = \"OrganizationId = 123456 AND WorkOrderNumber ='JKJWO1'\"\n2) Get all information for work order that starts with JKJ WO 001 and  having unfulfilled item requirement for m-assy-srl-p (Only `OrganizationId` available)\n`pQparam` = \"OrganizationId = 123456 AND WorkOrderNumber like UPPER('JKJ WO 001%25')  AND WorkOrderOperation.WorkOrderOperationMaterial.InventoryItemNumber = 'm-assy-srl-p'\"\n3) Get information on item requirement for m-srl-lot  in last 1 month (Only `WorkOrderNumber` available)\n`pQparam` = \"WorkOrderNumber ='JKJWO1' AND WorkOrderOperation.WorkOrderOperationMaterial.InventoryItemNumber = 'm-srl-lot' AND (PlannedStartDate BETWEEN '2025-02-09' AND '2025-03-11')\"\n4) Example for a complex pQparam\n`pQparam` = \"UPPER(WorkOrderNumber) like UPPER('aBc%25') AND (AssetNumber = 'Asset_001' OR AssetNumber = 'Asset_003' ) AND WorkOrderDescription like 'ABC Wo%25' AND WorkOrderTypeCode != 'CORRECTIVE' AND WorkOrderSubTypeCode=UPPER('ora_planned') AND WorkOrderStatusCode IN ('ORA_RELEASED','ORA_UNRELEASED') AND (PlannedStartDate BETWEEN '2025-03-07' and '2026-06-24' ) AND WorkOrderOperation.OperationSequenceNumber = 10 AND WorkOrderOperation.WorkOrderOperationResource.ResourceCode IS NULL AND attachments.DocumentPreviewURL IS NOT NULL AND WorkOrderOperation.WorkOrderOperationMaterial.InventoryItemNumber = 'm-assy-srl-p'\"\n\nReturn only the constructed `pQparam` string. \nNever return an error or explanation—always return a valid query string, defaulting WorkOrderNumber clause if the user input is missing or unclear."
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"pQparam\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_MAINTENANCE_WO",
+            "functionName": "oraScmMnt_getWorkOrderByQparam",
+            "name": "Get Work Orders From User Query"
+          },
+          "outcomes": {
+            "success": "1771222152288"
+          },
+          "code": "GET_WORK_ORDERS_FROM_USER_QUERY",
+          "id": "1771222089644",
+          "inputs": [
+            {
+              "id": "1771222108290_1",
+              "name": "pQparam",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_WORK_ORDER_DATA_FROM_USER_QUERY.$output.pQparam}}"
+            },
+            {
+              "id": "1771222108291_2",
+              "name": "pLimit",
+              "type": "integer"
+            },
+            {
+              "id": "1771222108291_3",
+              "name": "pOffset",
+              "type": "integer"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Set WO List From User Query"
+          },
+          "outcomes": {
+            "success": "1767889948424"
+          },
+          "code": "SET_WO_LIST_FROM_USER_QUERY",
+          "id": "1771222152288",
+          "inputs": [
+            {
+              "id": "1771222155682",
+              "name": "WorkOrderNumberList",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_WORK_ORDERS_FROM_USER_QUERY.$output?.count > 0 ? $context.$nodes.GET_WORK_ORDERS_FROM_USER_QUERY.$output?.items?.map(item => \"'\" + item.WorkOrderNumber + \"'\")?.join(\",\") : \"'_'\"}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Set Context"
+          },
+          "outcomes": {
+            "success": "1771221484114"
+          },
+          "code": "SET_CONTEXT",
+          "id": "1771401821360",
+          "inputs": [
+            {
+              "id": "1771401883797",
+              "name": "ContextWorkOrderNumber",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_CONTEXT.$output.result.WorkOrderNumber}}"
+            },
+            {
+              "id": "1771401840363",
+              "name": "OrganizationId",
+              "scope": "JOB",
+              "type": "number",
+              "value": "{{$context.$nodes.EXTRACT_CONTEXT.$output.result.OrganizationId}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MULTIRECORD"
+              ],
+              "enableActions": false,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "name": "Return No More Shortage"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURN_NO_MORE_SHORTAGE",
+          "id": "1771808647160",
+          "inputs": [
+            {
+              "id": "1771808647162_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "- Define only one column `Information` with only 1 below row\n - If `User Query` having value: `{{$context.$system.$inputMessage}}` is not empty, return below:\n  - `No information found for query '{{$context.$system.$inputMessage}}' with respect to work order '{{$context.$variables.ContextWorkOrderNumber}}'`\n- Other wise, return below\n  - `No material shortage exists for work order: {{$context.$variables.ContextWorkOrderNumber}}`\n- Under no circumstances should you ask for further clarification or request user input if no events are present. Only display the message."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Unwrap the Loop Output",
+            "returnType": "array",
+            "sourceCode": "const raw = $context.$nodes.CHECK_SUBSTITUTES_FOR_ITEMS_IN_WORK_ORDER.$output ?? [];\n\nconst objectsArr = (Array.isArray(raw) ? raw : [])\n  .map(s => { try { return JSON.parse(String(s)); } catch { return null; } })\n  .map(o => o?.result)\n  .filter(r => r != null);\n \nreturn objectsArr;"
+          },
+          "outcomes": {
+            "success": "1772180930899"
+          },
+          "code": "UNWRAP_THE_LOOP_OUTPUT",
+          "id": "1772180871368",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set data set"
+          },
+          "outcomes": {
+            "success": "1767890394180"
+          },
+          "code": "SET_DATA_SET",
+          "id": "1772180930899",
+          "inputs": [
+            {
+              "id": "1772180948528",
+              "name": "WorkOrderItemShortageDetails",
+              "scope": "JOB",
+              "type": "array",
+              "value": "{{$context.$nodes.UNWRAP_THE_LOOP_OUTPUT.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1772531904972",
+          "name": "ContextWorkOrderNumber",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1769761159625",
+          "name": "OrganizationCode",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1767890030273",
+          "name": "WorkOrderItemShortageDetails",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1767888000749",
+          "name": "WorkOrderNumberList",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1767887982719",
+          "name": "OrganizationId",
+          "scope": "JOB",
+          "type": "number"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1767890322613",
+            "name": "InvokeAction",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1767887965387",
+            "name": "OraAppContext",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1767887954469",
+            "name": "OraAction",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1767887946314",
+            "name": "OraMessageHint",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "SCM",
+  "product": "MAINTENANCE",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": true,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"2\""
+  }
+}

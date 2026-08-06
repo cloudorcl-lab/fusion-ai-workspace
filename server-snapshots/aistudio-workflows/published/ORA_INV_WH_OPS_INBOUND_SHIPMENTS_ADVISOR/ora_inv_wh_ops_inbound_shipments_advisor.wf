@@ -1,0 +1,1773 @@
+{
+  "workflowId": "300000326919084",
+  "workflowCode": "ORA_INV_WH_OPS_INBOUND_SHIPMENTS_ADVISOR",
+  "name": "Inventory Receipt Advisor",
+  "description": "Manages shipment receipt operations, short orders, delayed shipment detection, and operational exception processing.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1771412867373"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "name": "is Triggered From REST"
+          },
+          "outcomes": {
+            "true": "1771413051583",
+            "false": "1771413154301"
+          },
+          "code": "IS_TRIGGERED_FROM_REST_",
+          "convergenceTargetId": "1771215016843",
+          "id": "1771412867373",
+          "inputs": [
+            {
+              "id": "1771412867378_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.action != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "REST Variables Setter"
+          },
+          "outcomes": {
+            "success": "1771215016843"
+          },
+          "code": "REST_VARIABLES_SETTER",
+          "id": "1771413051583",
+          "inputs": [
+            {
+              "id": "1771413104655",
+              "name": "parameters",
+              "value": "{{$context.$triggers.REST.$input.parameters}}"
+            },
+            {
+              "id": "1771413080029",
+              "name": "organizationId",
+              "value": "{{$context.$triggers.REST.$input.organizationId}}"
+            },
+            {
+              "id": "1771413065885",
+              "name": "action",
+              "value": "{{$context.$triggers.REST.$input.action}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "is Triggered From Email"
+          },
+          "outcomes": {
+            "true": "1771413257533",
+            "false": "add_false_1771413154301"
+          },
+          "code": "IS_TRIGGERED_FROM_EMAIL",
+          "convergenceTargetId": "end",
+          "id": "1771413154301",
+          "inputs": [
+            {
+              "id": "1771413154310_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers?.EMAIL?.$input?.fromAddress != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Set Email Content To Variables"
+          },
+          "outcomes": {
+            "success": "1771215016843"
+          },
+          "code": "SET_EMAIL_CONTENT_TO_VARIABLES",
+          "id": "1771413257533",
+          "inputs": [
+            {
+              "id": "1771413292472",
+              "name": "action",
+              "scope": "JOB",
+              "type": "string",
+              "value": "EMAIL_SAVE"
+            },
+            {
+              "id": "1771413274118",
+              "name": "parameters",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$triggers.EMAIL.$input}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Action Switcher"
+          },
+          "outcomes": {
+            "showDetailedInfoOnDelayedOrders": "1771224160585",
+            "showDetailedInfoOnOneDelayedOrder": "1771422173977",
+            "EmailRead": "1771419857277",
+            "EmailSave": "1771413347979",
+            "showDetailedInfoOnShortSupplyOrders": "1771421440309",
+            "EmailClear": "1771423072555",
+            "executeShortSupplyFlow": "1771650111150",
+            "default": "1771420947038",
+            "ErrorFlow": "1777353306133"
+          },
+          "code": "ACTION_SWITCHER",
+          "convergenceTargetId": "end",
+          "id": "1771215016843",
+          "inputs": [
+            {
+              "id": "1771215016846_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$variables.action}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "Prepare ES Request For Search"
+          },
+          "outcomes": {
+            "success": "1771223980076"
+          },
+          "code": "PREPARE_ES_REQUEST_FOR_SEARCH",
+          "id": "1771224160585",
+          "inputs": [
+            {
+              "id": "1771224160588_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an expert Elasticsearch Query Builder.\n\n--------------------------------------------------\nOBJECTIVE\n--------------------------------------------------\nGenerate a valid Elasticsearch JSON query based on the user’s natural-language search request.\n\nYour output must be a valid Elasticsearch query wrapped inside the required response structure.\n\n--------------------------------------------------\nINPUT\n--------------------------------------------------\n- chat_history: {{$context.$system.$chatHistory}}\n- user_request: {{$context.$system.$inputMessage}}\n\n--------------------------------------------------\nBEHAVIOR RULES\n--------------------------------------------------\n\n1. Ambiguity Handling\n   - If the user request is ambiguous, make a reasonable assumption and proceed.\n   - Do NOT ask follow-up questions.\n   - Prefer broader queries with appropriate filters instead of restrictive ones.\n\n2. DEFAULT BEHAVIOR WHEN THERE IS NO SEARCH CONTEXT\n   - If the user message provides NO usable search constraints \n     (no keywords, no identifiers, no filters, no dates),\n     then return a query that applies ONLY this default filter:\n\n     ExpectedReceiptDate >= \"now-15d/d\"\n     AND\n     ExpectedReceiptDate < \"now+1d/d\"\n\n   - Still apply:\n     - size = 25\n     - Sort only by ExpectedReceiptDate (descending)\n\n3. Query Construction Rules\n   - Keep the query simple.\n   - Use bool queries with must / filter where appropriate.\n   - Use filter for exact matches and date ranges.\n   - For attributes of string type, ALWAYS use <field>.raw for filtering (e.g., DocumentNumber.raw).\n   - Avoid unnecessary nesting unless required (e.g., OrderDistributions).\n   - Do NOT include attribute types or formats in the query.\n   - Keep pagination size fixed at 25.\n   - Always sort by ExpectedReceiptDate (descending) unless explicitly required otherwise.\n\n4. Fields You May Reference (examples)\n   - DocumentNumber (same as OrderHeader.PONumber)\n   - SourceDocumentCode, OrderType\n   - IntegrationStatusCode, ShipmentLineStatusCode, ScheduleStatus, DestinationTypeCode\n   - ToOrganization.OrganizationCode, ToOrganization.OrganizationId\n   - ShipToLocationId, ToOrganizationId\n   - POLineId, POLineLocationId, POHeaderId\n   - ItemDescription, OrderLine.ItemDescription\n   - OrderLine.LineNumber, OrderLine.UnitPrice\n   - ReceiptRequiredFlag, ConsignmentLineFlag\n   - AllowSubstituteReceiptsFlag, BackToBackFlag\n   - UomCode, BillingUomCode\n   - NeedByDate, ExpectedReceiptDate\n   - QuantityOrdered, QuantityAvailable, QuantityReceived\n   - QuantityShipped, QuantityBilled, QuantityCanceled\n   - AmountAvailable, PriceOverride\n   - OrderHeader.CurrencyCode\n   - OrderHeader.DocumentStatus\n   - OrderHeader.Buyer.DisplayName\n   - OrderHeader.SupplierSite.Code\n   - OrderHeader.Supplier.SupplierName.PartyName (if mapped as plain string)\n   - ReceiptRouting.LookupCode\n   - DocumentType.LookupCode\n   - OrderDistributions (potentially nested):\n     - OrderDistributions.DistributionNumber\n     - OrderDistributions.ChargeAccount.Name\n     - OrderDistributions.OrganizationId\n     - OrderDistributions.DeliverToLocationId\n     - OrderDistributions.QuantityOrdered\n     - OrderDistributions.QuantityDelivered\n\n5. Mandatory Filters\n   - Include \"ScheduleStatus.raw\" = \"OPEN\"\n   - Include \"ToOrganizationId\" = {{$context.$triggers.REST.$input.organizationId}}\n\n--------------------------------------------------\nOUTPUT FORMAT (STRICT)\n--------------------------------------------------\n\nReturn ONLY a valid JSON object in the following structure:\n\n{\n  \"requestPayload\": {\n    <VALID_ELASTICSEARCH_QUERY_JSON>\n  }\n}\n\n- Do NOT return explanations.\n- Do NOT return markdown.\n- Do NOT wrap the JSON in quotes.\n- Ensure the JSON is valid and properly formatted.\n- Keep size = 25."
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"requestPayload\": {\n            \"type\": \"object\",\n            \"properties\": {}\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Check if there is an email associated ?"
+          },
+          "outcomes": {
+            "true": "1771422223921",
+            "false": "1771233811496"
+          },
+          "code": "CHECK_IF_THERE_IS_AN_EMAIL_ASSOCIATED_",
+          "convergenceTargetId": "1771233811496",
+          "id": "1771422173977",
+          "inputs": [
+            {
+              "id": "1771422174004_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.parameters.documentIdentifier != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Read All Short Order Information"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "READ_ALL_SHORT_ORDER_INFORMATION",
+          "id": "1771419857277",
+          "inputs": [
+            {
+              "id": "1771419857283_1",
+              "name": "indexName",
+              "type": "string",
+              "value": "Short-Order-Details"
+            },
+            {
+              "id": "1771419857284_2",
+              "name": "query",
+              "type": "string",
+              "value": "Get All Rows"
+            },
+            {
+              "id": "1771419857284_3",
+              "name": "documentId",
+              "type": "string"
+            },
+            {
+              "id": "1771419857285_4",
+              "name": "fields",
+              "type": "array"
+            },
+            {
+              "id": "1771419857286_5",
+              "name": "filterCriteria",
+              "type": "object"
+            },
+            {
+              "id": "1771419857287_6",
+              "name": "maximumResults",
+              "type": "integer"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"index\": {\n        \"type\": \"integer\"\n      },\n      \"text\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\n      \"index\",\n      \"text\"\n    ]\n  }\n}",
+          "type": "VECTOR_DB_READER"
+        },
+        {
+          "metadata": {
+            "name": "Read Email And Understand the Context"
+          },
+          "outcomes": {
+            "success": "1771413988062"
+          },
+          "code": "READ_EMAIL_AND_UNDERSTAND_THE_CONTEXT",
+          "id": "1771413347979",
+          "inputs": [
+            {
+              "id": "1771413347984_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an Email Intent Classification Agent.\n\nCONTEXT:\nThe user is a Warehouse Manager.\nYou will receive the full email content below. Your responsibility is to analyze the email and determine whether it is relevant to inbound warehouse operations related to Purchase Orders.\n\nEMAIL CONTENT:\n{{$context.$variables.parameters}}\n\nTASK:\n1. Carefully read and understand the email content.\n2. Identify the primary intent and context.\n3. Determine whether the email is relevant to inbound purchase order operations.\n\nSet the output variable \"isInBoundEmail\" to true ONLY if ALL of the following conditions apply:\n\nA. The email is related to inbound operations AND\nB. The email references a Purchase Order (PO) AND\nC. At least one of the following is true:\n   - The email indicates a delay in delivery of the purchase order.\n   - The email mentions late shipment, rescheduling, revised delivery date, or similar delay language.\n   - The supplier states they will deliver only a partial quantity.\n   - The supplier indicates short shipment, partial fulfillment, or quantity reduction.\n   \nIf the email does NOT clearly match the above criteria, set:\nisInBoundEmail = false\n\nImportant Rules:\n- Do NOT assume missing information.\n- Do NOT mark as true unless the conditions are explicitly or strongly implied.\n- Ignore emails unrelated to purchase orders (e.g., invoices, promotions, marketing, HR, internal meetings, etc.).\n- Ignore outbound shipment emails.\n\n-----\nOutput\n-----\nOutput should be a json with attribute 'isInBoundEmail'"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Read All Rows"
+          },
+          "outcomes": {
+            "success": "1771431680669"
+          },
+          "code": "READ_ALL_ROWS",
+          "id": "1771421440309",
+          "inputs": [
+            {
+              "id": "1771421440323_1",
+              "name": "indexName",
+              "type": "string",
+              "value": "Short-Order-Details"
+            },
+            {
+              "id": "1771421440326_2",
+              "name": "query",
+              "type": "string",
+              "value": "Get all rows"
+            },
+            {
+              "id": "1771421440329_3",
+              "name": "documentId",
+              "type": "string"
+            },
+            {
+              "id": "1771421440332_4",
+              "name": "fields",
+              "type": "array"
+            },
+            {
+              "id": "1771421440336_5",
+              "name": "filterCriteria",
+              "type": "object"
+            },
+            {
+              "id": "1771421440339_6",
+              "name": "maximumResults",
+              "type": "integer"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"index\": {\n        \"type\": \"integer\"\n      },\n      \"text\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\n      \"index\",\n      \"text\"\n    ]\n  }\n}",
+          "type": "VECTOR_DB_READER"
+        },
+        {
+          "metadata": {
+            "name": "Read All Emails"
+          },
+          "outcomes": {
+            "success": "1771423129615"
+          },
+          "code": "READ_ALL_EMAILS",
+          "id": "1771423072555",
+          "inputs": [
+            {
+              "id": "1771423072560_1",
+              "name": "indexName",
+              "type": "string",
+              "value": "Short-Order-Details"
+            },
+            {
+              "id": "1771423072561_2",
+              "name": "query",
+              "type": "string",
+              "value": "Get all rows"
+            },
+            {
+              "id": "1771423072562_3",
+              "name": "documentId",
+              "type": "string"
+            },
+            {
+              "id": "1771423072563_4",
+              "name": "fields",
+              "type": "array"
+            },
+            {
+              "id": "1771423072564_5",
+              "name": "filterCriteria",
+              "type": "object"
+            },
+            {
+              "id": "1771423072565_6",
+              "name": "maximumResults",
+              "type": "integer"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"index\": {\n        \"type\": \"integer\"\n      },\n      \"text\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\n      \"index\",\n      \"text\"\n    ]\n  }\n}",
+          "type": "VECTOR_DB_READER"
+        },
+        {
+          "metadata": {
+            "name": "Expected Shipments Prepare Request",
+            "returnType": "object",
+            "sourceCode": "let parameters = $context.$variables.parameters;\n\n \n\n\nlet expectedShipmentsRequest = {\n  \"size\": 1,\n  \"query\": {\n    \"bool\": {\n      \"must\": [\n        {\n          \"term\": {\n            \"DocumentNumber.raw\":  parameters.documentNumber\n          }\n        },\n        {\n          \"term\": {\n            \"OrderLine.LineNumber.raw\": parameters.lineNumber\n          }\n        },\n        {\n          \"term\": {\n            \"SourceDocumentCode.raw\":  parameters.documentType\n          }\n        }\n      ]\n    }\n  },\n  \"sort\": [\n    {\n      \"PromisedDate\": {\n        \"order\": \"asc\"\n      }\n    }\n  ]\n};\n\n\nlet retPayload = {};\n\n\n\nretPayload.expectedShipmentsRequest= expectedShipmentsRequest ;\n\n\n\nif(parameters?.documentIdentifier){\n\nretPayload.isFromShortSupply= true;\n}\nelse\n{\nretPayload.isFromShortSupply= false;\n}\n\n//retPayload.parameters=parameters;\n\n\nreturn retPayload;"
+          },
+          "outcomes": {
+            "success": "1771650822441"
+          },
+          "code": "EXPECTED_SHIPMENTS_PREPARE_REQUEST",
+          "id": "1771650111150",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Read Short Supply Email"
+          },
+          "outcomes": {
+            "success": "1771427887288"
+          },
+          "code": "INIT_DISPLAY_READ_SHORT_SUPPLY_EMAIL",
+          "convergenceTargetId": "1771675105162",
+          "id": "1771420947038",
+          "inputs": [
+            {
+              "id": "1771420947047_1",
+              "name": "indexName",
+              "type": "string",
+              "value": "Short-Order-Details"
+            },
+            {
+              "id": "1771420947049_2",
+              "name": "query",
+              "type": "string",
+              "value": "Get all rows"
+            },
+            {
+              "id": "1771420947052_3",
+              "name": "documentId",
+              "type": "string"
+            },
+            {
+              "id": "1771420947053_4",
+              "name": "fields",
+              "type": "array"
+            },
+            {
+              "id": "1771420947054_5",
+              "name": "filterCriteria",
+              "type": "object",
+              "value": ""
+            },
+            {
+              "id": "1771420947057_6",
+              "name": "maximumResults",
+              "type": "integer"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"index\": {\n        \"type\": \"integer\"\n      },\n      \"text\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\n      \"index\",\n      \"text\"\n    ]\n  }\n}",
+          "type": "VECTOR_DB_READER"
+        },
+        {
+          "metadata": {
+            "name": "Error Handler Case"
+          },
+          "outcomes": {
+            "supplyRequestError": "1777353399307",
+            "success": ""
+          },
+          "code": "ERROR_HANDLER_CASE",
+          "convergenceTargetId": "end",
+          "id": "1777353306133",
+          "inputs": [
+            {
+              "id": "1777353306133_caseExpression",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_EXPECTEDSHIPMENTSDIRECTES",
+            "errorNodeId": "1771298592165",
+            "functionName": "expectedShipmentsRawQuery",
+            "name": "Expected Shipments Past Due Details"
+          },
+          "outcomes": {
+            "success": "1771247540698"
+          },
+          "code": "EXPECTED_SHIPMENTS_PAST_DUE_DETAILS",
+          "id": "1771223980076",
+          "inputs": [
+            {
+              "id": "1771224033345_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ES_REQUEST_FOR_SEARCH.$output.requestPayload}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Read the email"
+          },
+          "outcomes": {
+            "success": "1771233811496"
+          },
+          "code": "READ_THE_EMAIL",
+          "id": "1771422223921",
+          "inputs": [
+            {
+              "id": "1771422223944_1",
+              "name": "indexName",
+              "type": "string",
+              "value": "Short-Order-Details"
+            },
+            {
+              "id": "1771422223948_2",
+              "name": "query",
+              "type": "string",
+              "value": "Get the order by id"
+            },
+            {
+              "id": "1771422223953_3",
+              "name": "documentId",
+              "type": "string",
+              "value": "{{$context.$variables.parameters.documentIdentifier}}"
+            },
+            {
+              "id": "1771422223958_4",
+              "name": "fields",
+              "type": "array",
+              "value": ""
+            },
+            {
+              "id": "1771422223962_5",
+              "name": "filterCriteria",
+              "type": "object",
+              "value": ""
+            },
+            {
+              "id": "1771422223967_6",
+              "name": "maximumResults",
+              "type": "integer",
+              "value": ""
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"index\": {\n        \"type\": \"integer\"\n      },\n      \"text\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\n      \"index\",\n      \"text\"\n    ]\n  }\n}",
+          "type": "VECTOR_DB_READER"
+        },
+        {
+          "metadata": {
+            "name": "is Email Inbound Related ?"
+          },
+          "outcomes": {
+            "true": "1771414385252",
+            "false": "add_false_1771413988062"
+          },
+          "code": "IS_EMAIL_INBOUND_RELATED_",
+          "convergenceTargetId": "end",
+          "id": "1771413988062",
+          "inputs": [
+            {
+              "id": "1771413988067_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.READ_EMAIL_AND_UNDERSTAND_THE_CONTEXT.$output.isInBoundEmail}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "prepare query for More Info On Short Order Data",
+            "returnType": "string",
+            "sourceCode": "const input = $context.$nodes.READ_ALL_ROWS.$output;\nconst organizationId = Number( $context.$variables.organizationId );\n\n\n// Extract unique PO Header IDs and Line IDs\nconst poHeaderIds = new Set();\nconst poLineIds = new Set();\n\nfor (const item of input) {\n  if (item.purchaseOrderHeaderId) {\n    poHeaderIds.add(Number(item.purchaseOrderHeaderId));\n  }\n\n  if (item.purchaseOrderLineId) {\n    poLineIds.add(Number(item.purchaseOrderLineId));\n  }\n\n  // In case values are only inside text JSON\n  if (item.text) {\n    const parsed = JSON.parse(item.text);\n\n    if (parsed.purchaseOrderHeaderId) {\n      poHeaderIds.add(Number(parsed.purchaseOrderHeaderId));\n    }\n\n    if (parsed.purchaseOrderLineId) {\n      poLineIds.add(Number(parsed.purchaseOrderLineId));\n    }\n  }\n}\n\n// Convert Sets to arrays\nconst headerIdArray = Array.from(poHeaderIds);\nconst lineIdArray = Array.from(poLineIds);\n\n// OrganizationId (taking first record)\n\n// Build Elasticsearch query\nconst esQuery = {\n  query: {\n    bool: {\n      filter: [\n        {\n          term: {\n            \"ScheduleStatus.raw\": \"OPEN\"\n          }\n        },\n        {\n          term: {\n            \"ToOrganizationId\": organizationId\n          }\n        },\n        {\n          terms: {\n            \"POHeaderId\": headerIdArray\n          }\n        },\n        {\n          terms: {\n            \"POLineId\": lineIdArray\n          }\n        }\n      ]\n    }\n  },\n  size: 25,\n  sort: [\n    {\n      ExpectedReceiptDate: {\n        order: \"desc\"\n      }\n    }\n  ]\n};\n\n\nreturn JSON.stringify(esQuery) ;"
+          },
+          "outcomes": {
+            "success": "1771421544675"
+          },
+          "code": "PREPARE_QUERY_FOR_MORE_INFO_ON_SHORT_ORDER_DATA",
+          "id": "1771431680669",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1771423171546"
+                  },
+                  "diagram": {
+                    "x": 7657,
+                    "y": 6050
+                  },
+                  "id": "start_1771423129615",
+                  "code": "START_1771423129615",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "Clear Row"
+                  },
+                  "outcomes": {
+                    "success": "end_1771423129615"
+                  },
+                  "diagram": {
+                    "x": 7808,
+                    "y": 6014.5
+                  },
+                  "code": "CLEAR_ROW",
+                  "id": "1771423171546",
+                  "inputs": [
+                    {
+                      "id": "1771423171553_1",
+                      "name": "indexName",
+                      "type": "string",
+                      "value": "Short-Order-Details"
+                    },
+                    {
+                      "id": "1771423171554_2",
+                      "name": "content",
+                      "type": "string",
+                      "value": "{}"
+                    },
+                    {
+                      "id": "1771423171558_3",
+                      "name": "contentType",
+                      "type": "string",
+                      "value": "application/json"
+                    },
+                    {
+                      "id": "1771423171560_4",
+                      "name": "operation",
+                      "type": "string",
+                      "value": "DELETE"
+                    },
+                    {
+                      "id": "1771423171561_5",
+                      "name": "documentId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.ITERATE_ON_EMAILS.$currentItem.documentIdentifier}}"
+                    },
+                    {
+                      "id": "1771423171562_6",
+                      "name": "metaData",
+                      "type": "array",
+                      "value": []
+                    }
+                  ],
+                  "type": "VECTOR_DB_WRITER"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1771423129615",
+                  "code": "END_1771423129615",
+                  "type": "END"
+                }
+              ],
+              "rootNode": "start_1771423129615"
+            },
+            "loopType": "PARALLEL",
+            "name": "Iterate on Emails"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ITERATE_ON_EMAILS",
+          "id": "1771423129615",
+          "inputs": [
+            {
+              "id": "1771423129622_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$nodes.READ_ALL_EMAILS.$output}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "name": "Check If There is an Email ?"
+          },
+          "outcomes": {
+            "true": "1771650871024",
+            "false": "1771649863282"
+          },
+          "code": "CHECK_IF_THERE_IS_AN_EMAIL_",
+          "convergenceTargetId": "1771649863282",
+          "id": "1771650822441",
+          "inputs": [
+            {
+              "id": "1771650822448_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EXPECTED_SHIPMENTS_PREPARE_REQUEST.$output.result?.isFromShortSupply}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Filtered Emails By Organization",
+            "returnType": "object",
+            "sourceCode": "let emails = $context.$nodes.INIT_DISPLAY_READ_SHORT_SUPPLY_EMAIL.$output;\n\nlet parsedData = [];\n\nfor (let eachEmail of emails) {\n  let text = eachEmail.text;\n\n  try {\n    let payload = JSON.parse(text);\n   payload.documentIdentifier = eachEmail.documentIdentifier;\n    parsedData.push(payload);\n  } catch (err) {\n    // Skip invalid JSON emails\n    continue;\n  }\n}\n\n// Normalize both sides to string to safely compare number/string values\nlet orgId = String($context.$variables.organizationId);\n\nlet filteredData = parsedData.filter(\n  i => i.organizationId != null && String(i.organizationId) === orgId\n);\n\nreturn filteredData;"
+          },
+          "outcomes": {
+            "success": "1771675105162"
+          },
+          "code": "FILTERED_EMAILS_BY_ORGANIZATION",
+          "convergenceTargetId": "1771675105162",
+          "id": "1771427887288",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "supply request error prompt",
+            "returnType": "string",
+            "sourceCode": "let prompt = '';\n\nlet error = $context.$error.$errorMessage;\n\nprompt = `Say that your supply request creation is failed because of the error ${error}\n\n----\nStrict Output Format\n-----\n\nDo not generate  any widgets like record, multirecord etc. \n\nOutput should be simple markup language.\n`;\n\nreturn prompt;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SUPPLY_REQUEST_ERROR_PROMPT",
+          "id": "1777353399307",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Delayed Shipments LLM Prompt",
+            "returnType": "string",
+            "sourceCode": "let prompt = ``;\n\nprompt = `\n\nYou are a UI Results Presenter.\n\nOBJECTIVE\nGiven:\n1) User request\n2) Executed Elasticsearch query (es_query, optional)\n3) Elasticsearch response (es_response: hits + total)\n\nGenerate UI widget payload JSON that presents the search results.\n\n--------------------------------------------------\nOUTPUT GUIDELINES\n--------------------------------------------------\n- Generate a Multi record widget.\n- Do not include Action as a column\n- Avoid exposing any internal/system identifiers.\n\nInternal ID fields to exclude:\n- Any field named or ending with: \"Id\", \"ID\", \"_id\"\n- Known examples:\n  POHeaderId, POLineId, POLineLocationId,\n  ToOrganizationId, ShipToLocationId,\n  OrganizationId, DeliverToLocationId\n\nIf the user explicitly asks for IDs:\n- Do not include them\n- Prefer business-friendly alternatives\n\n--------------------------------------------------\nDATA RULES\n--------------------------------------------------\n- Use ONLY values present in es_response.\n- Do NOT invent data.\n- Do NOT compute derived business values.\n- Default page size = 25 (or fewer if fewer results).\n- Include total result count in summary.\n\n--------------------------------------------------\nTABLE RULES\n--------------------------------------------------\nTotal columns: EXACTLY 6\n\nColumns 1–5:\n- Business columns only.\n- Selected based on:\n  1) Explicit user request (excluding internal IDs)\n  2) Search constraint attributes\n  3) Key business identifiers\n- Maximum of 5 business columns.\n- Prefer stable identifiers and business-friendly fields.\n- Ignore translation objects entirely.\n- Leave cell empty if value missing.\n- Dates: format YYYY-MM-DD if possible; else pass through.\n\nFor Each Row, Add a action with title \"Details\"\n\nAction rules:\n- parameters MUST include:\n  - documentNumber\n  - lineNumber\n  - documentType\n  - inventoryItemId\n- Use only values present in the row.\n- If any of these are missing in the row, set value to null.\n\nora.Agent({\n  \"command\": \"showDetailedInfoOnOneDelayedOrder\",\n  \"agent\" : \"INV_WH_OPS_INBOUND_ADVISOR\",\n  \"subAgent\": \"INV_WH_OPS_INBOUND_SHIPMENTS_ADVISOR\",\n  \"parameters\": {\n      \"documentNumber\": <DocumentNumber>,\n      \"lineNumber\": <OrderLine.LineNumber>,\n      \"documentType\": <DocumentType.LookupCode or equivalent>,\n      \"inventoryItemId\" : <Item.ItemId>\n  }\n})\n\n--------------------------------------------------\nZERO HITS BEHAVIOR\n--------------------------------------------------\nIf totalHits == 0:\n- Return Multi record widget\n- Include 5 selected business columns\n- Include Action column\n- rows: []\n- summary must show total = 0\n\n--------------------------------------------------\nINPUTS\n--------------------------------------------------\nes_query:  \n${JSON.stringify($context.$nodes.EXPECTED_SHIPMENTS_PAST_DUE_DETAILS.$input.payload)}\n\nes_response:\n${JSON.stringify($context.$nodes.EXPECTED_SHIPMENTS_PAST_DUE_DETAILS.$output)}\n\n--------------------------------------------------\n\n`;\n\nreturn prompt;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "DELAYED_SHIPMENTS_LLM_PROMPT",
+          "convergenceTargetId": "1771242567632",
+          "id": "1771247540698",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Show Detailed Order",
+            "returnType": "object",
+            "sourceCode": "const documentNumber = $context?.$triggers?.REST?.$input?.parameters?.documentNumber;\nconst lineNumber     = $context?.$triggers?.REST?.$input?.parameters?.lineNumber;\nconst documentType   = $context?.$triggers?.REST?.$input?.parameters?.documentType;\n\nconst payload = {\n  query: {\n    bool: {\n      filter: [\n        ...(documentNumber ? [{ term: { \"DocumentNumber.raw\": String(documentNumber) } }] : []),\n        ...(lineNumber ? [{ term: { \"OrderLine.LineNumber.raw\": String(lineNumber) } }] : []),\n        ...(documentType ? [{ term: { \"SourceDocumentCode.raw\": String(documentType) } }] : []),\n      ],\n    },\n  },\n};\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "1771302291306"
+          },
+          "code": "SHOW_DETAILED_ORDER",
+          "id": "1771233811496",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Email Search on Orders"
+          },
+          "outcomes": {
+            "success": "1771414749237"
+          },
+          "code": "PREPARE_EMAIL_SEARCH_ON_ORDERS",
+          "id": "1771414385252",
+          "inputs": [
+            {
+              "id": "1771414385258_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an expert Elasticsearch Query Builder specialized in parsing supplier email content \nand converting it into a valid Elasticsearch request object.\n\n--------------------------------------------------\nOBJECTIVE\n--------------------------------------------------\nRead the provided email content and generate a valid Elasticsearch JSON query.\n\nThe email may reference:\n- One or multiple Purchase Orders\n- One or multiple PO Line Numbers\n- Item descriptions\n- Item numbers\n- Partial shipments\n- Delays\n- Quantities\n\nYour task is to extract all usable search constraints and construct a clean, efficient ES query.\n\nCRITICAL RULE:\nYou may ONLY use the fields listed in the \"ALLOWED FIELDS\" section below.\nNo other fields are permitted in the query under any circumstances.\n\n--------------------------------------------------\nINPUT\n--------------------------------------------------\n- email_content: {{$context.$variables.parameters}}\n\n--------------------------------------------------\nALLOWED FIELDS\n--------------------------------------------------\n- DocumentNumber\n- OrderLine.LineNumber\n- ItemDescription\n- OrderLine.ItemDescription\n- Item.ItemNumber\n\nAllowed strict keyword usage:\n- DocumentNumber.raw (for exact PO matching only)\n\nNo other fields may be used.\nDo NOT introduce additional fields even if mentioned in the email.\n\n--------------------------------------------------\nQUERY CONSTRUCTION RULES\n--------------------------------------------------\n\n1. Multi-Order Handling\n   - If multiple Document Numbers (PO numbers) are present:\n       → Use a bool query with \"should\" clauses inside filter.\n       → Set \"minimum_should_match\": 1.\n       → Do not duplicate identical values.\n\n2. Strict Matching (Exact Only — No Fuzziness)\n   - If Document Number is explicitly present:\n       → Use term query on \"DocumentNumber.raw\"\n       → Place inside filter.\n   - If Line Number is explicitly present:\n       → Use term query on \"OrderLine.LineNumber\"\n       → Place inside filter.\n   - If Item Number is explicitly present:\n       → Use term query on \"Item.ItemNumber\"\n       → Place inside filter.\n   - NEVER use fuzzy matching for these fields.\n   - NEVER use match query for these identifiers.\n\n3. Fuzzy Matching (Text Fields Only)\n   - For:\n       • ItemDescription\n       • OrderLine.ItemDescription\n   - Use match query with:\n       \"fuzziness\": \"AUTO\"\n   - Place fuzzy queries inside \"must\".\n   - Do NOT use .raw for fuzzy searches.\n\n4. Ignore Unsupported Constraints\n   - Do NOT apply quantity comparisons.\n   - Do NOT apply date filters.\n   - Do NOT use supplier, organization, or status fields.\n   - If a constraint cannot be mapped to an allowed field, ignore it.\n\n5. Mandatory Filter\n   - Always include:\n       term: { \"ScheduleStatus.raw\": \"OPEN\" }\n\n6. Default Behavior (No Usable Information)\n   If the email contains NONE of:\n       • Document Number\n       • Line Number\n       • Item description\n       • Item number\n   Then return a query that intentionally returns NO results by including:\n       term: { \"DocumentNumber.raw\": \"__NO_MATCH__\" }\n\n7. Structural Requirements\n   - Use a top-level bool query.\n   - Use:\n       • filter → for exact matches\n       • must → for fuzzy matches\n       • should → only for multi-value exact matches\n   - Avoid unnecessary nesting.\n   - Keep query minimal and clean.\n   - Do NOT use scripts.\n   - Do NOT use aggregations.\n   - Do NOT include explanations.\n   - Return ONLY valid Elasticsearch JSON.\n   - size must always be 25.\n   - Always sort by ExpectedReceiptDate (descending).\n\n\n----\nOutput\n----\nOutput should be a json with attributes \nisOrderShortSupplied, requestPayload"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"isOrderShortSupplied\": {\n            \"type\": \"boolean\"\n        },\n        \"requestPayload\": {\n            \"type\": \"object\",\n            \"properties\": {}\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_EXPECTEDSHIPMENTSDIRECTES",
+            "functionName": "expectedShipmentsRawQuery",
+            "name": "Email Order Info"
+          },
+          "outcomes": {
+            "success": "1771421896439"
+          },
+          "code": "EMAIL_ORDER_INFO",
+          "id": "1771421544675",
+          "inputs": [
+            {
+              "id": "1771421580775_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_QUERY_FOR_MORE_INFO_ON_SHORT_ORDER_DATA.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Execution Read the email"
+          },
+          "outcomes": {
+            "success": "1771649863282"
+          },
+          "code": "EXECUTION_READ_THE_EMAIL",
+          "id": "1771650871024",
+          "inputs": [
+            {
+              "id": "1771650871036_1",
+              "name": "indexName",
+              "type": "string",
+              "value": "Short-Order-Details"
+            },
+            {
+              "id": "1771650871038_2",
+              "name": "query",
+              "type": "string",
+              "value": "Read the email"
+            },
+            {
+              "id": "1771650871040_3",
+              "name": "documentId",
+              "type": "string",
+              "value": "{{$context.$variables.parameters.documentIdentifier}}"
+            },
+            {
+              "id": "1771650871042_4",
+              "name": "fields",
+              "type": "array"
+            },
+            {
+              "id": "1771650871044_5",
+              "name": "filterCriteria",
+              "type": "object"
+            },
+            {
+              "id": "1771650871046_6",
+              "name": "maximumResults",
+              "type": "integer"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"index\": {\n        \"type\": \"integer\"\n      },\n      \"text\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\n      \"index\",\n      \"text\"\n    ]\n  }\n}",
+          "type": "VECTOR_DB_READER"
+        },
+        {
+          "metadata": {
+            "name": "System Actions"
+          },
+          "outcomes": {
+            "InitDisplay": "1771215117593",
+            "InitActions": "1771679606340",
+            "Summary": "1771682884854",
+            "New outcome 1": "1776331129613",
+            "InitCommunications": "add_InitCommunications_1771675105162",
+            "default": "add_default_1771675105162"
+          },
+          "code": "SYSTEM_ACTIONS",
+          "convergenceTargetId": "end",
+          "id": "1771675105162",
+          "inputs": [
+            {
+              "id": "1771675105165_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$variables.action}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_EXPECTEDSHIPMENTSDIRECTES",
+            "functionName": "expectedShipmentsRawQuery",
+            "name": "Get Shipment Detail"
+          },
+          "outcomes": {
+            "success": "1777351378542"
+          },
+          "code": "GET_SHIPMENT_DETAIL",
+          "id": "1771302291306",
+          "inputs": [
+            {
+              "id": "1771302363697_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.SHOW_DETAILED_ORDER.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_EXPECTEDSHIPMENTSDIRECTES",
+            "functionName": "expectedShipmentsRawQuery",
+            "name": "Search Shipments Given By Email"
+          },
+          "outcomes": {
+            "success": "1771415854740"
+          },
+          "code": "SEARCH_SHIPMENTS_GIVEN_BY_EMAIL",
+          "id": "1771414749237",
+          "inputs": [
+            {
+              "id": "1771414940052_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_EMAIL_SEARCH_ON_ORDERS.$output.requestPayload}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Short Supply Prompt",
+            "returnType": "string",
+            "sourceCode": "let prompt = ``;\n\nprompt = `\n\nYou are a UI Results Presenter.\n\nCONTEXT\nThe purpose of this widget is to present Purchase Orders that will be SHORT SUPPLIED by suppliers in the next few days due to unexpected reasons.\n\nInputs available:\n1) Supplier email content (parsed information)\n2) Executed Elasticsearch query (es_query, optional)\n3) Elasticsearch response (es_response: hits + total)\n\nGenerate UI widget payload JSON that presents the impacted Purchase Orders.\n\n--------------------------------------------------\nSTRICT OUTPUT RULES\n--------------------------------------------------\n- Output ONLY a single valid JSON object.\n- No prose.\n- No markdown.\n- No explanations.\n- No surrounding text.\n- Do NOT include any internal/system identifier fields anywhere.\n\nInternal ID fields (ALWAYS EXCLUDE):\n- Any field named or ending with: \"Id\", \"ID\", \"_id\"\n- Known internal IDs such as:\n  POHeaderId, POLineId, POLineLocationId,\n  ToOrganizationId, ShipToLocationId,\n  OrganizationId, DeliverToLocationId\n\nIf the user explicitly requests an ID:\n- Omit it.\n- Prefer a business-friendly alternative.\n\n--------------------------------------------------\nWIDGET STRUCTURE\n--------------------------------------------------\nReturn ONLY a Multi record widget JSON.\n\nNo pagination insight widgets.\nNo page controls.\nNo pagination metadata.\n\n--------------------------------------------------\nDATA RULES\n--------------------------------------------------\n- Use ONLY values present in es_response.\n- Do NOT invent data.\n- Do NOT compute derived business values.\n- Default page size = 25 (or fewer if fewer results).\n- Include total result count in summary.\n- The widget represents SHORT SUPPLY scenarios triggered by supplier emails.\n\n--------------------------------------------------\nTABLE RULES\n--------------------------------------------------\nTotal columns: EXACTLY 6\n\nColumns 1–5:\n- Business columns only.\n- Selected based on:\n  1) Short supply relevance\n  2) Key business identifiers\n  3) Impact visibility for warehouse users\n- Maximum of 5 business columns.\n- Prefer stable identifiers and operationally meaningful fields.\n- Ignore translation objects entirely.\n- Leave cell empty if value missing.\n- Dates: format YYYY-MM-DD if possible; else pass through.\n- Numbers/booleans: pass through unchanged.\n\n\n\nFor Each Row, Add an action with title \"Details\":\n\nora.Agent({\n  \"command\": \"showDetailedInfoOnOneDelayedOrder\",\n  \"agent\": \"INV_WH_OPS_INBOUND_ADVISOR\",\n  \"subAgent\": \"INV_WH_OPS_INBOUND_SHIPMENTS_ADVISOR\",\n  \"parameters\": {\n      \"documentNumber\": <DocumentNumber>,\n      \"lineNumber\": <OrderLine.LineNumber>,\n      \"documentType\":  \"PO\",\n      \"documentIdentifier\": <email.documentIdentifier>,\n      \"inventoryItemId\" : <Item.ItemId>\n  }\n})\n\n--------------------------------------------------\nACTION RULES\n--------------------------------------------------\n- parameters MUST include:\n  - documentNumber\n  - lineNumber\n  - documentType\n  - documentIdentifier\n   - inventoryItemId\n- Use only values present in the row or email context.\n- If any of these are missing in the row/email, set value to null.\n- documentIdentifier MUST come from the email input context (part of email variable), not derived from ES.\n\n--------------------------------------------------\nZERO HITS BEHAVIOR\n--------------------------------------------------\nIf totalHits == 0:\n- Return Multi record widget\n- Include 5 selected business columns\n- Include Action column\n- rows: []\n- summary must show total = 0\n\n--------------------------------------------------\nINPUTS\n--------------------------------------------------\nsupplier_emails:\n ${JSON.stringify($context.$nodes.READ_ALL_ROWS.$output)} \n\n\nes_response: ${JSON.stringify($context.$nodes.EMAIL_ORDER_INFO.$output)} \n\n--------------------------------------------------\n\n`;\n\nreturn prompt;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SHORT_SUPPLY_PROMPT",
+          "id": "1771421896439",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_EXPECTEDSHIPMENTSDIRECTES",
+            "functionName": "expectedShipmentsRawQuery",
+            "name": "Expected Shipments - Get Order Details"
+          },
+          "outcomes": {
+            "success": "1771658563123"
+          },
+          "code": "EXPECTED_SHIPMENTS_GET_ORDER_DETAILS",
+          "id": "1771649863282",
+          "inputs": [
+            {
+              "id": "1771649912314_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.EXPECTED_SHIPMENTS_PREPARE_REQUEST.$output.result?.expectedShipmentsRequest }}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_EXPECTEDSHIPMENTSDIRECTES",
+            "functionName": "getDelayedShipments",
+            "name": "Delayed Shipments ES"
+          },
+          "outcomes": {
+            "success": "1771215256211"
+          },
+          "code": "DELAYED_SHIPMENTS_ES",
+          "convergenceTargetId": "1771675163885",
+          "id": "1771215117593",
+          "inputs": [
+            {
+              "id": "1771215141475_1",
+              "name": "P_ORGANIZATION_ID",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.organizationId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Init Actions Prepare ES Query",
+            "returnType": "string",
+            "sourceCode": "const input =  $context.$nodes.FILTERED_EMAILS_BY_ORGANIZATION.$output.result ;\n\n\nconst organizationId = Number( $context.$variables.organizationId );\n\n\n// Extract unique PO Header IDs and Line IDs\nconst poHeaderIds = new Set();\nconst poLineIds = new Set();\n\nfor (const item of input) {\n  if (item.purchaseOrderHeaderId) {\n    poHeaderIds.add(Number(item.purchaseOrderHeaderId));\n  }\n\n  if (item.purchaseOrderLineId) {\n    poLineIds.add(Number(item.purchaseOrderLineId));\n  }\n\n  // In case values are only inside text JSON\n  if (item.text) {\n    const parsed = JSON.parse(item.text);\n\n    if (parsed.purchaseOrderHeaderId) {\n      poHeaderIds.add(Number(parsed.purchaseOrderHeaderId));\n    }\n\n    if (parsed.purchaseOrderLineId) {\n      poLineIds.add(Number(parsed.purchaseOrderLineId));\n    }\n  }\n}\n\n// Convert Sets to arrays\nconst headerIdArray = Array.from(poHeaderIds);\nconst lineIdArray = Array.from(poLineIds);\n\n// OrganizationId (taking first record)\n\n// Build Elasticsearch query\nconst esQuery = {\n  query: {\n    bool: {\n      filter: [\n        {\n          term: {\n            \"ScheduleStatus.raw\": \"OPEN\"\n          }\n        },\n        {\n          term: {\n            \"ToOrganizationId\": organizationId\n          }\n        },\n        {\n          terms: {\n            \"POHeaderId\": headerIdArray\n          }\n        },\n        {\n          terms: {\n            \"POLineId\": lineIdArray\n          }\n        }\n      ]\n    }\n  },\n  size: 25,\n  sort: [\n    {\n      ExpectedReceiptDate: {\n        order: \"desc\"\n      }\n    }\n  ]\n};\n\n\nreturn JSON.stringify(esQuery) ;"
+          },
+          "outcomes": {
+            "success": "1771679741076"
+          },
+          "code": "INIT_ACTIONS_PREPARE_ES_QUERY",
+          "id": "1771679606340",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_EXPECTEDSHIPMENTSDIRECTES",
+            "functionName": "getDelayedShipments",
+            "name": "Summary Expected Shipments ES"
+          },
+          "outcomes": {
+            "success": "1771683000292"
+          },
+          "code": "SUMMARY_EXPECTED_SHIPMENTS_ES",
+          "id": "1771682884854",
+          "inputs": [
+            {
+              "id": "1771682955597_1",
+              "name": "P_ORGANIZATION_ID",
+              "type": "string",
+              "value": "{{$context.$variables.organizationId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Check If Emails Present"
+          },
+          "outcomes": {
+            "success": "1771675527126",
+            "false": "1776331143616",
+            "true": "add_true_1776331129613"
+          },
+          "code": "CHECK_IF_EMAILS_PRESENT",
+          "convergenceTargetId": "end",
+          "id": "1776331129613",
+          "inputs": [
+            {
+              "id": "1776331129613_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{!!$context.$nodes.FILTERED_EMAILS_BY_ORGANIZATION.$output && $context.$nodes.FILTERED_EMAILS_BY_ORGANIZATION.$output.length > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Check Inventory Item Id Present"
+          },
+          "outcomes": {
+            "true": "1771310530042",
+            "false": "1771302463067"
+          },
+          "code": "CHECK_INVENTORY_ITEM_ID_PRESENT",
+          "convergenceTargetId": "1771302463067",
+          "id": "1777351378542",
+          "inputs": [
+            {
+              "id": "1777351378542_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers?.REST?.$input?.parameters?.inventoryItemId != null && $context.$triggers?.REST?.$input?.parameters?.inventoryItemId !== ''}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Summarize and Prepare data to Save"
+          },
+          "outcomes": {
+            "success": "1771419570203"
+          },
+          "code": "SUMMARIZE_AND_PREPARE_DATA_TO_SAVE",
+          "id": "1771415854740",
+          "inputs": [
+            {
+              "id": "1771415854742_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a Warehouse Manager AI.\n\n--------------------------------------------------\nOBJECTIVE\n--------------------------------------------------\nAnalyze:\n1) Supplier email content\n2) REST API search results (retrieved using key attributes extracted from the email)\n\nYour task is to determine, for each shipment line, whether it is:\n- A Delayed Purchase Order Line\nOR\n- A Short Supply Order\n\nIf there is a conflict between delayed and short supply status,\nSHORT SUPPLY TAKES PRECEDENCE.\n\nAdditionally:\n- For SHORT SUPPLY orders, quantityShorted is MANDATORY.\n- quantityShorted MUST represent the remaining quantity that is NOT being delivered immediately.\n- You MUST derive quantityShorted using:\n    OrderedQuantity (from REST response)\n    AND shipped/delivered quantity inferred from the email.\n\n--------------------------------------------------\nINPUT\n--------------------------------------------------\n\nYou will receive:\n\n1) supplier_email:\nRaw email text from supplier. Email may contain:\n- Sender email address (From)\n- Multiple purchase orders\n- Multiple purchase order lines\n- Item numbers\n- Quantities shipped\n- Quantities shorted\n- Revised delivery dates\n- Delay notifications\n- Partial shipment confirmations\n\nValue : {{$context.$variables.parameters}} \n\n2) rest_results:\nStructured REST response data containing:\n- purchaseOrderHeaderId\n- purchaseOrderLineId\n- purchaseOrderNumber\n- purchaseOrderLineNumber\n- ItemId\n- ItemNumber\n- OrderedQuantity\n- ReceivedQuantity\n- ExpectedReceiptDate\n- ShipmentStatus\n- Other relevant attributes\n\nValue : {{$context.$nodes.SEARCH_SHIPMENTS_GIVEN_BY_EMAIL.$output}} \n\n--------------------------------------------------\nCLASSIFICATION RULES\n--------------------------------------------------\n\n1) DELAYED ORDER\nMark as:\n  delayedOrder: true\n  shortSupplyOrder: false\n\nWhen:\n- Email indicates delay, revised shipment date, postponed delivery\n- AND no explicit short shipment / shortage mentioned\n- OR REST data indicates delayed status\n- AND there is no quantity discrepancy indicating shortage\n\n2) SHORT SUPPLY ORDER\nMark as:\n  delayedOrder: false\n  shortSupplyOrder: true\n\nWhen:\n- Email explicitly states shortage, partial shipment, short shipped, balance pending\n- OR Shipped quantity mentioned in email < OrderedQuantity (from REST)\n- OR Quantity shorted is explicitly mentioned\n\nMANDATORY CALCULATION FOR SHORT SUPPLY:\n\nquantityShorted MUST be calculated as:\n\nquantityShorted = OrderedQuantity (REST)\n                  - QuantityBeingDeliveredNow (from email)\n\nRules:\n- If email states shipped quantity → use that.\n- If email states short quantity directly → use that value.\n- If both are present → validate consistency; prioritize explicit short quantity if clearly stated.\n- If shipped quantity cannot be confidently determined → DO NOT classify as short supply.\n- quantityShorted must always be a positive numeric value.\n- Never leave quantityShorted empty for shortSupplyOrder = true.\n\nIMPORTANT OVERRIDE RULE:\nIf BOTH delay and shortage conditions are detected:\n  delayedOrder: false\n  shortSupplyOrder: true\n\nShort supply overrides delayed order.\n\n--------------------------------------------------\nMULTIPLE ORDERS / LINES\n--------------------------------------------------\n- Email may refer to multiple purchase orders and lines.\n- REST results may contain multiple matching lines.\n- You must evaluate EACH shipment line independently.\n- Output one JSON object per shipment line.\n- Match email information carefully against REST line data using PO number, line number, and ItemNumber.\n\n--------------------------------------------------\nEMAIL SUMMARY REQUIREMENT\n--------------------------------------------------\noriginalEmail must:\n- Be a concise summary (maximum 5 sentences).\n- INCLUDE the sender's email address (From address).\n- Summarize key shipment, delay, or shortage details relevant to that specific PO line.\n\n--------------------------------------------------\nOUTPUT FORMAT (STRICT)\n--------------------------------------------------\nReturn a json.\n\ndataToSave is an array containing below structured data.\n\nStructure for DELAYED ORDER:\n\n{\n  \"delayedOrder\": true,\n  \"shortSupplyOrder\": false,\n  \"purchaseOrderHeaderId\": \"\",\n  \"purchaseOrderLineId\": \"\",\n  \"purchaseOrderNumber\": \"\",\n  \"purchaseOrderLineNumber\": \"\",\n  \"ItemId\": \"\",\n  \"ItemNumber\": \"\",\n  \"newReceiptData\": \"\",\n \"organizationId\" : \"<Ship To Organization>\",\n  \"originalEmail\": \"<Email summary limited to 5 sentences including sender email address>\"\n}\n\nStructure for SHORT SUPPLY ORDER:\n\n{\n  \"delayedOrder\": false,\n  \"shortSupplyOrder\": true,\n  \"purchaseOrderHeaderId\": \"\",\n  \"purchaseOrderLineId\": \"\",\n  \"purchaseOrderNumber\": \"\",\n  \"purchaseOrderLineNumber\": \"\",\n  \"ItemId\": \"\",\n  \"ItemNumber\": \"\",\n  \"newReceiptData\": \"\",\n  \"quantityShorted\": \"\",\n \"organizationId\" : \"<Ship To Organization>\",\n  \"originalEmail\": \"<Email summary limited to 5 sentences including sender email address>\"\n}\n\n--------------------------------------------------\nIMPORTANT CONSTRAINTS\n--------------------------------------------------\n- Output MUST be valid JSON.\n- Output MUST be a JSON array.\n- No explanations.\n- No additional text.\n- Do not include null fields.\n- Include quantityShorted ONLY when shortSupplyOrder = true.\n- quantityShorted is MANDATORY for shortSupplyOrder = true.\n- newReceiptData should reflect revised delivery date or updated receipt details from email.\n- If nothing matches, return an empty array: []"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"dataToSave\": {\n            \"type\": \"array\",\n            \"items\": {\n                \"type\": \"object\",\n                \"properties\": {}\n            }\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_SELFDETAILSINVENTORYWAREHOUSEOPERATIONSWORKSPACE",
+            "functionName": "getall_selfDetails",
+            "name": "Self Details"
+          },
+          "outcomes": {
+            "success": "1771655503386"
+          },
+          "code": "SELF_DETAILS",
+          "id": "1771658563123",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Delayed Shipments Prompt",
+            "returnType": "string",
+            "sourceCode": "const delayedShipmentsCount =\n  $context.$nodes.DELAYED_SHIPMENTS_ES.$output?.hits?.total?.value ?? 0;\n\nconst delayedShipments =\n  $context?.$nodes?.DELAYED_SHIPMENTS_ES?.$output?.hits?.hits ?? [];\n\nconst supplierEmailDelayedCount =\n   $context.$nodes.FILTERED_EMAILS_BY_ORGANIZATION.$output.result?.length ?? 0;\n\n \n\n \n\nconst supplierEmailDelayedDetails =\n    $context.$nodes.FILTERED_EMAILS_BY_ORGANIZATION.$output.result ?? [];\n\nconst prompt = `\n<delayedShipmentsCount>${delayedShipmentsCount}</delayedShipmentsCount>\n<delayedShipmentsOrderDetails>${JSON.stringify(delayedShipments)}</delayedShipmentsOrderDetails>\n\n<supplierEmailDelayedCount>${supplierEmailDelayedCount}</supplierEmailDelayedCount>\n<supplierEmailDelayedDetails>${JSON.stringify(supplierEmailDelayedDetails)}</supplierEmailDelayedDetails>\n\nTask:\nYou must evaluate TWO independent rows:\n\nROW 1 → Delayed Shipments (system detected)\n- If delayedShipmentsCount > 0, generate exactly ONE \"message widget list row\".\n- Title MUST be:\n  \"Delayed Shipments (${delayedShipmentsCount})\"\n- If delayedShipmentsCount = 0, DO NOT generate this row.\n\nROW 2 → Supplier Email Delays\n- If supplierEmailDelayedCount > 0, generate exactly ONE \"message widget list row\".\n- Title MUST be:\n  \"Supplier Reported Delays (${supplierEmailDelayedCount})\"\n- If supplierEmailDelayedCount = 0, DO NOT generate this row.\n\n\n\n--------------------------------------------------\nROW 1 ACTION\n--------------------------------------------------\nora.Agent({\n  \"command\": \"showDetailedInfoOnDelayedOrders\",\n  \"subAgent\": \"INV_WH_OPS_INBOUND_SHIPMENTS_ADVISOR\",\n  \"agent\": \"INV_WH_OPS_INBOUND_ADVISOR\"\n})\n\nDescription requirements (ROW 1):\n- Use delayed shipment order details to create a clear, user-friendly summary.\n- Mention customer name(s) and item(s).\n- Keep it concise and suitable for a single row.\n- If multiple delayed orders exist:\n  - Summarize (e.g., \"X delayed orders\"),\n  - Include one example (customer + items), OR\n  - List a few customers/items followed by \"and more\".\n- If data is missing, fall back to a generic but meaningful description.\n- Must clearly indicate that delayed shipments are present and can be viewed.\n\n--------------------------------------------------\nROW 2 ACTION\n--------------------------------------------------\nora.Agent({\n  \"command\": \"showDetailedInfoOnShortSupplyOrders\",\n  \"subAgent\": \"INV_WH_OPS_INBOUND_SHIPMENTS_ADVISOR\",\n  \"agent\": \"INV_WH_OPS_INBOUND_ADVISOR\"\n})\n\nDescription requirements (ROW 2):\n- Use supplierEmailDelayedDetails and supplier email summary data.\n- Clearly indicate that supplier(s) have reported purchase order delays via email.\n- Mention supplier name(s), PO number(s), and item(s) when available.\n- Keep it concise and suitable for a single row.\n- If multiple supplier emails exist:\n  - Summarize (e.g., \"X supplier delay notifications\"),\n  - Include one example (supplier + PO + item), OR\n  - List a few followed by \"and more\".\n- If key attributes are missing, generate a meaningful generic summary.\n- Must clearly indicate that supplier-reported delays can be reviewed.\n\n--------------------------------------------------\n\n`.trim();\n\nreturn prompt;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "DELAYED_SHIPMENTS_PROMPT",
+          "convergenceTargetId": "1771675163885",
+          "id": "1771215256211",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_EXPECTEDSHIPMENTSDIRECTES",
+            "functionName": "expectedShipmentsRawQuery",
+            "name": "Init Actions Expected Shipments ES"
+          },
+          "outcomes": {
+            "success": "1771679042063"
+          },
+          "code": "INIT_ACTIONS_EXPECTED_SHIPMENTS_ES",
+          "id": "1771679741076",
+          "inputs": [
+            {
+              "id": "1771679775287_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.INIT_ACTIONS_PREPARE_ES_QUERY.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Summary Read Emails"
+          },
+          "outcomes": {
+            "success": "1771683151810"
+          },
+          "code": "SUMMARY_READ_EMAILS",
+          "id": "1771683000292",
+          "inputs": [
+            {
+              "id": "1771683000299_1",
+              "name": "indexName",
+              "type": "string",
+              "value": "Short-Order-Details"
+            },
+            {
+              "id": "1771683000301_2",
+              "name": "query",
+              "type": "string",
+              "value": "Get All Emails"
+            },
+            {
+              "id": "1771683000303_3",
+              "name": "documentId",
+              "type": "string"
+            },
+            {
+              "id": "1771683000304_4",
+              "name": "fields",
+              "type": "array"
+            },
+            {
+              "id": "1771683000305_5",
+              "name": "filterCriteria",
+              "type": "object"
+            },
+            {
+              "id": "1771683000307_6",
+              "name": "maximumResults",
+              "type": "integer"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"index\": {\n        \"type\": \"integer\"\n      },\n      \"text\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\n      \"index\",\n      \"text\"\n    ]\n  }\n}",
+          "type": "VECTOR_DB_READER"
+        },
+        {
+          "metadata": {
+            "name": "Init Communications Create Prompt",
+            "returnType": "string",
+            "sourceCode": "let emails = $context.$nodes.FILTERED_EMAILS_BY_ORGANIZATION.$output.result;\n\nlet prompt =`\n\n<emails>\n${JSON.stringify(emails)}\n</emails>\n\nAssume a role of a warehouse house manager and prepare replies to each email communication.\n\n\n`; \n\nreturn prompt;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "INIT_COMMUNICATIONS_CREATE_PROMPT",
+          "id": "1771675527126",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Return Empty String If No Emails",
+            "returnType": "string",
+            "sourceCode": "const result = '';\n\nresult = `\nMention that the supply request is failed because of this error \n\n${$context.$error.$errorMessage} \n\n`\nreturn result;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURN_EMPTY_STRING_IF_NO_EMAILS",
+          "id": "1776331143616",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Query for Alternate Orgs Request",
+            "returnType": "string",
+            "sourceCode": "let query = `InventoryItemId=${$context.$nodes.GET_SHIPMENT_DETAIL.$output.hits?.hits[0]?._source?.ItemId}` ;\n\n\n\nreturn query;"
+          },
+          "outcomes": {
+            "success": "1771309004976"
+          },
+          "code": "PREPARE_QUERY_FOR_ALTERNATE_ORGS_REQUEST",
+          "id": "1771310530042",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1771419722939"
+                  },
+                  "diagram": {
+                    "x": 9955,
+                    "y": 5717
+                  },
+                  "id": "start_1771419570203",
+                  "code": "START_1771419570203",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "Write Short Order Info"
+                  },
+                  "outcomes": {
+                    "success": "end_1771419570203"
+                  },
+                  "diagram": {
+                    "x": 10106,
+                    "y": 5681.5
+                  },
+                  "code": "WRITE_SHORT_ORDER_INFO",
+                  "id": "1771419722939",
+                  "inputs": [
+                    {
+                      "id": "1771419722941_1",
+                      "name": "indexName",
+                      "type": "string",
+                      "value": "Short-Order-Details"
+                    },
+                    {
+                      "id": "1771419722942_2",
+                      "name": "content",
+                      "type": "string",
+                      "value": "{{$context.$nodes.FOR_EACH_SHIPMENT_LOOPER.$currentItem}}"
+                    },
+                    {
+                      "id": "1771419722943_3",
+                      "name": "contentType",
+                      "type": "string",
+                      "value": "application/json"
+                    },
+                    {
+                      "id": "1771419722943_4",
+                      "name": "operation",
+                      "type": "string",
+                      "value": "INSERT"
+                    },
+                    {
+                      "id": "1771419722944_5",
+                      "name": "documentId",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1771419722945_6",
+                      "name": "metaData",
+                      "type": "array",
+                      "value": [
+                        {
+                          "id": "1771426124750",
+                          "scope": "JOB",
+                          "value": "{{$context.$nodes.FOR_EACH_SHIPMENT_LOOPER.$currentItem?.purchaseOrderLineId}}",
+                          "name": "purchaseOrderLineId",
+                          "type": "string"
+                        },
+                        {
+                          "id": "1771426088080",
+                          "scope": "JOB",
+                          "value": "{{$context.$nodes.FOR_EACH_SHIPMENT_LOOPER.$currentItem?.purchaseOrderHeaderId}}",
+                          "name": "purchaseOrderHeaderId",
+                          "type": "string"
+                        },
+                        {
+                          "id": "1771424591333",
+                          "scope": "JOB",
+                          "value": "{{$context.$nodes.FOR_EACH_SHIPMENT_LOOPER.$currentItem?.organizationId}}",
+                          "name": "organizationId",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  ],
+                  "type": "VECTOR_DB_WRITER"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1771419570203",
+                  "code": "END_1771419570203",
+                  "type": "END"
+                }
+              ],
+              "rootNode": "start_1771419570203"
+            },
+            "loopType": "SEQUENTIAL",
+            "name": "For Each Shipment Looper"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FOR_EACH_SHIPMENT_LOOPER",
+          "id": "1771419570203",
+          "inputs": [
+            {
+              "id": "1771419570206_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$nodes.SUMMARIZE_AND_PREPARE_DATA_TO_SAVE.$output.dataToSave}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Request Payload",
+            "returnType": "object",
+            "sourceCode": "// Sample request - toBeRecievedPurchaseOrder.json\nconst expectedPoResponse =\n  $context.$nodes.EXPECTED_SHIPMENTS_GET_ORDER_DETAILS?.$output || null;\n\nconst parameters = $context.$variables.parameters || {};\n\nconst currentOrganizationId = $context.$variables.organizationId || {};\n\nconst emailAddress = $context.$nodes.SELF_DETAILS?.$output.items[0].EmailAddress;\n\nconst expectedPoLine = expectedPoResponse?.hits?.hits?.[0]?._source || null;\nconst distribution = expectedPoLine?.OrderDistributions?.[0] || null;\nconst item = expectedPoLine?.Item || null;\n\nconst now = new Date();\nconst batchNumber = `INV_${now.getTime()}`;\nconst referenceId = now.getTime();\nconst lineReferenceId = referenceId + 1;\n\nconst quantityOrdered = Number(\n  expectedPoLine?.QuantityOrdered ?? distribution?.QuantityOrdered ?? 0\n);\nconst quantityDelivered = Number(\n  expectedPoLine?.QuantityDelivered ?? distribution?.QuantityDelivered ?? 0\n);\nconst quantityCanceled = Number(\n  expectedPoLine?.QuantityCanceled ?? distribution?.QuantityCanceled ?? 0\n);\nconst computedQuantity = Math.max(\n  0,\n  quantityOrdered - quantityDelivered - quantityCanceled\n);\nconst quantity =\n  parameters.Quantity !== undefined && parameters.Quantity !== null\n    ? Number(parameters.Quantity)\n    : computedQuantity;\n\nconst remainingQuantity = Math.max(0, quantityOrdered - quantity);\nconst newQuantity =\n  parameters.NewQuantity !== undefined && parameters.NewQuantity !== null\n    ? Number(parameters.NewQuantity)\n    : remainingQuantity;\n\nconst projectId =\n  distribution?.ProjectId ??\n  distribution?.projectId ??\n  expectedPoLine?.ProjectId ??\n  expectedPoLine?.projectId;\nconst taskId =\n  distribution?.TaskId ??\n  distribution?.taskId ??\n  expectedPoLine?.TaskId ??\n  expectedPoLine?.taskId;\n\nconst distributionDetails =\n  projectId && taskId\n    ? [\n        {\n          DistributionNumber: distribution?.DistributionNumber ?? \"1\",\n          projectDFF: [\n            {\n              projectId: String(projectId),\n              taskId: String(taskId)\n            }\n          ]\n        }\n      ]\n    : undefined;\n\nlet response = {};\n\nconst supplyRequestLine = {\n  InterfaceBatchNumber: batchNumber,\n  SupplyOrderReferenceLineNumber: \"1\",\n  SupplyOrderReferenceLineId: lineReferenceId,\n  SourceOrganizationCode: parameters.sourceOrganization,\n  DestinationOrganizationId: currentOrganizationId ,\n  ItemNumber: item.ItemNumber,\n  InterfaceSourceCode: \"DOS\",\n  SupplyOrderSource: \"INV\",\n  BackToBackFlag: expectedPoLine?.BackToBackFlag ?? \"N\",\n  NeedByDate: (expectedPoLine?.PromisedDate || expectedPoLine?.NeedByDate),\n  Quantity: quantity,\n  ...(item?.PrimaryUomCode || expectedPoLine?.UomCode || expectedPoLine?.Uom?.UomCode\n    ? {\n        UOMCode:\n          item?.PrimaryUomCode ??\n          expectedPoLine?.UomCode ??\n          expectedPoLine?.Uom?.UomCode\n      }\n    : {}),\n  DeliverToRequesterEmail: emailAddress,\n  PreparerEmail: emailAddress,\n  DestinationTypeCode: \"INVENTORY\",\n  SupplyType: \"TRANSFER\",\n  ...(distributionDetails ? { distributionDetails } : {})\n};\n\nresponse.supplyRequest = {\n  InterfaceSourceCode: \"DOS\",\n  InterfaceBatchNumber: batchNumber,\n  SupplyRequestStatus: \"NEW\",\n  SupplyRequestDate: now.toISOString(),\n  SupplyOrderSource: \"INV\",\n  SupplyOrderReferenceNumber: batchNumber,\n  SupplyOrderReferenceId: referenceId,\n  TrustedSource: 1,\n  ProcessRequestFlag: \"Y\",\n  supplyRequestLines: [supplyRequestLine]\n};\n\nconst poHeaderId = expectedPoLine?.POHeaderId ?? expectedPoLine?.OrderHeader?.POHeaderId;\nconst poLineId = expectedPoLine?.POLineId ?? expectedPoLine?.OrderLine?.POLineId;\nconst poLineLocationId = expectedPoLine?.POLineLocationId ?? distribution?.POLineLocationId;\nconst poDistributionId = distribution?.PODistributionId;\nconst unitPrice = expectedPoLine?.OrderLine?.UnitPrice;\nconst lineNumber = expectedPoLine?.OrderLine?.LineNumberAsLong;\nconst assessableValue =\n  unitPrice !== undefined && unitPrice !== null\n    ? (Number(newQuantity) * Number(unitPrice)).toFixed(2)\n    : (Number(newQuantity) * 0).toFixed(2);\n\nconst isFullCancel = Math.abs(quantity - quantityOrdered) < 0.000001;\n\nconst cancelFlag = Number(newQuantity) === 0;\n\nresponse.shortSupplyUpdate =  {\n      parts: [\n        {\n          id: \"1\",\n          path: `/draftPurchaseOrders/${poHeaderId}`,\n          operation: \"update\",\n          payload: {\n            ChangeOrderDescription: \"Ai Agent\",\n            ChangeOrderInitiatingParty: \"BUYER\"\n          }\n        },\n        {\n          id: \"2\",\n          path: `/draftPurchaseOrders/${poHeaderId}/child/lines/${poLineId}`,\n          operation: \"update\",\n          payload: {\n            CancelFlag: cancelFlag,\n            LineNumber: lineNumber,\n            Price: unitPrice,\n            Quantity: newQuantity,\n            CancelReason: null,\n            CancelUnfulfilledDemandFlag: null\n          }\n        },\n        {\n          id: \"3\",\n          path: `/draftPurchaseOrders/${poHeaderId}/child/lines/${poLineId}/child/schedules/${poLineLocationId}`,\n          operation: \"update\",\n          payload: {\n            CancelFlag: cancelFlag,\n            Quantity: newQuantity,\n            AssessableValue: assessableValue,\n            CancelReason: null\n          }\n        },\n        {\n          id: \"4\",\n          path: `/draftPurchaseOrders/${poHeaderId}/child/lines/${poLineId}/child/schedules/${poLineLocationId}/child/distributions/${poDistributionId}`,\n          operation: \"update\",\n          payload: {\n            Quantity: newQuantity,\n            Amount: null\n          }\n        }\n      ]\n    };\n\nreturn response;"
+          },
+          "outcomes": {
+            "success": "1771660703223"
+          },
+          "code": "PREPARE_REQUEST_PAYLOAD",
+          "id": "1771655503386",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Init Actions Prompt Preparer",
+            "returnType": "string",
+            "sourceCode": "let emails =  $context.$nodes.FILTERED_EMAILS_BY_ORGANIZATION.$output.result ;\n\n\nlet prompt =`\n\nes_response: ${JSON.stringify($context.$nodes.INIT_ACTIONS_EXPECTED_SHIPMENTS_ES.$output)} \n\n<emails>\n${JSON.stringify(emails)}\n</emails>\n\n\nYou are an AI agent that creates priority actions for each short supply email. The action should be of priority high.\n\nAction : ora.Agent({\n  \"command\": \"showDetailedInfoOnOneDelayedOrder\",\n  \"agent\": \"INV_WH_OPS_INBOUND_ADVISOR\",\n  \"subAgent\": \"INV_WH_OPS_INBOUND_SHIPMENTS_ADVISOR\",\n  \"parameters\": {\n      \"documentNumber\": <DocumentNumber>,\n      \"lineNumber\": <OrderLine.LineNumber>,\n      \"documentType\":  \"PO\",\n      \"documentIdentifier\": <emails.documentIdentifier>,\n       \"inventoryItemId\" : <Item.ItemId>\n  }\n})\n\n\n`;\n\n\nreturn prompt;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "INIT_ACTIONS_PROMPT_PREPARER",
+          "id": "1771679042063",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Summary Email"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SUMMARY_EMAIL",
+          "id": "1771683151810",
+          "inputs": [
+            {
+              "id": "1771683151823_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Prepare a short summary from the information below. Do not exceed more than 3 sentences.\n\n\n\nDelayed Shipments Count :   {{$context.$nodes.SUMMARY_EXPECTED_SHIPMENTS_ES.$output?.hits?.total?.value}}\n\nDelayed Shipments ES :   {{$context?.$nodes?.SUMMARY_EXPECTED_SHIPMENTS_ES?.$output?.hits?.hits}}\n\nSupplier Emails :    {{$context.$nodes.FILTERED_EMAILS_BY_ORGANIZATION.$output.result}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_ITEMQUANTITYSUMMARIES",
+            "functionName": "getall_itemQuantitySummaries",
+            "name": "Find Availability In Other Orgs"
+          },
+          "outcomes": {
+            "success": "1771836425439"
+          },
+          "code": "FIND_AVAILABILITY_IN_OTHER_ORGS",
+          "id": "1771309004976",
+          "inputs": [
+            {
+              "id": "1771309051015_1",
+              "name": "QueryParam",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_QUERY_FOR_ALTERNATE_ORGS_REQUEST.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_SUPPLYREQUESTINVENTORYWAREHOUSEOPERATIONSWORKSPACE",
+            "errorNodeId": "1777353399307",
+            "functionName": "create_supplyRequests",
+            "name": "Create Supply Request"
+          },
+          "outcomes": {
+            "success": "1771773262784"
+          },
+          "code": "CREATE_SUPPLY_REQUEST",
+          "convergenceTargetId": "1771661186449",
+          "id": "1771660703223",
+          "inputs": [
+            {
+              "id": "1771660727372_1",
+              "name": "Payload",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_REQUEST_PAYLOAD.$output.result.supplyRequest}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "create supply demand query",
+            "returnType": "object",
+            "sourceCode": "let payload = {\n    \"parts\": [\n      {\n        \"path\": `/itemSuppliesAndDemands?finder=findbyItemOrg;vInventoryItemID=${$context.$variables.parameters.inventoryItemId},vOrganizationID=${$context.$variables.organizationId},vIncludeQuantityType=ALL&limit=500&onlyData=true&fields=SeqId,SupplyDemandDate,ProjectedQuantity,SupplyQuantity,DemandQuantity`,\n        \"id\": \"1\",\n        \"operation\": \"get\"\n      }\n    ]\n};\n\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "1771836525788"
+          },
+          "code": "CREATE_SUPPLY_DEMAND_QUERY",
+          "id": "1771836425439",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "If Short Supply Email Present ?"
+          },
+          "outcomes": {
+            "true": "1771773405248",
+            "false": "1771661275341"
+          },
+          "code": "IF_SHORT_SUPPLY_EMAIL_PRESENT_",
+          "convergenceTargetId": "1771661275341",
+          "id": "1771773262784",
+          "inputs": [
+            {
+              "id": "1771773262787_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EXPECTED_SHIPMENTS_PREPARE_REQUEST.$output.result?.isFromShortSupply}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_BATCHEXECUTORINVENTORYWAREHOUSEOPERATIONSWORKSPACE",
+            "functionName": "executeBatch",
+            "name": "Item Supply Demand Query Response"
+          },
+          "outcomes": {
+            "success": "1771302463067"
+          },
+          "code": "ITEM_SUPPLY_DEMAND_QUERY_RESPONSE",
+          "id": "1771836525788",
+          "inputs": [
+            {
+              "id": "1771836610571_1",
+              "name": "batchPayload",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_SUPPLY_DEMAND_QUERY.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Delete Email"
+          },
+          "outcomes": {
+            "success": "1771661275341"
+          },
+          "code": "DELETE_EMAIL",
+          "id": "1771773405248",
+          "inputs": [
+            {
+              "id": "1771773405251_1",
+              "name": "indexName",
+              "type": "string",
+              "value": "Short-Order-Details"
+            },
+            {
+              "id": "1771773405251_2",
+              "name": "content",
+              "type": "string",
+              "value": "''"
+            },
+            {
+              "id": "1771773405252_3",
+              "name": "contentType",
+              "type": "string",
+              "value": "application/json"
+            },
+            {
+              "id": "1771773405252_4",
+              "name": "operation",
+              "type": "string",
+              "value": "DELETE"
+            },
+            {
+              "id": "1771773405253_5",
+              "name": "documentId",
+              "type": "string",
+              "value": "{{$context.$variables.parameters.documentIdentifier}}"
+            },
+            {
+              "id": "1771773405254_6",
+              "name": "metaData",
+              "type": "array",
+              "value": []
+            }
+          ],
+          "type": "VECTOR_DB_WRITER"
+        },
+        {
+          "metadata": {
+            "name": "Single Record View Prompt",
+            "returnType": "string",
+            "sourceCode": "let prompt = ``;\n\nlet parameters = $context.$variables.parameters; \n\nprompt = `\nYou are a UI Results Presenter.\n\n--------------------------------------------------\nBUSINESS CONTEXT\n--------------------------------------------------\n\nparameters - ${JSON.stringify(parameters)}\n\nThe user is viewing a specific DELAYED Purchase Order.\n\nThis screen appears after the user selects a particular purchase order from a delayed orders list.\n\nPurpose of this screen:\n1) Show basic Purchase Order details.\n2) Show item availability in alternative organizations.\n3) Allow the user to select an organization and:\n   - Cancel the delayed Purchase Order\n   - Create a Transfer Order for the same material from the selected organization.\n\nYou may include short descriptive text sections to guide the user.\nDescriptions must be concise, professional, and business-friendly.\n\n--------------------------------------------------\nINPUT DATA\n--------------------------------------------------\n\n1) Expected Shipment Record:\n${JSON.stringify($context?.$nodes?.GET_SHIPMENT_DETAIL?.$output ?? {})}\n\n2) Quantities Available in Other Organizations:\n${JSON.stringify($context?.$nodes?.FIND_AVAILABILITY_IN_OTHER_ORGS?.$output ?? {})}\n\n3) Related Supplier Email (if any):\n${JSON.stringify($context?.$nodes?.READ_THE_EMAIL?.$output?.[0]?.text ?? null)}\n\n4) Supply demand Response (if any):\n${JSON.stringify($context.$nodes.ITEM_SUPPLY_DEMAND_QUERY_RESPONSE.$output)}\n\n--------------------------------------------------\nOBJECTIVE\n--------------------------------------------------\n\nGenerate:\n\n1) Optional Email Summary Section (ONLY if email exists and is not empty)\n2) A short contextual description (1–3 short paragraphs max)\n3) A Read-Only Record Widget (Purchase Order Details)\n\nCONDITIONAL LOGIC:\n- If 'inventoryItemId' in Expected Shipment Record is NULL:\n   - SKIP Widget 2 (Supply vs Demand Graph)\n   - SKIP Widget 3 (Alternative Organization Availability)\n   - Add a clear message in the description:\n     \"This item is currently not supported for supply and transfer analysis by the system.\"\n\nOtherwise:\n4) A chartWidget for item & supply demand\n5) A Multi-Record Widget (Alternative Organization Availability)\n\nDo NOT explain your reasoning.\nReturn structured UI content only.\n\n--------------------------------------------------\nSECTION 0: EMAIL SUMMARY (CONDITIONAL)\n--------------------------------------------------\n\nIf:\n- If 'Related Supplier Email' exists\n- AND it is not null/empty\n\nThen:\n\nGenerate a short \"Supplier Email Summary\" section at the very top.\n\nRules:\n- Summarize key intent (delay, shortage, revised shipment date, partial supply, etc.).\n- Extract and mention any:\n   - Referenced Purchase Order Number\n   - Line Number\n   - Mentioned quantities\n   - Promised dates\n- Keep it concise (max 5–6 lines).\n- Do NOT repeat raw email text.\n- Do NOT fabricate details.\n\nIf no email exists, completely omit this section.\n\n--------------------------------------------------\nWIDGET 1: READ-ONLY RECORD WIDGET\n--------------------------------------------------\n\nPurpose:\nDisplay key Purchase Order information.\n\nRules:\n- Display exactly 10 important business fields.\n- Skip:\n  - Any ID fields\n  - Any Status fields\n  - Any technical/internal keys\n  - Any audit fields\n- Mandatory fields that MUST be included:\n  - Purchase Order Number\n  - Line Number\n  - Expected Shipment Date\n- Remaining fields should be the most relevant business information \n  (Item, Ordered Quantity, Supplier, Organization, UOM, etc.).\n- Labels must be user-friendly.\n- Widget must be strictly read-only.\n- If email mentions a revised quantity or partial supply, DO NOT override system quantity. \n  Always display the Ordered Quantity from the Shipment Record as the authoritative value.\n\n--------------------------------------------------\nWIDGET 2: SUPPLY VS DEMAND LINE GRAPH WIDGET\n--------------------------------------------------\n\nGenerate a line graph widget using data from 'Supply demand Response'\n\nGraph Rules:\n- Create one graph per supplier email (per order line)\n- X-axis: Date\n- Y-axis: Quantity\n- Plot the following lines:\n  - Projected Quantity\n- Filter graph data by matching Inventory Item Id\n- Graph is read-only and for visualization only\n- Do not display internal identifiers on the graph\n\nNOTE:\n- This widget MUST NOT be generated if inventoryItemId is null.\n\n--------------------------------------------------\nWIDGET 3: MULTI-RECORD WIDGET\n--------------------------------------------------\n\nPurpose:\nDisplay quantities available in other organizations.\n\nRules:\n- One row per organization.\n- Show meaningful business columns only.\n- Include:\n   - Organization Name/Code\n   - Available Quantity\n   - UOM (if available)\n   - Any relevant availability metrics\n- Exclude the organization with id - ${$context?.$triggers?.REST?.$input?.organizationId}\n- Do not include technical fields or metadata.\n- Do not include pagination commentary.\n\nQUANTITY RULE:\n- Also include a derived column:\n   \"Transfer Quantity\"\n\n- Transfer Quantity must be:\n   MIN(Ordered Quantity from Shipment Record, Available Quantity in that Organization)\n\n- Always calculate dynamically from input data.\n- Do NOT hardcode.\n- Do NOT use placeholders.\n\nNOTE:\n- This widget MUST NOT be generated if inventoryItemId is null.\n\n--------------------------------------------------\nROW ACTION REQUIREMENT\n--------------------------------------------------\n\nEach row may include an action button:\n\nTitle:\n\"Transfer\"\n\nCONDITION:\n- ONLY include the \"Transfer\" action if Available Quantity > 0\n- If Available Quantity is 0 or less, DO NOT include the action at all for that row\n\nAction definition:\nora.Invoke(\"inboundAdvisor\",{\n  \"command\": \"executeShortSupplyFlow\",\n  \"agent\" : \"INV_WH_OPS_INBOUND_ADVISOR\",\n  \"subAgent\": \"INV_WH_OPS_INBOUND_SHIPMENTS_ADVISOR\",\n  \"parameters\": {\n      \"documentNumber\": <DocumentNumber from Shipment Record>,\n      \"lineNumber\": <Line Number from Shipment Record>,\n      \"documentType\": <Document Type or equivalent>,\n      \"inventoryItemId\": <Inventory Item Id from Shipment Record>,\n      \"sourceOrganization\": <Organization from selected row, This should be OrganizationCode of string type>,\n      \"transferQuantity\": <Calculated Transfer Quantity>,\n      \"documentIdentifier\" : <>\n  }\n})\n\nRules:\n- Always derive values from input data.\n- Do not hardcode values.\n- Do not leave placeholders.\n- Ensure correct mapping between selected organization and request payload.\n- transferQuantity MUST match the calculated Transfer Quantity column for that row.\n\n--------------------------------------------------\nOUTPUT RULES\n--------------------------------------------------\n\n- Output must contain:\n   1) Optional Email Summary (only if email exists)\n   2) Description text\n   3) Read-only record widget\n   4) Multi-record widget (ONLY if inventoryItemId is not null)\n   5) chartWidget (ONLY if inventoryItemId is not null)\n\n- Do not include markdown.\n- Do not include explanations.\n- Do not wrap output in code blocks.\n- Each widget should have its own <oraInfoDisplay> parent. Never combine multiple widgets into single oraInfoDisplay.\n`;\n\nreturn prompt;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SINGLE_RECORD_VIEW_PROMPT",
+          "id": "1771302463067",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Create Supply Requested Creator Prompt",
+            "returnType": "string",
+            "sourceCode": "let supplyRequestResponse = $context.$nodes.CREATE_SUPPLY_REQUEST.$output;\n\nlet system = $context.$system;\n\nlet payload = `\n\nYou are an AI agent invoked after a Supply Request transaction has been completed.\n\nBelow are the system responses:\n\n<supplyRequestResponse>\n${JSON.stringify(supplyRequestResponse)}\n</supplyRequestResponse>\n\n<actionParameters>\n${JSON.stringify( $context.$variables.parameters )}\n</actionParameters>\n\n==================================================\nCRITICAL OUTPUT INSTRUCTION\n==================================================\n\nYou MUST generate PURE MARKDOWN TEXT ONLY.\n\n⚠️ DO NOT:\n- Generate any widgets\n- Generate any record components\n- Generate structured UI components\n- Generate HTML\n- Generate JSON\n- Generate tables in proprietary widget format\n- Wrap content inside code blocks\n- Return a single consolidated widget\n\nReturn plain Markdown text only.\n\n==================================================\nREQUIRED MARKDOWN STRUCTURE\n==================================================\n\n1️⃣ Top Success Message (bold)\n\nIf successful:\n**Supply Request completed successfully for Request <RequestNumber>.**\n\nIf a related Purchase Order exists, also include this statement:\nRelated Purchase Order <actionParameters.documentNumber> can be updated manually as needed.\n\n⚠️ Do NOT state that the Purchase Order was cancelled automatically.\n\n\n\n2️⃣ ## Summary\n\nProvide a short business summary in few sentences no more that 5 sentences.\n\n\n\n3️⃣ ## Supply Request Details\n\nList maximum 10 business-relevant fields in this format:\n\n- Field Label: Value\n- Field Label: Value\n\nOnly include meaningful business data such as:\nRequest Number  \nRelated Purchase Order  \nItem  \nDescription  \nQuantity  \nUOM  \nOrganization  \nSubinventory  \nDestination  \nRequester  \nStatus  \nRequest Date  \n\nNo internal IDs.\nNo technical fields.\nNo raw JSON.\n\n\n--------------------------------------------------\nSTRICT DATA RULES\n--------------------------------------------------\n\n- Never display GUIDs or surrogate keys.\n- Never display raw JSON.\n- Never repeat the same field unnecessarily across sections.\n- If a value is unavailable, display: N/A\n- If a section has no meaningful data, write:\n  \"No relevant business details available.\"\n\n==================================================\n\nReturn ONLY the Markdown content.\n\n`;\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "CREATE_SUPPLY_REQUESTED_CREATOR_PROMPT",
+          "convergenceTargetId": "1771667535274",
+          "id": "1771661275341",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Single Record View Prompt LLM"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SINGLE_RECORD_VIEW_PROMPT_LLM",
+          "id": "1777351704389",
+          "inputs": [
+            {
+              "id": "1777305034133_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "{{$context.$nodes.SINGLE_RECORD_VIEW_PROMPT.$output.result}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_false_1771413154301",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_false_1771413988062",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "description": "Add node for InitCommunications case branch",
+            "name": "Add (InitCommunications Case)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_InitCommunications_1771675105162",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "description": "Add node for default case branch",
+            "name": "Add (default Case)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_default_1771675105162",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "description": "Add node for true branch",
+            "name": "Add (True Branch)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_true_1776331129613",
+          "inputs": [],
+          "type": "ADD"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1771661155447",
+          "name": "returnPrompt",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1771412830285",
+          "name": "action",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1771412799354",
+          "name": "organizationId",
+          "scope": "JOB",
+          "type": "number"
+        },
+        {
+          "id": "1771412786518",
+          "name": "parameters",
+          "scope": "JOB",
+          "type": "object"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1776149305770",
+            "name": "triggerType",
+            "type": "string"
+          },
+          {
+            "id": "1776149298142",
+            "name": "OraUserContext",
+            "type": "string"
+          },
+          {
+            "id": "1776149292998",
+            "name": "OraMessageHint",
+            "type": "string"
+          },
+          {
+            "id": "1776149286173",
+            "name": "OraAction",
+            "type": "string"
+          },
+          {
+            "id": "1771729690507",
+            "name": "aiAppOutputSpecification",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771234080542",
+            "name": "parameters",
+            "scope": "JOB",
+            "type": "object"
+          },
+          {
+            "id": "1771214996676",
+            "name": "organizationId",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771214984530",
+            "name": "action",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "SCM",
+  "product": "INVENTORY_MANAGEMENT",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "FULL",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": true,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"5\""
+  }
+}

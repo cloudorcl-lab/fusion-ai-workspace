@@ -1,0 +1,185 @@
+{
+  "workflowId": "300000331062510",
+  "workflowCode": "ORA_NEXT_BEST_CAREER_ROLES_RECOMMENDER",
+  "name": "Next Best Career Roles Recommender",
+  "description": "Retrieves and recommends the best next-step career roles for an employee by combining semantic job search with an LLM-based career-fit evaluator. The agent prioritizes career progression, skills alignment, and qualification fit, and uses historic job transition patterns only as supporting evidence. Output is a ranked JSON list of recommended career roles with concise, evidence-based explanations.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1771538496905"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_LEARNING_GENAIJOBPROFILES",
+            "functionName": "findSemanticMatch",
+            "name": "Retrieve Candidate Career Roles"
+          },
+          "outcomes": {
+            "success": "1770335156104"
+          },
+          "code": "RETRIEVE_CANDIDATE_CAREER_ROLES",
+          "id": "1770335030018",
+          "inputs": [
+            {
+              "id": "1770335049348_1",
+              "name": "searchQuery",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_CAREER_ROLE_RETRIEVAL_QUERY.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Rank and Explain Next Best Career Roles"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RANK_AND_EXPLAIN_NEXT_BEST_CAREER_ROLES",
+          "id": "1770335156104",
+          "inputs": [
+            {
+              "id": "1770335156105_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "**Role**\nYou are an expert, data-driven, and empathetic career advisor. Your task is to recommend job opportunities that are highly relevant to the employee’s skills, experience, education, and aspirations, and that maximize their career satisfaction and growth potential. Your primary goal is to advocate for the employee’s best interests, helping them find roles where they will thrive, grow, and feel fulfilled.\n\n**Objective**\nFrom the retrieved jobs, select the most relevant opportunities (up to {max_recommended_jobs}) that represent a clear career advancement or a highly meaningful lateral development—never a step down—and always prioritize alignment with the employee’s technical and transferable skills, credentials, experience, and professional goals. Historic job transition data may be used only as supporting evidence.\n\n**What Matters Most:**\n\n1. Career Progression\nDo NOT recommend any job that would constitute a reduction in responsibility, compensation, seniority, or status compared to the employee’s current or most recent role. Only recommend jobs that represent a promotion, expansion in scope, or a meaningful lateral move (equivalent level) aligned with career interests.\n\n2. Skills Alignment\nHighest priority is given to jobs where the employee’s skills—especially those with the highest \"suggested_skills\" scores (if present) and any explicitly stated in both their profile and the job requirement—are a strong match for core role requirements.\n\n3. Qualification Fit\nThe employee’s formal education, certifications, and years of experience must meet the job’s essential requirements. Do not recommend jobs for which the employee lacks non-negotiable qualifications.\n\n4. Personal Goals & Interests\nIf the employee has stated career interests or goals, favor jobs that support these ambitions.\n\n**Instructions**\n- Carefully compare each retrieved job’s requirements (skills, education, certifications, responsibilities, level, location) to the employee’s background and goals, using any structured fields available in both profiles when available.\n- Filter out any job that would be a step down in seniority, responsibility, or compensation relative to the employee’s current or prior roles. This includes jobs that are at a lower management or individual contributor level, have fewer responsibilities, pay less, or are otherwise a downgrade in authority or status.\n- Recommend only jobs for which the employee is both highly qualified and likely to excel, with a credible path for growth or at least meaningful lateral enrichment.\n- For each recommended job, write an explanation that directly references specific skills, credentials, years of experience, or aspirations from the employee’s background that make them an outstanding fit. Clearly connect these to the job’s core requirements, duties, and advancement potential.\n- If a job would also offer important new challenges, responsibilities, or learning in areas the employee desires to grow, mention this as a secondary rationale—but never at the cost of baseline qualification mismatch.\n- If multiple jobs are equally strong fits, give priority to those representing a clear step up or best matching the employee’s stated career ambitions.\n- Do NOT recommend jobs that would be a poor fit, require credentials or experience the employee lacks, do not align with their stated interests/goals, or would be a step down in status, scope, or responsibility.\n- Do not exclude a job solely because compensation is unknown; treat a “step down” in compensation only when an explicit lower salary/range is provided.\n- Deduplicate by job_profile_id. Order recommendations by descending fit strength and cap at {max_recommended_jobs}. If multiple entries share the same job_profile_id, keep the best-fit one.\n- Use only data present in Inputs; do not invent or infer missing facts. If job_profile_id is missing or null, exclude it from recommendations.\n\n**Output Format**\nReturn a JSON array (RFC 8259-compliant), with an object for each recommended job containing:\n- job_id: Job’s unique identifier\n- job_profile_id: Job Profile's unique identifier\n- job_name: Job title\n- explanation: A concise, fact-rich justification citing exactly why the match is strong (skills, credentials, experience, goals, career path alignment, career progression). Historic transition data may be cited only as supporting evidence.\n\nIf no appropriate jobs are found, or if mandatory data is missing, return an empty JSON array ([]).\n\n**Inputs**\nEmployee Summary: {{$context.$triggers.REST.$input.personTalentProfileSummary}} \nRetrieved Jobs: {{$context.$nodes.RETRIEVE_CANDIDATE_CAREER_ROLES.$output}}\nHistoric Job Transition Data: {{$context.$triggers.REST.$input.historicJobTransitionData}}\nMax Recommended Jobs: {{$context.$triggers.REST.$input.maximumRecommendedJobs}} \n\n**Strict JSON Output Requirements**\nOutput only a single valid JSON array as your response.\nDo NOT include any text, comments, or Markdown before, after, or around the JSON array.\nThe output must be strictly valid RFC 8259 JSON:\n- No trailing commas\n- No comments\n- No Markdown\nThe JSON array must be the only output.\nNo additional keys beyond those specified.\nDouble-check JSON correctness before finishing."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Get Career Role Retrieval Query",
+            "returnType": "string",
+            "sourceCode": "/**\n * ============================================================================\n * Node: JavaScript  CareerRoleRetrievalQuery\n * Purpose:\n *   Builds the retrieval query text for \"Career Role Retrieval Query\" by\n *   embedding the employee's talent profile summary from the REST trigger input.\n *\n * Inputs:\n *   $context.$triggers.REST.$input.personTalentProfileSummary : String | Object\n * Outputs:\n *   return { retrievalQuery } : Object\n *     - retrievalQuery : String\n * ============================================================================\n */\n\n// --------------------------------------------------------------------------\n// 1. Load talent profile summary from REST trigger input\n// --------------------------------------------------------------------------\nconst talentProfileSummaryRaw =\n  ($context &&\n    $context.$triggers &&\n    $context.$triggers.REST &&\n    $context.$triggers.REST.$input &&\n    $context.$triggers.REST.$input.personTalentProfileSummary) ||\n  \"\";\n\n// --------------------------------------------------------------------------\n// 2. Normalize summary into a safe string\n// --------------------------------------------------------------------------\nlet talentProfileSummary = \"\";\nif (talentProfileSummaryRaw == null) {\n  talentProfileSummary = \"\";\n} else if (typeof talentProfileSummaryRaw === \"string\") {\n  talentProfileSummary = talentProfileSummaryRaw;\n} else {\n  // Best-effort stringify for non-string inputs without using helper functions\n  try {\n    talentProfileSummary = JSON.stringify(talentProfileSummaryRaw);\n  } catch (e) {\n    talentProfileSummary = \"\" + talentProfileSummaryRaw;\n  }\n}\n\n// --------------------------------------------------------------------------\n// 3. Build the retrieval query string\n// --------------------------------------------------------------------------\nconst retrievalQuery =\n  \"Find job profiles that are strong next-step opportunities for this employee. \" +\n  \"Prioritize roles that match the employee’s core skills, experience, education, and stated career goals, \" +\n  \"and represent a promotion or meaningful lateral move (not a downgrade). \" +\n  \"Include roles commonly associated with the employee’s domain and skills.\\n\\n\" +\n  \"Employee summary:\\n\" +\n  talentProfileSummary;\n\n// --------------------------------------------------------------------------\n// 4. Return output variable to workflow\n// --------------------------------------------------------------------------\nreturn retrievalQuery;"
+          },
+          "outcomes": {
+            "success": "1770335030018"
+          },
+          "code": "GET_CAREER_ROLE_RETRIEVAL_QUERY",
+          "id": "1771538496905",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {},
+      "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+      "model": "OCI_GPT_5_MINI",
+      "provider": "CERT_PREMIUM"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1770332988443",
+            "name": "maximumRecommendedJobs",
+            "scope": "JOB",
+            "type": "integer"
+          },
+          {
+            "id": "1770332932002",
+            "name": "historicJobTransitionData",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1770332872141",
+            "name": "personTalentProfileSummary",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "LEARNING",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

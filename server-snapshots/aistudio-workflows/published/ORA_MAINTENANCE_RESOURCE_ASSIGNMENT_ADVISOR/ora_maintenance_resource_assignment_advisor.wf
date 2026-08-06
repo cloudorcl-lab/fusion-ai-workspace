@@ -1,0 +1,974 @@
+{
+  "workflowId": "300000327004244",
+  "workflowCode": "ORA_MAINTENANCE_RESOURCE_ASSIGNMENT_ADVISOR",
+  "name": "Maintenance Resource Assignment Advisor",
+  "description": "Evaluates resource assignments for maintenance work orders. Matches requirements with available resources, identifies unassigned or partially assigned requirements, and provides assignment recommendations and status details for supervisors and planners.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1768113375546"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Initialize Work Order From Context",
+            "returnType": "array",
+            "sourceCode": "const appContext =\n  $context?.$app?.$OraAppContext ??\n  $context?.$triggers?.REST?.$input?.OraAppContext ??\n  null;\n\nlet OrganizationId = null;\nlet OrganizationCode = null;\nlet WorkOrderNumber = null;\nlet CsvListOfWorkOrder = null;\nlet Limit = 100;\n\n\nconst today = $context.$system.$currentDate ;\n// StartDate = today - 30 days\nconst startDateObj = new Date(today);\nstartDateObj.setDate(startDateObj.getDate() - 30);\n\n// EndDate = today + 7 days\nconst endDateObj = new Date(today);\nendDateObj.setDate(endDateObj.getDate() + 7);\n\nconst StartDate = startDateObj.toISOString().split('T')[0];\nconst EndDate = endDateObj.toISOString().split('T')[0];\n\n\nif (appContext != null) {\n  if (typeof appContext === 'object') {\n    OrganizationId = appContext?.OrganizationId ?? null;\n    OrganizationCode = appContext?.OrganizationCode ?? null;\n    WorkOrderNumber = appContext?.WorkOrderNumber ?? null;\n  } else if (typeof appContext === 'number') {\n    OrganizationId = String(appContext);\n  } else if (typeof appContext === 'string') {\n    const s = appContext.trim();\n    if (s) {\n      if (s.startsWith('{') || s.startsWith('[')) {\n        // JSON string\n        try {\n          const obj = JSON.parse(s);\n          OrganizationId = obj?.OrganizationId ?? null;\n          OrganizationCode = obj?.OrganizationCode ?? null;\n          WorkOrderNumber = obj?.WorkOrderNumber ?? null;\n        } catch {\n          // Malformed JSON -> fall through to plain handling\n          const parts = s.split(',').map(p => p.trim());\n          OrganizationId = parts[0] || s || null;\n          OrganizationCode = parts[1] || null;\n          WorkOrderNumber = parts[2] || null;\n        }\n      } else if (s.includes(',')) {\n        const parts = s.split(',').map(p => p.trim());\n        OrganizationId = parts[0] || null;\n          OrganizationCode = parts[1] || null;\n          WorkOrderNumber = parts[2] || null;\n      } else {\n        // Plain single value -> treat as OrganizationId\n        OrganizationId = s;\n      }\n    }\n  } else {\n    const s = String(appContext).trim();\n    if (s) OrganizationId = s;\n  }\n}\n\nif(WorkOrderNumber != null){\n  CsvListOfWorkOrder =`'${WorkOrderNumber}'`;\n}\n\n\nreturn { OrganizationId, OrganizationCode, WorkOrderNumber, CsvListOfWorkOrder, Limit, StartDate, EndDate };"
+          },
+          "outcomes": {
+            "success": "1769680797723"
+          },
+          "code": "INITIALIZE_WORK_ORDER_FROM_CONTEXT",
+          "id": "1768113375546",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check Query for Work Order"
+          },
+          "outcomes": {
+            "true": "1768113820260",
+            "false": "1768117614127"
+          },
+          "code": "CHECK_QUERY_FOR_WORK_ORDER",
+          "convergenceTargetId": "1768114228660",
+          "id": "1768113702844",
+          "inputs": [
+            {
+              "id": "1768113702847_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.CsvListOfWorkOrder != null && $context.$variables.CsvListOfWorkOrder !=''}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Context Type"
+          },
+          "outcomes": {
+            "Summary": "1768116729679",
+            "InitSubtitle": "1770872826314",
+            "InitDisplay": "1768116861216",
+            "AdditionalContent": "1768294099097",
+            "Query": "1768150920924",
+            "InvokeAction": "1768134541626",
+            "FillParameters": "1768406331712",
+            "InitActions": "1768411724052",
+            "InitCommunications": "1771822622681"
+          },
+          "code": "CONTEXT_TYPE",
+          "convergenceTargetId": "end",
+          "id": "1768114228660",
+          "inputs": [
+            {
+              "id": "1768114228662_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$app.$OraMessageHint ?? $context.$triggers.REST.$input.OraMessageHint}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MESSAGES_LIST"
+              ],
+              "enableActions": false,
+              "enableCommunications": true
+            }
+          },
+          "metadata": {
+            "name": "Summarize Work Order Resources"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SUMMARIZE_WORK_ORDER_RESOURCES",
+          "id": "1768116729679",
+          "inputs": [
+            {
+              "id": "1768116729681_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "- Use ONLY `noResourceArr` (Unassigned Resource requirements and no available resource instance) and `assignmentsArr` (Unassigned Resource requirements with available resource instance, already Assigned resource requirements)\n    - `assignmentsArr` : {{$context.$variables.WoOpResourceDataUnassignAssign}}\n    -  `noResourceArr` : {{$context.$variables.WoOpResourceDataNoResInstance}}.  \n- Do NOT ask for or prompt the user to provide  any value.  \n- If  both `noResourceArr` and `assignmentsArr` is null or empty, simply state:  \n  \"No resource requirement found for work order in the specified time range.\"  \n- Do not ask for confirmation or clarification.\n\nIf data is present:\n- Write a concise, natural-language summary in one or two short paragraphs (not more than two lines), not as bullet points or with section headings.\n- Make sure the output is clear, relevant, concise, and easy to understand.\n- Exclude all internal IDs or technical identifiers."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MULTIRECORD"
+              ],
+              "enableActions": true,
+              "enableCommunications": true
+            }
+          },
+          "metadata": {
+            "name": "Display Resources for Work Order"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "DISPLAY_RESOURCES_FOR_WORK_ORDER",
+          "id": "1768116861216",
+          "inputs": [
+            {
+              "id": "1768116861218_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "- Use ONLY `assignmentsArr` (Unassigned Resource requirements with available resource instance, already Assigned resource requirements)\n    - `assignmentsArr` : {{$context.$variables.WoOpResourceDataUnassignAssign}}\n- Do NOT ask for or prompt the user to provide  any value.\n\n- If  `assignmentsArr` is null or empty, simply state:  \n  - Define only one column `Information` with only 1 below row\n  - `No resource requirement found for work order in the specified time range.`\n- Under no circumstances should you ask for further clarification or request user input if no events are present. Only display the message.\n\nIf data is present:\n- Display up to first 20 rows only.\n  - The value of `AssignmentStatus` is either `UNASSIGNED` (not yet assigned, but assignment is possible) or `ASSIGNED` (already assigned).\n  - Each row contains an object `AvailableResourceInstances`, which provides information about resource instances that are assigned or can be assigned.\n- Each row is unique by `WoOperationResourceId`. Always use the correct values from the corresponding row of `WoOperationResourceId`\n- For each requirement (**primary key:** `WoOperationResourceId`), display **only one row** with the following columns:\n  - Work Order (`WorkOrderNumber`)\n    - Do NOT add this as column when context work order `{{$context.$variables.ContextWorkOrderNumber}}`  is not null or empty.\n  - Op Seq (`OperationSequenceNumber`)\n  - Resource Seq (`ResourceSequenceNumber`)\n  - Planned Start Date (`PlannedStartDate` without time component)\n  - Resource Name (`ResourceName`)\n  - UOM (`UnitOfMeasure`)\n  - Required Usage (`RequiredUsage`)\n  - Status (`AvailableResourceInstances.Status`)\n    - Display as a badge:\n      - \"ASSIGNED\" (type: success) if status is assigned\n      - \"UNASSIGNED\" (type: warning) if status is unassigned\n  - Labor Instance\n    - If AvailableResourceInstances.LaborInstanceName and AvailableResourceInstances.LaborInstanceCode are both present and different, display both.\n    - If AvailableResourceInstances.LaborInstanceName and AvailableResourceInstances.LaborInstanceCode are both present and same, display Name.\n  - For actionable insight:\n    - When `UNASSIGNED` Status requirement, where assignment is possible, generate action as below:\n      - text: Assign\n      - command: ora.Invoke(assignLaborInstance, {ActionCode: ORA_ASSIGN, WoOperationResourceId, WorkOrderId, WorkOperationId,OrganizationId, ResourceId, LaborInstanceId: AvailableResourceInstances.LaborInstanceId}\n    - When `ASSIGNED` Status requirement, where unassignment is possible, generate action as below:\n      - text: Unassign\n      - command: ora.Invoke(unassignLaborInstance, {ActionCode: ORA_UNASSIGN, WoOperationResourceId, WorkOrderId, WorkOperationId,OrganizationId, ResourceId, LaborInstanceId: AvailableResourceInstances.LaborInstanceId}\n\n-  Return the results in a `multiRecordWidget`\n- Set the overall `title` as below:\n  - If there is a context work order {{$context.$variables.ContextWorkOrderNumber}} , then `Pending Resource Assignments  —  {{$context.$variables.ContextWorkOrderNumber}}`\n  -Otherwise Pending Resource Assignments, indicating the time range from {{$context.$variables.StartDate}} to {{$context.$variables.EndDate}} in natural language, without specific dates, where current date is {{$context.$system.$currentDate}} . eg. `Resource Assignments — Past 30 Days to a Week Ahead`\n- Do not include any internal identifiers or extra commentary."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_MAINTENANC_MAINTENANCEWORKORDERRESOURCES",
+            "functionName": "oraScmMnt_searchWorkOrderResources_qParam",
+            "name": "Fetch Work Orders"
+          },
+          "outcomes": {
+            "success": "1770100741518"
+          },
+          "code": "FETCH_WORK_ORDERS",
+          "id": "1768117614127",
+          "inputs": [
+            {
+              "id": "1771229520606_1",
+              "name": "qParam",
+              "type": "string",
+              "value": "{{\"OrganizationId=\" + $context.$variables.ContextOrganizationId + \" AND (PlannedStartDate Between '\" + $context.$variables.StartDate + \"' AND '\" + $context.$variables.EndDate + \"') AND WorkMethodCode = 'MAINTENANCE'\"}}"
+            },
+            {
+              "id": "1771229520607_2",
+              "name": "pLimit",
+              "type": "integer",
+              "value": "{{$context.$variables.Limit}}"
+            },
+            {
+              "id": "1771229520607_3",
+              "name": "pOffset",
+              "type": "integer"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1768127174134"
+                  },
+                  "id": "start_1768127095955",
+                  "code": "START_1768127095955",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1768127095955",
+                  "code": "END_1768127095955",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_MAINTENANC_MAINTENANCELABORINSTANCEFORASSIGNMENTS",
+                    "functionName": "oraScmMnt_resourceInstanceAvailability_ResourceAssignments",
+                    "processJson": true,
+                    "name": "Get Resource Instance for Requirement"
+                  },
+                  "outcomes": {
+                    "success": "1768128221041"
+                  },
+                  "code": "GET_RESOURCE_INSTANCE_FOR_REQUIREMENT",
+                  "id": "1768127174134",
+                  "inputs": [
+                    {
+                      "id": "1768127207741_1",
+                      "name": "BindResourceId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.FOR_EACH_RESOURCE_REQUIREMENT.$currentItem.ResourceId}}"
+                    },
+                    {
+                      "id": "1768127207741_2",
+                      "name": "BindStartTime",
+                      "type": "string",
+                      "value": "{{'$context.$nodes.FOR_EACH_RESOURCE_REQUIREMENT.$currentItem.PlannedStartDate'}}"
+                    },
+                    {
+                      "id": "1768127207742_3",
+                      "name": "BindWorkOrderId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.FOR_EACH_RESOURCE_REQUIREMENT.$currentItem.WorkOrderId}}"
+                    },
+                    {
+                      "id": "1768127207743_4",
+                      "name": "BindEndTime",
+                      "type": "string",
+                      "value": "{{'$context.$nodes.FOR_EACH_RESOURCE_REQUIREMENT.$currentItem.PlannedCompletionDate'}}"
+                    },
+                    {
+                      "id": "1768127207743_5",
+                      "name": "BindOrganizationId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.FOR_EACH_RESOURCE_REQUIREMENT.$currentItem.OrganizationId}}"
+                    }
+                  ],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"LaborInstanceCode\": { \"type\": \"string\" },\n      \"LaborInstanceId\": { \"type\": \"number\" },\n      \"LaborInstanceName\": { \"type\": \"string\" },\n      \"OrganizationId\": { \"type\": \"number\" },\n      \"PartyId\": { \"type\": \"number\" },\n      \"ResourceId\": { \"type\": \"number\" },\n      \"PersonName\": { \"type\": \"string\" },\n      \"CurrentlyAssignedFlag\": { \"type\": \"boolean\" },\n      \"AssignedToWorkOrderFlag\": { \"type\": \"boolean\" },\n      \"QualifiedFlag\": { \"type\": \"boolean\" },\n      \"AssignedStartDateTime\": { \"type\": [\"string\", \"null\"], \"format\": \"date-time\" },\n      \"AssignedEndDateTime\": { \"type\": [\"string\", \"null\"], \"format\": \"date-time\" },\n      \"NextAssignedStartDateTime\": { \"type\": [\"string\", \"null\"], \"format\": \"date-time\" },\n      \"AvailableForAssignmentFlag\": { \"type\": \"boolean\" },\n      \"PersonId\": { \"type\": \"string\" }\n    }\n  }\n}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "name": "Return Requirement with Available Instances",
+                    "returnType": "object",
+                    "sourceCode": "const availableResourceInstances = $context.$nodes.FOR_EACH_RESOURCE_REQUIREMENT.GET_RESOURCE_INSTANCE_FOR_REQUIREMENT.$output?.items;\n\n const list = Array.isArray(availableResourceInstances) ? availableResourceInstances : [];\n let AssignmentStatus = 'NO_RESOURCE_INSTANCE';\n let rec = {Status: 'NO_RESOURCE_INSTANCE'};\n\nif (list.length > 0) {\n  // 1) Assigned takes priority\n  const assigned = list.find(r => r?.AssignedToWorkOrderFlag === true);\n  if (assigned) {\n    AssignmentStatus = 'ASSIGNED';\n    rec =  {\n      LaborInstanceCode: assigned.LaborInstanceCode ?? null,\n      LaborInstanceId: assigned.LaborInstanceId ?? null,\n      LaborInstanceName: assigned.LaborInstanceName ?? null,\n      PersonName: assigned.PersonName ?? null,\n      AssignedToWorkOrderFlag: assigned.AssignedToWorkOrderFlag,\n      QualifiedFlag: assigned.QualifiedFlag,\n      AvailableForAssignmentFlag: assigned.AvailableForAssignmentFlag,\n      Status: 'ASSIGNED',\n    };\n  }\n else{\n  const best = list.find(r => r?.QualifiedFlag === true && r?.AvailableForAssignmentFlag === true)\n            ?? list.find(r => r?.QualifiedFlag === true)\n            ?? list[0];\n  AssignmentStatus = 'UNASSIGNED';\n  rec =  {\n    LaborInstanceCode: best.LaborInstanceCode ?? null,\n    LaborInstanceId: best.LaborInstanceId ?? null,\n    LaborInstanceName: best.LaborInstanceName ?? null,\n    PersonName: best.PersonName ?? null,\n    AssignedToWorkOrderFlag: best.AssignedToWorkOrderFlag,\n    QualifiedFlag: best.QualifiedFlag,\n    AvailableForAssignmentFlag: best.AvailableForAssignmentFlag,\n    Status: 'UNASSIGNED',\n  };\n }\n}\n$context.$variables.WorkOrderOperResourceData[ $context.$nodes.FOR_EACH_RESOURCE_REQUIREMENT.$currentItemIndex ].AssignmentStatus = AssignmentStatus;\n$context.$variables.WorkOrderOperResourceData[ $context.$nodes.FOR_EACH_RESOURCE_REQUIREMENT.$currentItemIndex ].AvailableResourceInstances = rec;\n\nreturn $context.$variables.WorkOrderOperResourceData[ $context.$nodes.FOR_EACH_RESOURCE_REQUIREMENT.$currentItemIndex ];"
+                  },
+                  "outcomes": {
+                    "success": "end_1768127095955"
+                  },
+                  "code": "RETURN_REQUIREMENT_WITH_AVAILABLE_INSTANCES",
+                  "id": "1768128221041",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                }
+              ],
+              "rootNode": "start_1768127095955"
+            },
+            "loopType": "PARALLEL",
+            "name": "For Each Resource Requirement"
+          },
+          "outcomes": {
+            "success": "1771508417706"
+          },
+          "code": "FOR_EACH_RESOURCE_REQUIREMENT",
+          "id": "1768127095955",
+          "inputs": [
+            {
+              "id": "1768127095956_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$variables.WorkOrderOperResourceData}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "name": "Set Work Order Resources Data"
+          },
+          "outcomes": {
+            "success": "1768114228660"
+          },
+          "code": "SET_WORK_ORDER_RESOURCES_DATA",
+          "id": "1768131701852",
+          "inputs": [
+            {
+              "id": "1771590597334",
+              "name": "WoOpResourceDataUnassignAssign",
+              "scope": "JOB",
+              "type": "array",
+              "value": "{{$context.$nodes.UNWRAP_THE_LOOP_OUTPUT.$output.result.assignmentsArr}}"
+            },
+            {
+              "id": "1768131720043",
+              "name": "WoOpResourceDataNoResInstance",
+              "scope": "JOB",
+              "type": "array",
+              "value": "{{$context.$nodes.UNWRAP_THE_LOOP_OUTPUT.$output.result.noResourceArr}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Init Action",
+            "returnType": "object",
+            "sourceCode": "const rawInput =\n  $context?.$app?.$OraAction ??\n  $context?.$triggers?.REST?.$input?.OraAction ??\n  null;\n\nlet ActionCode = null,\n    WorkOrderId = null,\n    WorkOperationId = null,\n    WoOperationResourceId = null,\n    OrganizationId = null,\n    ResourceId = null,\n    LaborInstanceId = null;\n\nif (rawInput != null) {\n  try {\n    const parsed =\n      typeof rawInput === 'object' ? rawInput : JSON.parse(String(rawInput));\n\n    ActionCode = parsed?.ActionCode ?? null;\n    WorkOrderId = parsed?.WorkOrderId ?? null;\n    WorkOperationId = parsed?.WorkOperationId ?? null;\n    WoOperationResourceId = parsed?.WoOperationResourceId ?? null;\n    OrganizationId = parsed?.OrganizationId ?? null;\n    ResourceId = parsed?.ResourceId ?? null;\n    LaborInstanceId = parsed?.LaborInstanceId ?? null;\n\n  } catch {\n    // Fallback: comma-separated values\n    const parts = String(rawInput).split(',').map(s => s.trim());\n    [ActionCode, WorkOrderId, WorkOperationId, WoOperationResourceId, OrganizationId, ResourceId, LaborInstanceId] =\n      [parts[0] ?? null, parts[1] ?? null, parts[2] ?? null, parts[3] ?? null, parts[4] ?? null, parts[5] ?? null, parts[6] ?? null];\n  }\n}\n\nconst retValue = {\n  ActionCode,\n  WorkOrderId,\n  WorkOperationId,\n  WoOperationResourceId,\n  OrganizationId,\n  ResourceId,\n  LaborInstanceId\n};\n\nreturn retValue;"
+          },
+          "outcomes": {
+            "success": "1768137606384"
+          },
+          "code": "INIT_ACTION",
+          "id": "1768134541626",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_MAINTENANCE_WO",
+            "functionName": "oraScmMnt_manageResourceAssignment_Assign_Unassign",
+            "processJson": true,
+            "name": "Assign Resource Requirements"
+          },
+          "outcomes": {
+            "success": "1768208419407"
+          },
+          "code": "ASSIGN_RESOURCE_REQUIREMENTS",
+          "id": "1768137606384",
+          "inputs": [
+            {
+              "id": "1775815559733_1",
+              "name": "action",
+              "type": "string",
+              "value": "{{$context.$nodes.INIT_ACTION.$output.result.ActionCode ?? 'ORA_ASSIGN'}}"
+            },
+            {
+              "id": "1775815559733_2",
+              "name": "WorkOrderId",
+              "type": "string",
+              "value": "{{$context.$nodes.INIT_ACTION.$output.result.WorkOrderId}}"
+            },
+            {
+              "id": "1775815559734_3",
+              "name": "WorkOrderOperationId",
+              "type": "string",
+              "value": "{{$context.$nodes.INIT_ACTION.$output.result.WorkOperationId}}"
+            },
+            {
+              "id": "1775815559735_4",
+              "name": "WorkOrderOperationResourceId",
+              "type": "string",
+              "value": "{{$context.$nodes.INIT_ACTION.$output.result.WoOperationResourceId}}"
+            },
+            {
+              "id": "1775815559736_5",
+              "name": "OrganizationId",
+              "type": "string",
+              "value": "{{$context.$nodes.INIT_ACTION.$output.result.OrganizationId}}"
+            },
+            {
+              "id": "1775815559737_6",
+              "name": "LaborInstanceId",
+              "type": "string",
+              "value": "{{$context.$nodes.INIT_ACTION.$output.result.LaborInstanceId}}"
+            },
+            {
+              "id": "1775815559738_7",
+              "name": "BlockAssignmentIdsArray",
+              "type": "string"
+            },
+            {
+              "id": "1775815559739_8",
+              "name": "UnassignAll",
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Query"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "QUERY",
+          "id": "1768150920924",
+          "inputs": [
+            {
+              "id": "1768150920925_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "### Purpose and Background\n\nThis workflow agent supports supervisors and planners in assigning the right labor resources to maintenance work order operations. Its goal is to identify both unassigned requirements where labor is available, as well as unfulfilled requirements with no current resource instance, helping prioritize and resolve gaps to ensure timely and effective work order execution.\n\n---\n\n### Maintenance Management Overview\n\nMaintenance activities are planned and executed through work orders created for assets in need of service. Each work order includes one or more operations, and each operation may require specific labor and materials. Execution takes place within the context of an organization, and resource assignment is critical for minimizing delays and ensuring operational reliability.\n\n---\n\n#### Key Terms  \n- **Work Order:** (also: work order number, WO, wo num, wo name, wo#) — A maintenance document specifying activities or repairs for an asset.\n- **Asset:** (Asset Number, asset#, assetnum, etc.) — Equipment or infrastructure maintained throughout its lifecycle.\n- **Operation:** (operation, OP, op, step, steps) — The steps or tasks within a work order, each with required resources.\n- **Organization:** (Organization Code, Org, org code, etc.) — The plant, department, or business unit where assets are managed.\n\n---\n\n### Data Provided\n\n- **Resource Assignment Data:**  \n  - `{{$context.$variables.WoOpResourceDataUnassignAssign}}`: Lists unassigned requirements where a resource instance is available and already assigned requirements.\n  - `{{$context.$variables.WoOpResourceDataNoResInstance}}`: Lists unassigned requirements with no available resource instance.\n- **Chat History:**  \n  - `{{$context.$system.$chatHistory}}`\n\n---\n\n### User Task\n\n- Use only the information above to answer the user's question from:  \n  `{{$context.$system.$inputMessage}}`\n- Do **not** infer or fabricate data.\n\n---\n\n### Output and Response Rules\n\n- Answer based strictly on the provided data and the user’s query.\n- Do **not** include or display any internal IDs or technical identifiers.\n- Do **not** suggest further actions, next steps, or speculate on missing data.\n- When no relevant data or results are found matching the user's query, explicitly state that, including the applicable period:  \n  - \"This data is from a period from {{$context.$variables.StartDate}} to {{$context.$variables.EndDate}}.\"\n  - If provided work order `{{$context.$variables.ContextWorkOrderNumber}}` is not empty,\n    -If the user asks about a different work order than `{{$context.$variables.ContextWorkOrderNumber}}` , clearly state this app only works for the specific work order in context.\n    - When informing the user that no relevant data was found, advise them to provide the exact Resource Code (such as Res123) if their query is about resource-specific assignments.\n- If the provided work order `{{$context.$variables.ContextWorkOrderNumber}}` is empty or not specified:\n  - At the end of your response, add a suggestion for the user to provide a specific work order number in order to receive more detailed information.\n- Only answer the specific user query from inputMessage.\n\n---"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Response for Assignments"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RESPONSE_FOR_ASSIGNMENTS",
+          "id": "1768208419407",
+          "inputs": [
+            {
+              "id": "1768208419408_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Success Case, we have result populated in  {{$context.$nodes.ASSIGN_RESOURCE_REQUIREMENTS.$output}}\n\nReturn the output in a clear, concise message."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MULTIRECORD"
+              ],
+              "enableActions": true,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "name": "Additional Context"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ADDITIONAL_CONTEXT",
+          "id": "1768294099097",
+          "inputs": [
+            {
+              "id": "1768294099099_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "- Use ONLY `noResourceArr` (Unassigned Resource requirements and no available resource instance)\n    -  `noResourceArr` : {{$context.$variables.WoOpResourceDataNoResInstance}}.  \n- Do NOT ask for or prompt the user to provide  any value.  \n\n- If  `noResourceArr` is null or empty, simply state:  \n  - Define only one column `Information` with only 1 below row\n  - `No unfulfilled resource requirement, without available instance, found for work order in the specified time range.`\n- Under no circumstances should you ask for further clarification or request user input if no events are present. Only display the message.\n\nIf data is present:\n- Show up to 20 most relevant rows.\n- For each requirement (**primary key:** `WoOperationResourceId`), display **only one row** in the `multiRecordWidget` with the following columns:\n  - Work Order (`WorkOrderNumber`)\n  - Op Seq (`OperationSequenceNumber`)\n  - Resource Seq Number (`ResourceSequenceNumber`)\n  - Resource Name (`ResourceName`)\n  - Status\n    - Display as a badge: type: \"badge\", text: \"Unassigned\", priority: \"alert\"\n- Ensure each row is unique by `WoOperationResourceId`.\n- Do not output more than one row per requirement.\n\n-  Return the results in a `multiRecordWidget`\n- Set the overall `title` : `Resource Gaps — Unfillable Assignments`\n- Do not include any internal identifiers or extra commentary."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [],
+              "enableActions": false,
+              "enableCommunications": true
+            }
+          },
+          "metadata": {
+            "name": "Fill Params"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FILL_PARAMS",
+          "id": "1768406331712",
+          "inputs": [
+            {
+              "id": "1768406331714_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "- Use ONLY `noResourceArr` (Unassigned Resource requirements and no available resource instance) and `assignmentsArr` (Unassigned Resource requirements with available resource instance, already Assigned resource requirements)\n    - `assignmentsArr` : {{$context.$variables.WoOpResourceDataUnassignAssign}}\n    -  `noResourceArr` : {{$context.$variables.WoOpResourceDataNoResInstance}}.  \n\nFor each resource requirement:\n- Display **only one row** per requirement.\n   - `Unassigned` : AssignmentStatus is UNASSIGNED. Get from `assignmentsArr`\n   -  `Assigned` : AssignmentStatus is ASSIGNED. Get from `assignmentsArr`\n   - `At Risk`: AssignmentStatus is NO_RESOURCE_INSTANCE. Get from `noResourceArr`\n\nOrganize the output as follows:\n- **At Risk** section: Include only `At Risk` requirements \n- **Missing Resource Assignments** section: Include only `Unassigned` requirements .\n- **Resource Assignments** section: Include only `Assigned` requirements \n\n- If a section has no matching records, pass an empty list or set the value to “None.”\n\nFill the appropriate parameters in `{{$context.$app.$OraCommParamsToFill}}`."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [],
+              "enableActions": true,
+              "enableCommunications": true
+            }
+          },
+          "metadata": {
+            "name": "Init Actions"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "INIT_ACTIONS",
+          "id": "1768411724052",
+          "inputs": [
+            {
+              "id": "1768411724053_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "- Use ONLY `assignmentsArr` (Unassigned Resource requirements with available resource instance, already Assigned resource requirements)\n    - `assignmentsArr` : {{$context.$variables.WoOpResourceDataUnassignAssign}}\n- Do NOT ask for or prompt the user to provide  any value.  \n- If  `assignmentsArr` is null or empty, , do not generate or show any Priority Action.\n\n**Instructions:**\n\n- From all resource requirements in the data:\n    -  Consider **only** `Unassigned` requirements : AssignmentStatus is UNASSIGNED \n    - Among these, select the single most important or urgent requirement (for example: pick the one with earliest `PlannedStartDate`, highest work order priority, or using a logical top-priority indicator from the dataset).\n    - Generate a single, high-priority action for assigning the top matching resource instance.\n    - Get `LaborInstanceId` value from AvailableResourceInstances.LaborInstanceId for that row.\n- For this action:\n    - `shortDescription`: Briefly recommend assignment, mentioning the Work Order Number, Op Seq - Resource Seq, and labor resource (person) name. Do not show any internal identifiers.\n    - `actionText`: \"Assign Resource\"\n    - `followUpCommand`: Output the payload as an inline JSON object (not a variable), for example:  \n      `ora.Invoke(assignLaborInstance, {\"ActionCode\": \"ORA_ASSIGN\", \"WorkOrderId\": \"...\", \"WorkOperationId\": \"...\", \"WoOperationResourceId\": \"...\", \"OrganizationId\": \"...\", \"ResourceId\": \"...\", \"LaborInstanceId\": \"...\"})`\n    - `priority`: true\n\n- If no unassigned requirement has an available, qualified resource instance, **do not output any Priority Action**.\n\n**Output only the single, top priority action object, and nothing else.**"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Set Default Variables"
+          },
+          "outcomes": {
+            "success": "1771228346681"
+          },
+          "code": "SET_DEFAULT_VARIABLES",
+          "id": "1769680797723",
+          "inputs": [
+            {
+              "id": "1771851475727",
+              "name": "EndDate",
+              "scope": "JOB",
+              "type": "date",
+              "value": "{{$context.$nodes.INITIALIZE_WORK_ORDER_FROM_CONTEXT.$output.result.EndDate}}"
+            },
+            {
+              "id": "1771851427637",
+              "name": "StartDate",
+              "scope": "JOB",
+              "type": "date",
+              "value": "{{$context.$nodes.INITIALIZE_WORK_ORDER_FROM_CONTEXT.$output.result.StartDate}}"
+            },
+            {
+              "id": "1771228687823",
+              "name": "CsvListOfWorkOrder",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.INITIALIZE_WORK_ORDER_FROM_CONTEXT.$output.result.CsvListOfWorkOrder}}"
+            },
+            {
+              "id": "1770897961303",
+              "name": "Limit",
+              "scope": "JOB",
+              "type": "integer",
+              "value": "{{$context.$nodes.INITIALIZE_WORK_ORDER_FROM_CONTEXT.$output.result.Limit}}"
+            },
+            {
+              "id": "1770888123473",
+              "name": "ContextOrganizationCode",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.INITIALIZE_WORK_ORDER_FROM_CONTEXT.$output.result.OrganizationCode}}"
+            },
+            {
+              "id": "1770305223583",
+              "name": "ContextWorkOrderNumber",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.INITIALIZE_WORK_ORDER_FROM_CONTEXT.$output.result.WorkOrderNumber}}"
+            },
+            {
+              "id": "1769680814147",
+              "name": "ContextOrganizationId",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.INITIALIZE_WORK_ORDER_FROM_CONTEXT.$output.result.OrganizationId}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Set Resource Data from WO"
+          },
+          "outcomes": {
+            "success": "1768127095955"
+          },
+          "code": "SET_RESOURCE_DATA_FROM_WO",
+          "convergenceTargetId": "1768118437406",
+          "id": "1768116012526",
+          "inputs": [
+            {
+              "id": "1768116380395",
+              "name": "WorkOrderOperResourceData",
+              "scope": "JOB",
+              "type": "array",
+              "value": "{{$context.$nodes.GET_RESOURCE_REQUIREMENTS_FOR_WORK_ORDERS.$output.items}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_MAINTENANC_MAINTENANCEWORKORDERRESOURCES",
+            "functionName": "oraScmMnt_searchWorkOrderResources_findByListOfWorkOrders",
+            "name": "Get Resource Requirements for Work Orders"
+          },
+          "outcomes": {
+            "success": "1768116012526"
+          },
+          "code": "GET_RESOURCE_REQUIREMENTS_FOR_WORK_ORDERS",
+          "convergenceTargetId": "1768116012526",
+          "id": "1768113820260",
+          "inputs": [
+            {
+              "id": "1771229274811_1",
+              "name": "ListOfWorkOrderNumbers",
+              "type": "string",
+              "value": "{{$context.$variables.CsvListOfWorkOrder}}"
+            },
+            {
+              "id": "1771229274812_2",
+              "name": "pLimit",
+              "type": "integer",
+              "value": "{{$context.$variables.Limit}}"
+            },
+            {
+              "id": "1771229274812_3",
+              "name": "pOffset",
+              "type": "integer"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Set Resource Data"
+          },
+          "outcomes": {
+            "success": "1768127095955"
+          },
+          "code": "SET_RESOURCE_DATA",
+          "id": "1770100741518",
+          "inputs": [
+            {
+              "id": "1770877832858",
+              "name": "ContextOrganizationCode",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{ $context.$variables.ContextOrganizationId?$context.$nodes.FETCH_WORK_ORDERS.$output?.items?.[0]?.OrganizationCode:null}}"
+            },
+            {
+              "id": "1770100752456",
+              "name": "WorkOrderOperResourceData",
+              "scope": "JOB",
+              "type": "array",
+              "value": "{{$context.$nodes.FETCH_WORK_ORDERS.$output?.items}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "InitSubtitles"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "INITSUBTITLES",
+          "id": "1770872826314",
+          "inputs": [
+            {
+              "id": "1770872826316_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Generate a subtitle string based on the following rules, using the values for Organization Code (`{{$context.$variables.ContextOrganizationCode}}`) and Work Order Number (`{{$context.$variables.ContextWorkOrderNumber}}`):\n\n- If both organization code and work order number are present, not null, not the string \"null\", and not empty, use:  \n  `Resource Assignments | Organization: {{$context.$variables.ContextOrganizationCode}} | Work Order: {{$context.$variables.ContextWorkOrderNumber}}`\n- If only organization code is present, not null, not the string \"null\", and not empty, use:  \n  `Resource Assignments | Organization: {{$context.$variables.ContextOrganizationCode}}`\n- If only work order number is present, not null, not the string \"null\", and not empty, use:  \n  `Resource Assignments | Work Order: {{$context.$variables.ContextWorkOrderNumber}}`\n- Otherwise, use:  \n  `Resource Assignments`\n\nReturn only the generated subtitle string. Do not return literal strings \"null\", null, empty values, or curly braces in the subtitle string."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "User Query"
+          },
+          "outcomes": {
+            "true": "1771228376583",
+            "false": "add_false_1771228346681"
+          },
+          "code": "USER_QUERY",
+          "convergenceTargetId": "1768113702844",
+          "id": "1771228346681",
+          "inputs": [
+            {
+              "id": "1771228346682_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{($context.$app.$OraMessageHint ?? $context.$triggers.REST.$input.OraMessageHint) === 'Query'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1768113702844"
+          },
+          "id": "add_false_1771228346681",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Extract Work Order Data from User Query"
+          },
+          "outcomes": {
+            "success": "1771228566549"
+          },
+          "code": "EXTRACT_WORK_ORDER_DATA_FROM_USER_QUERY",
+          "id": "1771228376583",
+          "inputs": [
+            {
+              "id": "1771228376585_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Extract data from the user query: `{{$context.$system.$inputMessage}}` and build a valid Oracle REST Query Language (RQL) syntax  `q` parameter (`pQparam`) for searching work orders, which can be directly used in a REST call.\n\n**Build `pQparam` as follows:**\n- If `OrganizationId` having value (`{{$context.$variables.ContextOrganizationId}}`) is not empty, MUST always include the below clause:  \n  `OrganizationId = {{$context.$variables.ContextOrganizationId}}`\n- If `WorkOrderNumber` having value (` {{$context.$variables.ContextWorkOrderNumber}}`) is not empty, MUST include the clause:  \n  `WorkOrderNumber = '{{$context.$variables.ContextWorkOrderNumber}}'`\n- If `WorkOrderNumber` is empty, include below `PlannedStartDate` clause:\n  `(PlannedStartDate BETWEEN '{{$context.$variables.StartDate}}' AND '{{$context.$variables.EndDate}}' )`\n- For BETWEEN clauses, always use parentheses and dates in 'YYYY-MM-DD' format. \n- The current date `CurrentDate` value is `{{$context.$system.$currentDate}}`. \n- Extract relevant parameter values and construct `pQparam` using valid Oracle REST Query Language (RQL) syntax.\n\n**Important Constraints:**\n- When both `OrganizationId` and `WorkOrderNumber` are available, join with `AND`, and append any additional search criteria requested by the user after those mandatory clauses.\n- For questions about unassigned resources or missing assignments, **never** include assignment or resource fulfillment logic in the q param—only use fields/filters natively supported by the WorkOrder REST API.\n  - Business logic for unassigned or unfulfilled resource instances will be applied later and never in this q parameter.\n- Do **not** include explanations or errors. **Always return a valid query string.**\n\n**Examples:**  \n1) Get requirements gaps (Both `OrganizationId` and `WorkOrderNumber` are not empty))\n`pQparam` = \"OrganizationId = 123456 AND WorkOrderNumber ='JKJWO1'\"\n2) Get all labor information for work order that starts with JKJ WO 001 and having resource requirement for  I-Inspector (Only `OrganizationId` is not empty)\n`pQparam` = \"OrganizationId = 123456 AND WorkOrderNumber like UPPER('JKJ WO 001%25')  AND WorkOrderOperation.WorkOrderOperationResource.ResourceCode = 'I-Inspector' AND (PlannedStartDate BETWEEN '2025-09-02' AND '2025-03-18')\"\n3) Get information on resource I-Inspector for work orders in last 1 month (Only `WorkOrderNumber` is not empty)\n`pQparam` = \"WorkOrderNumber ='JKJ WO 001' AND WorkOrderOperation.WorkOrderOperationResource.ResourceCode = 'I-Inspector'\"\n4) Example for a complex pQparam\n`pQparam` = \"UPPER(WorkOrderNumber) like UPPER('aBc%25') AND (AssetNumber = 'Asset_001' OR AssetNumber = 'Asset_003' ) AND WorkOrderDescription like 'ABC Wo%25' AND WorkOrderTypeCode != 'CORRECTIVE' AND WorkOrderSubTypeCode=UPPER('ora_planned') AND WorkOrderStatusCode IN ('ORA_RELEASED','ORA_UNRELEASED') AND (PlannedStartDate BETWEEN '2025-03-07' and '2026-06-24' ) AND WorkOrderOperation.OperationSequenceNumber = 10 AND WorkOrderOperation.WorkOrderOperationResource.ResourceCode IS NULL AND attachments.DocumentPreviewURL IS NOT NULL AND WorkOrderOperation.WorkOrderOperationMaterial.InventoryItemNumber = 'm-assy-srl-p'\"\n\nReturn **only** the constructed `pQparam` string, and nothing else."
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"pQparam\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_MAINTENANCE_WO",
+            "functionName": "oraScmMnt_getWorkOrderByQparam",
+            "name": "Get Work Orders From User Query"
+          },
+          "outcomes": {
+            "success": "1771228626612"
+          },
+          "code": "GET_WORK_ORDERS_FROM_USER_QUERY",
+          "id": "1771228566549",
+          "inputs": [
+            {
+              "id": "1771228581254_1",
+              "name": "pQparam",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_WORK_ORDER_DATA_FROM_USER_QUERY.$output.pQparam}}"
+            },
+            {
+              "id": "1771228581255_2",
+              "name": "pLimit",
+              "type": "integer"
+            },
+            {
+              "id": "1771228581256_3",
+              "name": "pOffset",
+              "type": "integer"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Set WO List From User Query"
+          },
+          "outcomes": {
+            "success": "1768113702844"
+          },
+          "code": "SET_WO_LIST_FROM_USER_QUERY",
+          "id": "1771228626612",
+          "inputs": [
+            {
+              "id": "1771228630033",
+              "name": "CsvListOfWorkOrder",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_WORK_ORDERS_FROM_USER_QUERY.$output?.items && $context.$nodes.GET_WORK_ORDERS_FROM_USER_QUERY.$output.items.length > 0 ? $context.$nodes.GET_WORK_ORDERS_FROM_USER_QUERY.$output.items.map(item => \"'\" + item.WorkOrderNumber + \"'\").join(\",\")  : \"'_'\"}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Unwrap the Loop Output",
+            "returnType": "object",
+            "sourceCode": "const raw = $context?.$nodes?.FOR_EACH_RESOURCE_REQUIREMENT?.$output ?? [];\n\nconst objectsArr = (Array.isArray(raw) ? raw : [])\n  .map(s => { try { return JSON.parse(String(s)); } catch { return null; } })\n  .map(o => o?.result)\n  .filter(r => r != null);\n\n\nconst assignmentsArr = objectsArr\n  .filter(o => o?.AssignmentStatus === 'UNASSIGNED' || o?.AssignmentStatus === 'ASSIGNED')\n  .sort((a, b) => {\n    const rank = s => (s === 'UNASSIGNED' ? 0 : s === 'ASSIGNED' ? 1 : 2);\n    return rank(a?.AssignmentStatus) - rank(b?.AssignmentStatus);\n  });\n\nconst noResourceArr = objectsArr\n  .filter(o => o?.AssignmentStatus === 'NO_RESOURCE_INSTANCE');\n\nreturn { assignmentsArr, noResourceArr };"
+          },
+          "outcomes": {
+            "success": "1768131701852"
+          },
+          "code": "UNWRAP_THE_LOOP_OUTPUT",
+          "id": "1771508417706",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [],
+              "enableActions": false,
+              "enableCommunications": true
+            }
+          },
+          "metadata": {
+            "name": "Suggested Communication"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SUGGESTED_COMMUNICATION",
+          "id": "1771822622681",
+          "inputs": [
+            {
+              "id": "1771822622682_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "- Use `assignmentsArr` (Unassigned Resource requirements with available resource instance, already Assigned resource requirements)\n    - `assignmentsArr` : {{$context.$variables.WoOpResourceDataUnassignAssign}}\n- Use `noResourceArr` (Unassigned Resource requirements and no available resource instance)\n    -  `noResourceArr` : {{$context.$variables.WoOpResourceDataNoResInstance}}.  \n- Do NOT ask for or prompt the user to provide  any value.\n\n-Generate an automated email highlighting following:\n- `title`: Resource Fulfillment Summary` \n- `description`: Provide a one-sentence summary of the findings.\n- `actionText`: Send\n- Email content should include\n  - Recommend that the recipient reviews these resource requirements and resources instances availability, and take appropriate action. \n  - Include Work Order Number, Operation Seq Num, Resoure Seq Num, Resource name, Labor Resource Instance Name/Person Name and other appropriate values in the email.\n   - At Risk requirements from `noResourceArr`, if available.\n   - Unfulfilled resource requirement from `assignmentsArr`\n   - Assigned resource requirement from `assignmentsArr`\n- Write the email content using rich text and include appropriate HTML tags for formatting (such as `<b>`, `<ul>`, `<li>`, etc.).\n\nReturn only the completed email with HTML formatting, ready to send."
+            }
+          ],
+          "type": "LLM"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1771850728976",
+          "name": "EndDate",
+          "scope": "JOB",
+          "type": "date"
+        },
+        {
+          "id": "1771850713659",
+          "name": "StartDate",
+          "scope": "JOB",
+          "type": "date"
+        },
+        {
+          "id": "1771590550993",
+          "name": "WoOpResourceDataNoResInstance",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1771590519307",
+          "name": "WoOpResourceDataUnassignAssign",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1770897912013",
+          "name": "Limit",
+          "scope": "JOB",
+          "type": "integer"
+        },
+        {
+          "id": "1770874854749",
+          "name": "ContextOrganizationCode",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1770305171463",
+          "name": "ContextWorkOrderNumber",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1768293033895",
+          "name": "ContextOrganizationId",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1768117842622",
+          "name": "CsvListOfWorkOrder",
+          "scope": "JOB",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1768114211390",
+            "name": "OraMessageHint",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1768114201661",
+            "name": "OraAction",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1768114191985",
+            "name": "OraAppContext",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1768114182062",
+            "name": "InvokeAction",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "SCM",
+  "product": "MAINTENANCE",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": true,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"2\""
+  }
+}

@@ -1,0 +1,234 @@
+{
+  "workflowId": "300000331062506",
+  "workflowCode": "ORA_HCM_HRT_PROFILE_MATCH_ANALYST",
+  "name": "Profile Match Analyst",
+  "description": "Evaluates how well an employee's talent profile aligns with a career role. This assistant compares the skills, competencies, and experience of the employee against those required for the role and identifies specific gaps. It also estimates the effort needed to close them and recommends targeted actions to improve fit and role readiness.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1765201695886"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Evaluate Match"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "EVALUATE_MATCH",
+          "id": "1764159217554",
+          "inputs": [
+            {
+              "id": "1764159217555_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "System Role:\nYou are a Senior Talent Coach. Your goal is to evaluate employee fit based on a comparison between a Job Profile and an Employee Profile, and output a specific JSON object. Do not infer missing data. Use only the provided inputs.\n\n---\n\nINPUTS:\n\n1. <general_profile_comparison>\n{{$context.$nodes.COMPARE_PROFILES_EXCEPT_SKILLS.$output}}\n\n2. <skill_profile_comparison>\n{{$context.$nodes.COMPARE_SKILLS.$output}}\n\n3. <favorite_status>: {{$context.$triggers.REST.$input.favoriteRoleStatus}} (Boolean)\n\n---\n\nIMPORTANT DATA PRE-PROCESSING:\n\n• You must read from BOTH Input 1 and Input 2 to form a complete picture.  \n• Ignore empty arrays. If a section is empty in one input, check the other before determining absence.  \n• Treat publicSkills (Input 2), competencyItems (Input 1), and certificationItems (Input 1) as priority evaluation areas.  \n• Do not double count the same logical requirement across inputs.  \n\n---\n\nSTEP 1: ANALYZE GAPS & MATCHES\n\nEvaluate fit strictly using the following rules. Do not infer beyond provided data.\n\nA MATCH is defined as:\n• In Input 1: TargetMetFlag is true.  \n• In Input 2: TargetMetStatus does NOT equal ORA_SKILL_NOT_PRESENT and does NOT equal ORA_DEVELOPING.\n\nA GAP is defined as:\n\n1. Missing Requirement:\n• TargetMetFlag is false OR TargetMetStatus equals ORA_SKILL_NOT_PRESENT.\n• OR TargetMetStatus equals ORA_DEVELOPING *if* numeric ratings are missing.\n\n2. Proficiency GAP:\n• TargetMetFlag is false OR TargetMetStatus equals ORA_DEVELOPING,  \nAND PersonNumericRating exists,  \nAND PersonNumericRating is lower than MinimumNumericRating.\n\nIf numeric ratings are not present, do not infer a Proficiency Gap. Classify strictly as Missing Requirement.\n\n---\n\nSTEP 2: CALCULATE MATCH SCORE (DETAILED WORKINGS – NO VARIANCE)\n\nYou MUST follow this exact arithmetic sequence.\n\n1. Identify All Relevant Items:\nExhaustively scan: competencySections, certificationSections, languageSections, educationSections, publicSkills.\n\nApply weights exactly as follows. \n**PRIORITY RULE:** If an item fits multiple categories, apply ONLY the highest weight (e.g., a \"Required\" \"Degree\" is High Weight, not Medium).\n\nHigh Weight (10 points per item):\n• Any item where Required = \"Y\"\n\nMedium Weight (5 points per item):\n• Education, Degrees, Job History (if not explicitly \"Required\")\n\nLow Weight (2 points per item):\n• Non-required items  \n• Memberships, Honors, Location\n\n2. Sum Total Possible Points (Denominator).\n\n3. Calculate Earned Points (Numerator):\n• Full MATCH → 100% of item weight  \n• Proficiency GAP → 30% of item weight  \n• Missing Requirement → 0%  \n\n4. Final Calculation:\n(Sum of Earned Points / Sum of Possible Points) × 100  \n• Round to two decimal places internally.  \n• Round to nearest whole number for final output.  \n\nIf Total Possible Points equals 0, set Score to 0 and matching_level to LIMITED_MATCH.\n\n---\n\nSTEP 3: DETERMINE MATCHING LEVEL\n\nMap the final rounded score to exactly one:\n• GOOD_MATCH → Score > 85%  \n• PARTIAL_MATCH → Score 50–85%  \n• LIMITED_MATCH → Score < 50%  \n\n---\n\nSTEP 4: GENERATE CONTENT (HTML ONLY)\n\n* TARGET AUDIENCE\n- The content will be read by employees who are either exploring or interested in a specific career role.\n- Wear the hat of a helpful, honest, and encouraging career advisor or talent coach.\n- Do not include any IDs or codes.\n- Formatting Rule: Use bolding for the Match % and for any specific Skill, Competency, or Certification names mentioned in the text.\n\nFormatting Rules:\n• Use <strong> for bold text.  \n• Do NOT use Markdown, asterisks, or <b> tags.  \n• Output must be valid, renderable HTML strings.  \n\n* FRAMING CONTEXT (Based on favorite_status):\n- If FALSE (Exploring): Frame as an evaluation to help decide whether to pursue.\n- If TRUE (Pursuing): Frame as a progress tracker to assess growth toward milestones.\n* PART A: THE NARRATIVE (Field: \"text\")\n- General Rule: Second person (\"You\", \"Your\"). No prefixes. Start directly.\n- Paragraph 1 (The Assessment):\n* Tone: Professional, Realistic\n* Vocabulary Rule: Never use internal terms like \"TargetMet\" or \"Points\" or \"High Weight\" or \"Medium Weight\"\n* Content: Mandatory: Integrate the Match % (in bold) into the narrative. Cite specific alignment examples.\n- Paragraph 2 (The Path Forward):\n* Condition: IF Score > 85%, DO NOT GENERATE.\n* Content: Mandatory: Naturally integrate the \"Magnitude of Effort.\"\n* Timelines: Proficiency (1-3 mos); Missing 1-2 Skills (3-9 mos); Missing Certs (9-18+ mos).\n* Framing: If favorite_status is true, frame as \"steps for growth\"; if false, frame as \"effort to qualify.\"\n\n\n\nPART B: FIELD \"explainability\"\n\nGoal: Provide structured transparency using clean HTML. Only display sections relevant to the Job Profile.\n\n**STRICT FORMATTING AND OMISSION RULES:**\n• Use <div> only. \n• **FORBIDDEN:** <ul>, <li>, <p>, or bullet points.\n• Each section must be wrapped in its own <div>.\n• Add spacing using: style=\"margin-bottom:14px;\"\n• Use <strong> for section headings.\n• **CRITICAL:** You must separate the Header and the Content with a <br/> tag.\n• **CRITICAL OMISSION RULE:** Only include sections for requirements that actually exist on the Job Profile. If a category (e.g., Certifications) is not required by the job, or if there are no items to list for a specific section, COMPLETELY OMIT that <div>. Do NOT output phrases like \"None\", \"No matched items found\", or \"No assessed items available\".\n\nSection Structure (MANDATORY):\n<div style=\"margin-bottom:14px;\">\n  <strong>[Section Title]</strong><br/>\n  Item A, Item B, and Item C.\n</div>\n\nAllowed Section Titles:\n• Matched Critical Requirements\n• Matched Education & Foundational Experience\n• Matched Additional Qualifications\n• Missing Required Education\n• Missing Required Certifications\n• Missing Required Skills\n• Missing Required Competencies\n• Proficiency Gaps in Required Skills\n• Proficiency Gaps in Required Competencies\n• Missing Foundational Experience\n• Missing Additional Qualifications\n\nProficiency Gap Formatting Rule:\nIf PersonNumericRating exists AND PersonNumericRating < MinimumNumericRating, render as:\nSkill Name (Required: X, Current: Y)\n\nSorting Priority (Positives First, Decreasing Weight -> Negatives Second, Decreasing Weight):\n1. Matched High-weight (Critical Requirements)\n2. Matched Medium-weight (Education & Foundational Experience)\n3. Matched Low-weight (Additional Qualifications)\n4. High-weight Missing (Missing Required items)\n5. High-weight Proficiency Gaps (Gaps in Required items)\n6. Medium-weight Missing (Missing Education/Experience)\n7. Medium-weight Proficiency Gaps\n8. Low-weight Missing\n\nMaximum 10 sections total.\nIf truncation is required due to the 10-section limit, remove items from the very bottom of this priority list first (starting with #8 and moving upwards).\n---\n\nSTEP 5: OUTPUT FORMAT\n\nReturn ONLY a raw JSON object.\n• Generate \"scoring_math\" FIRST.\n• Ensure all double quotes inside HTML strings are escaped using \\\" (e.g., <div style=\\\"margin-bottom:14px;\\\">).\n\n{\n \"scoring_math\": \"Possible: 100 | Earned: 45 | Calculation: 45/100 = 45%\",\n \"matching_level\": \"LIMITED_MATCH\",\n \"text\": \"<p>Paragraph 1 content...</p><p>Paragraph 2 content...</p>\",\n \"explainability\": \"<div style=\\\"margin-bottom:14px;\\\"><strong>Missing Required Skills</strong><br/>Java and Python.</div><div style=\\\"margin-bottom:14px;\\\"><strong>Matched Critical Requirements</strong><br/>Agile Methodology.</div>\"\n}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1765201146082",
+            "1": "1765201216479",
+            "2": "add_1765201695886_2"
+          },
+          "code": "PARALLEL_1765201695888",
+          "convergenceTargetId": "1764159217554",
+          "id": "1765201695886",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_PROFILEMAN_TALENTPROFILECOMPARISONS",
+            "functionName": "compareAllSectionsExceptPublicSkills",
+            "name": "Compare Profiles Except Skills"
+          },
+          "outcomes": {
+            "success": "1764159217554"
+          },
+          "code": "COMPARE_PROFILES_EXCEPT_SKILLS",
+          "convergenceTargetId": "1765201712187",
+          "id": "1765201146082",
+          "inputs": [
+            {
+              "id": "1766066485465_1",
+              "name": "relationTypeCode",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.relationTypeCode}}"
+            },
+            {
+              "id": "1766066485465_2",
+              "name": "modelProfileId",
+              "type": "integer",
+              "value": "{{$context.$triggers.REST.$input.modelProfileId}}"
+            },
+            {
+              "id": "1766066485467_3",
+              "name": "personId",
+              "type": "integer",
+              "value": "{{$context.$triggers.REST.$input.personId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for branch 2",
+            "name": "Add 2"
+          },
+          "outcomes": {
+            "success": "1764159217554"
+          },
+          "id": "add_1765201695886_2",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_PROFILEMAN_TALENTPROFILECOMPARISONS",
+            "functionName": "comparePublicSkills",
+            "name": "Compare Skills"
+          },
+          "outcomes": {
+            "success": "1764159217554"
+          },
+          "code": "COMPARE_SKILLS",
+          "convergenceTargetId": "1765201739526",
+          "id": "1765201216479",
+          "inputs": [
+            {
+              "id": "1766066556032_1",
+              "name": "relationTypeCode",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.relationTypeCode}}"
+            },
+            {
+              "id": "1766066556033_2",
+              "name": "modelProfileId",
+              "type": "integer",
+              "value": "{{$context.$triggers.REST.$input.modelProfileId}}"
+            },
+            {
+              "id": "1766066556034_3",
+              "name": "personId",
+              "type": "integer",
+              "value": "{{$context.$triggers.REST.$input.personId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "humanApprovalFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1766066457211",
+            "name": "relationTypeCode",
+            "type": "string"
+          },
+          {
+            "id": "1764159290976",
+            "name": "favoriteRoleStatus",
+            "type": "boolean"
+          },
+          {
+            "id": "1764159281709",
+            "name": "modelProfileId",
+            "type": "number"
+          },
+          {
+            "id": "1764159262558",
+            "name": "personId",
+            "type": "number"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 2,
+  "family": "HCM",
+  "product": "TALENT",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions follow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output. Here is the JSON Schema format the output should adhere to: [{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

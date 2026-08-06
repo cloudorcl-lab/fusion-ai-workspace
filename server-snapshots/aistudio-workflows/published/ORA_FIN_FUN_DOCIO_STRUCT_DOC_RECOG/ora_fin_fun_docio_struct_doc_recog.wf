@@ -1,0 +1,396 @@
+{
+  "workflowId": "300000326919170",
+  "workflowCode": "ORA_FIN_FUN_DOCIO_STRUCT_DOC_RECOG",
+  "name": "Doc IO Structured Document Recognition",
+  "description": "Processes structured documents such as  XML, JSON, and CSV. Creates transformation artifacts like XSLT or JOLT that map and convert source data structures into Oracle application schemas, delivering standardized output for seamless ingestion by downstream processes.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1765945911304"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1766502914934",
+            "name": "Validate Structured Payload",
+            "returnType": "object",
+            "sourceCode": "// INPUT PAYLOAD VALIDATOR & PAYLOAD CREATOR (FLAT INPUT ONLY)\nconst raw = $context.$system.$inputMessage;\nlet input = null;\nlet result = null;\nlet parseError = false;\n\n// Parse input\ntry {\n  input = (typeof raw === \"string\") ? JSON.parse(raw) : raw;\n} catch (e) {\n  parseError = true;\n  result = {\n    status: \"ERROR\",\n    error: {\n      stage: \"Input Validation\",\n      code: \"MALFORMED_INPUT\",\n      message: \"Input is not valid JSON.\"\n    }\n  };\n}\n\n// Validate input object\nif (!parseError) {\n  if (!input || typeof input !== \"object\") {\n    parseError = true;\n    result = {\n      status: \"ERROR\",\n      error: {\n        stage: \"Input Validation\",\n        code: \"MISSING_REQUIRED_FIELDS\",\n        message: \"Input payload is missing or invalid.\"\n      }\n    };\n  }\n}\n\n// Validate required fields\nif (!parseError) {\n  // Optional fields checks for conditional inclusion in payload\n  const hasBO = typeof input.businessObject === \"string\" && input.businessObject.trim() !== \"\";\n  const hasProduct = typeof input.product === \"string\" && input.product.trim() !== \"\";\n\n  // Required fields validation\n  const hasDocFileName = typeof input.documentFileName === \"string\" && input.documentFileName.trim() !== \"\";\n  const hasBase64 = typeof input.documentInBase64 === \"string\" && input.documentInBase64.trim() !== \"\";\n  const hasLink = typeof input.documentLink === \"string\" && input.documentLink.trim() !== \"\";\n  const hasId = typeof input.documentId === \"string\" && input.documentId.trim() !== \"\";\n  const hasDocSource = hasBase64 || hasLink || hasId;\n\n  if (!hasDocFileName || !hasDocSource) {\n    result = {\n      status: \"ERROR\",\n      error: {\n        stage: \"Input Validation\",\n        code: \"MISSING_REQUIRED_FIELDS\",\n        message: \"Missing required fields: documentFileName and at least one of documentInBase64, documentLink, or documentId.\"\n      }\n    };\n  } else {\n    const payload = {\n      documentFileName: input.documentFileName,\n      documentInBase64: input.documentInBase64 || \"\",\n      direction: input.direction || \"ORA_INBOUND\"\n    };\n    if (hasBO) {\n      payload.businessObject = input.businessObject;\n    }\n    if (hasProduct) {\n      payload.product = input.product;\n    }\n    result = { payload };\n  }\n}\n\nresult;"
+          },
+          "outcomes": {
+            "success": "1765945935607"
+          },
+          "code": "FIN_FUN_CODE_VALIDATE_PAYLOAD",
+          "id": "1765945911304",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Is Payload Valid"
+          },
+          "outcomes": {
+            "true": "1765946177579",
+            "false": "1766502914934"
+          },
+          "code": "FIN_FUN_IF_CONDITION_PAYLOAD_VALID",
+          "convergenceTargetId": "end",
+          "id": "1765945935607",
+          "inputs": [
+            {
+              "id": "1765945935611_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_FUN_CODE_VALIDATE_PAYLOAD.$output.result.payload != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_FINANCIALC_DOCIOSTRUCTURED",
+            "errorNodeId": "1765950464862",
+            "functionName": "structuredRecognition",
+            "name": "Recognize Document Structure"
+          },
+          "outcomes": {
+            "success": "1768326953521"
+          },
+          "code": "FIN_FUN_BOF_RECOGNIZE_DOCUMENT",
+          "id": "1765946177579",
+          "inputs": [
+            {
+              "id": "1765948093083_1",
+              "name": "stagename",
+              "type": "string",
+              "value": "recognize"
+            },
+            {
+              "id": "1765948093085_2",
+              "name": "stageContext",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_FUN_CODE_VALIDATE_PAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Validate Recognition Response",
+            "returnType": "object",
+            "sourceCode": "// TRANSFORMATION SPEC EXTRACTOR\nvar node = $context.$nodes.FIN_FUN_BOF_RECOGNIZE_DOCUMENT;\nvar nodeStatus = node && typeof node.$status === \"string\" ? node.$status.trim().toUpperCase() : null;\nvar boResponse = node ? node.$output : null;\nvar result = null;\n\n// 1. NODE EXECUTION FAILURE\nif (nodeStatus === \"FAILURE\") {\n    var errorInfo = node.$error;\n    var errorMessage = \"Structured Document Recognition execution failed.\";\n    var errorCode = \"EXECUTION_ERROR\";\n    if (errorInfo && typeof errorInfo === \"object\") {\n        if (typeof errorInfo.$info === \"string\" && errorInfo.$info.trim()) {\n            errorMessage = errorInfo.$info;\n        } else if (typeof errorInfo.message === \"string\" && errorInfo.message.trim()) {\n            errorMessage = errorInfo.message;\n        } else if (typeof errorInfo.error === \"string\" && errorInfo.error.trim()) {\n            errorMessage = errorInfo.error;\n        }\n        if (errorInfo.code) {\n            errorCode = errorInfo.code;\n        }\n    }\n    result = {\n        status: \"ERROR\",\n        error: {\n            stage: \"Structured Document Recognition\",\n            code: errorCode,\n            message: errorMessage\n        }\n    };\n}\n// 2. MALFORMED OR MISSING RESPONSE\nelse if (!boResponse || typeof boResponse !== \"object\") {\n    result = {\n        status: \"ERROR\",\n        error: {\n            stage: \"Extract Transformation\",\n            code: \"MALFORMED_TOOL_RESPONSE\",\n            message: \"Business Object response is missing or invalid.\"\n        }\n    };\n}\n// 3. FAILURE STATUS FROM NODE OUTPUT (CASE INSENSITIVE)\nelse if (boResponse.status && \n         (typeof boResponse.status === \"string\" ? boResponse.status.trim().toUpperCase() !== \"SUCCESS\" : false)) {\n    result = {\n        status: \"ERROR\",\n        error: {\n            stage: \"Structured Document Recognition\",\n            code: \"EXECUTION_ERROR\",\n            message: \"Structured document recognition failed.\"\n        }\n    };\n}\n// 4. MISSING OR BLANK CONTENT\nelse if (!boResponse.content || String(boResponse.content).trim() === \"\") {\n    result = {\n        status: \"ERROR\",\n        error: {\n            stage: \"Extract Transformation\",\n            code: \"MISSING_TRANSFORMATION\",\n            message: \"No valid transformation found in response.\"\n        }\n    };\n}\n// 5. SUCCESS  PASS THROUGH AS-IS\nelse {\n    result = boResponse;\n}\nresult;"
+          },
+          "outcomes": {
+            "success": "1765950494916"
+          },
+          "code": "FIN_FUN_CODE_VALIDATE_RECOGNITION",
+          "id": "1765950464862",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Is Recognition Successful"
+          },
+          "outcomes": {
+            "true": "1765955367923",
+            "false": "1766065101470"
+          },
+          "code": "FIN_FUN_IF_CONDITION_RECOGNITION_SUCCESS",
+          "convergenceTargetId": "end",
+          "id": "1765950494916",
+          "inputs": [
+            {
+              "id": "1765950494920_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_FUN_CODE_VALIDATE_RECOGNITION.$output.result.status == \"SUCCESS\" && $context.$nodes.FIN_FUN_CODE_VALIDATE_RECOGNITION.$output.result.content != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Return Structured Data",
+            "returnType": "object",
+            "sourceCode": "// Get the raw response\nconst rawResponse = $context.$nodes.FIN_FUN_BOF_RECOGNIZE_DOCUMENT.$output;\nreturn rawResponse;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FIN_FUN_CODE_RETURN_STRUCTURED_DATA",
+          "id": "1765955367923",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_FINANCIALC_DOCIOSTRUCTURED",
+            "errorNodeId": "1766041686431",
+            "functionName": "structuredRecognition",
+            "name": "Retry Recognize Document Structure"
+          },
+          "outcomes": {
+            "success": "1768415675861"
+          },
+          "code": "FIN_FUN_BOF_RETRY_RECOGNIZE_DOCUMENT",
+          "id": "1766041614704",
+          "inputs": [
+            {
+              "id": "1766041637727_1",
+              "name": "stagename",
+              "type": "string",
+              "value": "recognize"
+            },
+            {
+              "id": "1766041637729_2",
+              "name": "stageContext",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_FUN_CODE_VALIDATE_PAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"Structured Content Response\",\n  \"type\": \"object\",\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"mappingId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"logicalDocumentId\": {\n      \"type\": \"string\"\n    },\n    \"documentType\": {\n      \"type\": \"string\",\n      \"description\": \"STRUCTURED or UNSTRUCTURED\"\n    },\n    \"content\": {\n      \"type\": \"string\",\n      \"description\": \"XML or textual content\"\n    }\n  }\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Validate Retry Recognition Response",
+            "returnType": "object",
+            "sourceCode": "// TRANSFORMATION SPEC EXTRACTOR\nvar node = $context.$nodes.FIN_FUN_BOF_RETRY_RECOGNIZE_DOCUMENT;\nvar nodeStatus = node && typeof node.$status === \"string\" ? node.$status.trim().toUpperCase() : null;\nvar boResponse = node ? node.$output : null;\nvar result = null;\n\n// 1. NODE EXECUTION FAILURE (CASE INSENSITIVE)\nif (nodeStatus === \"FAILURE\") {\n    var errorInfo = node.$error;\n    var errorMessage = \"Structured Document Recognition execution failed.\";\n    var errorCode = \"EXECUTION_ERROR\";\n    if (errorInfo && typeof errorInfo === \"object\") {\n        if (typeof errorInfo.$info === \"string\" && errorInfo.$info.trim()) {\n            errorMessage = errorInfo.$info;\n        } else if (typeof errorInfo.message === \"string\" && errorInfo.message.trim()) {\n            errorMessage = errorInfo.message;\n        } else if (typeof errorInfo.error === \"string\" && errorInfo.error.trim()) {\n            errorMessage = errorInfo.error;\n        }\n        if (errorInfo.code) {\n            errorCode = errorInfo.code;\n        }\n    }\n    result = {\n        status: \"ERROR\",\n        error: {\n            stage: \"Structured Document Recognition\",\n            code: errorCode,\n            message: errorMessage\n        }\n    };\n}\n// 2. MALFORMED OR MISSING RESPONSE\nelse if (!boResponse || typeof boResponse !== \"object\") {\n    result = {\n        status: \"ERROR\",\n        error: {\n            stage: \"Extract Transformation\",\n            code: \"MALFORMED_TOOL_RESPONSE\",\n            message: \"Business Object response is missing or invalid.\"\n        }\n    };\n}\n// 3. FAILURE STATUS FROM NODE OUTPUT (CASE INSENSITIVE)\nelse if (\n    boResponse.status &&\n    (typeof boResponse.status === \"string\" ? boResponse.status.trim().toUpperCase() !== \"SUCCESS\" : false)\n) {\n    result = {\n        status: \"ERROR\",\n        error: {\n            stage: \"Structured Document Recognition\",\n            code: \"EXECUTION_ERROR\",\n            message: \"Structured document recognition failed.\"\n        }\n    };\n}\n// 4. MISSING OR BLANK CONTENT\nelse if (!boResponse.content || String(boResponse.content).trim() === \"\") {\n    result = {\n        status: \"ERROR\",\n        error: {\n            stage: \"Extract Transformation\",\n            code: \"MISSING_TRANSFORMATION\",\n            message: \"No valid transformation found in response.\"\n        }\n    };\n}\n// 5. SUCCESS → PASS THROUGH AS-IS\nelse {\n    result = boResponse;\n}\nresult;"
+          },
+          "outcomes": {
+            "success": "1766041965590"
+          },
+          "code": "FIN_FUN_CODE_VALIDATE_RETRY_RECOGNITION",
+          "id": "1766041686431",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Is Retry Recognition Successful"
+          },
+          "outcomes": {
+            "true": "1766042100239",
+            "false": "1765961073537"
+          },
+          "code": "FIN_FUN_IF_CONDITION_RETRY_RECOGNITION_SUCCESS",
+          "convergenceTargetId": "end",
+          "id": "1766041965590",
+          "inputs": [
+            {
+              "id": "1766041965600_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_FUN_CODE_VALIDATE_RETRY_RECOGNITION.$output.result.status == \"SUCCESS\" && $context.$nodes.FIN_FUN_CODE_VALIDATE_RETRY_RECOGNITION.$output.result.content != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Return Recognition Error",
+            "returnType": "object",
+            "sourceCode": "var errorResult = $context.$nodes.FIN_FUN_CODE_VALIDATE_RETRY_RECOGNITION.$output.result;\nerrorResult;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FIN_FUN_CODE_RETURN_RECOGNITION_ERROR",
+          "convergenceTargetId": "1766042067343",
+          "id": "1765961073537",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Return Retry Structured Data",
+            "returnType": "object",
+            "sourceCode": "const rawResponse = $context.$nodes.FIN_FUN_BOF_RETRY_RECOGNIZE_DOCUMENT.$output;\nreturn rawResponse;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FIN_FUN_CODE_RETURN_RETRY_STRUCTURED_DATA",
+          "id": "1766042100239",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1766041614704",
+            "name": "Wait For Retry",
+            "returnType": "object",
+            "sourceCode": "// Record start timestamp\nvar startTime = new Date().toISOString();\n\n// ---  second delay (blocking) ---\nvar delayMs = 20000; // 20 seconds\nvar start = new Date().getTime();\nwhile (new Date().getTime() - start < delayMs) {\n  // busy wait\n}\n\n// Record end timestamp\nvar endTime = new Date().toISOString();\n\n// Build result object\nvar result = {\n  status: \"OK\",\n  startTime: startTime,\n  endTime: endTime,\n  message: \"20 second delay completed\"\n};\n\n\nresult;"
+          },
+          "outcomes": {
+            "success": "1766041614704"
+          },
+          "code": "FIN_FUN_CODE_WAIT_FOR_RETRY",
+          "id": "1766065101470",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Return Validation Error",
+            "returnType": "object",
+            "sourceCode": "// Read validator output\nvar validationResult = (\n    $context.$nodes.FIN_FUN_CODE_VALIDATE_PAYLOAD &&\n    $context.$nodes.FIN_FUN_CODE_VALIDATE_PAYLOAD.$output &&\n    $context.$nodes.FIN_FUN_CODE_VALIDATE_PAYLOAD.$output.result\n)\n    ? $context.$nodes.FIN_FUN_CODE_VALIDATE_PAYLOAD.$output.result\n    : null;\n\n// Use standard error message\nvar agentErrorMessage = \"Doc IO Structured Document Recognition execution failed.\";\n\n// Fallback generic error if validator returned nothing\nif (!validationResult) {\n    validationResult = {\n        status: \"ERROR\",\n        error: {\n            stage: \"Agent Execution\",\n            code: \"AGENT_EXECUTION_FAILED\",\n            message: agentErrorMessage\n        }\n    };\n}\n// Return error response\nvalidationResult;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FIN_FUN_CODE_RETURN_VALIDATION_ERROR",
+          "id": "1766502914934",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set Recognition Output"
+          },
+          "outcomes": {
+            "success": "1765950464862"
+          },
+          "code": "FIN_FUN_SET_VARIABLES_RECOGNITION_OUTPUT",
+          "id": "1768326953521",
+          "inputs": [
+            {
+              "id": "1768415190887",
+              "name": "recognitionResponse",
+              "type": "object",
+              "value": "{{$context.$nodes.FIN_FUN_BOF_RECOGNIZE_DOCUMENT.$output}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Set Retry Recognition Output"
+          },
+          "outcomes": {
+            "success": "1766041686431"
+          },
+          "code": "FIN_FUN_SET_VARIABLES_RETRY_RECOGNITION_OUTPUT",
+          "id": "1768415675861",
+          "inputs": [
+            {
+              "id": "1768415683489",
+              "name": "recognitionResponse",
+              "type": "object",
+              "value": "{{$context.$nodes.FIN_FUN_BOF_RETRY_RECOGNIZE_DOCUMENT.$output}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1768415132599",
+          "name": "recognitionResponse",
+          "scope": "JOB",
+          "type": "object",
+          "typeSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\"\n}"
+        },
+        {
+          "id": "1768326880802",
+          "name": "structuredwfoutput",
+          "scope": "JOB",
+          "type": "object",
+          "typeSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\"\n}"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "FIN",
+  "product": "FINANCIAL_COMMON",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}
