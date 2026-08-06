@@ -4,6 +4,10 @@ Deliver tools and software suitable for customer deployment. Verify repository, 
 
 For a new project or architecture, brainstorm first and recommend an implementation design before making changes. This is not required for code fixes or QA-only work.
 
+## Source Boundary
+
+Exclude `aiapps/` and all of its subfolders from discovery, examples, source-of-truth analysis, and knowledge retrieval unless the user explicitly names `aiapps/` as an allowed source for the current request. Do not use artifacts under that directory to infer supported architecture, object relationships, data sources, or implementation details by default.
+
 ## Mandatory Data-Access Decision for New Apps and Agents
 
 Every time a user asks to create an app or agent, stop before discovery, planning, artifact creation, or implementation and ask:
