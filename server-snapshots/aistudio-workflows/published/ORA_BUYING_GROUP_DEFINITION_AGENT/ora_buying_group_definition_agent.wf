@@ -1,0 +1,2173 @@
+{
+  "workflowId": "300000331067379",
+  "workflowCode": "ORA_BUYING_GROUP_DEFINITION_AGENT",
+  "name": "Buying Group Definition Agent",
+  "description": "Buying Group Definition Agent",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1772628730236"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "errorNodeId": "1776077275854",
+            "name": "User Basic Intent"
+          },
+          "outcomes": {
+            "success": "1772629397003"
+          },
+          "code": "USER_BASIC_INTENT",
+          "id": "1772628730236",
+          "inputs": [
+            {
+              "id": "1772628730238_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given chat history: {{$context.$system.$chatHistory}} and user's current request: {{$context.$system.$inputMessage}}\n\nClassify the request into one of the following intents and don't return anything else:\nworkWithBGD or general\n\nIf the user's request is to create, update, activate, deactivate a BGD for a product or recommend persona, account criteria and behaviour criteria (segments) segments for that BGD then output \"workWithBGD\"\nbut if the user is asking general question, anything unrelated, asking to delete BGD, asking for all the existing BGDs, asking about the existing products then output \"general\"\nand suppose user's ask is to show, create, update or activate a persona, account criteria and behaviour criteria (segments) that are not related to creating a BGD then output \"workWithSegments\""
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "Prepare Basic Switch"
+          },
+          "outcomes": {
+            "workWithBGD": "1774517319817",
+            "general": "1772723155286",
+            "workWithSegments": "1775127009728",
+            "error": "1776077275854"
+          },
+          "code": "PREPARE_BASIC_SWITCH",
+          "convergenceTargetId": "end",
+          "id": "1772629397003",
+          "inputs": [
+            {
+              "id": "1772629397005_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.USER_BASIC_INTENT.$output}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CUSTOMERDA_BGDBO",
+            "errorNodeId": "1772628730236",
+            "functionName": "getProductBGDs",
+            "processJson": true,
+            "name": "Get All Product Related BGDs"
+          },
+          "outcomes": {
+            "success": "1772630096601"
+          },
+          "code": "GET_ALL_PRODUCT_RELATED_BGDS",
+          "id": "1772630039035",
+          "inputs": [
+            {
+              "id": "1774953572605_1",
+              "name": "productRef",
+              "type": "string",
+              "value": "{{$context.$nodes.EXACT_PRODUCT_FOUND.$output}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "agentCode": "ORA_BGD_GENERAL_AGENT",
+            "errorNodeId": "1776077275854",
+            "name": "BGD General Agent",
+            "type": "REUSABLE"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "BGD_GENERAL_AGENT",
+          "id": "1772723155286",
+          "inputs": [
+            {
+              "id": "1776075200290_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            }
+          ],
+          "outputSpecification": "",
+          "type": "AGENT"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "high"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "errorNodeId": "1772628730236",
+            "name": "BGD Existence Check"
+          },
+          "outcomes": {
+            "success": "1772630286070"
+          },
+          "code": "BGD_EXISTENCE_CHECK",
+          "id": "1772630096601",
+          "inputs": [
+            {
+              "id": "1772630096602_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the user's request: {{$context.$system.$inputMessage}} and previous chat history: {{$context.$system.$chatHistory}}\nAll Buying Group Definitions (BGDs) related to given product: {{$context.$nodes.GET_ALL_PRODUCT_RELATED_BGDS.$output}}\nInstructions:\\n- Output ONLY one word: \"yes\" or \"no\".\nDO NOT provide any explanation, sentence, or extra text.\n\nLogic:\n1. If user's request is to create a BGD then check if a BGD for the product is active or not. If no BGD is published and is in active state then only output \"no\". But if a BGD is already in published active state then output \"yes\"\n2. If user's request is to show, update, activate, deactivate, or similar: If BGD exists in the provided BGDs → output \\\"yes\\\". Otherwise, output \\\"no\\\".\n3. If BGD list is empty then output \"no\".\n\nFinal rule:\nYour entire response must be exactly either \"yes\" or \"no\" with no additional text."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "BGD Existence Switch"
+          },
+          "outcomes": {
+            "yes": "1774450770418",
+            "no": "1774522636009"
+          },
+          "code": "BGD_EXISTENCE_SWITCH",
+          "convergenceTargetId": "end",
+          "id": "1772630286070",
+          "inputs": [
+            {
+              "id": "1772630286071_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.BGD_EXISTENCE_CHECK.$output}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "errorNodeId": "1776077275854",
+            "name": "Update or Activate LLM"
+          },
+          "outcomes": {
+            "success": "1774450873553"
+          },
+          "code": "UPDATE_OR_ACTIVATE_LLM",
+          "id": "1774450770418",
+          "inputs": [
+            {
+              "id": "1774450770419_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "if the request is to be show/updated then output \"update\" otherwise if bgd is to be activated or deativate output \"activate\"\nGiven the user's query: {{$context.$system.$inputMessage}} and chat history: {{$context.$system.$chatHistory}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "Update or Activate Switch"
+          },
+          "outcomes": {
+            "update": "1776276592407",
+            "activate": "1774518840819"
+          },
+          "code": "UPDATE_OR_ACTIVATE_SWITCH",
+          "convergenceTargetId": "end",
+          "id": "1774450873553",
+          "inputs": [
+            {
+              "id": "1774450873554_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.UPDATE_OR_ACTIVATE_LLM.$output}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "agentCode": "ORA_BGD_READ_UPDATE_RECOMMEND_AGENT",
+            "errorNodeId": "1772628730236",
+            "name": "Work With Single BGD",
+            "type": "REUSABLE"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "WORK_WITH_SINGLE_BGD",
+          "convergenceTargetId": "1774450925802",
+          "id": "1772640971589",
+          "inputs": [
+            {
+              "id": "1776078247620_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$nodes.WORK_WITH_SINGLE_BGD_LLM_PREPROCESS.$output}}"
+            }
+          ],
+          "outputSpecification": "",
+          "type": "AGENT"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "agentCode": "ORA_BGD_ACTIVATE_AGENT",
+            "errorNodeId": "1776077275854",
+            "name": "BGD Activate Agent",
+            "type": "REUSABLE"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "BGD_ACTIVATE_AGENT",
+          "id": "1774451136261",
+          "inputs": [
+            {
+              "id": "1776078286984_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$nodes.PROMPT_FOR_ACTIVATION_BEFORE_AGENT.$output}}"
+            }
+          ],
+          "outputSpecification": "",
+          "type": "AGENT"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "errorNodeId": "1776077275854",
+            "name": "Get Name Of Product From Query"
+          },
+          "outcomes": {
+            "success": "1774517403238"
+          },
+          "code": "GET_NAME_OF_PRODUCT_FROM_QUERY",
+          "id": "1774517319817",
+          "inputs": [
+            {
+              "id": "1774517319817_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the following user's message: {{$context.$system.$inputMessage}} and the previous chat history: {{$context.$system.$chatHistory}}\n give output the name of the Product that user is asking you to work upon."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CUSTOMERDA_BGDPRODUCTSDATAMSBO",
+            "errorNodeId": "1776077275854",
+            "functionName": "getRelatedProducts",
+            "processJson": true,
+            "name": "Get Related Products"
+          },
+          "outcomes": {
+            "success": "1774949654469"
+          },
+          "code": "GET_RELATED_PRODUCTS",
+          "id": "1774517403238",
+          "inputs": [
+            {
+              "id": "1774517423414_1",
+              "name": "productName",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_NAME_OF_PRODUCT_FROM_QUERY.$output}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "errorNodeId": "1776077275854",
+            "name": "Prompt for Activation Before Agent"
+          },
+          "outcomes": {
+            "success": "1774451136261"
+          },
+          "code": "PROMPT_FOR_ACTIVATION_BEFORE_AGENT",
+          "id": "1774518840819",
+          "inputs": [
+            {
+              "id": "1774518840822_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "According to the given user request: {{$context.$system.$inputMessage}} and the chat history: {{$context.$system.$chatHistory}}\n\nIf the user's request is to activate a BGD which is not active, you should first check if there is another BGD that is currently activated/published for the product. If not then go ahead and write output for the agent with the details. If there's an activate BGD then write output for the agent saying that the following BGD is already active/published, deactivate it first and then activate the said BGD. If user's request is to deactivate then you can deactivate that BGD.\n\nOutput the BGD id/s and tell what to do with it/them.\nLike output can be:\n[(bgd1_id, activate)]\nor \n[(bgd1_id, deactivate), (bgd2_id, activate)]\n\nHere are all the product related BGDs: {{$context.$nodes.GET_ALL_PRODUCT_RELATED_BGDS.$output}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "medium"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "errorNodeId": "1776077275854",
+            "name": "BGD Create Agent Context"
+          },
+          "outcomes": {
+            "success": "1774880431652"
+          },
+          "code": "BGD_CREATE_AGENT_CONTEXT",
+          "id": "1774522636009",
+          "inputs": [
+            {
+              "id": "1774522636010_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the following user's message: {{$context.$system.$inputMessage}} and following chat History: {{$context.$system.$chatHistory}}\nHere's the related products available for this query: {{$context.$nodes.GET_RELATED_PRODUCTS.$output}}\nHere are the all BGDs: {{$context.$nodes.GET_ALL_BGDS.$output}} \n\nIf there are no related products for the query your job is to write output that there are no related products available in the system and ask user to provide accurate product name.\nOther than that your job is also to provide accurate summary of the user's message, chat history and relevant information needed for the BGD create agent, like BGD payload information, segments information, etc. Keep it very brief. DO NOT use/assume any other information that is not provided."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "medium"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "errorNodeId": "1776077275854",
+            "name": "Create BGD or Segments"
+          },
+          "outcomes": {
+            "success": "1774880761763"
+          },
+          "code": "CREATE_BGD_OR_SEGMENTS",
+          "id": "1774880431652",
+          "inputs": [
+            {
+              "id": "1774880431653_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the current user message: {{$context.$system.$inputMessage}} and the chat history: {{$context.$system.$chatHistory}}\nHere's the context: {{$context.$nodes.BGD_CREATE_AGENT_CONTEXT.$output}}\n\nYour job is to decide whether the agent should create BGD when complete information given, work with segments, recommend complete BGD or just create BGD but with incomplete information, according to the recent conversation.\nIf your answer is  to work with (account criteria/persona criteria/behavior criteria) segment then output \"segment\", if the agent should create the BGD given the complete information (about all account, persona and behavior segments) then it should output \"createBGD\", if the request is to recommend a complete BGD first then output \"recommend\" and if the information is incomplete about account criteria, behavior criteria or persona criteria but user asks to create BGD then output \"incompleteCreate\".\nIf the user says to create BGD with mentioning account criteria, persona or behavior then also output \"segment\" (since we'll work with segments to check their existence in system one by one."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "Create BGD or segment switch"
+          },
+          "outcomes": {
+            "segment": "1774880876737",
+            "recommend": "1774947746928",
+            "createBGD": "1774948165551",
+            "incompleteCreate": "1775052428940"
+          },
+          "code": "CREATE_BGD_OR_SEGMENT_SWITCH",
+          "convergenceTargetId": "end",
+          "id": "1774880761763",
+          "inputs": [
+            {
+              "id": "1774880761764_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_BGD_OR_SEGMENTS.$output}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CUSTOMERDA_BGDPUBLISHEDSEGMENTSBO",
+            "functionName": "getContextualSqlSegments",
+            "processJson": true,
+            "name": "Get BGPersona Segments"
+          },
+          "outcomes": {
+            "success": "1774969443708"
+          },
+          "code": "GET_BGPERSONA_SEGMENTS",
+          "id": "1774947778680",
+          "inputs": [
+            {
+              "id": "1775027322055_1",
+              "name": "context",
+              "type": "string",
+              "value": "'BGPersona'"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "high"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Recommend Complete BGD"
+          },
+          "outcomes": {
+            "success": "1775033661477"
+          },
+          "code": "RECOMMEND_COMPLETE_BGD",
+          "id": "1774947874907",
+          "inputs": [
+            {
+              "id": "1774947874908_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the user's request: {{$context.$system.$inputMessage}} and the summarized context: {{$context.$nodes.BGD_CREATE_AGENT_CONTEXT.$output}}\n\nHere are the available account criteria segments: {{$context.$nodes.GET_BGACCOUNT_SEGMENTS.$output}}\nThe available buyer roles: {{$context.$nodes.GET_BUYER_ROLES.$output}}\npersona segments: {{$context.$nodes.GET_BGPERSONA_SEGMENTS.$output}} \nand behavior criteria segments: {{$context.$nodes.GET_BGBEHAVIOR_SEGMENTS.$output}}\n\nYour job is to recommend a complete BGD for the given user's request.\nOutput the following:\n1. Profile:\na. Buying Group Profile Name\nb. Buying Group Profile Description\nc. Product Id\nd. Product Name\n\n2. Criteria:\n2.1. Persona Segment alongwith Buyer role in array form:\na. buyerRoleName\nb. name\nc. description\nd. buyerRolePriority\n\n2.2. Behavior Segments alongwith buyer role in array form:\na. buyerRoleName\nb. name\nc. description\nd. buyerRolePriority\n\n2.3. Account Segments in array form:\na. name\nb. description\n\nAt the end of this ask user if they want to create it as-is, customize it, or do you want help with something else."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CUSTOMERDA_BGDBO",
+            "functionName": "createBGD",
+            "processJson": true,
+            "name": "Create BGD API"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "CREATE_BGD_API",
+          "id": "1774948040326",
+          "inputs": [
+            {
+              "id": "1774948069574_1",
+              "name": "bgdName",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_CREATE_BGD_NAME.$output}}"
+            },
+            {
+              "id": "1774948069574_2",
+              "name": "productRef",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PRODUCT_REF_OF_CREATE_BGD.$output}}"
+            },
+            {
+              "id": "1774948069575_3",
+              "name": "jsonModel",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_JSONMODEL_FOR_CREATE_BGD.$output}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Get Create BGD Name"
+          },
+          "outcomes": {
+            "success": "1774948266928"
+          },
+          "code": "GET_CREATE_BGD_NAME",
+          "id": "1774948165551",
+          "inputs": [
+            {
+              "id": "1774948165552_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the user's request: {{$context.$system.$inputMessage}} and the summarized context: {{$context.$nodes.BGD_CREATE_AGENT_CONTEXT.$output}}\n\nYour job is to give appropriate name for the BGD, make sure to attach \"_Agentic\" at the end of name to signify that it is created using agent. And output nothing else other than the name. Keep the name simplified, don't use brackets or special characters if not specifically mentioned by user."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Get Product Ref of Create BGD"
+          },
+          "outcomes": {
+            "success": "1775029441784"
+          },
+          "code": "GET_PRODUCT_REF_OF_CREATE_BGD",
+          "id": "1774948266928",
+          "inputs": [
+            {
+              "id": "1774948266929_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the user's request: {{$context.$system.$inputMessage}} and the summarized context: {{$context.$nodes.BGD_CREATE_AGENT_CONTEXT.$output}}\nHere are the related products to user's request: {{$context.$nodes.GET_RELATED_PRODUCTS.$output}} \n\nYour job is to output the product reference (id) for the BGD that will be used inside the create BGD payload."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "high"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Get JsonModel for Create BGD"
+          },
+          "outcomes": {
+            "success": "1774948040326"
+          },
+          "code": "GET_JSONMODEL_FOR_CREATE_BGD",
+          "id": "1774948312828",
+          "inputs": [
+            {
+              "id": "1774948312830_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the user's request: {{$context.$system.$inputMessage}}, chat history: {{$context.$system.$chatHistory}}\nand the summarized context: {{$context.$nodes.BGD_CREATE_AGENT_CONTEXT.$output}}\n\nHere are the published account segments: {{$context.$nodes.GET_BGACCOUNT_SEGMENTS_CREATE.$output}} \nBuyer roles: {{$context.$nodes.GET_BUYER_ROLES_CREATE.$output}}\npersona segments: {{$context.$nodes.GET_BGPERSONA_SEGMENTS_CREATE.$output}} \nbehavior segments: {{$context.$nodes.GET_BGBEHAVIORAL_SEGMENTS_CREATE.$output}} \n\nThere can be multiple persona, account and behavior segments, that's why we have an array. Never miss any of the following fields:\n\nJsonModel will have payload structure like this:\n{\n  \"profile\": {\n    \"buyingGroupProfileName\": {{$context.$nodes.GET_CREATE_BGD_NAME.$output}} ,\n    \"buyingGroupProfileDescription\": <Appropriate brief BGD description>,\n    \"productId\": {{$context.$nodes.EXACT_PRODUCT_FOUND.$output}},\n    \"productName\": <Name of the product>\n  },\n  \"criteria\": {\n    \"personaSegment\": [\n      {\n        \"segmentId\": <persona segment Id>,\n        \"SourceBuyer_RoleID\": <Source Buyer role id of the chosen buyer role from Buyer roles api call>,\n        \"buyerRoleName\": <Buyer role name from Buyer roles api call>,\n        \"description\": <Persona segment description>,\n        \"name\": <Persona segment name>,\n        \"buyerRolePriority\": <buyerRolePriority from Buyer roles api call>,\n        \"buyingGroupBuyerRoleID\": <Buyer role id of the chosen buyer role from Buyer roles api call>,\n        \"mcpsQueryRef\": <from persona segment call>\n      },\n      ....\n    ],\n    \"behaviorSegment\": [\n      {\n        \"segmentId\": <behavior segment Id>,\n        \"SourceBuyer_RoleID\": <Source Buyer role id of the chosen buyer role from Buyer roles api call>,\n        \"buyerRoleName\": <Buyer role name from Buyer roles api call>,\n        \"description\": <behavior segment description>,\n        \"name\": <behavior segment name>,\n        \"buyerRolePriority\": <buyerRolePriority from Buyer roles api call>,\n        \"buyingGroupBuyerRoleID\": <Buyer role id of the chosen buyer role from Buyer roles api call>,\n        \"mcpsQueryRef\": <from behavior segment call>\n      },\n      ....\n    ],\n    \"accountSegment\": [\n      {\n        \"segmentId\": < account segment Id>,\n        \"description\": <account segment description>,\n        \"name\": <account segment name>,\n        \"mcpsQueryRef\": <from account segment call>\n      },\n      ....\n    ]\n  },\n  \"activationAttributes\": {\n    \"tenantID\": {{$context.$nodes.GET_TENANT_ID.$output.result}},\n    \"profileStatus\": \"Active\",\n    \"accountStatus\": \"Current\",\n    \"sourceProductID\": <Remove Fusion_ from {{$context.$nodes.EXACT_PRODUCT_FOUND.$output}}>,\n    \"distinguisher\": \"26c\"\n  }\n}\n\nYour job is to make jsonModel json string that will be used in the BGD create payload. Output nothing else other than this valid json string."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "Summarize related products"
+          },
+          "outcomes": {
+            "success": "1774949987074"
+          },
+          "code": "SUMMARIZE_RELATED_PRODUCTS",
+          "id": "1774949654469",
+          "inputs": [
+            {
+              "id": "1774949654470_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the user's request: {{$context.$system.$inputMessage}} and chat history: {{$context.$system.$chatHistory}}\nThe output of the related products from api call are: {{$context.$nodes.GET_RELATED_PRODUCTS.$output}}\n\nIf there are no products with that name then output \"noProduct\", if there are multiple related products then output \"manyProducts\" and if there is single product then output \"singleProduct\""
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "Related Product Switch"
+          },
+          "outcomes": {
+            "noProduct": "1774950038206",
+            "singleProduct": "1774950287439",
+            "manyProducts": "1774950090548"
+          },
+          "code": "RELATED_PRODUCT_SWITCH",
+          "convergenceTargetId": "1772630039035",
+          "id": "1774949987074",
+          "inputs": [
+            {
+              "id": "1774949987075_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.SUMMARIZE_RELATED_PRODUCTS.$output}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "No Related Products Found"
+          },
+          "outcomes": {},
+          "code": "NO_RELATED_PRODUCTS_FOUND",
+          "convergenceTargetId": "1772630039035",
+          "id": "1774950038206",
+          "inputs": [
+            {
+              "id": "1774950038209_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "There are no related products found in the system as per your request"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Multiple related products found"
+          },
+          "outcomes": {},
+          "code": "MULTIPLE_RELATED_PRODUCTS_FOUND",
+          "convergenceTargetId": "1772630039035",
+          "id": "1774950090548",
+          "inputs": [
+            {
+              "id": "1774950090550_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "There are multiple related products found in the system for your request.\nFound products are: {{$context.$nodes.GET_RELATED_PRODUCTS.$output}}\n\nPlease decide on which product to proceed with"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Exact Product Found"
+          },
+          "outcomes": {
+            "success": "1772630039035"
+          },
+          "code": "EXACT_PRODUCT_FOUND",
+          "id": "1774950287439",
+          "inputs": [
+            {
+              "id": "1774950287440_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the user's request: {{$context.$system.$inputMessage}}, and the chat history: {{$context.$system.$chatHistory}} \n\nHere is the exact product found in the system: {{$context.$nodes.GET_RELATED_PRODUCTS.$output}}\n\nYour job is to output the productId of the product in single quotes and nothing else"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CUSTOMERDA_BGDPUBLISHEDSEGMENTSBO",
+            "functionName": "getContextualSqlSegments",
+            "processJson": true,
+            "name": "Get BGBehavioral Segments"
+          },
+          "outcomes": {
+            "success": "1774947874907"
+          },
+          "code": "GET_BGBEHAVIORAL_SEGMENTS",
+          "id": "1774969443708",
+          "inputs": [
+            {
+              "id": "1775027353815_1",
+              "name": "context",
+              "type": "string",
+              "value": "'BGBehavioral'"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CUSTOMERDA_BGDBUYERROLESBO",
+            "functionName": "getBuyerRoles",
+            "processJson": true,
+            "name": "Get Buyer Roles"
+          },
+          "outcomes": {
+            "success": "1774947778680"
+          },
+          "code": "GET_BUYER_ROLES",
+          "id": "1775024211434",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CUSTOMERDA_BGDPUBLISHEDSEGMENTSBO",
+            "functionName": "getContextualSqlSegments",
+            "processJson": true,
+            "name": "Get BGAccount Segments"
+          },
+          "outcomes": {
+            "success": "1775024211434"
+          },
+          "code": "GET_BGACCOUNT_SEGMENTS",
+          "convergenceTargetId": "1775024211434",
+          "id": "1774947746928",
+          "inputs": [
+            {
+              "id": "1775027260068_1",
+              "name": "context",
+              "type": "string",
+              "value": "'BGAccount'"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CUSTOMERDA_BGDPUBLISHEDSEGMENTSBO",
+            "functionName": "getContextualSqlSegments",
+            "processJson": true,
+            "name": "Get BGAccount Segments Create"
+          },
+          "outcomes": {
+            "success": "1775030078888"
+          },
+          "code": "GET_BGACCOUNT_SEGMENTS_CREATE",
+          "id": "1775029441784",
+          "inputs": [
+            {
+              "id": "1775030046427_1",
+              "name": "context",
+              "type": "string",
+              "value": "'BGAccount'"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CUSTOMERDA_BGDBUYERROLESBO",
+            "functionName": "getBuyerRoles",
+            "processJson": true,
+            "name": "Get Buyer Roles Create"
+          },
+          "outcomes": {
+            "success": "1775044161628"
+          },
+          "code": "GET_BUYER_ROLES_CREATE",
+          "id": "1775030078888",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CUSTOMERDA_BGDPUBLISHEDSEGMENTSBO",
+            "functionName": "getContextualSqlSegments",
+            "processJson": true,
+            "name": "Get BGPersona Segments Create"
+          },
+          "outcomes": {
+            "success": "1775030147410"
+          },
+          "code": "GET_BGPERSONA_SEGMENTS_CREATE",
+          "id": "1775030106264",
+          "inputs": [
+            {
+              "id": "1775030132860_1",
+              "name": "context",
+              "type": "string",
+              "value": "'BGPersona'"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CUSTOMERDA_BGDPUBLISHEDSEGMENTSBO",
+            "functionName": "getContextualSqlSegments",
+            "processJson": true,
+            "name": "Get BGBehavioral Segments Create"
+          },
+          "outcomes": {
+            "success": "1774948312828"
+          },
+          "code": "GET_BGBEHAVIORAL_SEGMENTS_CREATE",
+          "id": "1775030147410",
+          "inputs": [
+            {
+              "id": "1775030166466_1",
+              "name": "context",
+              "type": "string",
+              "value": "'BGBehavioral'"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Return Recommend Create Flow"
+          },
+          "outcomes": {},
+          "code": "RETURN_RECOMMEND_CREATE_FLOW",
+          "convergenceTargetId": "end",
+          "id": "1775033661477",
+          "inputs": [
+            {
+              "id": "1775033661479_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.RECOMMEND_COMPLETE_BGD.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Get Tenant ID",
+            "returnType": "string",
+            "sourceCode": "$context.$nodes.GET_BUYER_ROLES_CREATE.$output.items[0].tenantId"
+          },
+          "outcomes": {
+            "success": "1775030106264"
+          },
+          "code": "GET_TENANT_ID",
+          "id": "1775044161628",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Incomplete Create BGD"
+          },
+          "outcomes": {},
+          "code": "INCOMPLETE_CREATE_BGD",
+          "convergenceTargetId": "end",
+          "id": "1775052428940",
+          "inputs": [
+            {
+              "id": "1775052428944_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "I can help with creating BGD. Please specify account criteria to begin."
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Segment Existence Check"
+          },
+          "outcomes": {
+            "success": "1774881535785"
+          },
+          "code": "SEGMENT_EXISTENCE_CHECK",
+          "convergenceTargetId": "1774881535785",
+          "id": "1774881372068",
+          "inputs": [
+            {
+              "id": "1774881372069_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the user's message: {{$context.$system.$inputMessage}} and the context: {{$context.$nodes.BGD_CREATE_AGENT_CONTEXT.$output}}\n\nAnd the BGD segments in this tenant for the given user: {{$context.$nodes.GET_EXISTING_SEGMENTS_WITH_CONTEXT.$output}}\n\nYour job is to figure out if the asked segment exists or not, if it exists then output \"yes\" otherwise \"no\""
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CUSTOMERDA_BGDPUBLISHEDSEGMENTSBO",
+            "functionName": "getContextualSqlSegments",
+            "processJson": true,
+            "name": "Get Existing Segments with Context"
+          },
+          "outcomes": {
+            "success": "1774881372068"
+          },
+          "code": "GET_EXISTING_SEGMENTS_WITH_CONTEXT",
+          "convergenceTargetId": "1774881372068",
+          "id": "1774881253209",
+          "inputs": [
+            {
+              "id": "1775027417676_1",
+              "name": "context",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_SEGMENT_CONTEXT.$output}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "Get Segment Context"
+          },
+          "outcomes": {
+            "success": "1774881253209"
+          },
+          "code": "GET_SEGMENT_CONTEXT",
+          "convergenceTargetId": "1774881253209",
+          "id": "1774880876737",
+          "inputs": [
+            {
+              "id": "1774880876738_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the user message: {{$context.$system.$inputMessage}} and chat history: {{$context.$system.$chatHistory}}\nHere's the context: {{$context.$nodes.BGD_CREATE_AGENT_CONTEXT.$output}}\n\nIf the recent conversation is about account criteria segment then output 'BGAccount', if about Persona criteria then output 'BGPersona', and if about Behavior criteria then output 'BGBehavioral'. The output must be single word and in single quotes."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "high"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "errorNodeId": "1776077275854",
+            "name": "Post Segment Data"
+          },
+          "outcomes": {
+            "success": "1775124042278"
+          },
+          "code": "POST_SEGMENT_DATA",
+          "id": "1775119157446",
+          "inputs": [
+            {
+              "id": "1775119157448_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the user message: {{$context.$system.$inputMessage}} and chat history: {{$context.$system.$chatHistory}}\nHere's the context: {{$context.$nodes.BGD_CREATE_AGENT_CONTEXT.$output}}\n\n Here's the id of the newly created segment if there was segment creation: {{$context.$nodes.GET_SEGMENT_ID_OF_CREATED_SEGMENT.$output}} and if the segment already existed then here's it's output: {{$context.$nodes.GET_EXISTING_SEGMENTS.$output}}\n\nSo the Buying Group Profile (BGD) is created using account criteria, persona criteria with buyer roles and behavior criteria with roles.\nSo if the agent is in process of making BGD but first, and account criteria is taken from user. Then output to provide persona criteria with buyer roles. If persona criteria were made/checked just now. Then ask user for behavior criteria with roles. And if that's also done then ask, user if agent can go ahead with creation of BGD."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "Segment Existence Check Switch"
+          },
+          "outcomes": {
+            "yes": "1774882729910",
+            "no": "1776078632124"
+          },
+          "code": "SEGMENT_EXISTENCE_CHECK_SWITCH",
+          "convergenceTargetId": "1775119157446",
+          "id": "1774881535785",
+          "inputs": [
+            {
+              "id": "1774881535786_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.SEGMENT_EXISTENCE_CHECK.$output}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "Get Existing Segments"
+          },
+          "outcomes": {
+            "success": "1775119157446"
+          },
+          "code": "GET_EXISTING_SEGMENTS",
+          "id": "1774882729910",
+          "inputs": [
+            {
+              "id": "1774882729912_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Now that we have established that the segment exists in this: {{$context.$nodes.GET_EXISTING_SEGMENTS_WITH_CONTEXT.$output}}\nfor the following user query: {{$context.$nodes.BGD_CREATE_AGENT_CONTEXT.$output}}\n\nYour job is to output all the relavant details of this segment that will be used in the payload of BGD."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_MARKETING_NL2SQLBO",
+            "errorNodeId": "1776077275854",
+            "functionName": "createConversation",
+            "processJson": true,
+            "name": "Create NL2SQL Conversation"
+          },
+          "outcomes": {
+            "success": "1774881905340"
+          },
+          "code": "CREATE_NL2SQL_CONVERSATION",
+          "id": "1774881730196",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_MARKETING_NL2SQLBO",
+            "errorNodeId": "1776077275854",
+            "functionName": "conversationPrompt",
+            "processJson": true,
+            "name": "Get SQL prompt NL2SQL"
+          },
+          "outcomes": {
+            "success": "1775119263572"
+          },
+          "code": "GET_SQL_PROMPT_NL2SQL",
+          "convergenceTargetId": "1774882148253",
+          "id": "1774881905340",
+          "inputs": [
+            {
+              "id": "1774881937029_1",
+              "name": "conversationID",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_NL2SQL_CONVERSATION.$output.conversationId}}"
+            },
+            {
+              "id": "1774881937030_2",
+              "name": "action",
+              "type": "string",
+              "value": "explain"
+            },
+            {
+              "id": "1774881937030_3",
+              "name": "profileId",
+              "type": "string",
+              "value": "DEFAULT"
+            },
+            {
+              "id": "1774881937031_4",
+              "name": "prePrompt",
+              "type": "string"
+            },
+            {
+              "id": "1774881937032_5",
+              "name": "userPrompt",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_USER_PROMPT_FOR_SEGMENT_CREATION.$output}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "SQL Empty Check"
+          },
+          "outcomes": {
+            "true": "1775122225961",
+            "false": "1775119532941"
+          },
+          "code": "SQL_EMPTY_CHECK",
+          "convergenceTargetId": "1775119157446",
+          "id": "1775119263572",
+          "inputs": [
+            {
+              "id": "1775119263574_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_SQL_PROMPT_NL2SQL.$output.sql != null && $context.$nodes.GET_SQL_PROMPT_NL2SQL.$output.sql != \"SELECT\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CUSTOMERDA_BGDSEGMENTSBO",
+            "errorNodeId": "1775119532941",
+            "functionName": "createSegment",
+            "processJson": true,
+            "name": "Create Segment API Call"
+          },
+          "outcomes": {
+            "success": "1776079798048"
+          },
+          "code": "CREATE_SEGMENT_API_CALL",
+          "convergenceTargetId": "1775119339657",
+          "id": "1774882148253",
+          "inputs": [
+            {
+              "id": "1774882177474_1",
+              "name": "segmentname",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_SEGMENT_NAME.$output}}"
+            },
+            {
+              "id": "1774882177475_2",
+              "name": "description",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_SEGMENT_DESCRIPTION.$output}}"
+            },
+            {
+              "id": "1774882177476_3",
+              "name": "jsonModel",
+              "type": "string",
+              "value": "{{$context.$nodes.JSONMODEL_STRING_FOR_CREATE_SEGMENT.$output.result}}"
+            },
+            {
+              "id": "1774882177477_4",
+              "name": "baseObject",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_CREATE_SEGMENT_BASEOBJECT.$output}}"
+            },
+            {
+              "id": "1774882177478_5",
+              "name": "BGContext",
+              "type": "string",
+              "value": "{{$context.$nodes.SEGMENT_CONTEXT_WITHOUT_SINGLE_QUOTES.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Couldn't Create Segment"
+          },
+          "outcomes": {},
+          "code": "COULDNT_CREATE_SEGMENT",
+          "convergenceTargetId": "1775119157446",
+          "id": "1775119532941",
+          "inputs": [
+            {
+              "id": "1775119532942_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "Currently, agent is not able to create the said segment. Please proceed to create it manually."
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Get Segment Name"
+          },
+          "outcomes": {
+            "success": "1775122315351"
+          },
+          "code": "GET_SEGMENT_NAME",
+          "id": "1775122225961",
+          "inputs": [
+            {
+              "id": "1775122225962_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the user message: {{$context.$system.$inputMessage}} and chat history: {{$context.$system.$chatHistory}}\nHere's the context: {{$context.$nodes.BGD_CREATE_AGENT_CONTEXT.$output}}\nYour job is to output appropriate short name for the segment to be created and at the end of name add \"_Agentic\". Output nothing else"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Get Segment Description"
+          },
+          "outcomes": {
+            "success": "1776186380572"
+          },
+          "code": "GET_SEGMENT_DESCRIPTION",
+          "id": "1775122315351",
+          "inputs": [
+            {
+              "id": "1775122315352_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the user message: {{$context.$system.$inputMessage}} and chat history: {{$context.$system.$chatHistory}}\nHere's the context: {{$context.$nodes.BGD_CREATE_AGENT_CONTEXT.$output}}\nYour job is to output appropriate short description for the segment to be created and also add description that this segment is created by agent. Output nothing else"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "high"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Get Create Segment BaseObject"
+          },
+          "outcomes": {
+            "success": "1774882148253"
+          },
+          "code": "GET_CREATE_SEGMENT_BASEOBJECT",
+          "id": "1775122861254",
+          "inputs": [
+            {
+              "id": "1775122861255_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the user message: {{$context.$system.$inputMessage}} and chat history: {{$context.$system.$chatHistory}}\nHere's the context: {{$context.$nodes.BGD_CREATE_AGENT_CONTEXT.$output}}\nHere's the sql generated: {{$context.$nodes.GET_SQL_PROMPT_NL2SQL.$output.sql}}\n\nYour job is to output just the table name used to create sql query. If it's accounts then output \"Accounts\", if it's contacts then output \"Contacts\""
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CUSTOMERDA_BGDSEGMENTSBO",
+            "functionName": "publishSegment",
+            "processJson": true,
+            "name": "Activate Created Segment"
+          },
+          "outcomes": {
+            "success": "1775119157446"
+          },
+          "code": "ACTIVATE_CREATED_SEGMENT",
+          "id": "1775123574668",
+          "inputs": [
+            {
+              "id": "1775123611868_1",
+              "name": "segment_id",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_SEGMENT_ID_OF_CREATED_SEGMENT.$output}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "medium"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "errorNodeId": "1776077275854",
+            "name": "Get Segment ID of Created Segment"
+          },
+          "outcomes": {
+            "success": "1775123574668"
+          },
+          "code": "GET_SEGMENT_ID_OF_CREATED_SEGMENT",
+          "id": "1775123630991",
+          "inputs": [
+            {
+              "id": "1775123630993_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the user message: {{$context.$system.$inputMessage}} and chat history: {{$context.$system.$chatHistory}}\nHere's the list of all segments: {{$context.$nodes.GET_EXISTING_SEGMENTS_WITH_CONTEXT_AFTER_CREATE.$output}}\n\nHere's the name of just created segment: {{$context.$nodes.GET_SEGMENT_NAME.$output}} \nYour job is to output the id of the newly created segment and nothing else."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Return Post Create Segments"
+          },
+          "outcomes": {},
+          "code": "RETURN_POST_CREATE_SEGMENTS",
+          "convergenceTargetId": "end",
+          "id": "1775124042278",
+          "inputs": [
+            {
+              "id": "1775124042279_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.POST_SEGMENT_DATA.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775119532941",
+            "name": "Get User Requirement for Segment"
+          },
+          "outcomes": {
+            "success": "1775127665898"
+          },
+          "code": "GET_USER_REQUIREMENT_FOR_SEGMENT",
+          "id": "1775126689056",
+          "inputs": [
+            {
+              "id": "1775126689058_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given user's input message: {{$context.$system.$inputMessage}} and chat history: {{$context.$system.$chatHistory}}\nGiven the list of all segments in the said context: {{$context.$nodes.GET_EXISTING_SEGMENTS_WITH_CONTEXT_FOR_WORKING.$output}} \n\nYour job is to decide whether to fulfill user's ask we'll have to create a segment, update a segment or activate/deactivate it.\nIf the segment exists and user is asking for updating it then output \"update\"\nif the segment exists and user is asking to create then output \"moreInformation\"\nif the segment does not exist and user is asking to update then output \"moreInformation\"\nif the segment does not exist and user is asking to create segment then output \"create\"\nif the segment exists and user is asking to activate/deactivate it then output \"activateDeactivate\"\nif the segment doesn't exist and user is asking to activate/deactivate then output \"moreInformation\"\nif the user is asking to simply show the segments available for a given context then output \"show\""
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "Get Segment Context For Working"
+          },
+          "outcomes": {
+            "success": "1775127083867"
+          },
+          "code": "GET_SEGMENT_CONTEXT_FOR_WORKING",
+          "id": "1775127009728",
+          "inputs": [
+            {
+              "id": "1775127009729_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given user's input message: {{$context.$system.$inputMessage}} and chat history: {{$context.$system.$chatHistory}}\n\nIf the recent conversation is about account criteria segment then output 'BGAccount', if about Persona criteria then output 'BGPersona', and if about Behavior criteria then output 'BGBehavioral'. The output must be single word and in single quotes."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CUSTOMERDA_BGDUNPUBLISHEDSEGMENTSBO",
+            "errorNodeId": "1776077275854",
+            "functionName": "getContextualSqlSegments",
+            "processJson": true,
+            "name": "Get Existing Segments with Context For Working"
+          },
+          "outcomes": {
+            "success": "1775126689056"
+          },
+          "code": "GET_EXISTING_SEGMENTS_WITH_CONTEXT_FOR_WORKING",
+          "id": "1775127083867",
+          "inputs": [
+            {
+              "id": "1776077107541_1",
+              "name": "context",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_SEGMENT_CONTEXT_FOR_WORKING.$output}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "Working with segments switch"
+          },
+          "outcomes": {
+            "create": "1775128444254",
+            "update": "1775128260090",
+            "activateDeactivate": "1775127783537",
+            "moreInformation": "1775129940688",
+            "show": "1775130222152"
+          },
+          "code": "WORKING_WITH_SEGMENTS_SWITCH",
+          "convergenceTargetId": "end",
+          "id": "1775127665898",
+          "inputs": [
+            {
+              "id": "1775127665899_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_USER_REQUIREMENT_FOR_SEGMENT.$output}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775119532941",
+            "name": "Get Segment Id for Working"
+          },
+          "outcomes": {
+            "success": "1775130675505"
+          },
+          "code": "GET_SEGMENT_ID_FOR_WORKING",
+          "id": "1775127783537",
+          "inputs": [
+            {
+              "id": "1775127783538_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given user message {{$context.$system.$inputMessage}} and the chat history {{$context.$system.$chatHistory}}\n\nHere is the list of all the sql segments for that context: {{$context.$nodes.GET_EXISTING_SEGMENTS_WITH_CONTEXT_FOR_WORKING.$output}}\n\nYour job is to output the segmentId and give result if we have to activate or deactivate the segment.\nOutput the segment id/s and tell what to do with it/them.\nLike output can be:\n[(segment1_id, activate)]\nor \n[(segment1_id, deactivate), (segment2_id, activate)]"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_MARKETING_NL2SQLBO",
+            "functionName": "createConversation",
+            "processJson": true,
+            "name": "Update Segment NL2SQL conv"
+          },
+          "outcomes": {
+            "success": "1775128537358"
+          },
+          "code": "UPDATE_SEGMENT_NL2SQL_CONV",
+          "id": "1775128260090",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_MARKETING_NL2SQLBO",
+            "functionName": "createConversation",
+            "processJson": true,
+            "name": "Create Segment NL2SQL Conv"
+          },
+          "outcomes": {
+            "success": "1775128476385"
+          },
+          "code": "CREATE_SEGMENT_NL2SQL_CONV",
+          "id": "1775128444254",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_MARKETING_NL2SQLBO",
+            "functionName": "conversationPrompt",
+            "processJson": true,
+            "name": "Create Segment NL2SQL Prompt"
+          },
+          "outcomes": {
+            "success": "1775128865479"
+          },
+          "code": "CREATE_SEGMENT_NL2SQL_PROMPT",
+          "id": "1775128476385",
+          "inputs": [
+            {
+              "id": "1775128499840_1",
+              "name": "conversationID",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_SEGMENT_NL2SQL_CONV.$output.conversationId}}"
+            },
+            {
+              "id": "1775128499841_2",
+              "name": "action",
+              "type": "string",
+              "value": "explain"
+            },
+            {
+              "id": "1775128499842_3",
+              "name": "profileId",
+              "type": "string",
+              "value": "DEFAULT"
+            },
+            {
+              "id": "1775128499843_4",
+              "name": "prePrompt",
+              "type": "string"
+            },
+            {
+              "id": "1775128499844_5",
+              "name": "userPrompt",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_MARKETING_NL2SQLBO",
+            "functionName": "conversationPrompt",
+            "processJson": true,
+            "name": "Update Segment NL2SQL Prompt"
+          },
+          "outcomes": {
+            "success": "1775128919304"
+          },
+          "code": "UPDATE_SEGMENT_NL2SQL_PROMPT",
+          "id": "1775128537358",
+          "inputs": [
+            {
+              "id": "1775128561030_1",
+              "name": "conversationID",
+              "type": "string",
+              "value": "{{$context.$nodes.UPDATE_SEGMENT_NL2SQL_CONV.$output.conversationId}}"
+            },
+            {
+              "id": "1775128561032_2",
+              "name": "action",
+              "type": "string",
+              "value": "explain"
+            },
+            {
+              "id": "1775128561034_3",
+              "name": "profileId",
+              "type": "string",
+              "value": "DEFAULT"
+            },
+            {
+              "id": "1775128561035_4",
+              "name": "prePrompt",
+              "type": "string"
+            },
+            {
+              "id": "1775128561036_5",
+              "name": "userPrompt",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Get Sql Segment from create segment nl2sql output",
+            "returnType": "string",
+            "sourceCode": "return $context.$nodes.CREATE_SEGMENT_NL2SQL_PROMPT.$output.sql;"
+          },
+          "outcomes": {
+            "success": "1776247711384"
+          },
+          "code": "GET_SQL_SEGMENT_FROM_CREATE_SEGMENT_NL2SQL_OUTPUT",
+          "id": "1775128865479",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Get Sql query from update segment nl2sql prompt",
+            "returnType": "string",
+            "sourceCode": "return $context.$nodes.UPDATE_SEGMENT_NL2SQL_PROMPT.$output.sql;"
+          },
+          "outcomes": {
+            "success": "1776247593965"
+          },
+          "code": "GET_SQL_QUERY_FROM_UPDATE_SEGMENT_NL2SQL_PROMPT",
+          "id": "1775128919304",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775119532941",
+            "name": "Require more Information from user"
+          },
+          "outcomes": {
+            "success": "1775130402577"
+          },
+          "code": "REQUIRE_MORE_INFORMATION_FROM_USER",
+          "id": "1775129940688",
+          "inputs": [
+            {
+              "id": "1775129940689_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given user's input message: {{$context.$system.$inputMessage}} and chat history: {{$context.$system.$chatHistory}}\nGiven the list of all segments in the said context: {{$context.$nodes.GET_EXISTING_SEGMENTS_WITH_CONTEXT_FOR_WORKING.$output}} \n\nNow one of the following can be reason:\nif the segment exists and user is asking to create\nif the segment does not exist and user is asking to update\nif the segment doesn't exist and user is asking to activate/deactivate\n\nYour job is to output to the user the suitable answer so that he can refine his query."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775119532941",
+            "name": "Summarize the segments available"
+          },
+          "outcomes": {
+            "success": "1775130338471"
+          },
+          "code": "SUMMARIZE_THE_SEGMENTS_AVAILABLE",
+          "id": "1775130222152",
+          "inputs": [
+            {
+              "id": "1775130222153_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given user's ask: {{$context.$system.$inputMessage}} and the chat history: {{$context.$system.$chatHistory}}\nand the available segments: {{$context.$nodes.GET_EXISTING_SEGMENTS_WITH_CONTEXT_FOR_WORKING.$output}}\n\nYour job is to show the user available segments according to what he's asking"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775119532941",
+            "name": "Return Show Segments"
+          },
+          "outcomes": {},
+          "code": "RETURN_SHOW_SEGMENTS",
+          "convergenceTargetId": "end",
+          "id": "1775130338471",
+          "inputs": [
+            {
+              "id": "1775130338473_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.SUMMARIZE_THE_SEGMENTS_AVAILABLE.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775119532941",
+            "name": "Return More Information workflow"
+          },
+          "outcomes": {},
+          "code": "RETURN_MORE_INFORMATION_WORKFLOW",
+          "convergenceTargetId": "end",
+          "id": "1775130402577",
+          "inputs": [
+            {
+              "id": "1775130402578_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.REQUIRE_MORE_INFORMATION_FROM_USER.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "agentCode": "ORA_BGD_SEGMENT_ACTIVATE_AGENT",
+            "name": "Segment Activate Deactivate Agent",
+            "type": "REUSABLE"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SEGMENT_ACTIVATE_DEACTIVATE_AGENT",
+          "id": "1775130675505",
+          "inputs": [
+            {
+              "id": "1776077004508_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_SEGMENT_ID_FOR_WORKING.$output}}"
+            }
+          ],
+          "outputSpecification": "",
+          "type": "AGENT"
+        },
+        {
+          "metadata": {
+            "name": "Error Handling"
+          },
+          "outcomes": {},
+          "code": "ERROR_HANDLING",
+          "convergenceTargetId": "end",
+          "id": "1776077275854",
+          "inputs": [
+            {
+              "id": "1776077275856_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "Sorry agent is unavailable right now. Please try again later."
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "Get User Prompt for Segment Creation"
+          },
+          "outcomes": {
+            "success": "1774881730196"
+          },
+          "code": "GET_USER_PROMPT_FOR_SEGMENT_CREATION",
+          "id": "1776078632124",
+          "inputs": [
+            {
+              "id": "1776078632126_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the user's request: {{$context.$system.$inputMessage}} and chat history: {{$context.$system.$chatHistory}}\nGiven the segment context: {{$context.$nodes.GET_SEGMENT_CONTEXT.$output}}\n\nYour job is to output appropriate one or two line prompt for creation of segment (account criteria, persona, behavior criteria)\nIf the context is 'BGAccount' then, start with \"Accounts that include\"... (then rest of the prompt)\nIf the context is 'BGPersona' or 'BGBehavioral' then, start with \"Contacts that include\"... (then rest of the prompt, and no need to add buyer role into the prompt)"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CUSTOMERDA_BGDUNPUBLISHEDSEGMENTSBO",
+            "functionName": "getContextualSqlSegments",
+            "processJson": true,
+            "name": "Get Existing Segments with Context After Create"
+          },
+          "outcomes": {
+            "success": "1775123630991"
+          },
+          "code": "GET_EXISTING_SEGMENTS_WITH_CONTEXT_AFTER_CREATE",
+          "id": "1776079798048",
+          "inputs": [
+            {
+              "id": "1776086519147_1",
+              "name": "context",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_SEGMENT_CONTEXT.$output}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "JsonModel String for Create Segment",
+            "returnType": "string",
+            "sourceCode": "const sql_query = $context.$nodes.GET_SQL_PROMPT_NL2SQL.$output.sql;\n\nreturn JSON.stringify({\n  canvases: {\n    sqlquery: {\n      sql: sql_query\n    }\n  }\n});"
+          },
+          "outcomes": {
+            "success": "1775122861254"
+          },
+          "code": "JSONMODEL_STRING_FOR_CREATE_SEGMENT",
+          "id": "1776183814628",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "Segment Context without Single Quotes",
+            "returnType": "string",
+            "sourceCode": "const context = $context.$nodes.GET_SEGMENT_CONTEXT.$output;\n\nreturn context.replace(/'/g, \"\");"
+          },
+          "outcomes": {
+            "success": "1776183814628"
+          },
+          "code": "SEGMENT_CONTEXT_WITHOUT_SINGLE_QUOTES",
+          "id": "1776186380572",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "LLM Output for Update Agent Input"
+          },
+          "outcomes": {
+            "success": "1776250626083"
+          },
+          "code": "LLM_OUTPUT_FOR_UPDATE_AGENT_INPUT",
+          "id": "1776247593965",
+          "inputs": [
+            {
+              "id": "1776247593966_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "user ask is {{$context.$system.$inputMessage}} with chat history being {{$context.$system.$chatHistory}} and here's the sql query generated according to the ask: {{$context.$nodes.GET_SQL_QUERY_FROM_UPDATE_SEGMENT_NL2SQL_PROMPT.$output.result}} and all the existing BGDs are as follows: {{$context.$nodes.GET_EXISTING_SEGMENTS_WITH_CONTEXT_FOR_WORKING.$output}}\n\nYour job is to give output to update segment agent with all the relevant details so that the agent can update the said segment. DO NOT change anything in the generated sql query pass it as it is to the create agent. Here's the update segment payload:\n{\n    \"id\": \"{segmentId}\"\n    \"name\": \"{segmentname}\", \n    \"description\": \"{description}\", \n    \"jsonModel\": \"{\\\"canvases\\\":{\\\"sqlquery\\\":{\\\"sql\\\":\\\"{{here sql query will come}}\\\"}}}\",\n    \"type\": \"SQLQUERY\",\n    \"baseObject\": \"{baseObject}\",\n    \"model\": \"Default\",\n    \"context\": \"{context}\",\n    \"count\": null\n}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "LLM Output for Create Segment Agent Input"
+          },
+          "outcomes": {
+            "success": "1776249652352"
+          },
+          "code": "LLM_OUTPUT_FOR_CREATE_SEGMENT_AGENT_INPUT",
+          "id": "1776247711384",
+          "inputs": [
+            {
+              "id": "1776247711385_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "user ask is {{$context.$system.$inputMessage}} with chat history being {{$context.$system.$chatHistory}} and here's the sql query generated according to the ask: {{$context.$nodes.GET_SQL_SEGMENT_FROM_CREATE_SEGMENT_NL2SQL_OUTPUT.$output.result}}\n\nYour job is to give output to create segment payload. DO NOT change anything in the generated sql query pass it as it is to the create agent. Here's the create segment payload:\n{\n    \"name\": \"{segmentname}\", // create yourself, make sure to add \"_Agentic\" at the end of segment name\n    \"description\": \"{description}\", // create yourself\n    \"jsonModel\": \"{\\\"canvases\\\":{\\\"sqlquery\\\":{\\\"sql\\\":\\\"{{here sql query will come}}\\\"}}}\",\n    \"type\": \"SQLQUERY\",\n    \"baseObject\": \"{baseObject}\", // given the table and user message used, give baseObject, such as Contacts or Accounts\n    \"model\": \"Default\",\n    \"context\": \"{context}\", // it'll be 'BGAccount' for account criteria segments, 'BGPersona' for persona criteria segments and 'BGBehavioral' for behavior segments\n    \"count\": null\n}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Get payload from LLM output create segment",
+            "returnType": "object",
+            "sourceCode": "const payload = $context.$nodes.LLM_OUTPUT_FOR_CREATE_SEGMENT_AGENT_INPUT.$output;\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "1776249734875"
+          },
+          "code": "GET_PAYLOAD_FROM_LLM_OUTPUT_CREATE_SEGMENT",
+          "id": "1776249652352",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CUSTOMERDA_BGDSEGMENTSBO",
+            "functionName": "createSegment",
+            "processJson": true,
+            "name": "Create Segment API call for working"
+          },
+          "outcomes": {
+            "success": "1776251244591"
+          },
+          "code": "CREATE_SEGMENT_API_CALL_FOR_WORKING",
+          "id": "1776249734875",
+          "inputs": [
+            {
+              "id": "1776249762415_1",
+              "name": "segmentname",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PAYLOAD_FROM_LLM_OUTPUT_CREATE_SEGMENT.$output.result.name}}"
+            },
+            {
+              "id": "1776249762416_2",
+              "name": "description",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PAYLOAD_FROM_LLM_OUTPUT_CREATE_SEGMENT.$output.result.description}}"
+            },
+            {
+              "id": "1776249762419_3",
+              "name": "jsonModel",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PAYLOAD_FROM_LLM_OUTPUT_CREATE_SEGMENT.$output.result.jsonModel}}"
+            },
+            {
+              "id": "1776249762420_4",
+              "name": "baseObject",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PAYLOAD_FROM_LLM_OUTPUT_CREATE_SEGMENT.$output.result.baseObject}}"
+            },
+            {
+              "id": "1776249762421_5",
+              "name": "BGContext",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PAYLOAD_FROM_LLM_OUTPUT_CREATE_SEGMENT.$output.result.context}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Get Payload from LLM output for Update Segment",
+            "returnType": "object",
+            "sourceCode": "const payload = $context.$nodes.LLM_OUTPUT_FOR_UPDATE_AGENT_INPUT.$output;\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "1776250821570"
+          },
+          "code": "GET_PAYLOAD_FROM_LLM_OUTPUT_FOR_UPDATE_SEGMENT",
+          "id": "1776250626083",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CUSTOMERDA_BGDSEGMENTSBO",
+            "functionName": "updateSegment",
+            "processJson": true,
+            "name": "Update Segment API call for Working"
+          },
+          "outcomes": {
+            "success": "1776251379151"
+          },
+          "code": "UPDATE_SEGMENT_API_CALL_FOR_WORKING",
+          "id": "1776250821570",
+          "inputs": [
+            {
+              "id": "1776250847674_1",
+              "name": "segment_id",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PAYLOAD_FROM_LLM_OUTPUT_FOR_UPDATE_SEGMENT.$output.result.id}}"
+            },
+            {
+              "id": "1776250847675_2",
+              "name": "segmentname",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PAYLOAD_FROM_LLM_OUTPUT_FOR_UPDATE_SEGMENT.$output.result.name}}"
+            },
+            {
+              "id": "1776250847675_3",
+              "name": "description",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PAYLOAD_FROM_LLM_OUTPUT_FOR_UPDATE_SEGMENT.$output.result.description}}"
+            },
+            {
+              "id": "1776250847676_4",
+              "name": "jsonModel",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PAYLOAD_FROM_LLM_OUTPUT_FOR_UPDATE_SEGMENT.$output.result.jsonModel}}"
+            },
+            {
+              "id": "1776250847677_5",
+              "name": "BGContext",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PAYLOAD_FROM_LLM_OUTPUT_FOR_UPDATE_SEGMENT.$output.result.context}}"
+            },
+            {
+              "id": "1776250847678_6",
+              "name": "baseObject",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PAYLOAD_FROM_LLM_OUTPUT_FOR_UPDATE_SEGMENT.$output.result.baseObject}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "Create Segment for Working Post Creation"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "CREATE_SEGMENT_FOR_WORKING_POST_CREATION",
+          "id": "1776251244591",
+          "inputs": [
+            {
+              "id": "1776251244592_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Output the following to the user: A new segment has been created with name {{$context.$nodes.GET_PAYLOAD_FROM_LLM_OUTPUT_CREATE_SEGMENT.$output.result.name}}. Please let me know if you'd like me to update or activate it."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "Update Segment for Working Post Updating"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "UPDATE_SEGMENT_FOR_WORKING_POST_UPDATING",
+          "id": "1776251379151",
+          "inputs": [
+            {
+              "id": "1776251379152_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Output the following to the user: {{$context.$nodes.GET_PAYLOAD_FROM_LLM_OUTPUT_FOR_UPDATE_SEGMENT.$output.result.name}} segment has been updates. Please let me know if you'd like me to activate it."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1776077275854",
+            "name": "Work With Single BGD LLM preprocess"
+          },
+          "outcomes": {
+            "success": "1772640971589"
+          },
+          "code": "WORK_WITH_SINGLE_BGD_LLM_PREPROCESS",
+          "id": "1776251663673",
+          "inputs": [
+            {
+              "id": "1776251663674_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the user's request: {{$context.$system.$inputMessage}} and chat history: {{$context.$system.$chatHistory}}\n\nHere are the list of BGDs related to product: {{$context.$nodes.GET_ALL_PRODUCT_RELATED_BGDS.$output}}\n\nHere is the list of buyer roles available: {{$context.$nodes.GET_BUYER_ROLES_FOR_UPDATING_BGD.$output}} \n\nYour job is to output the BGD details that agent has to validate/show/update according to the given user request. Your output will be sent to an AI agent, so it's fine to show them ids but ask agent to not display IDs to the user. \nIf user asks is to update the BGD then pass the value of buyer roles as well in the output of which user has asked to update with persona segment or behavior segment. If user asks to update BGD in account criteria then buyer roles is not needed.\nIf user asks to validate the completeness of BGD, then analyze definition and offers concrete actions to user."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CUSTOMERDA_BGDBUYERROLESBO",
+            "errorNodeId": "1776077275854",
+            "functionName": "getBuyerRoles",
+            "processJson": true,
+            "name": "Get Buyer Roles for Updating BGD"
+          },
+          "outcomes": {
+            "success": "1776251663673"
+          },
+          "code": "GET_BUYER_ROLES_FOR_UPDATING_BGD",
+          "id": "1776276592407",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "CUSTOMER_DATA_PLATFORM",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

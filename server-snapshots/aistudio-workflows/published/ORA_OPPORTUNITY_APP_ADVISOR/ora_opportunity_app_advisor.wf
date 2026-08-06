@@ -1,0 +1,744 @@
+{
+  "workflowId": "300000326919671",
+  "workflowCode": "ORA_OPPORTUNITY_APP_ADVISOR",
+  "name": "Opportunity App Advisor",
+  "description": "Answers your questions in Sales Command Center and guides you to the right next steps using your current context.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1770875875294"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "name": "Classification"
+          },
+          "outcomes": {
+            "success": "1770879199025"
+          },
+          "code": "CLASSIFICATION",
+          "id": "1770875875294",
+          "inputs": [
+            {
+              "id": "1770875875295_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Role\nYou are a CX Sales Expert. You classify and answer user queries using only the provided opportunity context.\n\nImportant context rule\nThe provided opportunity context is not the complete list of all opportunities the user owns.\n\nThe provided opportunity context represents a prioritized subset of the user's opportunities: the top prioritized opportunity list for the user, typically limited to the top 5 opportunities based on risk, customer engagement, urgency, pipeline impact, or similar prioritization signals.\n\nDo not assume the provided opportunity context represents all opportunities owned by the user.\n\nHowever, when the user asks about top priority deals, highest-risk opportunity, opportunities needing attention, or pipeline value at risk, answer using this provided prioritized opportunity set. These queries should be classified as \"Available\" when they can be answered from the provided opportunity context.\n\nInputs\nOpportunity context:\n{{$context.$triggers.REST.$input.opportunityContext}}\n\nUser query:\n{{$context.$system.$inputMessage}}\n\nTask\nClassify the user query into exactly one category and return only the JSON object that matches the schema below.\n\nClassification categories\n\nOutOfScope\nUse when the query is not related to CX Sales, sales opportunities, accounts, contacts, deals, pipeline, revenue, close dates, stages, competitors, risks, next steps, or similar sales topics.\n\nOutput rules:\n\nclassification: \"OutOfScope\"\nopportunityNumber: null\noptyLength: 0\nanswer: null\ninsights: []\n\nHelpHandling\nUse when the user asks what the agent can do, asks for help, or asks about the agent's purpose, identity, or capabilities.\n\nExamples:\n\nWhat can you do?\nHelp\nWho are you?\nHow can you help me with opportunities?\n\nOutput rules:\n\nclassification: \"HelpHandling\"\nopportunityNumber: null\noptyLength: 0\nanswer: null\ninsights: []\n\nAvailable\nUse when the query can be answered completely and confidently from the provided opportunity context.\n\nUse Available when:\n\nThe query is about one clearly identified opportunity, and the needed data exists in the provided context.\nThe query asks about details already present in the matched opportunity context.\nThe query can be answered using the provided prioritized opportunity set.\nThe query asks about top priority deals, highest-risk opportunity, opportunities needing attention, or pipeline value at risk within the provided prioritized opportunity set.\n\n2. Prioritized-set questions\nUse Available when the query asks about the provided prioritized opportunity set.\n\nThis rule overrides the general incomplete-context limitation.\n\nThe following query types must be treated as prioritized-set questions and classified as \"Available\" when the needed fields are present in the provided context:\n\n- Top priority deals\n- Priority opportunities\n- Deals needing attention\n- Opportunities needing attention today\n- Highest-risk opportunity\n- Risky opportunities\n- At-risk opportunities\n- Pipeline value at risk\n- Total at-risk value in the prioritized set\n- Which deal should I focus on first?\n- What needs my attention?\n- What are the urgent opportunities?\n- What are the top 5 opportunities?\n- Summarize my priority opportunities\n- Show my prioritized opportunities\n\nImportant:\nFor these prioritized-set questions, do not require the complete universe of opportunities.\nThe provided context is already the selected top-priority set.\nUse only this set to answer.\n\nExamples that should be Available if fields exist:\nUser: What are my top priority deals right now?\nBehavior: Summarize the opportunities in the provided prioritized set.\nclassification: \"Available\"\nopportunityNumber: null\noptyLength: number of opportunities summarized from the provided set\n\nUser: Which opportunity has the highest risk?\nBehavior: Pick the highest-risk opportunity from the provided prioritized set, using explicit risk score, risk level, risk reason, status, or risk indicator fields if present.\nclassification: \"Available\"\nopportunityNumber: selected opportunity OptyNumber or Name\noptyLength: 1\n\nUser: How many opportunities need my attention today?\nBehavior: Count opportunities in the provided prioritized set that have attention, urgency, risk, overdue activity, next-step, stalled, close-date, customer engagement, or similar attention signals.\nclassification: \"Available\"\nopportunityNumber: null\noptyLength: count of opportunities needing attention\nanswer: concise count based on the provided prioritized set\n\nUser: What's the total pipeline value at risk?\nBehavior: Sum pipeline, amount, revenue, or value fields for opportunities in the provided prioritized set that are marked risky, at risk, high risk, stalled, urgent, needing attention, or similar.\nclassification: \"Available\"\nopportunityNumber: null\noptyLength: number of at-risk opportunities included in the total\n\nClassify as \"Available\" if the provided opportunity context contains the fields needed to answer the query.\n\nAnswer these questions using only the opportunities in the provided prioritized opportunity context.\n\nWhen answering these queries, make it clear that the answer is based on the provided prioritized opportunity set, not the user's complete opportunity universe.\n\nExamples:\n\nIf the user asks \"What are my top priority deals right now?\", summarize the opportunities in the provided prioritized set.\nIf the user asks \"Which opportunity has the highest risk?\", identify the highest-risk opportunity from the provided prioritized set if risk information exists.\nIf the user asks \"How many opportunities need my attention today?\", count the opportunities in the provided prioritized set that indicate attention, risk, overdue activity, customer engagement need, next-step urgency, or similar attention signals.\nIf the user asks \"What's the total pipeline value at risk?\", sum the pipeline or revenue value for opportunities in the provided prioritized set that are marked risky or at risk, if the required amount and risk fields exist.\n\nSingle-opportunity targeting rule:\nReturn opportunityNumber only if the user clearly targets exactly one opportunity.\n\nA query targets exactly one opportunity when:\n\nThe user provides an OptyNumber.\nThe user provides a specific opportunity name.\nThe user says 'this opportunity' and the context contains exactly one opportunity.\nThe user asks about a detail of a single opportunity and the context clearly contains only one matching opportunity.\n\nFor single-opportunity questions:\n\nFirst identify matching opportunities by OptyNumber or Name.\nIf exactly one opportunity matches and the requested field exists, classify as \"Available\".\nopportunityNumber must be opportunity.OptyNumber if present; otherwise the exact opportunity Name.\noptyLength must be 1.\nanswer must directly answer the requested field.\n\nOutput rules:\n\nclassification: \"Available\"\nopportunityNumber: opportunity.OptyNumber if present for a single targeted opportunity; otherwise the exact opportunity name if that is the only available identifier; otherwise null\noptyLength: number of distinct opportunities the user is asking about\nanswer: concise 1-2 line answer based strictly on the provided context\ninsights: 1-3 short evidence bullets based strictly on the provided context\n\nNotAvailable\nUse when the query cannot be answered from the provided context or requires knowing the complete set of the user's opportunities beyond the provided prioritized opportunity set.\n\nBecause the provided context may be incomplete, classify as NotAvailable for queries that imply aggregation, grouping, distribution, ranking, comparison, or totals across all user-owned opportunities unless:\n\nThe user explicitly restricts the request to one named opportunity and the required fields exist for that opportunity.\nThe query can be answered from the provided prioritized opportunity set.\nThe query is about top priority deals, highest-risk opportunity, opportunities needing attention, or pipeline value at risk within the provided prioritized opportunity set and the required fields exist.\n\nClassify as NotAvailable when the user asks for information that requires the complete universe of the user's opportunities, such as:\n\nTotal revenue across all opportunities\nTotal pipeline across all opportunities\nTotal amount, sum, or overall value across all owned opportunities\nCount of all opportunities owned by the user\nPipeline by stage across all opportunities\nRevenue by stage, product, region, industry, account, owner, or time period across all opportunities\nBreakdown, grouping, distribution, or group by across all opportunities\nTop opportunities across the user's full opportunity universe when the query cannot be satisfied from the provided prioritized list\nLargest deal across all user-owned opportunities\nAverage deal size across all opportunities\nTrends, changes, deltas, growth, decline, or comparison across all opportunities\nTime-bounded aggregates such as this quarter, this month, YTD, last quarter, or next quarter, when not scoped to one opportunity or the provided prioritized opportunity set\n\nExamples that must be NotAvailable unless the context explicitly states it is the complete universe of opportunities or the user clearly asks only about the provided prioritized set:\n\nOpportunity revenue by stage for this quarter\nPipeline by stage\nTotal revenue for my opportunities\nCount of opportunities I own\nLargest deal across all my opportunities\nAverage deal size\n\nFor single-opportunity questions, use NotAvailable when:\n\nNo matching opportunity is found.\nMultiple opportunities match and the user did not provide a unique identifier.\nThe requested field is missing from the matched opportunity.\n\nFor single-opportunity NotAvailable cases:\n\nIf the user names one opportunity but it is not found in context, return that exact name in opportunityNumber and optyLength as 1.\nIf exactly one named opportunity is found but the requested field is missing, return the matched opportunity identifier and optyLength as 1.\nIf multiple context records appear to match one user-named opportunity, still set optyLength as 1 because the user asked about one opportunity. Classify as NotAvailable unless a unique record can be selected confidently.\n\nOutput rules:\n\nclassification: \"NotAvailable\"\nopportunityNumber:\nIf the user explicitly specifies a single opportunity number, return that exact value as a string even if it is not present in the context.\nIf the user explicitly specifies a single opportunity name, return that exact name as a string even if it is not present in the context.\nIf the query clearly targets one opportunity and the identifier is known from context, return opportunity.OptyNumber if present; otherwise return the opportunity name.\nOtherwise return null.\noptyLength: number of distinct opportunities the user is asking about\nanswer: null\ninsights: []\n\nGeneral rules\n\nUse only the supplied opportunity context and user query.\nDo not fabricate or infer missing opportunity details.\nDo not use outside knowledge.\nDo not assume the context includes all user-owned opportunities.\nTreat the context as the user's prioritized top opportunity set, typically top 5 based on risk, customer engagement, urgency, pipeline impact, or similar prioritization signals.\nYou may aggregate, rank, compare, or count within the provided prioritized opportunity set when the user asks about top priority deals, highest-risk opportunity, opportunities needing attention, or pipeline value at risk.\nDo not aggregate across the user's complete opportunity universe unless the context explicitly says it is complete.\nIf the query is sales-related but asks for missing information, classify as NotAvailable.\nIf the query asks about one opportunity but the required field is missing, classify as NotAvailable.\nIf multiple opportunities match a name or reference, classify as NotAvailable unless the user provided a unique identifier.\nKeep answer concise.\nKeep insights factual and evidence-based.\nReturn valid JSON only.\nDo not include Markdown, code fences, explanations, or text outside the JSON object.\n\nOpportunity requested count rule\n\noptyLength must be the number of distinct opportunities the user is asking about, not necessarily the total number of opportunities the user owns.\n\nIf the user clearly names or targets one specific opportunity, optyLength must be 1.\nIf the user provides one OptyNumber, optyLength must be 1.\nIf the user says 'this opportunity' and the context contains one clear current opportunity, optyLength must be 1.\nIf the user asks about multiple specifically named opportunities, optyLength must equal the number of distinct named opportunities.\nIf the user asks about top priority deals using the provided prioritized opportunity set, optyLength must be the number of opportunities in the provided prioritized set that are used in the answer.\nIf the user asks which opportunity has the highest risk within the provided prioritized set, optyLength must be 1 when one highest-risk opportunity can be identified.\nIf the user asks how many opportunities need attention today, optyLength must be the number of opportunities in the provided prioritized set that need attention, if this can be determined from the context.\nIf the user asks for total pipeline value at risk within the provided prioritized set, optyLength must be the number of at-risk opportunities included in the total.\nIf the user asks an aggregate, grouped, ranked, or broad query across all user-owned opportunities, optyLength must be the number of opportunities required by the query if explicitly stated by the user, otherwise 0.\nDo not set optyLength to the total number of records in the provided context unless the user explicitly asks about the provided prioritized opportunity set or the query is one of the supported prioritized-set queries.\nFor OutOfScope and HelpHandling, optyLength must be 0."
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"CxSalesQueryClassification\",\n  \"type\": \"object\",\n  \"additionalProperties\": false,\n  \"required\": [\"classification\", \"opportunityNumber\", \"optyLength\", \"answer\", \"insights\"],\n  \"properties\": {\n    \"classification\": {\n      \"type\": \"string\",\n      \"enum\": [\"OutOfScope\", \"HelpHandling\", \"Available\", \"NotAvailable\"]\n    },\n    \"opportunityNumber\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"optyLength\": {\n      \"type\": \"integer\",\n      \"minimum\": 0\n    },\n    \"answer\": {\n      \"type\": [\"string\", \"null\"],\n      \"maxLength\": 400\n    },\n    \"insights\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\",\n        \"maxLength\": 100\n      },\n      \"maxItems\": 3\n    }\n  }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "switch based on classification"
+          },
+          "outcomes": {
+            "Available": "1772040085686",
+            "NotAvailable": "1772037532773",
+            "HelpHandling": "1770879473916",
+            "OutOfScope": "1770879532974",
+            "Error": "1772038507293"
+          },
+          "code": "SWITCH_BASED_ON_CLASSIFICATION",
+          "convergenceTargetId": "end",
+          "id": "1770879199025",
+          "inputs": [
+            {
+              "id": "1770879199025_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.CLASSIFICATION.$output.classification}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.75,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "minimal"
+              },
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Help Handling"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "HELP_HANDLING",
+          "id": "1770879473916",
+          "inputs": [
+            {
+              "id": "1770879473918_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "return \"I can help on any things related to the Opportunities\""
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "minimal",
+                "max_tokens": 32000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "OutOfScope"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "OUTOFSCOPE",
+          "id": "1770879532974",
+          "inputs": [
+            {
+              "id": "1770879532976_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "return \"The query is out of scope, I can answer to any questions related to the opportunities\""
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "not available if for one opty"
+          },
+          "outcomes": {
+            "true": "1774456879355",
+            "false": "1771311395351"
+          },
+          "code": "IF_FOR_ONE_OPTY",
+          "convergenceTargetId": "end",
+          "id": "1772037532773",
+          "inputs": [
+            {
+              "id": "1772037532774_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CLASSIFICATION.$output.optyLength==1}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Error Node"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ERROR_NODE",
+          "id": "1772038507293",
+          "inputs": [
+            {
+              "id": "1772038507294_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Return \"Unable to answer the query now, Please try after sometime\""
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "if Available and for 1 opportunity"
+          },
+          "outcomes": {
+            "true": "1778837190516",
+            "false": "1778953084371"
+          },
+          "code": "IF_AVAILABLE_AND_FOR_1_OPPORTUNITY",
+          "convergenceTargetId": "end",
+          "id": "1772040085686",
+          "inputs": [
+            {
+              "id": "1772040085687_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CLASSIFICATION.$output.opportunityNumber!=null && $context.$nodes.CLASSIFICATION.$output.optyLength>0 && ! $context.$nodes.CLASSIFICATION.$output.answer}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "GET_OBJECT_METADATA",
+            "name": "Get Opportunity Fields"
+          },
+          "outcomes": {
+            "success": "1771311494337"
+          },
+          "code": "GET_OPPORTUNITY_FIELDS",
+          "convergenceTargetId": "1772037598825",
+          "id": "1771311395351",
+          "inputs": [
+            {
+              "id": "1771311423147_1",
+              "name": "object",
+              "type": "string",
+              "value": "Opportunity"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_SMARTSUGGESTION",
+            "errorNodeId": "1772038507293",
+            "functionName": "SmartSuggestion",
+            "processJson": true,
+            "name": "suggestions"
+          },
+          "outcomes": {
+            "success": "1774458899561"
+          },
+          "code": "SUGGESTIONS",
+          "id": "1774456879355",
+          "inputs": [
+            {
+              "id": "1774456899002_1",
+              "name": "keyword",
+              "value": "{{$context.$nodes.CLASSIFICATION.$output.opportunityNumber}}",
+              "required": true
+            },
+            {
+              "id": "1774456899003_2",
+              "name": "field",
+              "value": "Name",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "id": "1774456899004_3",
+              "name": "object",
+              "value": "Opportunity",
+              "required": true
+            },
+            {
+              "id": "1774456899005_4",
+              "name": "q",
+              "value": "\"\"",
+              "required": true,
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Identify the payload"
+          },
+          "outcomes": {
+            "success": "1771312214822"
+          },
+          "code": "IDENTIFY_THE_PAYLOAD",
+          "convergenceTargetId": "1772037598825",
+          "id": "1771311494337",
+          "inputs": [
+            {
+              "id": "1771311494338_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Provided with the available fields for the opportunity, generate the payload to get the opportunity data required to answer the user query.\n\nUser Query: `{{$context.$system.$inputMessage}}`\n\nFields: `{{$context.$nodes.GET_OPPORTUNITY_FIELDS.$output}}`\n\nThe payload must always include enough fields to identify each opportunity row. Always include:\n- Opportunity name attribute\n- Opportunity ID attribute, specifically `OptyId`\n\nIf the user query requires aggregation, totals, ranking, grouping, filtering, or comparison, still return row-level opportunity data with the required fields. The downstream answer-generation prompt will aggregate the row-level data as needed.\n\nSample payload:\n`{\"entity\":\"Opportunity\",\"q\":{\"op\":\"$and\",\"criteria\":[{\"op\":\"$in\",\"attribute\":\"StatusCode\",\"values\":[\"OPEN\"]},{\"op\":\"$or\",\"criteria\":[{\"op\":\"$eq\",\"attribute\":\"RecordSet\",\"value\":\"ORA_MYOPTIES\"},{\"op\":\"$eq\",\"attribute\":\"RecordSet\",\"value\":\"ORA_MYSUBORDINATESOPTIES\"}]}]},\"sort\":[{\"attribute\":\"EffectiveDate\",\"direction\":\"descending\"}],\"language\":\"en\",\"copiedFrom\":\"Opportunity\",\"limit\":15}`\n\nRules for payload generation:\n\n1. Field Selection\n- Use the field value from Fields metadata.\n- Never use the `displayLabel` field, as it may differ or change in the future.\n- Always include the opportunity name field in the output fields.\n- Always include `OptyId` in the output fields.\n- Include any additional fields required to answer the user query, such as amount, close date, status, owner, account, stage, forecast category, or effective date.\n- If the query asks for totals, counts, averages, grouping, comparison, ranking, or pipeline summaries, include the row-level fields needed for the calculation instead of returning only a pre-aggregated result.\n- Do not omit `OptyId`, even when the query appears to ask only for a summary.\n\n2. Filter Operators\n- Use the `attributeType` from Fields to decide which operators are valid.\n- Do not invent operators.\n- If type is unknown, allow only `[\"$in\",\"$notin\"]`.\n\nMapping:\n- Boolean -> `[\"$in\",\"$notin\"]`\n- Enum -> `[\"$in\",\"$notin\",\"$all\",\"$any\",\"$none\",\"$fm\"]`\n- Text / String -> `[\"$co\",\"$sw\",\"$ew\",\"$in\",\"$notin\",\"$all\",\"$any\",\"$none\",\"$fm\",\"$pr\",\"$npr\"]`\n- Long / Integer / BigDecimal / Currency / Percentage -> `[\"$gt\",\"$ge\",\"$lt\",\"$le\",\"$in\",\"$notin\",\"$wi\",\"$pr\",\"$npr\"]`\n- Date / Timestamp -> `[\"$gt\",\"$ge\",\"$lt\",\"$le\",\"$in\",\"$notin\",\"$wi\",\"$pr\",\"$npr\"]`\n- Record -> `[\"$co\",\"$sw\",\"$ew\",\"$in\",\"$notin\",\"$fm\",\"$pr\",\"$npr\",\"$eq\"]`\n\n- For ForeignKey fields where `attributeType = ForeignKey`, use the `$all` operator with a keyword or partial value:\n`{ \"operator\": \"$all\", \"value\": \"keyword\" }`\n- For `RecordSet` attribute, always use only `$eq`.\n\n3. Calendar Handling\n- Use the fiscal calendar only if the user explicitly mentions 'fiscal year', 'fiscal quarter', 'enterprise calendar', or similar terms.\n- If no fiscal context is mentioned, default to the Gregorian calendar.\n\n4. Fiscal Quarter Mapping\nWhen the user references fiscal quarters, apply this static mapping:\n- Q1: 6/1 to 8/31\n- Q2: 9/1 to 11/30\n- Q3: 12/1 to 2/28\n- Q4: 3/1 to 5/31\n\nUse this mapping to define appropriate `value1` and `value2` in date filters if the user requests a report by fiscal quarter.\n\n5. Strict Instructions for Relative Date Expressions\n- You must only use these units:\n  - `now/d` for days\n  - `now/M` for months\n  - `now/y` for years\n- You are forbidden from using `quarter`, `Q`, or `q` in any form in your output except for 'This Quarter'.\n- For 'This Quarter', use:\n  - `value1: \"now/q\"`\n  - `value2: \"now/q+1q\"`\n- If the input mentions quarters, convert quarters to months or years.\n- 1 quarter = 3 months.\n- 4 quarters = 1 year.\n- If the query says 'last N quarters', output:\n  - `value1: \"now/M\"`\n  - `value2: \"now/M-(N*3)M\"`\n- If the query says 'next N quarters', output:\n  - `value1: \"now/M+(N*3)M\"`\n  - `value2: \"now/M\"`\n- If your output contains `quarter`, `Q`, or `q` except for 'This Quarter', it is wrong and must be fixed.\n- Do not explain or mention quarters in the output.\n\nExamples:\n- Last 10 quarters -> `value1: \"now/M\"`, `value2: \"now/M-30M\"`\n- Last 4 quarters -> `value1: \"now/M\"`, `value2: \"now/M-12M\"`\n- Next 2 quarters -> `value1: \"now/M+6M\"`, `value2: \"now/M\"`\n- This Quarter -> `value1: \"now/q\"`, `value2: \"now/q+1q\"`\n- This Year -> `value1: \"now/y\"`, `value2: \"now/y+1y\"`\n- Last Year -> `value1: \"now/y-1y\"`, `value2: \"now/y\"`\n\nReturn only the JSON payload. Do not include explanations, Markdown, titles, or code fences."
+            }
+          ],
+          "outputSpecification": "\"filterNode\": {\n  \"type\": \"object\",\n  \"additionalProperties\": false,\n  \"required\": [\"op\", \"attribute\"],\n  \"properties\": {\n    \"op\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"$eq\",\n        \"$co\",\n        \"$sw\",\n        \"$ew\",\n        \"$in\",\n        \"$notin\",\n        \"$all\",\n        \"$any\",\n        \"$none\",\n        \"$fm\",\n        \"$pr\",\n        \"$npr\",\n        \"$gt\",\n        \"$ge\",\n        \"$lt\",\n        \"$le\",\n        \"$wi\"\n      ]\n    },\n    \"attribute\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"value\": {\n      \"type\": [\"string\", \"number\", \"integer\", \"boolean\", \"null\"]\n    },\n    \"values\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": [\"string\", \"number\", \"integer\", \"boolean\"]\n      },\n      \"minItems\": 1\n    },\n    \"value1\": {\n      \"type\": [\"string\", \"number\", \"integer\"]\n    },\n    \"value2\": {\n      \"type\": [\"string\", \"number\", \"integer\"]\n    }\n  },\n  \"allOf\": [\n    {\n      \"if\": {\n        \"properties\": {\n          \"op\": {\n            \"enum\": [\"$gt\", \"$ge\", \"$lt\", \"$le\", \"$eq\", \"$co\", \"$sw\", \"$ew\", \"$all\", \"$any\", \"$none\", \"$fm\"]\n          }\n        },\n        \"required\": [\"op\"]\n      },\n      \"then\": {\n        \"required\": [\"value\"],\n        \"not\": {\n          \"anyOf\": [\n            { \"required\": [\"values\"] },\n            { \"required\": [\"value1\"] },\n            { \"required\": [\"value2\"] }\n          ]\n        }\n      }\n    },\n    {\n      \"if\": {\n        \"properties\": {\n          \"op\": {\n            \"enum\": [\"$in\", \"$notin\"]\n          }\n        },\n        \"required\": [\"op\"]\n      },\n      \"then\": {\n        \"required\": [\"values\"],\n        \"not\": {\n          \"anyOf\": [\n            { \"required\": [\"value\"] },\n            { \"required\": [\"value1\"] },\n            { \"required\": [\"value2\"] }\n          ]\n        }\n      }\n    },\n    {\n      \"if\": {\n        \"properties\": {\n          \"op\": {\n            \"const\": \"$wi\"\n          }\n        },\n        \"required\": [\"op\"]\n      },\n      \"then\": {\n        \"required\": [\"value1\", \"value2\"],\n        \"not\": {\n          \"anyOf\": [\n            { \"required\": [\"value\"] },\n            { \"required\": [\"values\"] }\n          ]\n        }\n      }\n    },\n    {\n      \"if\": {\n        \"properties\": {\n          \"op\": {\n            \"enum\": [\"$pr\", \"$npr\"]\n          }\n        },\n        \"required\": [\"op\"]\n      },\n      \"then\": {\n        \"not\": {\n          \"anyOf\": [\n            { \"required\": [\"value\"] },\n            { \"required\": [\"values\"] },\n            { \"required\": [\"value1\"] },\n            { \"required\": [\"value2\"] }\n          ]\n        }\n      }\n    }\n  ]\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "build payload",
+            "returnType": "object",
+            "sourceCode": "let payload = {\n  \"entity\": \"Opportunity\",\n  \"q\": {\n    \"op\": \"$and\",\n    \"criteria\": [\n      {\n        \"op\": \"$eq\",\n        \"attribute\": $context.$nodes.SUGGESTIONS.$output?.items[0]?.field,\n        \"value\": $context.$nodes.SUGGESTIONS.$output?.items[0]?.key\n      }\n    ]\n  },\n  \"fields\": [\"OptyNumber\",\"OptyId\"]\n}\n\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "1774459382851"
+          },
+          "code": "BUILD_PAYLOAD",
+          "id": "1774458899561",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "get the data"
+          },
+          "outcomes": {
+            "success": "1778952905507"
+          },
+          "code": "GET_THE_DATA",
+          "convergenceTargetId": "1772037598825",
+          "id": "1771312214822",
+          "inputs": [
+            {
+              "id": "1771312231577_1",
+              "name": "object",
+              "type": "string",
+              "value": "Opportunity"
+            },
+            {
+              "id": "1771312231577_2",
+              "name": "q",
+              "type": "string",
+              "value": "{{$context.$nodes.IDENTIFY_THE_PAYLOAD.$output.q}}"
+            },
+            {
+              "id": "1771312231578_3",
+              "name": "sort",
+              "type": "string",
+              "value": "{{$context.$nodes.IDENTIFY_THE_PAYLOAD.$output.sort}}"
+            },
+            {
+              "id": "1771312231578_4",
+              "name": "limit",
+              "type": "integer",
+              "value": "{{$context.$nodes.IDENTIFY_THE_PAYLOAD.$output.limit}}"
+            },
+            {
+              "id": "1771312231579_5",
+              "name": "fields",
+              "type": "string",
+              "value": "{{$context.$nodes.IDENTIFY_THE_PAYLOAD.$output.fields}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "errorNodeId": "1772038507293",
+            "functionName": "SEARCH_OBJECTS",
+            "processJson": true,
+            "name": "get Opty Number"
+          },
+          "outcomes": {
+            "success": "1774459809114"
+          },
+          "code": "GET_OPTY_NUMBER",
+          "id": "1774459382851",
+          "inputs": [
+            {
+              "id": "1774459401222_1",
+              "name": "object",
+              "value": "{{$context.$nodes.BUILD_PAYLOAD.$output.result.entity}}"
+            },
+            {
+              "id": "1774459401223_2",
+              "name": "q",
+              "value": "{{$context.$nodes.BUILD_PAYLOAD.$output.result.q}}"
+            },
+            {
+              "id": "1774459401224_3",
+              "name": "sort",
+              "type": "string",
+              "value": "[]"
+            },
+            {
+              "id": "1774459401224_4",
+              "name": "limit",
+              "value": "1"
+            },
+            {
+              "id": "1774459401225_5",
+              "name": "fields",
+              "value": "{{$context.$nodes.BUILD_PAYLOAD.$output.result.fields}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1772038507293",
+            "name": "call Assistant Agent for query execution",
+            "workflowCode": "ORA_DEAL_ADVISOR_WORKFLOW"
+          },
+          "outcomes": {
+            "success": "1778952936489"
+          },
+          "code": "CALL_ASSISTANT_AGENT_FOR_QUERY_EXECUTION",
+          "id": "1774459809114",
+          "inputs": [
+            {
+              "id": "1774459809114_message",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            },
+            {
+              "id": "1774459809114_aiOutcome",
+              "name": "aiOutcome",
+              "type": "boolean",
+              "value": ""
+            },
+            {
+              "id": "1774459809114_context",
+              "name": "context",
+              "type": "object",
+              "value": ""
+            },
+            {
+              "id": "1774459809114_OptyNumber",
+              "name": "OptyNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_OPTY_NUMBER.$output[0]?.OptyNumber}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "Call Deal Advisor Agent",
+            "workflowCode": "ORA_DEAL_ADVISOR_WORKFLOW"
+          },
+          "outcomes": {
+            "success": "1778952982722"
+          },
+          "code": "CALL_DEAL_ADVISOR_AGENT",
+          "id": "1778837190516",
+          "inputs": [
+            {
+              "id": "1778837190516_message",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            },
+            {
+              "id": "1778837190516_SalesPlay",
+              "name": "SalesPlay",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "1778837190516_aiOutcome",
+              "name": "aiOutcome",
+              "type": "boolean",
+              "value": ""
+            },
+            {
+              "id": "1778837190516_context",
+              "name": "context",
+              "type": "object",
+              "value": ""
+            },
+            {
+              "id": "1778837190516_OptyNumber",
+              "name": "OptyNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.CLASSIFICATION.$output?.opportunityNumber}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "rootNode": "start_1778952753063",
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "description": "Start of data pipeline",
+                    "name": "Start"
+                  },
+                  "diagram": {
+                    "x": 7461.909667027656,
+                    "y": 5619.3934261145805
+                  },
+                  "outcomes": {
+                    "success": "1778952714717"
+                  },
+                  "id": "start_1778952753063",
+                  "code": "START",
+                  "type": "START",
+                  "inputs": []
+                },
+                {
+                  "metadata": {
+                    "name": "Format Response"
+                  },
+                  "diagram": {
+                    "x": 7605.953350681658,
+                    "y": 5669.693945029187
+                  },
+                  "outcomes": {
+                    "success": "1778952802483"
+                  },
+                  "id": "1778952714717",
+                  "code": "FORMAT_RESPONSE",
+                  "type": "LLM",
+                  "inputs": [
+                    {
+                      "id": "1778952714717_prompt",
+                      "name": "prompt",
+                      "type": "string",
+                      "value": "Provided with the user query `{{$context.$system.$inputMessage}}` and opportunity data `{{$context.$input.data}} `.\n\nAnalyze the opportunity data and answer the user's query directly.\n\nThe opportunity data may be returned as row-level data because each row includes opportunity name and `OptyId`. If the user query asks for a summary, total, count, average, grouping, ranking, comparison, or pipeline-level answer, aggregate the row-level opportunity data as needed before answering.\n\nExamples:\n- If the user asks for total pipeline, sum the relevant opportunity amount field.\n- If the user asks how many opportunities exist, count the opportunity rows.\n- If the user asks for opportunities by stage, group the rows by stage.\n- If the user asks for top opportunities, rank the rows by the relevant amount or date field.\n- If the user asks for this quarter's pipeline, use the returned filtered rows and aggregate the pipeline amount.\n\nIf the returned data contains **more than 5 rows, return top5 sorted on the most logical attribute**, include each opportunity in the response with an `action` property using this format:\n\n`ora.Invoke(\"launchOpportunity\", {\"opportunityId\":\"\"+<opportunityId>})`\n\n**Note** launchOpportunity is the key word and should not be changed at all.\n\nReplace `<opportunityId>` with the corresponding `opportunity.OptyId` value for that opportunity.\n\nIf more than 5 opportunities are returned, prioritize a summarized answer. Include individual opportunity details only when needed to answer the user query clearly.\n\nReturn the output in Markdown without code fences.\n\nFormatting rules:\n- Do not include a title.\n- Do not include classifications.\n- Start with a clear answer section.\n- Use bold for key values or important points where helpful.\n- Then include exactly one section heading named `Additional insights`.\n- Under `Additional insights`, provide concise bullet-point insights.\n- If opportunities are listed, include useful details such as opportunity name, amount, close date, and the `action` property.\n- Do not expose raw JSON unless it is specifically requested by the user.\n\nExample question:\n\nWhat is my total pipeline for this quarter?\n\nExample answer:\n\n**Answer**\n\nYou have **4 opportunities** with a total pipeline amount of **$240,000**.\n\n| Opportunity Name | Amount | action |\n|---|---:|---|\n| Abc | $60,000 | `ora.Invoke(\"launchOpportunity\", {\"opportunityId\":\"\"+\"300100001\"})` |\n| ACD | $50,000 | `ora.Invoke(\"launchOpportunity\", {\"opportunityId\":\"\"+\"300100002\"})` |\n| AFG | $60,000 | `ora.Invoke(\"launchOpportunity\", {\"opportunityId\":\"\"+\"300100003\"})` |\n| GTY | $70,000 | `ora.Invoke(\"launchOpportunity\", {\"opportunityId\":\"\"+\"300100004\"})` |\n\nAdditional insights\n- Opportunity Abc has an expected close date of **12 Jun** and needs immediate attention."
+                    }
+                  ]
+                },
+                {
+                  "metadata": {
+                    "name": "return Response"
+                  },
+                  "diagram": {
+                    "x": 7605.953350681658,
+                    "y": 5851.005384857295
+                  },
+                  "outcomes": {},
+                  "id": "1778952802483",
+                  "code": "RETURN_RESPONSE",
+                  "type": "RETURN",
+                  "inputs": [
+                    {
+                      "id": "1778952802483_returnValue",
+                      "name": "returnValue",
+                      "type": "string",
+                      "value": "{{$context.$nodes.FORMAT_RESPONSE.$output}} "
+                    }
+                  ]
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "id": "end_1778952753063",
+                  "code": "END",
+                  "type": "END",
+                  "inputs": []
+                }
+              ],
+              "variables": [
+                {
+                  "id": "1778952847653",
+                  "name": "data",
+                  "type": "object"
+                }
+              ]
+            },
+            "name": "Response"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RESPONSE",
+          "id": "1778952753063",
+          "inputs": [],
+          "type": "REFERENCEABLEBLOCK"
+        },
+        {
+          "metadata": {
+            "name": "Answer Consolidated Response",
+            "referenceableBlockId": "RESPONSE"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ANSWER_CONSOLIDATED_RESPONSE",
+          "id": "1778952905507",
+          "inputs": [
+            {
+              "id": "1778952905507_data",
+              "name": "data",
+              "type": "object",
+              "value": "{{$context.$nodes.GET_THE_DATA.$output}}"
+            }
+          ],
+          "type": "REFERENCE"
+        },
+        {
+          "metadata": {
+            "name": "Return Deal Advisor Output",
+            "referenceableBlockId": "RESPONSE"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURN_DEAL_ADVISOR_OUTPUT",
+          "id": "1778952936489",
+          "inputs": [
+            {
+              "id": "1778952936489_data",
+              "name": "data",
+              "type": "object",
+              "value": "{{$context.$nodes.CALL_ASSISTANT_AGENT_FOR_QUERY_EXECUTION.$output.output}}"
+            }
+          ],
+          "type": "REFERENCE"
+        },
+        {
+          "metadata": {
+            "name": "Return Deal Advisor_Available Response",
+            "referenceableBlockId": "RESPONSE"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURN_DEAL_ADVISOR_AVAILABLE_RESPONSE",
+          "id": "1778952982722",
+          "inputs": [
+            {
+              "id": "1778952982722_data",
+              "name": "data",
+              "type": "object",
+              "value": "{{$context.$nodes.CALL_DEAL_ADVISOR_AGENT.$output.output}}"
+            }
+          ],
+          "type": "REFERENCE"
+        },
+        {
+          "metadata": {
+            "name": "return Available for many opty",
+            "referenceableBlockId": "RESPONSE"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURN_AVAILABLE_FOR_MANY_OPTY",
+          "id": "1778953084371",
+          "inputs": [
+            {
+              "id": "1778953084371_data",
+              "name": "data",
+              "type": "object",
+              "value": "{{$context.$triggers.REST.$input.opportunityContext}}"
+            }
+          ],
+          "type": "REFERENCE"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.75
+      },
+      "code": "ORA_LLM_PREMIUM",
+      "model": "OPEN_AI_GPT_4_1_MINI",
+      "modelName": "GPT-4.1 mini",
+      "provider": "CERT_PREMIUM"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1770871207155",
+            "name": "opportunityContext",
+            "scope": "JOB",
+            "type": "array"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "SALES_FORCE_AUTOMATION",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "FULL",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"3\""
+  }
+}

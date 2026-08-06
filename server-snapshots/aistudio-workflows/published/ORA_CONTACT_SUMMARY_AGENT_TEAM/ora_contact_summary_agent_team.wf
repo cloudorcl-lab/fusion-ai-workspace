@@ -1,0 +1,618 @@
+{
+  "workflowId": "100002355226959",
+  "workflowCode": "ORA_CONTACT_SUMMARY_AGENT_TEAM",
+  "name": "Contact Summary Agent Team",
+  "description": "An AI-Powered assistant that helps sales team understand the contact better based on contact's and other related data like Opportunity, Leads etc for Retention, Expansion and Maintenance engagements.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1767860068423"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "GPT-5 Mini (Premium)",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Parse Input"
+          },
+          "outcomes": {
+            "success": "1767860109547"
+          },
+          "code": "PARSE_INPUT",
+          "id": "1767860068423",
+          "inputs": [
+            {
+              "id": "1767860068425_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Input Data: {{$context.$system.$inputMessage}}\nInstructions:\nStrictly follow the steps below to extract and process information:\n\nStep 1: Extract PartyNumber\nIdentify and extract the PartyNumber from the input data.\nAdd the extracted PartyNumber to the output properties.\nPopulate the following object with the extracted PartyNumber:\n\nQExpressionContact = {\n  'op': '$and',\n  'criteria': [\n    {'op': '$eq', 'attribute': 'PartyNumber', 'value': '<ExtractedPartyNumber>'}\n  ]\n}\n\nStep 2: Process Based on Input Data Format\n\n\nIf Input is JSON (e.g., { \"ComprehensiveSummary\": \"Y\", \"PartyNumber\": \"C014\" }):\nIdentify and extract ComprehensiveSummary and BriefSummary from the input data add to output properties.\nTERMINATE;\n\nStep 3 : \nIF user is asking for Comprehensive summary or summary then add below to output\ncomprehensiveSummary = Y\n\nIf user is asking for Brief Summary then add below to output\nBriefSummary = Y"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"BriefSummary\": {\n            \"type\": \"string\"\n        },\n        \"ComprehensiveSummary\": {\n            \"type\": \"string\"\n        },\n        \"QExpressionContact\": {\n            \"type\": \"string\"\n        },\n        \"ExtractedPartyNumber\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "If Summary"
+          },
+          "outcomes": {
+            "true": "1767861827201",
+            "false": "add_false_1767860109547"
+          },
+          "code": "IF_SUMMARY",
+          "convergenceTargetId": "end",
+          "id": "1767860109547",
+          "inputs": [
+            {
+              "id": "1767860109548_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{($context.$nodes.PARSE_INPUT.$output.ComprehensiveSummary == 'Y' || $context.$nodes.PARSE_INPUT.$output.BriefSummary == 'Y') && $context.$nodes.PARSE_INPUT.$output.ExtractedPartyNumber !== ''}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_false_1767860109547",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "Get Contact Details"
+          },
+          "outcomes": {
+            "success": "1767862007525"
+          },
+          "code": "GET_CONTACT_DETAILS",
+          "id": "1767861827201",
+          "inputs": [
+            {
+              "id": "1767861855405_1",
+              "name": "object",
+              "type": "string",
+              "value": "Contact"
+            },
+            {
+              "id": "1767861855406_2",
+              "name": "q",
+              "type": "string",
+              "value": "{{$context.$nodes.PARSE_INPUT.$output.QExpressionContact}}"
+            },
+            {
+              "id": "1767861855407_3",
+              "name": "sort",
+              "type": "string"
+            },
+            {
+              "id": "1767861855409_4",
+              "name": "limit",
+              "type": "integer"
+            },
+            {
+              "id": "1767861855412_5",
+              "name": "fields",
+              "type": "string",
+              "value": "['PartyId','PersonName','PrimaryAccount','JobTitle','AffinityLevel','ContactRollup','PrimaryAddress','FormattedAddress', 'SalesBuyingRoleCode', 'SalesAffinityCode']"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Query Params",
+            "returnType": "object",
+            "sourceCode": "const output = {};\nconst partyId = JSON.parse($context.$nodes.GET_CONTACT_DETAILS.$output[0].PartyId);\nconst partyIdString = partyId.toString();\n\n// Leads\noutput.QExpressionLead = {\n  op: '$and',\n  criteria: [{\n    op: '$eq',\n    attribute: 'PrimaryContactId.PartyId',\n    value: partyIdString \n  }]\n};\n\n// Opportunity\noutput.QExpressionOpportunity = {\n  op: '$and',\n  criteria: [{\n    op: '$eq',\n    attribute: 'ListOfContacts.PerPartyId.PartyId',\n    value: partyIdString \n  }]\n};\n\n// Activity\noutput.QExpressionActivity = {\n  op: '$and',\n  criteria: [{\n    op: '$eq',\n    attribute: 'ListOfContacts.ContactId.PartyId',\n    value: partyIdString \n  }]\n};\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1767862083728"
+          },
+          "code": "PREPARE_QUERY_PARAMS",
+          "id": "1767862007525",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1767862100916",
+            "1": "1767862307705",
+            "2": "1767862628810",
+            "3": "1767862867314",
+            "4": "1767863197978",
+            "5": "1767863469420",
+            "6": "add_1767862083728_6"
+          },
+          "code": "PARALLEL_1767862083729",
+          "convergenceTargetId": "1767863788876",
+          "id": "1767862083728",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "Get Leads Details"
+          },
+          "outcomes": {
+            "success": "1767863788876"
+          },
+          "code": "GET_LEADS_DETAILS",
+          "id": "1767862100916",
+          "inputs": [
+            {
+              "id": "1767862135598_1",
+              "name": "object",
+              "type": "string",
+              "value": "Lead"
+            },
+            {
+              "id": "1767862135599_2",
+              "name": "q",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_QUERY_PARAMS.$output.result.QExpressionLead}}"
+            },
+            {
+              "id": "1767862135601_3",
+              "name": "sort",
+              "type": "string",
+              "value": "[{'attribute':'LastUpdateDate','direction':'descending'}]"
+            },
+            {
+              "id": "1767862135602_4",
+              "name": "limit",
+              "type": "integer",
+              "value": "25"
+            },
+            {
+              "id": "1767862135604_5",
+              "name": "fields",
+              "type": "string",
+              "value": "['Name','Rank','StatusCode','DealAmount','LeadNumber', 'PrimaryLeadProduct.ProdGroupId', 'PrimaryLeadProduct.InventoryItemId', 'LastUpdateDate']"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "Get Activity Details"
+          },
+          "outcomes": {
+            "success": "1767863788876"
+          },
+          "code": "GET_ACTIVITY_DETAILS",
+          "id": "1767862307705",
+          "inputs": [
+            {
+              "id": "1767862352412_1",
+              "name": "object",
+              "type": "string",
+              "value": "Activity"
+            },
+            {
+              "id": "1767862352413_2",
+              "name": "q",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_QUERY_PARAMS.$output.result.QExpressionActivity}}"
+            },
+            {
+              "id": "1767862352414_3",
+              "name": "sort",
+              "type": "string",
+              "value": "[{'attribute':'LastUpdateDate','direction':'descending'}]"
+            },
+            {
+              "id": "1767862352416_4",
+              "name": "limit",
+              "type": "integer",
+              "value": "25"
+            },
+            {
+              "id": "1767862352418_5",
+              "name": "fields",
+              "type": "string",
+              "value": "['ActivityFunctionCode','ActivityNumber','StatusCode','AppointmentStatus','ListOfContacts.ContactId.PartyId','ListOfContacts.ContactId.PartyName','ActivityDescription','DirectionCode','Duration','ActivityMtgMinutes','OutcomeCode','PercentageComplete','Subject','ActivityTypeCode','LastUpdateDate']"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CALLNOTES",
+            "functionName": "get_wrapups_by_contact",
+            "name": "Get call Notes"
+          },
+          "outcomes": {
+            "success": "1767862776525"
+          },
+          "code": "GET_CALL_NOTES",
+          "id": "1767862628810",
+          "inputs": [
+            {
+              "id": "1767862677333_1",
+              "name": "ListOfContactPartyId",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_CONTACT_DETAILS.$output[0].PartyId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Refine Call Notes Output",
+            "returnType": "object",
+            "sourceCode": "var json = $context.$nodes.GET_CALL_NOTES.$output ;\n\n// list of properties to remove\nvar propsToRemove = [\"count\", \"hasMore\", \"limit\", \"offset\", \"links\", \"@context\"];\n\n// recursive cleanup\nvar stack = [json];\nwhile(stack.length > 0){\n    var current = stack.pop();\n    if(current && typeof current === \"object\"){\n        for(var key in current){\n            if(propsToRemove.indexOf(key) !== -1){\n                delete current[key];\n            } else if(typeof current[key] === \"object\"){\n                stack.push(current[key]);\n            }\n        }\n    }\n}\n\nreturn json;"
+          },
+          "outcomes": {
+            "success": "1767863788876"
+          },
+          "code": "REFINE_CALL_NOTES_OUTPUT",
+          "id": "1767862776525",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_EMAILS",
+            "functionName": "get_emails_by_contact",
+            "name": "Get Conversation Messages"
+          },
+          "outcomes": {
+            "success": "1767863149256"
+          },
+          "code": "GET_CONVERSATION_MESSAGES",
+          "id": "1767862867314",
+          "inputs": [
+            {
+              "id": "1767862901326_1",
+              "name": "ListOfContactPartyId",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_CONTACT_DETAILS.$output[0].PartyId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Refine Conversation Messages Output",
+            "returnType": "object",
+            "sourceCode": "var json = $context.$nodes.GET_CONVERSATION_MESSAGES.$output ;\n\n// list of properties to remove\nvar propsToRemove = [\"count\", \"hasMore\", \"limit\", \"offset\", \"links\", \"@context\"];\n\n// recursive cleanup\nvar stack = [json];\nwhile(stack.length > 0){\n    var current = stack.pop();\n    if(current && typeof current === \"object\"){\n        for(var key in current){\n            if(propsToRemove.indexOf(key) !== -1){\n                delete current[key];\n            } else if(typeof current[key] === \"object\"){\n                stack.push(current[key]);\n            }\n        }\n    }\n}\n\nreturn json;"
+          },
+          "outcomes": {
+            "success": "1767863788876"
+          },
+          "code": "REFINE_CONVERSATION_MESSAGES_OUTPUT",
+          "id": "1767863149256",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_NOTES",
+            "functionName": "get_notes_by_object",
+            "name": "Get Notes"
+          },
+          "outcomes": {
+            "success": "1767863415944"
+          },
+          "code": "GET_NOTES",
+          "id": "1767863197978",
+          "inputs": [
+            {
+              "id": "1767863220007_1",
+              "name": "objectRestResourceName",
+              "type": "string",
+              "value": "contacts"
+            },
+            {
+              "id": "1767863220007_2",
+              "name": "objectId",
+              "type": "string",
+              "value": "{{$context.$nodes.PARSE_INPUT.$output.ExtractedPartyNumber}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Refine Notes Output",
+            "returnType": "object",
+            "sourceCode": "var json = $context.$nodes.GET_NOTES.$output ;\n\n// list of properties to remove\nvar propsToRemove = [\"count\", \"hasMore\", \"limit\", \"offset\", \"links\", \"@context\"];\n\n// recursive cleanup\nvar stack = [json];\nwhile(stack.length > 0){\n    var current = stack.pop();\n    if(current && typeof current === \"object\"){\n        for(var key in current){\n            if(propsToRemove.indexOf(key) !== -1){\n                delete current[key];\n            } else if(typeof current[key] === \"object\"){\n                stack.push(current[key]);\n            }\n        }\n    }\n}\n\nreturn json;"
+          },
+          "outcomes": {
+            "success": "1767863788876"
+          },
+          "code": "REFINE_NOTES_OUTPUT",
+          "id": "1767863415944",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "Get Opty Details"
+          },
+          "outcomes": {
+            "success": "1767863788876"
+          },
+          "code": "GET_OPTY_DETAILS",
+          "id": "1767863469420",
+          "inputs": [
+            {
+              "id": "1767863489767_1",
+              "name": "object",
+              "type": "string",
+              "value": "Opportunity"
+            },
+            {
+              "id": "1767863489768_2",
+              "name": "q",
+              "type": "string",
+              "value": "{{ $context.$nodes.PREPARE_QUERY_PARAMS.$output.result.QExpressionOpportunity }}"
+            },
+            {
+              "id": "1767863489768_3",
+              "name": "sort",
+              "type": "string",
+              "value": "[{'attribute':'EffectiveDate','direction':'descending'}]"
+            },
+            {
+              "id": "1767863489769_4",
+              "name": "limit",
+              "type": "integer",
+              "value": "25"
+            },
+            {
+              "id": "1767863489770_5",
+              "name": "fields",
+              "type": "string",
+              "value": "['Name','PrimaryRevenue.RevnAmount','SalesStage','PrimaryRevenue.WinProb','PredWinProb','\nPrimaryRevenue.ExpectAmount',\n'PrimaryRevenue.RevnId','StatusCode','OptyNumber','PrimaryRevenue.ResourcePartyId.PartyName','\nPrConPartyId.PartyNumber','PrConPartyId.PartyName','EffectiveDate', 'ListOfRevenues']"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for branch 6",
+            "name": "Add 6"
+          },
+          "outcomes": {
+            "success": "1767863788876"
+          },
+          "id": "add_1767862083728_6",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "If Brief Summary"
+          },
+          "outcomes": {
+            "true": "1767863855589",
+            "false": "1767863893502"
+          },
+          "code": "IF_BRIEF_SUMMARY",
+          "convergenceTargetId": "end",
+          "id": "1767863788876",
+          "inputs": [
+            {
+              "id": "1767863788878_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PARSE_INPUT.$output.BriefSummary == 'Y'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "GPT-5 Mini (Premium)",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Brief Summary"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "BRIEF_SUMMARY",
+          "id": "1767863855589",
+          "inputs": [
+            {
+              "id": "1767863855590_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Input => {{$context.$nodes.GET_CONTACT_DETAILS.$output}} + {{$context.$nodes.GET_LEADS_DETAILS.$output}} + {{$context.$nodes.GET_OPTY_DETAILS.$output}} + {{$context.$nodes.REFINE_CALL_NOTES_OUTPUT.$output.result}} + {{$context.$nodes.REFINE_CONVERSATION_MESSAGES_OUTPUT.$output.result}} +  {{$context.$nodes.GET_ACTIVITY_DETAILS.$output }} + {{$context.$nodes.REFINE_NOTES_OUTPUT.$output.result }}\n\nFrom the above input follow below instructions to prepare a summary \n\nSummarization Rules\n\nFrom ContactRollup data:\n   - Identify if Contact is involved in Open Opportunities or Leads → \"KeyContact\".\n   - Identify if Contact is involved in Recently Won Deals → \"InfluentialContacts\".\nFrom Contact data:\n   - Derive from JobTitle and Affinity → \"DominantSeniorityLevel\"\n\n- Get the overall sentiments based on past engagements.\n    - Check for any concerns raised in the Past Engagement\n    - Identify if there are Open Opportunities or Leads\n    - Identify for any Positive factors like Product advocacy / service satisfaction etc from past engagements or feedbacks.\n    - Identify Key concerns, challenges, or negative feedback.\n    - Identify Key customer requirements or requests\n\nPrepare a Concise Summary (no more than 100 words section) - highlighting Profile, Influence on Opportunities/Leads and Engagement as below\n- Include Job title, functional role, seniority level, and location. if either of this is not available, don't mention about that. So let suppose Job title is not available , mention Role, seniority level, location etc. but not job title. Similarly if role is not available don't mention about that.\n- Mention any high-value, nearing-closure, or at-risk opportunities or leads the contact is involved in. STRICTLY Mention the Opportunity / Leads Name while summarizing.\n- Summarize open opportunities: total count, stages, overall status. STRICTLY Mention the Opportunity Name while summarizing.\n- Output snippet examples:\n   - \"John has 5 open opportunities totaling $xxx. Top 2 worth $yyy are on track to close next quarter.\"\n- If involved in recent lost deals, mention win/loss reason and comments. \n- ContactRollup.NumberOfOpenHotLeads is subset of ContactRollup.NumberOfOpenLeads So if ContactRollup.NumberOfOpenHotLeads = ContactRollup.NumberOfOpenLeads then that means all the Open Leads are Hot. No need to mention both in that case.\n- Output snippet examples:\n   - \"There are 5 open leads totaling $xxx. Top 2 deals worth $yyy are on track to close next quarter.\"\n- Mention the name of the contact wherever applicable, i.e. 'Lydia has * open leads' , Don't mention like 'The Contact has * open leads etc.'\n- Amount and Revenue should be preceeded with Currency Symbols like '$'. \n- Get the overall sentiments based on past engagements.  \n- Highlight any Concerns raised in the Past enagagement. \n- List out any Positive factors like Product advocacy/ service satisfaction from past engagement.\n\n\nDON'Ts\n- Do not mention keyword like 'Job-Title' , 'Jobtitle' , 'LastToucedDate' etc, instead mention logical readable words. \n- STRICTLY Don't mention \"Rollup\" word in the summary for e.g don't mention something like \"Contact Rollup shows .....\" instead mention as \"Lydia (PartyName) has * open hot leads, and Won opportunities .....\"\n- STRICTLY Don't mention statement like \"The contact has ......\" instead mention something like 'She/he has ..... '.  \n- STRICTLY Don't mention something like 'Noah influences opportunities' or 'Noah influences Leads' etc\n- STRICTLY Do not consider ContactRollup.NumberOfOpenCriticalServiceRequests and ContactRollup.NumberOfOpenServiceRequests while preparing Summary\n- STRICTLY Do not include PartyNumber, LeadNumber, or OpportunityNumber. Use contact name, Lead Name, or Opportunity Name instead.\n- STRICTLY Do not mention the IDs like StgId, instead go for logical name of stage\n- STRICTLY Do not use the Attribute names directly in summary like CallsMade, NumberOfTouches etc instead mention logical readable words. . \n- STRICTLY Don't mention about anything that is not present. So if Opty details are not there don't mention about that, similarly if no Jobtitle information available, don't mention about that etc.\n\nOUTPUT FORMAT RULES: \n1. Do not include time part in the date fields and format should be MM/DD/YY.\n2. Do not include PartyNumber in the response, rather use contact names.\n\n\nStrictly follow below Format for Output\n\nFORMAT: \n\n- Return only the JSON object as specified below.\n- The \"Summary\" field must contain a compact HTML paragraph using only <p> tags; do not use <h1>, <h2>, <br>, extra line breaks, or newlines unless explicitly requested.\n- Write the summary in 4-5 concise sentences; include quantitative and factual details where available.\n- Do NOT use bullet points, numbering, or any recommendation language.\n- Each paragraph should be business-friendly, descriptive, and logically organized.\n- Mention values for Job Title, Location, Amount, Risk, etc., using <b></b> format.\n- Keep formatting minimal, structured, and clean; do not add spacing or blank lines between elements.\n\nStrictly follow this response format:\n\n{\n    \"<b>Summary</b>\": \"< You are a summarizer for contacts datasets. Output only paragraphs. No bullet points or numbered lists. Render each summary section using minimal, structured HTML in <p> tags only. Mention values like Job Title, Location, Amount, Risk, etc., within <b></b> format.>\"\n}\n\nImportant constraints  \n- Keep language concise, business-friendly.  \n\nTERMINATE"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "GPT-5 Mini (Premium)",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Comprehensive Summary"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "COMPREHENSIVE_SUMMARY",
+          "id": "1767863893502",
+          "inputs": [
+            {
+              "id": "1767863893503_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Input => {{$context.$nodes.GET_CONTACT_DETAILS.$output}} + {{$context.$nodes.GET_LEADS_DETAILS.$output}} + {{$context.$nodes.GET_OPTY_DETAILS.$output}} + {{$context.$nodes.REFINE_CALL_NOTES_OUTPUT.$output.result}} + {{$context.$nodes.REFINE_CONVERSATION_MESSAGES_OUTPUT.$output.result}} +  {{$context.$nodes.GET_ACTIVITY_DETAILS.$output }} + {{$context.$nodes.REFINE_NOTES_OUTPUT.$output.result }}\n\nFrom the above input follow below instructions to prepare a summary \n\n\n## SUMMARIZATION RULES ##\n\nFrom ContactRollup data:\n   - Identify if Contact is involved in Open Opportunities or Leads → \"KeyContact\".\n   - Identify if Contact is involved in Recently Won Deals → \"InfluentialContacts\".\nFrom Contact data:\n   - Derive from JobTitle and Affinity → \"DominantSeniorityLevel\"\n\nEngagement Category:\n   - Compute: If Contact falls in Below categories\n     - HighlyEngaged (contact with high engagement count)\n     - ModeratelyEngaged (medium engagement)\n     - LowEngaged (low engagement)\n\nPrepare Summary sections  \n\n1. Profile Summary - Prepare a Profile Summary Including their Job title , functional role, seniority level, location information only. if either of this is not available, don't mention about that. So let suppose Job title is not available , mention Role, seniority level, location etc. but not job title. Similarly if role is not available don't mention about that.\n- Strictly Don't mention anything else in this section.\n- STRICTLY Don't mention statement like \"The contact has ......\" instead mention the name something like 'John has ..... '.  \n\n2. Professional experience - <SKIP if content of {{$context.$nodes.PERSON_WEB_SEARCH.$output}} is NULL> Extract and add only the content from the 'Professional experience' section in {{$context.$nodes.PERSON_WEB_SEARCH.$output}}. STRICTLY do not include the header 'Professional experience'; include strictly and only the content from that section. if there is any linkedin link, remove extra dot(.) from the end i.e. if linkedin link contains extra dot(.) like 'https://www.linkedin.com/in/xyzabc.' remove it to something like 'https://www.linkedin.com/in/xyzabc'\n\n3. Interests - <SKIP if {{$context.$nodes.PERSON_WEB_SEARCH.$output}} is NULL> Extract only the content from the 'Hobbies and Interests' section in {{$context.$nodes.PERSON_WEB_SEARCH.$output}}. Do not include the header 'Hobbies and Interests'; include strictly and only the content from that section.   \n\n4. Influence - Provide 2 brief summary paragraph of 1-2 lines one each for opportunity and other for Leads. There must be line break between 2 paragraph in this section.\n\nParagraph 1 Related to Opportunity -  Provide brief 1-2 lines about their influence on Opportunity based on their seniority\n- Mention any high value/nearing closure or at risk opportunities that the contact is involved in.\n- Summarize open opportunities: total count, stages, overall status. While summarizing don't mention the IDs like StgId, instead go for logical name of stage\n- When mentioning the opportunity, provide opportunity name, revenue, \nclose date, revenue Product(InventoryItem)/ProductGroups, owner etc.\n- While mentioning Opportunity, Mention the name of Product or Product Group. For this Get the ListOfRevenues and Show the name of Product(InventoryItemId.Name_localizedValue) or Product Group(ProdGroupId.Name_localizedValue) of the Record for which UpsideAmount is highest and which is not primary (Primary = false). STRICTLY Mention only the name of the product or Product Group, don't mention if its primary or non-primary\n\nexample : Don't mention something like \"the top non-primary product exposure is Oracle Human Capital Management Expenses Cloud for Midsize Cloud Service with a non-primary revenue line of $5,740,000 \" instead remove non-primary word and metion something like \"the top product exposure is Oracle Human Capital Management Expenses Cloud for Midsize Cloud Service with a revenue line of $5,740,000 \"\n- Mention any recently won opportunities. When mentioning won opportunity, provide opportunity name, revenue Product(InventoryItem)/ProductGroups, owner and win/loss comments.\n- Output snippet examples:\n   - \"John has 5 open opportunities totaling $xxx. Top 2 worth $yyy are on track to close next quarter.\"\n   - \"John's Won revenue has increased steadily over the last 3 years (7 won, 3 lost)\"\n\nParagraph 2 Related to Leads - Provide brief 1-2 lines about their influence on leads\n- Mention any high value/nearing closure or at risk leads that the contact is involved in.\n- If involved in recent lost deals, mention win/loss reason and comments.\n- ContactRollup.NumberOfOpenHotLeads is subset of ContactRollup.NumberOfOpenLeads So if ContactRollup.NumberOfOpenHotLeads = ContactRollup.NumberOfOpenLeads then that means all the Open Leads are Hot. No need to mention both in that case.\n- While mentioning Leads do mention about Primary Lead Product (PrimaryLeadProduct.ProdGroupId.Name_localizedValue Or PrimaryLeadProduct.InventoryItemId.Name_localizedValue whichever is available)\n- - Output snippet examples:\n   - \"There are 5 open leads totaling $xxx. Top 2 deals worth $yyy are on track to close next quarter.\"\n\n\nDON'TS \n- STRICTLY Do not show any Engagement related information in Influence section\n- STRICTLY Don't mention \"Rollup\" word in the summary for e.g don't mention something like \"Contact Rollup shows .....\" instead mention as \"Lydia (PartyName) has * open hot leads, and Won opportunities .....\".\n- Mention the name of the contact wherever applicable, i.e. 'Lydia has * open leads' , Don't mention like 'The Contact has * open leads etc.'\n- STRICTLY Don't mention statement like \"The contact has ......\" instead mention something like 'She/he has ..... '.  \n- Amount and Revenue should be preceeded with Currency Symbols like '$'. \n- STRICTLY Don't mention something like 'Noah influences opportunities' or 'Noah influences Leads' etc\n\n\n5. Engagement Summary - \nEngagement Input =>\n{{$context.$nodes.REFINE_CALL_NOTES_OUTPUT.$output.result}} + {{$context.$nodes.REFINE_CONVERSATION_MESSAGES_OUTPUT.$output.result}} +  {{$context.$nodes.GET_ACTIVITY_DETAILS.$output }} + {{$context.$nodes.REFINE_NOTES_OUTPUT.$output.result }}\n\n- Check for Notes for any additional information \n- check for Past and upcoming appointments / Tasks\n- Check for Call Notes , Emails and messages\n- Get the overall sentiments based on past engagement data from EngagementInput above.  \n- Highlight any Concerns raised in the Past enagagement. \n- List out any Positive factors like Product advocacy/ service satisfaction from past engagement.\n- Mention dates and highlight topics on which Engagement happened while providing summary.\n\nDON'TS \n- Do not consider ContactRollup.NumberOfOpenCriticalServiceRequests and ContactRollup.NumberOfOpenServiceRequests while preparing Engagement Summary\n\n\n\n6. Conversation Topics - Prepare a concise list of exactly three conversation topics, presented as bullet points only (no more than three bullet in total). When formulating these topics, please consider:\n\n - Any concerns or issues raised during past engagements\n - The presence of open opportunities or leads—focus on topics that can drive deeper engagement or new sales\n - The absence of open opportunities or leads—suggest topics that can initiate or revive engagement\n - Key concerns, challenges, or any negative feedback for retention strategies\n - Important customer requirements or special requests\n - STRICTLY Answer only in bullet points. STRICTLY Do not present the topics as hyphenated(-)\n\nDON'TS \n - Don't mention past engagement dates in the conversation topics.\n - Do not consider ContactRollup.NumberOfOpenCriticalServiceRequests and ContactRollup.NumberOfOpenServiceRequests while preparing Coversation Topics\n\n\n\n##OUTPUT FORMAT RULES## \n- Strictly output only the JSON object as detailed below—no additional text or formatting.\n- For date fields, exclude the time part and format all dates as MM/DD/YY.\n- For any bullet lists, ensure each bullet point is on its own separate line. \n- Do not include PartyNumber, LeadNumber, or OpportunityNumber. Use contact name, Lead Name, or Opportunity Name instead.\n- STRICTLY Don't mention about anything that is not present. So if Opty details are not there don't mention about that, similarly if no Jobtitle information available, don't mention about that etc.\n- Do not use the Attribute names directly in summary like CallsMade, NumberOfTouches etc. \n- Render all paragraph summaries in compact HTML using only <p> tags. No <h1>, <h2>, <br>, extra line breaks, blank lines, or additional spacing unless specified.\n- Use concise, business-friendly, descriptive language with quantitative details where available. No recommendations or irrelevant details.\n\n##OUTPUT FORMAT##\n\nDo not return anything other than below specified JSON object.\n{\n    \"<b>Profile Summary</b>\": \"< You are a summarizer for contacts datasets. Output only paragraphs.No bullet points using dot bullets. no numbering. Each paragraph should be descriptive (1–2 concise sentences) and include quantitative detail where available. Strictly do not provide any recommendations.  Strictly summarize the contact as given in the instructions. Render the summary section in compact HTML format. Allowed tags: <p>. Do NOT use <h1> or <h2>. Do NOT add extra line breaks, blank lines, or spacing between elements. Do NOT use <br> or explicit new lines (\\n) unless explicitly required by the user. Always use minimal, structured and clean HTML. >\",\n\n   \"<b>Professional experience</b>\" : <SKIP if content of {{$context.$nodes.PERSON_WEB_SEARCH.$output}} is NULL> Extract and add only the content from the 'Professional experience' section in {{$context.$nodes.PERSON_WEB_SEARCH.$output}}. STRICTLY do not include the header 'Professional experience'; include strictly and only the content from that section.\n   \n   \"<b>Interests</b>\" : <SKIP if {{$context.$nodes.PERSON_WEB_SEARCH.$output}} is NULL> Extract only the content from the 'Hobbies and Interests' section in {{$context.$nodes.PERSON_WEB_SEARCH.$output}}. Do not include the header 'Hobbies and Interests'; include strictly and only the content from that section.\n   \n   \"<b>Influence</b>\" : \"< Output only 2 paragraphs 1 each of influence on opportuinty and leads.No bullet points using dot bullets. no numbering. There must be line break between 2 paragraph in this section. Each paragraph should be descriptive (1-2 concise sentences) and include quantitative detail where available. Do not provide any recommendations. Provide more qualitative aspects. Strictly summarize the contact as given in the instructions. Render the summary section in compact HTML format. Allowed tags: <p>. Do NOT use <h1> or <h2>. Do NOT add extra line breaks, blank lines, or spacing between elements. Do NOT use <br> or explicit new lines (\\n) unless explicitly required by the user. Always use minimal, structured and clean HTML. >\",\n   \n   \"<b>Engagement Summary</b>\" : \"You are a summarizer for contacts datasets. Output only paragraphs.No bullet points using dot bullets. no numbering. Each paragraph should be descriptive (2-3 concise sentences) and include quantitative detail where available. Do not provide any recommendations. Strictly summarize the contact as given in the instructions. When summarizing contact information aggregate the rollup informations. Render the summary section in compact HTML format. Allowed tags: <p>. Do NOT use <h1> or <h2>. Do NOT add extra line breaks, blank lines, or spacing between elements. Do NOT use <br> or explicit new lines (\\n) unless explicitly required by the user. Always use minimal, structured and clean HTML. \"\n\n\"<b>Conversation Topics</b>\" : \"Prepare a concise list of exactly three conversation topics, presented as bullet points (no more than three bullets in total). STRICTLY Output only as bullet points . STRICTLY Do not present the topics as hyphenated(-) . Each bullet should be descriptive (3-5 concise sentences) and include quantitative detail where available. Do not provide any recommendations.  Render the summary section in compact HTML format. Do NOT use <h1> or <h2>. Do NOT use <br>. Always use minimal, structured and clean HTML\"\n\n}\n\nImportant constraints  \n- Keep language concise, business-friendly."
+            }
+          ],
+          "type": "LLM"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_completion_tokens": 32000,
+        "reasoning_effort": "low"
+      },
+      "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+      "model": "OCI_GPT_5_MINI",
+      "modelName": "GPT-5 Mini (Premium)",
+      "provider": "CERT_PREMIUM"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "SALES_FORCE_AUTOMATION",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "seededRoles": [
+    {
+      "role": "ORA_ZBS_SALES_ADMINISTRATOR_JOB",
+      "id": "100002355227322"
+    },
+    {
+      "role": "ORA_ZBS_SALES_MANAGER_JOB",
+      "id": "100002355227323"
+    },
+    {
+      "role": "ORA_ZBS_SALES_REPRESENTATIVE_JOB",
+      "id": "100002355227324"
+    },
+    {
+      "role": "ORA_ZBS_SALES_VP_JOB",
+      "id": "100002355227325"
+    }
+  ],
+  "header": {
+    "ETag": "\"3\""
+  }
+}

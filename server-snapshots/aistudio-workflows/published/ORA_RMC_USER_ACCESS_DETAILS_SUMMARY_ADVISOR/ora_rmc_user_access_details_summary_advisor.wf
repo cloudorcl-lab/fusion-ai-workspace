@@ -1,0 +1,209 @@
+{
+  "workflowId": "100002355227055",
+  "workflowCode": "ORA_RMC_USER_ACCESS_DETAILS_SUMMARY_ADVISOR",
+  "name": "RMC User Access Details Summary Advisor",
+  "description": "Summarizes access-violation patterns and role-risk counts for a selected account to support remediation decisions.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "EXTRACT_USER"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Extract User",
+            "returnType": "object",
+            "sourceCode": "var contextApp = $context.$app && $context.$app.$OraAppContext ? $context.$app.$OraAppContext : '';\nvar username = '';\nvar displayUser = '';\nif (contextApp && contextApp.indexOf && contextApp.indexOf('|') !== -1) {\n  var parts = contextApp.split('|');\n  username = parts[0];\n  displayUser = parts[1] || '';\n} else if (contextApp) {\n  username = String(contextApp);\n  displayUser = String(contextApp);\n}\nvar result = { username: username, displayUser: displayUser };\nreturn result;"
+          },
+          "outcomes": {
+            "success": "GET_ACCESS_VIOLATIONS"
+          },
+          "code": "EXTRACT_USER",
+          "id": "EXTRACT_USER",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    }\n  }\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_GRC_OTHER_DESCRIPTIONCLOB",
+            "functionName": "get_announcements-DescriptionClob",
+            "name": "Get Access Violations"
+          },
+          "outcomes": {
+            "success": "COMPUTE_USER_STATS"
+          },
+          "code": "GET_ACCESS_VIOLATIONS",
+          "id": "GET_ACCESS_VIOLATIONS",
+          "inputs": [
+            {
+              "id": "GET_ACCESS_VIOLATIONS_1",
+              "name": "announcements_Id",
+              "type": "string",
+              "value": "894871897531003"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Compute User Stats",
+            "returnType": "object",
+            "sourceCode": "var accessData = $context.$nodes.GET_ACCESS_VIOLATIONS.$output || '';\nvar username = $context.$nodes.EXTRACT_USER.$output.result.username || '';\nvar displayUser = $context.$nodes.EXTRACT_USER.$output.result.displayUser || '';\nvar accessViolations = [];\nvar clean = '';\nif (accessData && accessData !== '\"\"' && accessData !== '') {\n  clean = accessData;\n  if (clean.length > 2 && clean.charAt(0) === '\"') { clean = clean.slice(1, -1); }\n  try { accessViolations = JSON.parse(clean); } catch(e) { accessViolations = []; }\n}\nvar userViolations = [];\nvar intraRoleCount = 0;\nvar interRoleCount = 0;\nvar jobTitle = '';\nfor (var i = 0; i < accessViolations.length; i++) {\n  var v = accessViolations[i];\n  if (v.UserName === username) {\n    userViolations.push(v);\n    if (v.IsIntraRoleViol === 1 || v.IsIntraRoleViol === '1') {\n      intraRoleCount++;\n    } else {\n      interRoleCount++;\n    }\n    if (!jobTitle && v.JobTitle) { jobTitle = v.JobTitle; }\n  }\n}\nvar result = {\n  username: username,\n  displayUser: displayUser,\n  jobTitle: jobTitle,\n  totalViolations: userViolations.length,\n  intraRoleCount: intraRoleCount,\n  interRoleCount: interRoleCount,\n  hasIntraRole: intraRoleCount > 0,\n  violations: userViolations\n};\nreturn result;"
+          },
+          "outcomes": {
+            "success": "node_switch"
+          },
+          "code": "COMPUTE_USER_STATS",
+          "id": "COMPUTE_USER_STATS",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    }\n  }\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Switch For OraMessageHint"
+          },
+          "outcomes": {
+            "Summary": "node_combine_summaries",
+            "Query": "node_handle_query"
+          },
+          "code": "SWITCH_FOR_ORAMESSAGEHINT",
+          "convergenceTargetId": "end",
+          "id": "node_switch",
+          "inputs": [
+            {
+              "id": "input_switch_case",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$app.$OraMessageHint}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Combine Summaries"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "COMBINE_SUMMARIES",
+          "id": "node_combine_summaries",
+          "inputs": [
+            {
+              "id": "input_combine_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Create a summary for this user's access violations.\n\n## PRE-COMPUTED USER STATISTICS\n- Username: {{$context.$nodes.COMPUTE_USER_STATS.$output.result.username}}\n- Display Name: {{$context.$nodes.COMPUTE_USER_STATS.$output.result.displayUser}}\n- Job Title: {{$context.$nodes.COMPUTE_USER_STATS.$output.result.jobTitle}}\n- Total Violations: {{$context.$nodes.COMPUTE_USER_STATS.$output.result.totalViolations}}\n- INTRA-ROLE Violations: {{$context.$nodes.COMPUTE_USER_STATS.$output.result.intraRoleCount}}\n- INTER-ROLE (SoD) Violations: {{$context.$nodes.COMPUTE_USER_STATS.$output.result.interRoleCount}}\n- Has Intra-Role: {{$context.$nodes.COMPUTE_USER_STATS.$output.result.hasIntraRole}}\n\n## INSTRUCTIONS\nWrite a 2-3 sentence summary using the EXACT statistics above.\n\nIf intraRoleCount > 0 or hasIntraRole is true:\n- State: \"[Display Name] has [intraRoleCount] intra-role violation(s) and [interRoleCount] segregation of duties violation(s).\"\n\nIf intraRoleCount = 0:\n- State: \"[Display Name] has [totalViolations] segregation of duties violation(s) and no intra-role violations.\"\n\nDo NOT add extra details. Just use the numbers provided above."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MESSAGES_LIST",
+                "ORA_LAYOUT_MULTIRECORD"
+              ],
+              "enableActions": false,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "max_tokens": 4000
+              },
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Handle Query"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "HANDLE_QUERY",
+          "id": "node_handle_query",
+          "inputs": [
+            {
+              "id": "input_query_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a User Access Violation Assistant answering questions about a SPECIFIC USER.\n\n## USER STATISTICS (Pre-computed)\n- Username: {{$context.$nodes.COMPUTE_USER_STATS.$output.result.username}}\n- Display Name: {{$context.$nodes.COMPUTE_USER_STATS.$output.result.displayUser}}\n- Job Title: {{$context.$nodes.COMPUTE_USER_STATS.$output.result.jobTitle}}\n- Total Violations: {{$context.$nodes.COMPUTE_USER_STATS.$output.result.totalViolations}}\n- Intra-Role Violations: {{$context.$nodes.COMPUTE_USER_STATS.$output.result.intraRoleCount}}\n- Inter-Role (SoD) Violations: {{$context.$nodes.COMPUTE_USER_STATS.$output.result.interRoleCount}}\n\n## USER'S VIOLATION DETAILS\n{{$context.$nodes.COMPUTE_USER_STATS.$output.result.violations}}\n\n## USER QUERY\n{{$context.$system.$inputMessage}}\n\n## INSTRUCTIONS\n1. Use the pre-computed statistics above for counts\n2. Use the violation details for specifics about roles, controls, entitlements\n3. If asked about intra-role violations, refer to intraRoleCount\n4. ONLY use data provided - never invent information\n\nProvide a helpful, accurate response:"
+            }
+          ],
+          "type": "LLM"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": []
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "GRC",
+  "product": "OTHER",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"1\""
+  }
+}

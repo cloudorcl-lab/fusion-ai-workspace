@@ -1,0 +1,313 @@
+{
+  "workflowId": "300000332558413",
+  "workflowCode": "ORA_PRJ_PROJECT_COST_MANAGEMENT_ASSISTANT",
+  "name": "Project Cost Management Assistant",
+  "description": "Project Cost Management Assistant Continuously monitors and analyzes all project costs, providing real-time insights, explanations of discrepancies, and actionable recommendations or guided corrections that ensure accurate, compliant, and up-to-date project financials.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [
+      {
+        "id": "RelevantInfo",
+        "name": "RelevantInfo",
+        "type": "object"
+      },
+      {
+        "id": "priorPFCAResponse",
+        "name": "priorPFCAResponse",
+        "type": "string"
+      },
+      {
+        "id": "routingContext",
+        "name": "routingContext",
+        "type": "string"
+      }
+    ],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1780979060367"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "Gpt Oss",
+              "provider": "CERT_BASIC"
+            },
+            "description": "Classifies Project Cost Management requests and routes exception-related requests to the granular Project Cost Exceptions assistant.",
+            "name": "Relevancy Checker"
+          },
+          "outcomes": {
+            "success": "2"
+          },
+          "code": "PRJ_PJC_LLM_RELEVANCY_CHECKER",
+          "id": "1",
+          "inputs": [
+            {
+              "id": "1_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are the Relevancy Checker inside the Project Cost Management Assistant, a Level 2 assistant under the Project Financial Control Agent.\n\nReturn valid JSON only. Do not include markdown, comments, or extra text.\n\nInputs:\n- Current user message: {{$context.$system.$inputMessage}}\n- Relevant information from parent PFCA: {{$context.$triggers.REST.$input.prjPjcAtomicAgentRelevantInfo}}\n- Prior PFCA response: {{$context.$triggers.REST.$input.prjPjcChatHistory}}\n- Routing context: {{$context.$triggers.REST.$input.PrjPjcRoutingContext}}\n\nTask:\nClassify the current user request for the Project Cost Management assistant.\n\nDisposition values:\n- Exceptions\n- UNSUPPORTED\n- OFFTOPIC\n\nFirst generate a single, concise, meaningful one-line natural language user query from Current user message by incorporating relevant parent information. Store it in Modified_query.\n\nBy seeing Modified_query, deduce the user's intent.\n\nRouting rules:\n\n1. Use Exceptions when:\n   - The request is clearly about project cost exceptions.\n   - The user mentions exceptions, unprocessed cost exceptions, rejected project costs, failed import costs, project cost exception categories, exception types, exception details, or exception resolution.\n   - The request is a clear follow-up to an existing Project Cost Exceptions Assistant response.\n   - The user selects a row number, category, exception type, or navigation action that belongs to the exception flow.\n\n2. Use UNSUPPORTED when:\n   - The request is still about Project Cost Management or project costs.\n   - But the request is not about project cost exceptions.\n   - Examples include general project costs, cost distributions, costing setup, costing reports, expenditure items, cost adjustments, import costs without an exception/error/rejection intent, or broader cost-management tasks outside the Project Cost Exceptions assistant scope.\n\n3. Use OFFTOPIC when:\n   - The request belongs to another Project Financial Control area such as Project Accounting, Asset Management, or Project Billing.\n   - The request is unrelated to Project Cost Management.\n   - The message is casual chatter, invalid, or too vague to safely interpret as a Cost Management request.\n   - The request cannot be routed confidently to Exceptions or Unsupported.\n\nPriority rules:\n- If the current message or prior PFCA response clearly indicates a follow-up to Project Cost Exceptions, choose Exceptions.\n- Preserve the parent PFCA interpretation when it clearly points to exceptions.\n\nOutput schema:\n{\n  \"Disposition\": \"Exceptions\" | \"UNSUPPORTED\" | \"OFFTOPIC\",\n  \"Reason\": \"short explanation\"\n}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"Disposition\": {\n      \"type\": \"string\"\n    },\n    \"Reason\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"Disposition\",\n    \"Reason\"\n  ]\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "description": "Routes Level 2 Project Cost Management requests to the granular Project Cost Exceptions assistant or graceful fallback responses.",
+            "name": "Cost Management Routing"
+          },
+          "outcomes": {
+            "Exceptions": "3",
+            "UNSUPPORTED": "8"
+          },
+          "code": "PRJ_PJC_SWITCH_COST_MANAGEMENT_ROUTING",
+          "convergenceTargetId": "end",
+          "id": "2",
+          "inputs": [
+            {
+              "id": "2_caseExpression",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.PRJ_PJC_LLM_RELEVANCY_CHECKER.$output.Disposition}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "description": "Invokes the granular Project Cost Exceptions Assistant.",
+            "name": "Project Cost Exceptions Assistant",
+            "workflowCode": "ORA_PRJ_PJC_PROJECT_COST_EXCEPTION_ASSISTANT_TEAM"
+          },
+          "outcomes": {
+            "success": "5"
+          },
+          "code": "PRJ_PJC_WORKFLOW_INVOKE_PROJECT_COST_EXCEPTIONS_ASSISTANT",
+          "id": "3",
+          "inputs": [
+            {
+              "id": "1779425671918_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            },
+            {
+              "id": "1779425671919_2",
+              "name": "prjPjcAtomicAgentRelevantInfo",
+              "type": "object",
+              "value": "{{$context.$triggers.REST.$input.prjPjcAtomicAgentRelevantInfo}}"
+            },
+            {
+              "id": "1779425671920_3",
+              "name": "prjPjcChatHistory",
+              "type": "object",
+              "value": "{{$context.$triggers.REST.$input.prjPjcChatHistory}}"
+            },
+            {
+              "id": "1779425671921_4",
+              "name": "prjPjcRoutingContext",
+              "type": "string",
+              "value": "{{$context.$nodes.PRJ_PJC_CODE_ROUTING_CONTEXT.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "description": "Builds the Level 2 Cost Management unsupported response in the UI JSON envelope format.",
+            "name": "Cost Management Unsupported Message",
+            "returnType": "object",
+            "sourceCode": "var title='Project Cost Management';\nvar description='Guidance for cost-management requests that are outside the currently connected granular assistant scope.';\nvar message='Your request is in the project cost management domain, but it\\'s not currently supported. I can help you with query requests related to project costs and exceptions.';\nvar q=String($context.$system.$currentDateTime||''),\nts=q?q.slice(8,10)+'-'+q.slice(5,7)+'-'+q.slice(0,4)+' '+q.slice(11,16):String($context.$system.$currentDate||''),\no={\n  agent:($context.$workflow&&$context.$workflow.$code)||'ORA_PRJ_PROJECT_COST_MANAGEMENT_ASSISTANT',\n  intent:'unsupported_context',\n  schema_version:'1',\n  title:title,\n  description:description,\n  timestamp:ts,\n  agent_response:[\n    {\n      display_type:'text',\n      display_sequence:1,\n      text:message\n    }\n  ]\n};\n\nreturn {\n  activeContext:'Cost Management',\n  message:message,\n  wrappedResponse:JSON.stringify(o)\n};"
+          },
+          "outcomes": {
+            "success": "9"
+          },
+          "code": "PRJ_PJC_CODE_COST_MANAGEMENT_UNSUPPORTED_MESSAGE",
+          "id": "8",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "description": "Returns the Level 2 Cost Management unsupported response.",
+            "name": "Return Cost Management Unsupported Message"
+          },
+          "outcomes": {},
+          "code": "PRJ_PJC_RETURN_COST_MANAGEMENT_UNSUPPORTED",
+          "id": "9",
+          "inputs": [
+            {
+              "id": "9_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.PRJ_PJC_CODE_COST_MANAGEMENT_UNSUPPORTED_MESSAGE.$output.result.wrappedResponse}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "description": "Checks whether the granular Project Cost Exceptions Assistant returned a non-empty response.",
+            "name": "Has Child Response"
+          },
+          "outcomes": {
+            "true": "6",
+            "false": "7"
+          },
+          "code": "PRJ_PJC_IF_HAS_CHILD_RESPONSE",
+          "convergenceTargetId": "end",
+          "id": "5",
+          "inputs": [
+            {
+              "id": "5_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PRJ_PJC_WORKFLOW_INVOKE_PROJECT_COST_EXCEPTIONS_ASSISTANT.$output.output && $context.$nodes.PRJ_PJC_WORKFLOW_INVOKE_PROJECT_COST_EXCEPTIONS_ASSISTANT.$output.output.trim().length > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Returns the granular Project Cost Exceptions response as-is.",
+            "name": "Return Child Response"
+          },
+          "outcomes": {},
+          "code": "PRJ_PJC_RETURN_CHILD_RESPONSE",
+          "id": "6",
+          "inputs": [
+            {
+              "id": "6_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.PRJ_PJC_WORKFLOW_INVOKE_PROJECT_COST_EXCEPTIONS_ASSISTANT.$output.output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "description": "Returns a fallback message when the granular Project Cost Exceptions Assistant returns no response.",
+            "name": "Return No Child Response"
+          },
+          "outcomes": {},
+          "code": "PRJ_PJC_RETURN_NO_CHILD_RESPONSE",
+          "id": "7",
+          "inputs": [
+            {
+              "id": "7_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "No response was returned by the Project Cost Exceptions Assistant."
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Routing context",
+            "returnType": "string",
+            "sourceCode": "return String($context.$triggers.REST.$input.prjPjcRoutingContext);"
+          },
+          "outcomes": {
+            "success": "1"
+          },
+          "code": "PRJ_PJC_CODE_ROUTING_CONTEXT",
+          "convergenceTargetId": "1",
+          "id": "1780979060367",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": []
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "RelevantInfo",
+            "name": "prjPjcAtomicAgentRelevantInfo",
+            "scope": "JOB",
+            "type": "object"
+          },
+          {
+            "id": "priorPFCAResponse",
+            "name": "prjPjcChatHistory",
+            "scope": "JOB",
+            "type": "object"
+          },
+          {
+            "id": "routingContext",
+            "name": "prjPjcRoutingContext",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "PRJ",
+  "product": "ORA_PRJ_COSTING",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": true,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"1\""
+  }
+}

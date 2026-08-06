@@ -1,0 +1,819 @@
+{
+  "workflowId": "300000326919080",
+  "workflowCode": "ORA_INV_WH_OPS_OUTBOUND_PRIORITY_ADVISOR",
+  "name": "Inventory Outbound Priority Advisor",
+  "description": "Provides recommendations for priority orders by aligning outbound demand with fulfillment options. Assists warehouse managers and order fulfillment teams in evaluating priority handling strategies to improve service levels and expedite critical shipments.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1771569107970"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "setInputVars"
+          },
+          "outcomes": {
+            "success": "1771908776402"
+          },
+          "code": "SETINPUTVARS",
+          "id": "1771475566071",
+          "inputs": [
+            {
+              "id": "1771568812544",
+              "name": "OrderNumber",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_INPUT.$output.OrderNumber}}"
+            },
+            {
+              "id": "1771475572757",
+              "name": "OrganizationId",
+              "scope": "JOB",
+              "type": "number",
+              "value": "{{$context.$nodes.EXTRACT_INPUT.$output.Organization}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Extract Input"
+          },
+          "outcomes": {
+            "success": "1771475566071"
+          },
+          "code": "EXTRACT_INPUT",
+          "id": "1771569107970",
+          "inputs": [
+            {
+              "id": "1771569107972_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You will receive a JSON object. - {{$context.$system.$inputMessage}} \nRead only the provided input.\nExtract Order as Order and OrganizationId as Organization.\nOutput only a valid JSON object in the following format:\n{ \"OrderNumber\": \"<value>\", \"Organization\": \"<value>\" , \"Context\":<context> }\nIf either field is missing, return null for that field."
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"Context\": {\n            \"type\": \"string\"\n        },\n        \"Organization\": {\n            \"type\": \"number\"\n        },\n        \"OrderNumber\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "SwitchPath",
+            "returnType": "string",
+            "sourceCode": "const context = $context.$triggers.REST.$input.context;\nconst appContext = $context.$app.$OraMessageHint;\n\nlet result = null;\n\nif (context === 'Query') {\n    result = context;\n} else if (appContext === 'InvokeAction') {\n    result = appContext;\n} \nreturn result;"
+          },
+          "outcomes": {
+            "success": "1771908948730"
+          },
+          "code": "SWITCHPATH",
+          "id": "1771908776402",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Path Switch"
+          },
+          "outcomes": {
+            "Query": "1771495066703",
+            "InvokeAction": "1771909116005"
+          },
+          "code": "PATH_SWITCH",
+          "convergenceTargetId": "end",
+          "id": "1771908948730",
+          "inputs": [
+            {
+              "id": "1771908948731_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.SWITCHPATH.$output.result}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_SHIPMENTLINESINVENTORYWAREHOUSEMANAGEMENTWORKSPACE",
+            "functionName": "GetPriorityOrderDetails",
+            "name": "GetOrderInfo"
+          },
+          "outcomes": {
+            "success": "1771837474867"
+          },
+          "code": "GETORDERINFO",
+          "convergenceTargetId": "1771908991476",
+          "id": "1771495066703",
+          "inputs": [
+            {
+              "id": "1771837417566_1",
+              "name": "pOrganizationId",
+              "type": "string",
+              "value": "{{$context.$variables.OrganizationId}}"
+            },
+            {
+              "id": "1771837417566_2",
+              "name": "pOrder",
+              "type": "string",
+              "value": "{{$context.$variables.OrderNumber}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"description\": \"\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"uniqueItems\": true,\n      \"minItems\": 1,\n      \"items\": {\n        \"required\": [\n          \"RequestedQuantity\",\n          \"ShipmentLine\",\n          \"Item\",\n          \"InventoryItemId\"\n        ],\n        \"properties\": {\n          \"RequestedQuantity\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"ShipmentLine\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"Item\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"InventoryItemId\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"@context\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"key\": {\n                \"type\": \"string\",\n                \"minLength\": 1\n              }\n            },\n            \"required\": [\n              \"key\"\n            ]\n          }\n        }\n      }\n    },\n    \"count\": {\n      \"type\": \"number\"\n    },\n    \"hasMore\": {\n      \"type\": \"boolean\"\n    },\n    \"limit\": {\n      \"type\": \"number\"\n    },\n    \"offset\": {\n      \"type\": \"number\"\n    },\n    \"links\": {\n      \"type\": \"array\",\n      \"uniqueItems\": true,\n      \"minItems\": 1,\n      \"items\": {\n        \"required\": [\n          \"rel\",\n          \"href\",\n          \"name\",\n          \"kind\"\n        ],\n        \"properties\": {\n          \"rel\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"href\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"name\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"kind\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          }\n        }\n      }\n    }\n  },\n  \"required\": [\n    \"items\",\n    \"count\",\n    \"hasMore\",\n    \"limit\",\n    \"offset\",\n    \"links\"\n  ]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "getDistinctItemIds",
+            "returnType": "object",
+            "sourceCode": "const input = $context.$nodes.GETORDERINFO.$output.items;\n\n// Initialize an object to store the aggregated data\nlet aggregatedData = {};\n\n// Loop through each item in the input\ninput.forEach((item) => {\n  const itemName = item.Item;  // Get the item name\n  const requestedQuantity = parseInt(item.RequestedQuantity, 10);  // Convert RequestedQuantity to integer\n  const itemId = item.InventoryItemId; // Get the ItemId\n  \n  // If the item already exists in aggregatedData, add the requested quantity to it\n  if (aggregatedData[itemName]) {\n    aggregatedData[itemName].TotalRequestedQuantity += requestedQuantity;\n  } else {\n    // Otherwise, create a new entry for the item\n    aggregatedData[itemName] = {\n      TotalRequestedQuantity: requestedQuantity,\n      ItemId: itemId  // Store the ItemId\n    };\n  }\n});\n\n// Format the result as an array of objects\nconst result = Object.keys(aggregatedData).map(itemName => ({\n  Item: itemName,\n  ItemId: aggregatedData[itemName].ItemId,\n  TotalRequestedQuantity: aggregatedData[itemName].TotalRequestedQuantity\n}));\n\n// Output the result\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1771848839178"
+          },
+          "code": "GETDISTINCTITEMIDS",
+          "convergenceTargetId": "1771908991476",
+          "id": "1771837474867",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "InitialiseOrgLevelAvailVariable"
+          },
+          "outcomes": {
+            "success": "1771496324951"
+          },
+          "code": "INITIALISEORGLEVELAVAILVARIABLE",
+          "convergenceTargetId": "1771848592152",
+          "id": "1771848839178",
+          "inputs": [
+            {
+              "id": "1772086166177",
+              "name": "OrgLevelAvailable",
+              "scope": "JOB",
+              "type": "boolean",
+              "value": "true"
+            },
+            {
+              "id": "1772075134978",
+              "name": "OnhandUnavailItems",
+              "scope": "JOB",
+              "type": "object",
+              "value": "[]"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "ExtractOrderParams",
+            "returnType": "object",
+            "sourceCode": "const oraAction= $context.$app.$OraAction;\nlet command = {};\ncommand = JSON.parse(oraAction);\nconst suggestion = command.suggestion;\nreturn suggestion;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "EXTRACTORDERPARAMS",
+          "id": "1771909116005",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_SHIPPINGPARAMETERSINVENTORYWAREHOUSEOPERATIONSWORKSPACE",
+            "functionName": "get_shippingParameters",
+            "name": "Check QS Flag"
+          },
+          "outcomes": {
+            "success": "1772099468580"
+          },
+          "code": "CHECK_QS_FLAG",
+          "convergenceTargetId": "1771495937218",
+          "id": "1771496324951",
+          "inputs": [
+            {
+              "id": "1771496354272_1",
+              "name": "organizationId",
+              "type": "string",
+              "value": "{{$context.$variables.OrganizationId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"description\": \"\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"uniqueItems\": true,\n      \"minItems\": 1,\n      \"items\": {\n        \"required\": [\n          \"AllowFutureShipDateFlag\",\n          \"OrganizationId\",\n          \"AppendingLimitCode\",\n          \"ShipmentCreationCriteriaCode\",\n          \"CreateShipmentsFlag\",\n          \"AutomaticallyPackFlag\",\n          \"ShipOnFiscalDocumentApprovalFlag\",\n          \"CarrierManifestFlag\",\n          \"ConsolidateBoLinesFlag\",\n          \"CreatedBy\",\n          \"CreationDate\",\n          \"StagingSubinventory\",\n          \"DeferInventoryInterfaceFlag\",\n          \"DeferInventoryOnlineProcessingFlag\",\n          \"EnforcePackingFlag\",\n          \"EnforceShipMethodFlag\",\n          \"EnforceShipSetFlag\",\n          \"ExpressPickFlag\",\n          \"GroupByFOBFlag\",\n          \"GroupByFreightTermsFlag\",\n          \"GroupByShipMethodFlag\",\n          \"GroupByCustomerFlag\",\n          \"LastUpdateDate\",\n          \"LastUpdateLogin\",\n          \"LastUpdatedBy\",\n          \"PackingSlipStatusRequiredFlag\",\n          \"PackingUnitCapacityMethodCode\",\n          \"PickSlipGroupingRuleId\",\n          \"ReleaseSequenceRuleId\",\n          \"PrintPickSlipModeCode\",\n          \"ProcessGsrImmediateFlag\",\n          \"PublishTransactionalEventsFlag\",\n          \"QuickShipEnabledFlag\",\n          \"ShipConfirmRuleId\",\n          \"ShipSetBehaviorCode\",\n          \"ShipmentDescriptionRequiredFlag\",\n          \"TransportationReasonRequiredFlag\",\n          \"VolumeUOMClass\",\n          \"WeightUOMClass\",\n          \"WmsItemSubstitutionFlag\",\n          \"WmsReservationBehaviourCode\",\n          \"PickSlipGroupingRule\",\n          \"ShipConfirmRule\",\n          \"ShipmentCreationCriteria\",\n          \"AppendingLimit\",\n          \"ReleaseSequenceRule\",\n          \"PackingUnitCapacityMethod\",\n          \"WeightUOMClassCode\",\n          \"VolumeUOMClassCode\",\n          \"ShipSetBehavior\",\n          \"WmsReservationBehavior\",\n          \"PrintPickSlipMode\",\n          \"StagedReturnToWmsFlag\",\n          \"AutoShipOnPickConfirmFlag\",\n          \"ShipGoodsVerificationFlag\",\n          \"SendOSPLinesToWMSFlag\",\n          \"WMSGroupByOrderTypeFlag\",\n          \"WMSGroupByOrderFlag\",\n          \"WMSGroupByCustomerFlag\",\n          \"WMSGroupByShipToLocationFlag\",\n          \"WMSGroupByShippingMethodFlag\",\n          \"WMSGroupByItemFlag\",\n          \"WMSGroupByShipmentSetFlag\",\n          \"StagingSubinventoryName\"\n        ],\n        \"properties\": {\n          \"AllowFutureShipDateFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"OrganizationId\": {\n            \"type\": \"number\"\n          },\n          \"AppendingLimitCode\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"ShipmentCreationCriteriaCode\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"CreateShipmentsFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"AutomaticallyPackFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"ShipOnFiscalDocumentApprovalFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"BOLDocumentSequenceCategory\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"CarrierManifestFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"ConsolidateBoLinesFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"CreatedBy\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"CreationDate\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"StagingLocatorId\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"StagingSubinventory\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"DeferInventoryInterfaceFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"DeferInventoryOnlineProcessingFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"EnforcePackingFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"EnforceShipMethodFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"EnforceShipSetFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"ExpressPickFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"GroupByFOBFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"GroupByFreightTermsFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"GroupByShipMethodFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"GroupByCustomerFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"CurrencyCode\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"InvInterfaceBatchSize\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"CIDocumentSequenceCategory\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"LastUpdateDate\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"LastUpdateLogin\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"LastUpdatedBy\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"OrganizationCode\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"PackSlipDocumentSequenceCategory\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"PackingSlipStatusRequiredFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"PackingUnitCapacityMethodCode\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"PickSlipGroupingRuleId\": {\n            \"type\": \"number\"\n          },\n          \"PickReleaseBatchSize\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"PickReleaseChildProcessNumber\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"ReleaseSequenceRuleId\": {\n            \"type\": \"number\"\n          },\n          \"PickSlipLines\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"PrintPickSlipModeCode\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"ProcessGsrImmediateFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"PortugalOptInFlag\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"PublishTransactionalEventsFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"QuickShipLocatorId\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"QuickShipSubinventory\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"QuickShipEnabledFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"ShipConfirmRuleId\": {\n            \"type\": \"number\"\n          },\n          \"ShipSetBehaviorCode\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"OverShipTolerance\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"UnderShipTolerance\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"ShipmentDescriptionRequiredFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"ShippingToleranceBehaviorCode\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"TradeComplianceMethodCode\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"TransportationReasonRequiredFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"VolumeUOMClass\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"WeightUOMClass\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"WmsItemSubstitutionFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"WmsReservationBehaviourCode\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"PickSlipGroupingRule\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"ShipConfirmRule\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"ShipmentCreationCriteria\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"AppendingLimit\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"ReleaseSequenceRule\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"PackingUnitCapacityMethod\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"WeightUOMClassCode\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"VolumeUOMClassCode\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"Currency\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"ShipSetBehavior\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"ShippingToleranceBehavior\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"WmsReservationBehavior\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"PrintPickSlipMode\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"TradeComplianceMethod\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"QuickShipLocator\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"StagingLocator\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"LPNEnabledFlag\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"StagedReturnToWmsFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"AutoShipOnPickConfirmFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"ShipGoodsVerificationFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"LPNControl\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"SendOSPLinesToWMSFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"WMSGroupByOrderTypeFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"WMSGroupByOrderFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"WMSGroupByCustomerFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"WMSGroupByShipToLocationFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"WMSGroupByShippingMethodFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"WMSGroupByItemFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"WMSGroupByShipmentSetFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"LPNReuseAllowedFlag\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"MHEEnableDeliveryCarts\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"StagingSubinventoryName\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"QuickShipSubinventoryName\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"OverrideShipShelfLifeFlag\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"links\": {\n            \"type\": \"array\",\n            \"uniqueItems\": true,\n            \"minItems\": 1,\n            \"items\": {\n              \"required\": [\n                \"rel\",\n                \"href\",\n                \"name\",\n                \"kind\"\n              ],\n              \"properties\": {\n                \"rel\": {\n                  \"type\": \"string\",\n                  \"minLength\": 1\n                },\n                \"href\": {\n                  \"type\": \"string\",\n                  \"minLength\": 1\n                },\n                \"name\": {\n                  \"type\": \"string\",\n                  \"minLength\": 1\n                },\n                \"kind\": {\n                  \"type\": \"string\",\n                  \"minLength\": 1\n                }\n              }\n            }\n          }\n        }\n      }\n    },\n    \"count\": {\n      \"type\": \"number\"\n    },\n    \"hasMore\": {\n      \"type\": \"boolean\"\n    },\n    \"limit\": {\n      \"type\": \"number\"\n    },\n    \"offset\": {\n      \"type\": \"number\"\n    },\n    \"links\": {\n      \"type\": \"array\",\n      \"uniqueItems\": true,\n      \"minItems\": 1,\n      \"items\": {\n        \"required\": [\n          \"rel\",\n          \"href\",\n          \"name\",\n          \"kind\"\n        ],\n        \"properties\": {\n          \"rel\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"href\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"name\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"kind\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          }\n        }\n      }\n    }\n  },\n  \"required\": [\n    \"items\",\n    \"count\",\n    \"hasMore\",\n    \"limit\",\n    \"offset\",\n    \"links\"\n  ]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "SwitchQSFlow"
+          },
+          "outcomes": {
+            "true": "1771848592152",
+            "false": "1772099303547"
+          },
+          "code": "SWITCHQSFLOW",
+          "convergenceTargetId": "end",
+          "id": "1772099193794",
+          "inputs": [
+            {
+              "id": "1772099193796_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.RETURNQSFLAG.$output.result}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1771848634293"
+                  },
+                  "id": "start_1771848592152",
+                  "code": "START_1771848592152",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1771848592152",
+                  "code": "END_1771848592152",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_INVENTORYM_ITEMAVAILABILIT",
+                    "functionName": "get_itemAvailabilitySummaries",
+                    "processJson": false,
+                    "name": "getOrgAvailPerItem"
+                  },
+                  "outcomes": {
+                    "success": "end_1771848592152"
+                  },
+                  "code": "GETORGAVAILPERITEM",
+                  "id": "1771848634293",
+                  "inputs": [
+                    {
+                      "id": "1771848665056_1",
+                      "name": "pOrganizationId",
+                      "type": "number",
+                      "value": "{{$context.$variables.OrganizationId}}"
+                    },
+                    {
+                      "id": "1771848665057_2",
+                      "name": "pItemId",
+                      "type": "number",
+                      "value": "{{$context.$nodes.CHECKORGLEVELAVAILABILITY.$currentItem.ItemId}}"
+                    }
+                  ],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"description\": \"\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"uniqueItems\": true,\n      \"minItems\": 1,\n      \"items\": {\n        \"required\": [\n          \"OrganizationId\",\n          \"InventoryItemId\",\n          \"AvailableToTransactQuantity\"\n        ],\n        \"properties\": {\n          \"OrganizationId\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"InventoryItemId\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"AvailableToTransactQuantity\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"@context\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"key\": {\n                \"type\": \"string\",\n                \"minLength\": 1\n              }\n            },\n            \"required\": [\n              \"key\"\n            ]\n          }\n        }\n      }\n    },\n    \"count\": {\n      \"type\": \"number\"\n    },\n    \"hasMore\": {\n      \"type\": \"boolean\"\n    },\n    \"limit\": {\n      \"type\": \"number\"\n    },\n    \"offset\": {\n      \"type\": \"number\"\n    },\n    \"links\": {\n      \"type\": \"array\",\n      \"uniqueItems\": true,\n      \"minItems\": 1,\n      \"items\": {\n        \"required\": [\n          \"rel\",\n          \"href\",\n          \"name\",\n          \"kind\"\n        ],\n        \"properties\": {\n          \"rel\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"href\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"name\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"kind\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          }\n        }\n      }\n    }\n  },\n  \"required\": [\n    \"items\",\n    \"count\",\n    \"hasMore\",\n    \"limit\",\n    \"offset\",\n    \"links\"\n  ]\n}",
+                  "type": "BO_FUNCTION"
+                }
+              ],
+              "rootNode": "start_1771848592152"
+            },
+            "loopType": "SEQUENTIAL",
+            "name": "checkOrgLevelAvailability"
+          },
+          "outcomes": {
+            "success": "1771848915291"
+          },
+          "code": "CHECKORGLEVELAVAILABILITY",
+          "convergenceTargetId": "1772099245543",
+          "id": "1771848592152",
+          "inputs": [
+            {
+              "id": "1771848592153_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$nodes.GETDISTINCTITEMIDS.$output.result}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "name": "ATRPerItemCheck",
+            "returnType": "boolean",
+            "sourceCode": "let input1 = $context.$nodes.CHECKORGLEVELAVAILABILITY.$output;  // Input 1: org-level availability data\nlet input2 = $context.$nodes.GETDISTINCTITEMIDS.$output.result;   // Input 2: requested items with quantities\n\n// Initialize result object\nlet result = {\n  \"res\": true,        // Set default result to true\n  \"UnAvailList\": []   // Empty list to hold unavailable items\n};\n\n// Ensure both input1 is an array of strings and input2 is valid\nif (Array.isArray(input1) && input1.length > 0 && Array.isArray(input2) && input1.length === input2.length) {\n    // Loop through each item in Input 2 (the distinct items list)\n    input2.forEach((item, index) => {\n        // Parse the corresponding JSON string from Input 1\n        let parsedItem = JSON.parse(input1[index]);\n\n        // Check if parsedItem has valid \"items\" array\n        if (parsedItem && Array.isArray(parsedItem.items) && parsedItem.items.length > 0) {\n            let matchedItem = parsedItem.items[0]; // Since it's an array, take the first item\n\n            // Check if AvailableToTransactQuantity is less than TotalRequestedQuantity\n            let availableQuantity = parseInt(matchedItem.AvailableToTransactQuantity);  // Convert to integer\n\n            if (availableQuantity < item.TotalRequestedQuantity) {\n                result.res = false;  // Set result to false since one item is unavailable\n                result.UnAvailList.push({\n                    \"ItemId\": item.ItemId,\n                    \"Item\": item.Item\n                });\n            }\n        } else {\n            result.res = false; // If there's an issue with the parsed item\n            result.UnAvailList.push({\n                \"ItemId\": item.ItemId,\n                \"Item\": item.Item\n            });\n        }\n    });\n} else {\n    // If input1 is not a valid array of strings, or input2 is not an array, or their lengths don't match\n    result.res = false;\n    result.error = \"Input arrays are invalid or have mismatched lengths.\";\n}\n\nlet jsonString = JSON.stringify(result);\n\n// Output the valid JSON string\nreturn jsonString;"
+          },
+          "outcomes": {
+            "success": "1771850069514"
+          },
+          "code": "ATRPERITEMCHECK",
+          "convergenceTargetId": "1772099245543",
+          "id": "1771848915291",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "SwitchBasedOnOrgAvail"
+          },
+          "outcomes": {
+            "true": "1771869356240",
+            "false": "1772078456362"
+          },
+          "code": "SWITCHBASEDONORGAVAIL",
+          "convergenceTargetId": "end",
+          "id": "1771850069514",
+          "inputs": [
+            {
+              "id": "1771850069516_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.ATRPERITEMCHECK.$output.result.res}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "InitialiseItemSnapshotVarValue",
+            "returnType": "object",
+            "sourceCode": "let onhandAvailSnapshot = {\n  \"OnhandAvailSnapshot\": {\n    \"InventoryItems\": [] // This will hold the grouped items by InventoryItemId\n  }\n};\n\nreturn onhandAvailSnapshot;"
+          },
+          "outcomes": {
+            "success": "1771871760372"
+          },
+          "code": "INITIALISEITEMSNAPSHOTVARVALUE",
+          "convergenceTargetId": "1772086550932",
+          "id": "1771869356240",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "setInitialValueForItemSnap"
+          },
+          "outcomes": {
+            "success": "1771860237159"
+          },
+          "code": "SETINITIALVALUEFORITEMSNAP",
+          "convergenceTargetId": "1772086550932",
+          "id": "1771871760372",
+          "inputs": [
+            {
+              "id": "1771871772671",
+              "name": "OnhandAvailSnapshot",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.INITIALISEITEMSNAPSHOTVARVALUE.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1771860754287"
+                  },
+                  "id": "start_1771860237159",
+                  "code": "START_1771860237159",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1771860237159",
+                  "code": "END_1771860237159",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_INVENTORYM_ITEMAVAILABILITYINVENTORYWAREHOUSEMANAGEMENTWORKSPACE",
+                    "functionName": "itemavailabilitydetails",
+                    "processJson": false,
+                    "name": "getEachItemSnapshot"
+                  },
+                  "outcomes": {
+                    "success": "1771860862404"
+                  },
+                  "code": "GETEACHITEMSNAPSHOT",
+                  "id": "1771860754287",
+                  "inputs": [
+                    {
+                      "id": "1771860781889_1",
+                      "name": "pOrganizationId",
+                      "type": "string",
+                      "value": "{{$context.$variables.OrganizationId}}"
+                    },
+                    {
+                      "id": "1771860781890_2",
+                      "name": "pItemId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.GETONHANDAVAILPERITEM.$currentItem.ItemId}}"
+                    }
+                  ],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"description\": \"\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"uniqueItems\": true,\n      \"minItems\": 1,\n      \"items\": {\n        \"required\": [\n          \"OrganizationId\",\n          \"InventoryItemId\",\n          \"Subinventory\",\n          \"SubinventoryName\",\n          \"SubinventoryId\",\n          \"PrimaryUnitOfMeasureCode\",\n          \"RevisionQuantityControlFlag\",\n          \"PrimaryUnitOfMeasure\",\n          \"AvailableToTransactQuantity\",\n          \"SecondaryAvailableToTransactQuantity\",\n          \"ItemMinimumQuantity\",\n          \"SuggestedQuantityForReplenishment\",\n          \"InterSubinventoryParametersFlag\"\n        ],\n        \"properties\": {\n          \"OrganizationId\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"InventoryItemId\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"Subinventory\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"SubinventoryName\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"SubinventoryId\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"LocatorId\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"Locator\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"PrimaryUnitOfMeasureCode\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"Revision\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"RevisionQuantityControlFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"SecondaryUnitOfMeasureCode\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"PrimaryUnitOfMeasure\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"SecondaryUnitOfMeasure\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"AvailableToTransactQuantity\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"SecondaryAvailableToTransactQuantity\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"ItemMinimumQuantity\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"SuggestedQuantityForReplenishment\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"InterSubinventoryParametersFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"@context\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"key\": {\n                \"type\": \"string\",\n                \"minLength\": 1\n              }\n            },\n            \"required\": [\n              \"key\"\n            ]\n          }\n        }\n      }\n    },\n    \"count\": {\n      \"type\": \"number\"\n    },\n    \"hasMore\": {\n      \"type\": \"boolean\"\n    },\n    \"limit\": {\n      \"type\": \"number\"\n    },\n    \"offset\": {\n      \"type\": \"number\"\n    },\n    \"links\": {\n      \"type\": \"array\",\n      \"uniqueItems\": true,\n      \"minItems\": 1,\n      \"items\": {\n        \"required\": [\n          \"rel\",\n          \"href\",\n          \"name\",\n          \"kind\"\n        ],\n        \"properties\": {\n          \"rel\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"href\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"name\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"kind\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          }\n        }\n      }\n    }\n  },\n  \"required\": [\n    \"items\",\n    \"count\",\n    \"hasMore\",\n    \"limit\",\n    \"offset\",\n    \"links\"\n  ]\n}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "name": "SummariseItemAvailabilitySnapshot",
+                    "returnType": "object",
+                    "sourceCode": "// Assuming 'itemsnapshot' is received for each item\nconst itemsnapshot =\n  $context.$nodes.GETONHANDAVAILPERITEM.GETEACHITEMSNAPSHOT.$output.items;\n\n//const onhandAvailSnapshot =\n // $context.$nodes.INITIALISEITEMSNAPSHOTVARVALUE.$output.result;\n\nconst onhandAvailSnapshot =\n $context.$variables.OnhandAvailSnapshot ;\n\n\n// Process each snapshot for a specific item and group them by InventoryItemId\nitemsnapshot.forEach(item => {\n\n  // Extract InventoryItemId from the current item snapshot\n  const inventoryItemId = item.InventoryItemId;\n\n  // Find if the InventoryItemId already exists in the result array\n  let inventoryItem =\n    onhandAvailSnapshot.OnhandAvailSnapshot.InventoryItems.find(\n      inventory => inventory.InventoryItemId === inventoryItemId\n    );\n\n  // If the InventoryItemId doesn't exist, create a new entry\n  if (!inventoryItem) {\n    inventoryItem = {\n      InventoryItemId: inventoryItemId,\n      Items: [] // Holds subinventory-level snapshots\n    };\n\n    // Add the new inventory item to the result\n    onhandAvailSnapshot.OnhandAvailSnapshot.InventoryItems.push(inventoryItem);\n  }\n\n  // Push the current item's subinventory details\n  inventoryItem.Items.push({\n    OrganizationId: item.OrganizationId,\n    Subinventory: item.Subinventory,\n    SubinventoryName: item.SubinventoryName,\n    SubinventoryId: item.SubinventoryId,\n    LocatorId: item.LocatorId,\n    Locator: item.Locator,\n    PrimaryUnitOfMeasureCode: item.PrimaryUnitOfMeasureCode,\n    Revision: item.Revision,\n    AvailableToTransactQuantity: item.AvailableToTransactQuantity,\n    \"@context\": item[\"@context\"]\n  });\n});\n\n$context.$variables.OnhandAvailSnapshot = onhandAvailSnapshot ;\n// Return the cumulative structured result\nreturn onhandAvailSnapshot;"
+                  },
+                  "outcomes": {
+                    "success": "end_1771860237159"
+                  },
+                  "code": "SUMMARISEITEMAVAILABILITYSNAPSHOT",
+                  "id": "1771860862404",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                }
+              ],
+              "rootNode": "start_1771860237159"
+            },
+            "loopType": "SEQUENTIAL",
+            "name": "getOnhandAvailPerItem"
+          },
+          "outcomes": {
+            "success": "1771872091879"
+          },
+          "code": "GETONHANDAVAILPERITEM",
+          "convergenceTargetId": "1772086550932",
+          "id": "1771860237159",
+          "inputs": [
+            {
+              "id": "1771860237160_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$nodes.GETDISTINCTITEMIDS.$output.result}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MULTIRECORD"
+              ],
+              "enableActions": true,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Respond with Availability"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RESPOND_WITH_AVAILABILITY",
+          "convergenceTargetId": "1772086550932",
+          "id": "1771872091879",
+          "inputs": [
+            {
+              "id": "1771872091880_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You have two inputs:\n\n1. **Order Information**  : {{$context.$nodes.GETORDERINFO.$output.items}}\n\n   * Fields: `Line`, `Item`, `RequestedQuantity`\n   * Each order line contains a requested quantity of a specific item.\n2. **Onhand Availability** {{$context.$nodes.GETONHANDAVAILPERITEM.$output}}\n\n   * This data provides multiple subinventories where the item is available, along with the available onhand quantities.\n   * Each record can have multiple subinventory details for a given item, each with an `AvailableToTransactQuantity`.\n\n### Objective:\n\nFor each line in the Order list, match the item with available onhand stock and find the best subinventory to fulfill the requested quantity for that line.\n\n### Instructions:\n\n* For **each line** in the order list:\n\n  * Find the **item** and match it to the corresponding onhand availability.\n  * If multiple subinventories exist for the item, **distribute the requested quantity** across the subinventories in such a way that the full **RequestedQuantity** is fulfilled.\n  * Return the best subinventory that has sufficient onhand stock to fulfill the requested quantity.\n\n### Output Structure:\n\nFor each line, generate a record containing the following information in Json format in to suggestion variable:\n\n* **Order**: {{$context.$variables.OrderNumber}} \n* **Line**: Take this from ShipmentLine Attribute from corresponding Row. \n* **Item**: The item number for that line. - Item Attribute from corresponding Row. \n* **Subinventory**: The subinventory where the onhand is available.\n* **Locator**: The Locator where the onhand is available.\n* **Quantity**: The available onhand quantity from that subinventory that will fulfill the requested quantity for that line.\n\n* Ensure the **requested quantity** is completely fulfilled by summing the quantities from different subinventories (if needed).\n\nFor each subinventory used, ensure the available quantity is used efficiently to fulfill the line's requested quantity.\nThe output should be grouped by **Line**, where each line may have multiple subinventory records. \nIf each line has used multiple subinventories, show one record for different subinventory and locator combination by providing Quantity appropriately\n\n### Expected Output Example:  Stick to this json format Mandatory\n\n```json\n{\n  \"Output\": [\n    {\n      \"Order\": \"SO5247\",\n      \"Line\": 1,\n      \"Item\": \"663913\",\n      \"Subinventory\": \"Stores\",\n      \"Quantity\": 2500,\n      \"Locator\":\"ABC\"\n    },\n    {\n      \"Order\": \"SO5247\",\n      \"Line\": 1,\n      \"Item\": \"663913\",\n      \"Subinventory\": \"XGON_91M1\",\n      \"Quantity\": 500,\n      \"Locator\":\"ABC\"\n    },\n    {\n      \"Order\": \"SO5247\",\n      \"Line\": 2,\n      \"Item\": \"663914\",\n      \"Subinventory\": \"KAM-SUB1\",\n      \"Quantity\": 1000,\n      \"Locator\":\"ABC\"\n    },\n    {\n      \"Order\": \"SO5247\",\n      \"Line\": 2,\n      \"Item\": \"663914\",\n      \"Subinventory\": \"Stores\",\n      \"Quantity\": 500,\n      \"Locator\":\"ABC\"\n    }\n  ]\n}\n```\n\n### Steps to Fulfill:\n\n1. **Match Item**: For each order line, identify the item from the order details and look for its corresponding onhand stock.\n2. **Distribute Quantity**: If there is more than one subinventory with onhand stock for an item, distribute the requested quantity across the subinventories based on available quantities.\n3. **Output Format**: For each line, include the subinventory,locator, item, and quantity (amount of stock taken from each subinventory), ensuring that the requested quantity is met.\n\nIf you are able to provide the snapshot for all lines then ensure to show the action as below\n\nAction Details:\n<oraInsight>\n{ \n \"title\": \"Quick Ship\", \n  \"shortDescription\": \"Initiate Quick Ship process for the Order.\",\n  \"actionText\": \"Perform Quick Ship\",\n  \"followUpCommand\": \"ora.Agent({\"command\": \"quickShip\",\"agent\" : \"INV_WH_OPS_OUTBOUND_ADVISOR\",\"suggestion\": <suggestion>})\"\n}\n</oraInsight>"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"Output\": {\n            \"type\": \"array\",\n            \"items\": {\n                \"type\": \"object\",\n                \"properties\": {}\n            }\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "returnUnAvailItem",
+            "returnType": "object",
+            "sourceCode": "$context.$nodes.ATRPERITEMCHECK.$output.result.UnAvailList;"
+          },
+          "outcomes": {
+            "success": "1772076870644"
+          },
+          "code": "RETURNUNAVAILITEM",
+          "id": "1772078456362",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1771495961913"
+                  },
+                  "id": "start_1772076870644",
+                  "code": "START_1772076870644",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1772076870644",
+                  "code": "END_1772076870644",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_OTHER_SUBSTITUTEITEMA",
+                    "functionName": "oraScmOtherSubstituteitema_substituteitemavailabilitydetails",
+                    "processJson": true,
+                    "name": "checkSubstitutes"
+                  },
+                  "outcomes": {
+                    "success": "end_1772076870644"
+                  },
+                  "code": "CHECKSUBSTITUTES",
+                  "convergenceTargetId": "1772076934514",
+                  "id": "1771495961913",
+                  "inputs": [
+                    {
+                      "id": "1771495991139_1",
+                      "name": "pOrganizationId",
+                      "type": "string",
+                      "value": "{{$context.$variables.OrganizationId}}"
+                    },
+                    {
+                      "id": "1771495991140_2",
+                      "name": "pItemId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.LOOPPERUNAVAILITEM.$currentItem.ItemId}}"
+                    }
+                  ],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"description\": \"\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"uniqueItems\": true,\n      \"minItems\": 1,\n      \"items\": {\n        \"required\": [\n          \"OrganizationId\",\n          \"InventoryItemId\",\n          \"ItemNumber\",\n          \"Subinventory\",\n          \"SubinventoryName\",\n          \"SubinventoryId\",\n          \"PrimaryUnitOfMeasureCode\",\n          \"RevisionQuantityControlFlag\",\n          \"PrimaryUnitOfMeasure\",\n          \"AvailableToTransactQuantity\",\n          \"SecondaryAvailableToTransactQuantity\"\n        ],\n        \"properties\": {\n          \"OrganizationId\": {\n            \"type\": \"number\"\n          },\n          \"InventoryItemId\": {\n            \"type\": \"number\"\n          },\n          \"ItemNumber\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"Subinventory\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"SubinventoryName\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"SubinventoryId\": {\n            \"type\": \"number\"\n          },\n          \"LocatorId\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"Locator\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"PrimaryUnitOfMeasureCode\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"Revision\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"RevisionQuantityControlFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"SecondaryUnitOfMeasureCode\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"PrimaryUnitOfMeasure\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"SecondaryUnitOfMeasure\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"AvailableToTransactQuantity\": {\n            \"type\": \"number\"\n          },\n          \"SecondaryAvailableToTransactQuantity\": {\n            \"type\": \"number\"\n          }\n        }\n      }\n    },\n    \"count\": {\n      \"type\": \"number\"\n    },\n    \"hasMore\": {\n      \"type\": \"boolean\"\n    },\n    \"limit\": {\n      \"type\": \"number\"\n    },\n    \"offset\": {\n      \"type\": \"number\"\n    },\n    \"links\": {\n      \"type\": \"array\",\n      \"uniqueItems\": true,\n      \"minItems\": 1,\n      \"items\": {\n        \"required\": [\n          \"rel\",\n          \"href\",\n          \"name\",\n          \"kind\"\n        ],\n        \"properties\": {\n          \"rel\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"href\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"name\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"kind\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          }\n        }\n      }\n    }\n  },\n  \"required\": [\n    \"items\",\n    \"count\",\n    \"hasMore\",\n    \"limit\",\n    \"offset\",\n    \"links\"\n  ]\n}",
+                  "type": "BO_FUNCTION"
+                }
+              ],
+              "rootNode": "start_1772076870644"
+            },
+            "loopType": "SEQUENTIAL",
+            "name": "LoopPerUnavailItem"
+          },
+          "outcomes": {
+            "success": "1772091250745"
+          },
+          "code": "LOOPPERUNAVAILITEM",
+          "id": "1772076870644",
+          "inputs": [
+            {
+              "id": "1772076870645_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$nodes.ATRPERITEMCHECK.$output.result.UnAvailList}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "name": "CurateSubItemsData",
+            "returnType": "object",
+            "sourceCode": "let unAvailList = $context.$nodes.ATRPERITEMCHECK.$output.result.UnAvailList;\nlet subItemsData = $context.$nodes.LOOPPERUNAVAILITEM.$output;  // subItemsData is a list of JSON objects, each with 'items'\n\nlet result = {\n  \"res\": false,        // Set default result to false\n  \"subcount\": 0,       // Number of unavailable items\n  \"Item\": [],      // Empty list to store all substitute items\n  \"subItemsCuratedList\": []  // Empty list to hold curated substitute items\n};\n\n// Loop through each item in unAvailList (the distinct items list)\nunAvailList.forEach((item, index) => {\n    // Ensure there's a corresponding subItemsData entry for this index\n    if (index < subItemsData.length) {\n        try {\n            // Parse the corresponding JSON string from subItemsData\n            let parsedItem = JSON.parse(subItemsData[index]);\n\n            // Check if parsedItem has a valid \"items\" array\n            if (parsedItem && Array.isArray(parsedItem.items) && parsedItem.items.length > 0) {\n                result.res = true;  // Set result to true as we found substitutes\n                // result.subcount += parsedItem.items.length;  // Increment substitute count\n                // result.subItems.push(...parsedItem.items);  // Add items to the substitute list\n                 result.Item = unAvailList[index].Item;\n                // Add curated information (Subinventory and ItemNumber) to subItemsCuratedList\n                parsedItem.items.forEach(substitute => {\n                    // Push only relevant data (Subinventory and ItemNumber) to curated list\n                    result.subItemsCuratedList.push({\n                        Subinventory: substitute.Subinventory,\n                        ItemNumber: substitute.ItemNumber,\n                        AvailableToTransactQuantity: substitute.AvailableToTransactQuantity,\n                        PrimaryUnitOfMeasure: substitute.PrimaryUnitOfMeasure\n                    });\n                });\n            }\n        } catch (error) {\n            console.error(`Error parsing subItem data at index ${index}:`, error);\n        }\n    }\n});\n\n// Convert the result object into a JSON string\nlet jsonString = JSON.stringify(result);\n\n// Return the final JSON string\nreturn jsonString;"
+          },
+          "outcomes": {
+            "success": "1771496128936"
+          },
+          "code": "CURATESUBITEMSDATA",
+          "id": "1772091250745",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Inform User About Options"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "INFORM_USER_ABOUT_OPTIONS",
+          "convergenceTargetId": "1771860524990",
+          "id": "1771496128936",
+          "inputs": [
+            {
+              "id": "1771496128938_1",
+              "name": "prompt",
+              "type": "string",
+              "value": " {{$context.$nodes.CURATESUBITEMSDATA.$output.result}} \nThis is list of Json where each json has\nres: as true or false - Indicated if Item has substitutes or not.\nif it s true - subItemsCuratedList has its corresponding substitutes.\n\nDisplay the substitute Items available with column name as Original Item (Item field of Json ),Substitute Item (this is a list. show this as child table ), Quantity , UOM and Subinventory Details as Subinventory in a table\nGive a small explanation here at the end ,-**Review if you can choose to use the substitute Items mentioned.** "
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "InformUserAboutQS"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "INFORMUSERABOUTQS",
+          "id": "1772099303547",
+          "inputs": [
+            {
+              "id": "1772099303549_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Inform User that Quick Ship is not enabled for this Organization"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "ReturnQSFlag",
+            "returnType": "boolean",
+            "sourceCode": "return $context.$nodes.CHECK_QS_FLAG.$output.QuickShipEnabledFlag;"
+          },
+          "outcomes": {
+            "success": "1772099193794"
+          },
+          "code": "RETURNQSFLAG",
+          "id": "1772099468580",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1772079083407",
+          "name": "subSnapshot",
+          "scope": "JOB",
+          "type": "object",
+          "typeSpecification": "application/json"
+        },
+        {
+          "id": "1772075086551",
+          "name": "OnhandUnavailItems",
+          "scope": "JOB",
+          "type": "object",
+          "typeSpecification": "application/json"
+        },
+        {
+          "id": "1771860296175",
+          "name": "OnhandAvailSnapshot",
+          "scope": "JOB",
+          "type": "object",
+          "typeSpecification": "application/json"
+        },
+        {
+          "id": "1771848801488",
+          "name": "OrgLevelAvailable",
+          "scope": "JOB",
+          "type": "boolean"
+        },
+        {
+          "id": "1771834952588",
+          "name": "contextVar",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1771571363021",
+          "name": "QSFlag",
+          "scope": "JOB",
+          "type": "boolean"
+        },
+        {
+          "id": "1771475528252",
+          "name": "OrganizationId",
+          "scope": "JOB",
+          "type": "number"
+        },
+        {
+          "id": "1771475264175",
+          "name": "OrderNumber",
+          "scope": "JOB",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1771834903119",
+            "name": "context",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "SCM",
+  "product": "INVENTORY_MANAGEMENT",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "FULL",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": true,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"2\""
+  }
+}

@@ -1,0 +1,890 @@
+{
+  "workflowId": "100002355227093",
+  "workflowCode": "ORA_FIN_EXM_EXPENSE_RECOMMENDATION_ASSISTANT",
+  "name": "Expense Recommendation Assistant",
+  "description": "This agent generates recommendations to complete missing required expense details when the user hasn’t provided a value and the system can’t determine exactly one match or default. It also resolves ambiguous user input by proposing the most likely candidate values for fields such as project, task, attendees, spend authorization, company, and cost center, so the user can confirm or select the correct option.",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1768922142861"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Extract Resolved Entities",
+            "returnType": "object",
+            "sourceCode": "let input = $context.$triggers.REST.$input.InputRest.resolvedEntities;\n\nlet projectsEntity = input.find(entity => entity.name === \"Projects\");\nlet accountsEntity = input.find(entity => entity.name === \"Accounts\");\nlet attendeeEntity = input.find(entity => entity.name === \"Attendees\");\nlet nonEmpAttEntity = input.find(entity => entity.name === \"NonEmployeeAttendees\");\nlet spendAuthEntity=input.find(entity => entity.name === \"SpendAuth\");\nlet customer=input.find(entity => entity.name === \"Customers\");\n\n\nreturn {projects: projectsEntity,accounts: accountsEntity,attendee: attendeeEntity,nonemployeeAttendee:nonEmpAttEntity, spendAuth:spendAuthEntity,customer:customer};"
+          },
+          "outcomes": {
+            "success": "1769436690496"
+          },
+          "code": "EXTRACT_RESOLVED_ENTITIES",
+          "id": "1768922142861",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Is Projects Recommendation Required",
+            "returnType": "boolean",
+            "sourceCode": "let input = $context.$variables.resolvedProjects;\n\nif (\n    input && \n    input.resolvedValues && \n    input.resolvedValues.length > 0 && \n    input.resolvedValues[0].status === \"ORA_RECOMMENDATION\"\n) {\n    return true;\n}\nreturn false;"
+          },
+          "outcomes": {
+            "success": "1769437566220"
+          },
+          "code": "Is_Projects_Recommendation_Required",
+          "id": "1768922982326",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set Resolved Entites Variables"
+          },
+          "outcomes": {
+            "success": "1768922982326"
+          },
+          "code": "setResolvedEntitesVariables",
+          "id": "1769436690496",
+          "inputs": [
+            {
+              "id": "1779393214813",
+              "name": "resolvedCustomer",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.EXTRACT_RESOLVED_ENTITIES.$output.result.customer}}"
+            },
+            {
+              "id": "1769674945238",
+              "name": "resolvedNonEmployeeAttendee",
+              "type": "object",
+              "value": "{{$context.$nodes.EXTRACT_RESOLVED_ENTITIES.$output.result.nonemployeeAttendee}}"
+            },
+            {
+              "id": "1769524420457",
+              "name": "resolvedSpendAuth",
+              "type": "object",
+              "value": "{{$context.$nodes.EXTRACT_RESOLVED_ENTITIES.$output.result.spendAuth}}"
+            },
+            {
+              "id": "1769437172951",
+              "name": "resolvedAttendees",
+              "type": "object",
+              "value": "{{$context.$nodes.EXTRACT_RESOLVED_ENTITIES.$output.result.attendee}}"
+            },
+            {
+              "id": "1769436968593",
+              "name": "resolvedAccounts",
+              "type": "object",
+              "value": "{{$context.$nodes.EXTRACT_RESOLVED_ENTITIES.$output.result.accounts}}"
+            },
+            {
+              "id": "1769436702970",
+              "name": "resolvedProjects",
+              "type": "object",
+              "value": "{{$context.$nodes.EXTRACT_RESOLVED_ENTITIES.$output.result.projects}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "is Project Recommendation Required Branch"
+          },
+          "outcomes": {
+            "true": "1769437607051",
+            "false": "1769437971554"
+          },
+          "code": "ISPROJECTRECOMMENDATIONREQUIREDBRANCH",
+          "convergenceTargetId": "1769447230809",
+          "id": "1769437566220",
+          "inputs": [
+            {
+              "id": "1769437566221_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.Is_Projects_Recommendation_Required.$output.result}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Get Project History Payload",
+            "returnType": "object",
+            "sourceCode": "let date = $context.$system.$currentDate;\n\n// Subtract 30 days (or any desired interval)\nlet olderDate = new Date(date);\nolderDate.setDate(olderDate.getDate() - 30);\n\n// If you need the value as a string (e.g., 'YYYY-MM-DD')\nlet olderDateStr = olderDate.toISOString().split('T')[0];\nlet filter = \"projectCostingProjectIdentifier!=null%20AND%20expense.expenseDate>'\" + olderDateStr + \"'\";\nreturn filter;"
+          },
+          "outcomes": {
+            "success": "1769437750706"
+          },
+          "code": "GETPROJECTHISTORYPAYLOAD",
+          "id": "1769437607051",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EXPENSEDISTRIBUTION",
+            "functionName": "getProjectHistory",
+            "name": "Get Project History"
+          },
+          "outcomes": {
+            "success": "1769587684582"
+          },
+          "code": "GET_PROJECT_HISTORY",
+          "id": "1769437750706",
+          "inputs": [
+            {
+              "id": "1769437769539_1",
+              "name": "filter",
+              "type": "string",
+              "value": "{{$context.$nodes.GETPROJECTHISTORYPAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Set Recommended Entities"
+          },
+          "outcomes": {
+            "success": "1769447230809"
+          },
+          "code": "SETRECOMMENDEDENTITIES",
+          "id": "1769437918949",
+          "inputs": [
+            {
+              "id": "1769437930364",
+              "name": "recommendedProjects",
+              "type": "object",
+              "value": "{{$context.$nodes.FORMENTITYSTRUCTURE.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Set Recommended as Resolved Project"
+          },
+          "outcomes": {
+            "success": "1769447230809"
+          },
+          "code": "setRecommendedAsResolvedProject",
+          "id": "1769437971554",
+          "inputs": [
+            {
+              "id": "1769437983184",
+              "name": "recommendedProjects",
+              "type": "object",
+              "value": "{{$context.$variables.resolvedProjects}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Form Entity Structure",
+            "returnType": "object",
+            "sourceCode": "//let recommendations = $context.$nodes.ORDER_RECOMMENDATIONS.$output.recommendations;\nlet recommendations= $context.$nodes.ORDERPROJECTSRECOMMENDATION.$output.result; \n\nif (typeof recommendations === \"string\") {\n    try {\n        recommendations = JSON.parse(recommendations);\n    } catch (e) {\n        throw new Error(\"recommendations is not valid JSON\");\n    }\n}\n\nlet payload = {\n    \"name\": \"Projects\",\n    \"resolvedValues\": [{\n        \"matches\": recommendations,\n        \"status\": \"ORA_RECOMMENDATION\"\n    }]\n};\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "1769437918949"
+          },
+          "code": "FORMENTITYSTRUCTURE",
+          "id": "1769446225858",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Is Accounts Recommendation Required",
+            "returnType": "boolean",
+            "sourceCode": "let input = $context.$variables.resolvedAccounts;\n\nif (\n    input && \n    input.resolvedValues && \n    input.resolvedValues.length > 0 && \n    input.resolvedValues[0].status === \"ORA_RECOMMENDATION\"\n) {\n    return true;\n}\nreturn false;"
+          },
+          "outcomes": {
+            "success": "1769447282091"
+          },
+          "code": "ISACCOUNTSRECOMMENDATIONREQUIRED",
+          "id": "1769447230809",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "is Accounts Recommendation Required Branch"
+          },
+          "outcomes": {
+            "true": "1773062715573",
+            "false": "1769598691198"
+          },
+          "code": "ISACCOUNTSRECOMMENDATIONREQUIREDBRANCH",
+          "convergenceTargetId": "1769449374248",
+          "id": "1769447282091",
+          "inputs": [
+            {
+              "id": "1769447282093_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.ISACCOUNTSRECOMMENDATIONREQUIRED.$output.result}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Set Recommended Accounts"
+          },
+          "outcomes": {
+            "success": "1769449374248"
+          },
+          "code": "SETACCOUNTSREC",
+          "id": "1769447479850",
+          "inputs": [
+            {
+              "id": "1769447486888",
+              "name": "recommendedAccounts",
+              "type": "object",
+              "value": "{{$context.$nodes.ORDER_ACCOUNTS_RECOMMENDATION.$output.accountsRec}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Is Attendee Recommendation Required",
+            "returnType": "boolean",
+            "sourceCode": "let empAttendeeInput = $context?.$variables?.resolvedAttendees;\nlet nonEmpAttendeeInput = $context?.$variables?.resolvedNonEmployeeAttendee;\n\nconst hasRecommendation = \n    empAttendeeInput?.resolvedValues?.some(val => val.status === \"ORA_RECOMMENDATION\") ||\n    nonEmpAttendeeInput?.resolvedValues?.some(val => val.status === \"ORA_RECOMMENDATION\");\n\nreturn !!hasRecommendation;"
+          },
+          "outcomes": {
+            "success": "1769449410798"
+          },
+          "code": "ISATTENDEERECOMREQUIRED",
+          "id": "1769449374248",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "is Attendee Recommendation Required Branch"
+          },
+          "outcomes": {
+            "true": "1769507499699",
+            "false": "1769666515952"
+          },
+          "code": "ISATTENDEERECOMBRANCH",
+          "convergenceTargetId": "1769524462416",
+          "id": "1769449410798",
+          "inputs": [
+            {
+              "id": "1769449410799_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.ISATTENDEERECOMREQUIRED.$output.result}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Attendee History Code Payload ",
+            "returnType": "string",
+            "sourceCode": "let date = $context.$system.$currentDate;\n// Subtract 7 days (you can change this to 30 if needed)\nlet olderDate = new Date(date);\nolderDate.setDate(olderDate.getDate() - 30);\n\n// Format olderDate as YYYY-MM-DD (or the format your system expects)\nlet formattedDate = olderDate.toISOString().split('T')[0];\n\n// Construct the condition string\nlet conditionString = `expenseDate > '${formattedDate}'`;\nreturn conditionString;"
+          },
+          "outcomes": {
+            "success": "1769507767990"
+          },
+          "code": "ATTENDEE_HISTORY_CODE_PAYLOAD",
+          "id": "1769507499699",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EXPENSE",
+            "functionName": "getExpenseAttendeeHistory",
+            "name": "Get Attendee History"
+          },
+          "outcomes": {
+            "success": "1769592101932"
+          },
+          "code": "GET_ATTENDEE_HISTORY",
+          "id": "1769507767990",
+          "inputs": [
+            {
+              "id": "1769507784898_1",
+              "name": "filter",
+              "type": "string",
+              "value": "{{$context.$nodes.ATTENDEE_HISTORY_CODE_PAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Is Spend Auth Recommendation Required",
+            "returnType": "boolean",
+            "sourceCode": "let input = $context.$variables.resolvedSpendAuth;\n\nif (\n    input && \n    input.resolvedValues && \n    input.resolvedValues.length > 0 && \n    input.resolvedValues[0].status === \"ORA_RECOMMENDATION\"\n) {\n    return true;\n}\nreturn false;"
+          },
+          "outcomes": {
+            "success": "1769524495484"
+          },
+          "code": "ISSPENDAUTHRECOMMENDATIONREQUIRED",
+          "id": "1769524462416",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Is Spend Auth Recommendation Required Branch"
+          },
+          "outcomes": {
+            "true": "add_true_1769524495484",
+            "false": "1769602076856"
+          },
+          "code": "ISSPENDAUTHRECOMMENDATIONREQUIREDBRANCH",
+          "convergenceTargetId": "1769531657495",
+          "id": "1769524495484",
+          "inputs": [
+            {
+              "id": "1769524495485_1",
+              "name": "condition",
+              "type": "string",
+              "value": "true"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for true branch",
+            "name": "Add (True Branch)"
+          },
+          "outcomes": {
+            "success": "1769531657495"
+          },
+          "id": "add_true_1769524495484",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Is Spend Auth Error Present"
+          },
+          "outcomes": {
+            "true": "1769530928797",
+            "false": "add_false_1769524875957"
+          },
+          "code": "ISSPENDAUTHERRORPRESENT",
+          "convergenceTargetId": "1769531657495",
+          "id": "1769524875957",
+          "inputs": [
+            {
+              "id": "1769524875958_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_SPEND_AUTH_RELATED_ERRROR_CODE.$output.result}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1769531657495"
+          },
+          "id": "add_false_1769524875957",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_SPENDAUTHORIZATIONLINE",
+            "functionName": "spendAuthorizationLineList",
+            "name": "Get Spend Auth Lines"
+          },
+          "outcomes": {
+            "success": "1769531054762"
+          },
+          "code": "GET_SPEND_AUTH_LINES",
+          "id": "1769530928797",
+          "inputs": [
+            {
+              "id": "1769530943782_1",
+              "name": "personId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.personId}}"
+            },
+            {
+              "id": "1769530943782_2",
+              "name": "businessUnitId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.businessUnitId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Create Spend Auth Recommendation",
+            "returnType": "object",
+            "sourceCode": "let raw = $context.$triggers.REST.$input.userDecompositionAgentOutput;\n\n// Step 1: ensure outer object\nif (typeof raw === \"string\") {\n  raw = JSON.parse(raw);\n}\n\n// Step 2: parse inner \"output\"\nlet output = raw.output;\n\nif (typeof output === \"string\") {\n  output = JSON.parse(output);\n}\n\n// Step 3: safely extract\nconst decomposedInstructions =\n  output?.result?.DecomposedInstructions || [];\n\nconst targetObject = decomposedInstructions.find(item => item.field === \"spendAuthorizationLine\");\nconst userInput = targetObject ? targetObject.value : \"\";\n//const userInput = \"Conference\";\nconst expenseDate = $context.$triggers.REST.$input.expenseDetails.expenseDate;\nconst countryCode = $context.$triggers.REST.$input.expenseDetails.expenseLocation.countryCode;\nconst expenseTypeCategoryCode = $context.$triggers.REST.$input.expenseDetails.expenseTypeCategory.lookupCode;\nconst spendAuthLines = $context.$nodes.GET_SPEND_AUTH_LINES.$output.items;\n\nlet allowSingularMatchToDefault = true;\nconst normalizedInput = userInput.trim().toLowerCase();\nlet filteredSpendAuthLines = spendAuthLines\n  // 1. FILTER by text match\n  .filter(line => {\n    if (!normalizedInput) return true; // allow all if input is empty\n\n    const auth = line.spendAuthorization;\n    const combinedText = `${line.description} ${auth.purpose} ${auth.spendAuthorizationNumber}`\n      .toLowerCase();\n\n    return combinedText.includes(normalizedInput);\n  });\n\nif (!filteredSpendAuthLines?.length) {\n  allowSingularMatchToDefault = false;\n  filteredSpendAuthLines = spendAuthLines;\n}\n\nlet recommendations = filteredSpendAuthLines\n\n  // 2. SCORE remaining lines\n  .map(line => {\n    let points = 0;\n    const auth = line.spendAuthorization;\n    const utilizedAmount = (line?.expenses || []).reduce((sum, expense) => {\n      const amount = parseFloat(expense?.functionalCurrencyAmount || \"0\");\n      return sum + (isNaN(amount) ? 0 : amount);\n    }, 0);\n\n    // Date range (+4)\n    const expDate = new Date(expenseDate);\n    const start = new Date(auth.startDate);\n    const end = new Date(auth.endDate);\n    if (expDate >= start && expDate <= end) {\n      points += 4;\n    }\n\n    // Country (+2)\n    if (auth.location.countryCode === countryCode) {\n      points += 2;\n    }\n\n    // Category (+1)\n    if (line.expenseTypeCategory.lookupCode === expenseTypeCategoryCode) {\n      points += 1;\n    }\n\n    return { ...line, utilizedAmount: utilizedAmount, calculatedPoints: points };\n  })\n\n  // 3. SORT\n  .sort((a, b) => {\n    if (b.utilizedAmount !== a.utilizedAmount) {\n      return a.utilizedAmount - b.utilizedAmount;\n    }\n    if (b.calculatedPoints !== a.calculatedPoints) {\n      return b.calculatedPoints - a.calculatedPoints;\n    }\n    return new Date(b.spendAuthorization.endDate) - new Date(a.spendAuthorization.endDate);\n  });\n\n// A maximum of 3 recommendations have to be generated\nif (recommendations.length > 3) recommendations = recommendations.slice(0, 3);\nlet result = {\n  name: \"Spend Authorization Line\",\n  resolvedValues: [{\n    inputValues: [userInput],\n    status: \"ORA_RECOMMENDATION\",\n    matches: recommendations.map((item, i) => ({\n      driverName1: \"\", driverName2: \"\", driverName3: \"\", driverName4: \"\", driverName5: \"\",\n      driverValue1: \"\", driverValue2: \"\", driverValue3: \"\", driverValue4: \"\", driverValue5: \"\",\n      predictionDisplayRule: \"ORA_REQUEST_USER_INPUT\",\n      predictionRank: i+1,\n      predictionSource: \"ORA_COMPLETION_ASSISTANT\",\n      predictionTypeCode: \"ORA_RECOMMENDATION\",\n      ruleCode: \"SPEND_AUTH_RESOLVER_SEARCH\",\n      fieldValue: {\n        id: item.$id,\n        type: item.expenseType.name,\n        description: item.description,\n        authorizedAmount: item.authorizedAmount,\n        requestedCurrency: item.requestedCurrency.currencyCode,\n        number: item.spendAuthorization.spendAuthorizationNumber,\n        startDate: item.spendAuthorization.startDate,\n        endDate: item.spendAuthorization.endDate,\n        authorizedTotal: item.spendAuthorization.authorizedTotal,\n        functionalCurrency: item.spendAuthorization.functionalCurrency.currencyCode,\n        purpose: item.spendAuthorization.purpose\n      }\n    }))\n  }]\n};\n\n// If no recommendations found, user needs to resolve in app\nif (recommendations.length === 0) result.resolvedValues[0].status = \"ORA_NOT_RESOLVED\";\n\n// If exactly one recommendation is found, we have to default it\nif (recommendations.length === 1 && allowSingularMatchToDefault) result.resolvedValues[0].status = \"ORA_DEFAULT\";\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1769531324492"
+          },
+          "code": "CREATESPENDAUTHRECOMMENDATION",
+          "id": "1769531054762",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Assign Spend Auth"
+          },
+          "outcomes": {
+            "success": "1769531657495"
+          },
+          "code": "ASSIGNSPENDAUTH",
+          "id": "1769531324492",
+          "inputs": [
+            {
+              "id": "1769531332040",
+              "name": "recommendedSpendAuth",
+              "type": "object",
+              "value": "{{$context.$nodes.CREATESPENDAUTHRECOMMENDATION.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Form Output Payload",
+            "returnType": "object",
+            "sourceCode": "let resolvedEntitiesArray = [\n  $context.$variables.recommendedProjects,\n  $context.$variables.recommendedAccounts,\n  $context.$variables.recommendedAttendees,\n  $context.$variables.recommendedNonEmployeeAttendee,\n  $context.$variables.recommendedSpendAuth,\n  $context.$variables.resolvedCustomer \n].filter(item => item != null && item !== \"\");\n\nlet payload = { resolvedEntities: resolvedEntitiesArray };\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FORMOUTPUTPAYLOAD",
+          "id": "1769531657495",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Order Projects Recommendation",
+            "returnType": "object",
+            "sourceCode": "const matches = $context.$variables.resolvedProjects.resolvedValues[0].matches;\nconst expenseHistory = $context.$nodes.GET_PROJECT_HISTORY.$output;\n\n// Build map: projectId-taskId => most recent expenseDate\nconst usageMap = {};\nfor (const item of expenseHistory.items) {\n    const projId = item.ora_flex_projectsCostCollection__info.xProjectUId?.id;\n    const taskId = item.ora_flex_projectsCostCollection__info.xTaskUId?.id;\n    const expenseDate = item.expense.expenseDate;\n    if (projId && taskId && expenseDate) {\n        const key = `${projId}-${taskId}`;\n        if (!usageMap[key] || usageMap[key] < expenseDate) {\n            usageMap[key] = expenseDate; // Store most recent\n        }\n    }\n}\n\n// Attach recency info to matches\nconst matchWithUsage = matches.map(m => {\n    const projId = m.fieldValue.projectId;\n    const taskId = m.fieldValue.taskId;\n    const key = `${projId}-${taskId}`;\n    const recentUse = usageMap[key] || null; // null means never used in expenses\n    return { match: m, recentUse };\n});\n\n// Sort:\n// 1. Most recent non-null recentUse comes first\n// 2. In case of tie or nulls, preserve order in original recommendations (predictionRank)\nmatchWithUsage.sort((a, b) => {\n    if (a.recentUse && b.recentUse) {\n        // Descending by date\n        return b.recentUse.localeCompare(a.recentUse);\n    }\n    if (a.recentUse) return -1;\n    if (b.recentUse) return 1;\n    // Both never used: by predictionRank (smaller rank is higher)\n    return Number(a.match.predictionRank) - Number(b.match.predictionRank);\n});\n\n// Assign consecutive predictionRank values (1, 2, 3) to top 3 matches\nconst top3 = matchWithUsage.slice(0, 3).map((m, idx) => {\n    m.match.predictionRank = idx + 1; // Assign 1 to first, 2 to second, 3 to third\n    return m.match;\n});\n\nreturn top3;"
+          },
+          "outcomes": {
+            "success": "1769446225858"
+          },
+          "code": "ORDERPROJECTSRECOMMENDATION",
+          "id": "1769587684582",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set Recommended as Resolved Accounts"
+          },
+          "outcomes": {
+            "success": "1769449374248"
+          },
+          "code": "SET_RECOMMENDED_AS_RESOLVED_ACCOUNTS",
+          "id": "1769598691198",
+          "inputs": [
+            {
+              "id": "1769598700945",
+              "name": "recommendedAccounts",
+              "type": "object",
+              "value": "{{$context.$variables.resolvedAccounts}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Check Spend Auth Related Errror Code",
+            "returnType": "boolean",
+            "sourceCode": "let found = false;\nconst data = $context.$triggers.REST.$input.expenseErrors;\nconst stack = [data];  // Stack should start as an array with data inside\n\n//const decomposedInstructions=JSON.parse($context.$triggers.REST.$input.userDecompositionAgentOutput).result.DecomposedInstructions || []; \nlet raw = $context.$triggers.REST.$input.userDecompositionAgentOutput;\n\n// Step 1: ensure outer object\nif (typeof raw === \"string\") {\n  raw = JSON.parse(raw);\n}\n\n// Step 2: parse inner \"output\"\nlet output = raw.output;\n\nif (typeof output === \"string\") {\n  output = JSON.parse(output);\n}\n\n// Step 3: safely extract\nconst decomposedInstructions =\n  output?.result?.DecomposedInstructions || [];\nconst userInputSpendAuth = decomposedInstructions.some(item => item.field === \"spendAuthorizationLine\");\n\nwhile (stack.length > 0 && !found) {\n    const item = stack.pop();\n    if (typeof item === 'object' && item !== null) {\n        for (const key in item) {\n            if (key === 'Spend Authorization Line Id') {\n                found = true;\n                break;\n            }\n            const value = item[key];\n            if (value === 'Spend Authorization Line Id') {\n                found = true;\n                break;\n            }\n            // If the value is an object or array, add to stack\n            if (typeof value === 'object' && value !== null) {\n                stack.push(value);\n            }\n        }\n    } else if (Array.isArray(item)) {\n        for (const val of item) {\n            if (val === 'Spend Authorization Line Id') {\n                found = true;\n                break;\n            }\n            if (typeof val === 'object' && val !== null) {\n                stack.push(val);\n            }\n        }\n    }\n}\n\nreturn found || userInputSpendAuth;"
+          },
+          "outcomes": {
+            "success": "1769524875957"
+          },
+          "code": "CHECK_SPEND_AUTH_RELATED_ERRROR_CODE",
+          "id": "1769602076856",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set Recommended as Resolved Attendee"
+          },
+          "outcomes": {
+            "success": "1769524462416"
+          },
+          "code": "SET_RECOMMENDED_AS_RESOLVED_ATTENDEE",
+          "id": "1769666515952",
+          "inputs": [
+            {
+              "id": "1769940235267",
+              "name": "recommendedNonEmployeeAttendee",
+              "type": "object",
+              "value": "{{$context.$variables.resolvedNonEmployeeAttendee}}"
+            },
+            {
+              "id": "1769666530794",
+              "name": "recommendedAttendees",
+              "type": "object",
+              "value": "{{$context.$variables.resolvedAttendees}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Set Attendee Recommendation"
+          },
+          "outcomes": {
+            "success": "1769676218697"
+          },
+          "code": "SETATTENDEEREC",
+          "id": "1769675868223",
+          "inputs": [
+            {
+              "id": "1769675884551",
+              "name": "recommendedAttendees",
+              "type": "object",
+              "value": "{{$context.$nodes.RANKATTENDEERECOMMDATIONS.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "setNonEmployeeAttendeeRecommdations"
+          },
+          "outcomes": {
+            "success": "1769524462416"
+          },
+          "code": "SETNONEMPLOYEEATTENDEERECOMMDATIONS",
+          "id": "1769676258298",
+          "inputs": [
+            {
+              "id": "1769676284511",
+              "name": "recommendedNonEmployeeAttendee",
+              "type": "object",
+              "value": "{{$context.$nodes.RANKNONEMPLOYEEATTENDEE.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "RankAttendeeRecommdations",
+            "returnType": "object",
+            "sourceCode": "let attendeeEntity = $context?.$variables?.resolvedAttendees ?? null;\nlet attendeeExpenseHistory = $context?.$nodes?.GET_ATTENDEE_HISTORY?.$output ?? null;\nif (!attendeeEntity?.resolvedValues || attendeeEntity.resolvedValues.length === 0) {\n    return null;\n}\nlet recommendedEmployeeAttendee = attendeeEntity;\nlet items = attendeeExpenseHistory?.items ?? [];\nlet attendeesFromHistory = [];\nitems.forEach(item => {\n    if (item?.expenseAttendees?.items && Array.isArray(item.expenseAttendees.items)) {\n        attendeesFromHistory.push(...item.expenseAttendees.items);\n    }\n});\nlet historyNames = new Set(\n    attendeesFromHistory\n        .map(a => a?.name?.trim().toLowerCase())\n        .filter(Boolean)\n);\nlet historyEmails = new Set(\n    attendeesFromHistory\n        .map(a => a?.emailAddress?.trim().toLowerCase())\n        .filter(Boolean)\n);\nattendeeEntity.resolvedValues.forEach(resolvedValue => {\n    if (resolvedValue.status !== \"ORA_RECOMMENDATION\") return;\n    let matched = [];\n    let unmatched = [];\n    (resolvedValue.matches || []).forEach(match => {\n        let name = match?.fieldValue?.name?.trim().toLowerCase();\n        let id = match?.fieldValue?.id?.trim().toLowerCase();\n        let isMatched = (name && historyNames.has(name)) || (id && historyEmails.has(id));\n        if (isMatched) {\n            matched.push(match);\n        } else {\n            unmatched.push(match);\n        }\n    });\n    let rank = 1;\n    matched.forEach(match => {\n        match.predictionRank = String(rank++);\n        match.ruleCode = \"ORA_MRU_7_DAYS\";\n    });\n    unmatched.forEach(match => {\n        match.predictionRank = String(rank++);\n    });\n    let orderedMatches = matched.concat(unmatched);\n    resolvedValue.matches = orderedMatches.slice(0, 3);\n});\nrecommendedEmployeeAttendee = attendeeEntity;\nreturn recommendedEmployeeAttendee;"
+          },
+          "outcomes": {
+            "success": "1769675868223"
+          },
+          "code": "RANKATTENDEERECOMMDATIONS",
+          "convergenceTargetId": "1769675868223",
+          "id": "1769592101932",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "RankNonEmployeeAttendee",
+            "returnType": "object",
+            "sourceCode": "let nonEmployeeEntity = $context?.$variables?.resolvedNonEmployeeAttendee ?? null;\nlet attendeeExpenseHistory = $context?.$nodes?.GET_ATTENDEE_HISTORY?.$output ?? null;\nif (!nonEmployeeEntity?.resolvedValues || nonEmployeeEntity.resolvedValues.length === 0) {\n    return null;\n}\nlet recommendedNonEmployeeAttendee = nonEmployeeEntity;\nlet items = attendeeExpenseHistory?.items ?? [];\nlet attendeesFromHistory = [];\nitems.forEach(item => {\n    if (item?.expenseAttendees?.items && Array.isArray(item.expenseAttendees.items)) {\n        attendeesFromHistory.push(...item.expenseAttendees.items);\n    }\n});\nlet historyNames = new Set(\n    attendeesFromHistory\n        .map(a => a?.name?.trim().toLowerCase())\n        .filter(Boolean)\n);\nlet historyEmails = new Set(\n    attendeesFromHistory\n        .map(a => a?.emailAddress?.trim().toLowerCase())\n        .filter(Boolean)\n);\nnonEmployeeEntity.resolvedValues.forEach(resolvedValue => {\n    if (resolvedValue.status !== \"ORA_RECOMMENDATION\") return;\n    let matched = [];\n    let unmatched = [];\n    (resolvedValue.matches || []).forEach(match => {\n        let name = match?.fieldValue?.name?.trim().toLowerCase();\n        let id = match?.fieldValue?.id?.trim().toLowerCase();\n        let isMatched = (name && historyNames.has(name)) || (id && historyEmails.has(id));\n        if (isMatched) {\n            matched.push(match);\n        } else {\n            unmatched.push(match);\n        }\n    });\n    let rank = 1;\n    matched.forEach(match => {\n        match.predictionRank = String(rank++);\n        match.ruleCode = \"ORA_MRU_7_DAYS\";\n    });\n    unmatched.forEach(match => {\n        match.predictionRank = String(rank++);\n    });\n    let orderedMatches = matched.concat(unmatched);\n    resolvedValue.matches = orderedMatches.slice(0, 3);\n});\nrecommendedNonEmployeeAttendee = nonEmployeeEntity;\nreturn recommendedNonEmployeeAttendee;"
+          },
+          "outcomes": {
+            "success": "1769676258298"
+          },
+          "code": "RANKNONEMPLOYEEATTENDEE",
+          "convergenceTargetId": "1769676258298",
+          "id": "1769676218697",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Order Accounts Recommendation"
+          },
+          "outcomes": {
+            "success": "1769447479850"
+          },
+          "code": "ORDER_ACCOUNTS_RECOMMENDATION",
+          "convergenceTargetId": "1769447479850",
+          "id": "1769447321965",
+          "inputs": [
+            {
+              "id": "1769447321966_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "let resolvedAccountsVar= {{$context.$variables.resolvedAccounts}}\n\n{{$context.$nodes.EXTRACTACCOUNTRECPROMPT.$output.result.mainPrompt}}"
+            }
+          ],
+          "outputSpecification": "{\n\"accountsRec\":\"\",\n\"reasoning\":\"\"\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_GETAGENTINITPARAMS",
+            "errorNodeId": "1773062869206",
+            "functionName": "getAgentInitParams",
+            "name": "getAccountsRecPrompt"
+          },
+          "outcomes": {
+            "success": "1773062869206"
+          },
+          "code": "GETACCOUNTSRECPROMPT",
+          "id": "1773062715573",
+          "inputs": [
+            {
+              "id": "1773062847732_1",
+              "name": "agentName",
+              "type": "string",
+              "value": "{{$context.$workflow.$name}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "ExtractAccountRecPrompt",
+            "returnType": "object",
+            "sourceCode": "const defaultMainPrompt = \n`-- TASK @ DEFAULT VERSION --\nlet possibleAccounts =resolvedAccountsVar\n\nOperate on possibleAccounts for the rest of the prompt.\n\nYour task is to process a single Accounts resolved entity and return a structured JSON object for that entity only.\nYou must never output explanations or commentary—only the final JSON.\n\nThis topic receives exactly one object E where E.name == \"Accounts\".\n\n--------------------------------------------------\nINSTRUCTIONS\n--------------------------------------------------\n\n1. Read the input Accounts entity object E.\n\n2. Always process E even if resolvedValues or matches are empty.\n\n3. This topic does NOT fetch defaults, MRU, MFU, or compute scores.\n   All candidate generation and enrichment is already done upstream.\n   This topic ONLY:\n     - orders matches\n     - limits output\n     - normalizes structure\n\n--------------------------------------------------\nTERMINAL CASES (DO NOT CHANGE)\n--------------------------------------------------\n\n4. If E.resolvedValues.length == 1 AND\n   E.resolvedValues[0].status == \"ORA_EXACT_MATCH\" AND\n   E.resolvedValues[0].matches.length == 1:\n\n    - Ensure predictionRank = \"1\"\n    - Ensure companyId, companyName, costCenterId, costCenterName are grouped under fieldValue\n    - Return E unchanged otherwise.\n\n5. If E.resolvedValues.length == 1 AND\n   E.resolvedValues[0].status is \"ORA_NOT_RESOLVED\" OR \"ORA_NO_ACCESS\":\n\n    - Return E unchanged.\n\n--------------------------------------------------\nORDERING LOGIC\n--------------------------------------------------\n\n6. Collect ALL matches from ALL resolvedValues into one list\n   preserving original encounter order.\n\n   Ignore inputValues completely for output purposes.\n\n6a. Similarity evaluation (MANDATORY):\n    - For each resolvedValue:\n        * Join inputValues into a single string S (if present)\n    - For each match:\n        * Build matchText using companyName + costCenterName (if present)\n    - Compute semantic similarity between S and matchText\n      based on meaning, not exact string match\n    - For each match, keep the highest similarity score\n      across all resolvedValues\n\n6b. Order candidateMatches by similarity score descending.\n    If scores tie, preserve original encounter order.\n\n7. Separate matches into:\n    a. invalidMatch:\n       predictionTypeCode == \"ORA_RESOLVED_INVALID\" (at most one)\n\n    b. candidateMatches:\n       predictionTypeCode NOT IN\n       (\"ORA_RESOLVED_INVALID\", \"ORA_NOT_RESOLVED\", \"ORA_NO_ACCESS\")\n\n--------------------------------------------------\nOUTPUT BUILDING\n--------------------------------------------------\n\n8. If invalidMatch exists:\n    - status must be \"ORA_RECOMMENDATION\"\n    - Output matches in this exact order:\n        1. invalidMatch\n        2. First 3 candidateMatches (if available)\n    - Assign predictionRank = \"1\", \"2\", \"3\" to candidateMatches only\n    - invalidMatch must NOT have predictionRank\n\n9. If invalidMatch does NOT exist:\n    - status must be \"ORA_RECOMMENDATION\"\n    - Output first 3 candidateMatches preserving similarity order\n    - Assign predictionRank = \"1\", \"2\", \"3\"\n\n10. For all candidateMatches in output:\n     - predictionDisplayRule = \"ORA_REQUEST_USER_INPUT\"\n     - predictionSource = \"ORA_COMPLETION_ASSISTANT\"\n     - ruleCode = \"\"\n     - fieldName = \"Accounts\" if present\n\n--------------------------------------------------\nFINAL STRUCTURE (MANDATORY)\n--------------------------------------------------\n\n11. Replace resolvedValues with exactly ONE item:\n    {\n      matches: <final matches>,\n      status: \"ORA_RECOMMENDATION\"\n    }\n\n--------------------------------------------------\nFINAL OUTPUT (MANDATORY)\n--------------------------------------------------\n\nYou must return a JSON object with EXACTLY these two fields:\n\n{\n  \"accountsRec\": <the reordered Accounts entity E>,\n  \"reasoning\": \"<one short sentence explaining what was done>\"\n}\n\nRules:\n- accountsRec must contain the Accounts entity in the same structure as input E,\n  with resolvedValues replaced by the final ordered/limited matches.\n- reasoning must be a short string (max 1 sentence).\n- Do not include any other fields.\n\n--------------------------------------------------\nSTRICT RULES\n--------------------------------------------------\n\n- Maximum 4 matches in output when ORA_RESOLVED_INVALID exists; otherwise maximum 3.\n- ORA_RESOLVED_INVALID, if present, must always be first.\n- ORA_RESOLVED_INVALID must never have predictionRank.\n- Do not fabricate matches.\n- Do not change predictionTypeCode.\n- Do not introduce ORA_RESOLVED_INVALID if not present.\n- Do not preserve inputValues in output.\n- Return exactly one Accounts entity inside accountsRec.\n- Only output valid JSON.`;\n\n\nconst out = $context.$nodes.GETACCOUNTSRECPROMPT.$output ;\nconst prompts = Array.isArray(out?.prompts) ? out.prompts : [];\nlet mainPrompt = prompts?.find(p => p.promptType === \"MAIN\")?.prompt || defaultMainPrompt;\n\nlet prompt = {\n  mainPrompt: mainPrompt,\n};\nreturn prompt;"
+          },
+          "outcomes": {
+            "success": "1769447321965"
+          },
+          "code": "EXTRACTACCOUNTRECPROMPT",
+          "id": "1773062869206",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1779393192355",
+          "name": "resolvedCustomer",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1769674802914",
+          "name": "resolvedNonEmployeeAttendee",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1769674796844",
+          "name": "recommendedNonEmployeeAttendee",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1769531303415",
+          "name": "recommendedSpendAuth",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1769524399428",
+          "name": "resolvedSpendAuth",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1769437898572",
+          "name": "recommendedAccounts",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1769437890559",
+          "name": "recommendedAttendees",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1769437877410",
+          "name": "recommendedProjects",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1769436248137",
+          "name": "resolvedAccounts",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1769436235720",
+          "name": "resolvedAttendees",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1768922106295",
+          "name": "resolvedProjects",
+          "scope": "JOB",
+          "type": "object"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.3
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "modelName": "Gpt Oss",
+      "provider": "CERT_BASIC"
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1769531615691",
+            "name": "userDecompositionAgentOutput",
+            "type": "object"
+          },
+          {
+            "id": "1769531481708",
+            "name": "expenseDetails",
+            "type": "object"
+          },
+          {
+            "id": "1769525116985",
+            "name": "businessUnitId",
+            "type": "string"
+          },
+          {
+            "id": "1769524998546",
+            "name": "personId",
+            "type": "string"
+          },
+          {
+            "id": "1769523906434",
+            "name": "expenseErrors",
+            "type": "object"
+          },
+          {
+            "id": "1768404251385",
+            "name": "InputRest",
+            "type": "object"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "FIN",
+  "product": "EXPENSES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": true,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"6\""
+  }
+}

@@ -1,0 +1,148 @@
+{
+  "workflowId": "100002355227050",
+  "workflowCode": "ORA_RMC_TRANSACTION_INCIDENT_ASSISTANT",
+  "name": "RMC Transaction Incident Assistant",
+  "description": "Processes a single incident, extracts related accounts from dynamic attributes, and identifies transaction-risk candidates.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [
+      {
+        "id": "input_control_id",
+        "name": "controlId",
+        "type": "string",
+        "description": "The Control ID"
+      },
+      {
+        "id": "input_control_name",
+        "name": "controlName",
+        "type": "string",
+        "description": "The Control Name"
+      },
+      {
+        "id": "input_control_desc",
+        "name": "controlDesc",
+        "type": "string",
+        "description": "The Control Name"
+      },
+      {
+        "id": "input_incident_logic",
+        "name": "incidentLogic",
+        "type": "string",
+        "description": "The true incident logic as json"
+      },
+      {
+        "id": "input_incident_id",
+        "name": "incidentId",
+        "type": "string",
+        "description": "The Incident ID to process"
+      }
+    ],
+    "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"incidentId\": { \"type\": \"string\" },\n    \"controlName\": { \"type\": \"string\" },\n    \"users\": { \"type\": \"object\" }\n  }\n}",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "GET_DYNAMIC_ATTRIBUTES"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_GRC_OTHER_GETTRANSACTIONDYNAMICATTRIBUTES",
+            "functionName": "getall_advancedControls-incidents-dynamicAttributes",
+            "processJson": false,
+            "name": "Get Dynamic Attributes"
+          },
+          "outcomes": {
+            "success": "EXTRACT_USER_DATA"
+          },
+          "code": "GET_DYNAMIC_ATTRIBUTES",
+          "id": "GET_DYNAMIC_ATTRIBUTES",
+          "inputs": [
+            {
+              "id": "GET_DYNAMIC_ATTRIBUTES_1",
+              "name": "advancedControls_Id",
+              "type": "string",
+              "value": "{{$context.$input.controlId}}"
+            },
+            {
+              "id": "GET_DYNAMIC_ATTRIBUTES_2",
+              "name": "advancedControls_incidents_Id",
+              "type": "string",
+              "value": "{{$context.$input.incidentId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Extract User Data",
+            "returnType": "object",
+            "sourceCode": "var items = $context.$nodes.GET_DYNAMIC_ATTRIBUTES.$output.items || [];\nvar controlName = $context.$input.controlName;\nvar incidentId = $context.$input.incidentId;\n\n// Parse the incidentLogic input (passed as stringified TrueIncidentLogic)\nvar incidentLogicStr = $context.$input.incidentLogic;\nvar incidentLogic = null;\n\nif (incidentLogicStr) {\n  try {\n    incidentLogic = JSON.parse(incidentLogicStr);\n  } catch (e) {\n    incidentLogic = null;\n  }\n}\n\n// If no valid incident logic, return empty result\nif (!incidentLogic || !incidentLogic.allOf || !Array.isArray(incidentLogic.allOf)) {\n  var result = {\n    incidentId: incidentId,\n    controlName: controlName,\n    users: {},\n    _debug: { attributeCount: items.length, noValidLogic: true, usersFound: 0 }\n  };\n  return result;\n}\n\n// Build a map of AttributeName -> AttributeValue\nvar attrMap = {};\nfor (var i = 0; i < items.length; i++) {\n  if (items[i].AttributeName && items[i].AttributeValue) {\n    attrMap[items[i].AttributeName] = items[i].AttributeValue;\n  }\n}\n\n// Extract amount data\nvar amountAttrs = items.filter(function(item) {\n  return item.AttributeName &&\n    (item.AttributeName.indexOf('Amount') !== -1 || item.AttributeName.indexOf('Amt') !== -1);\n});\nvar amountMap = {};\nfor (var j = 0; j < amountAttrs.length; j++) {\n  amountMap[amountAttrs[j].AttributeName] = amountAttrs[j].AttributeValue;\n}\n\n// Collect all unique usernames from the incident\nvar allUsernames = {};\nfor (var attrName in attrMap) {\n  var attrValue = attrMap[attrName];\n  if (attrValue) {\n    allUsernames[attrValue] = true;\n  }\n}\n\nvar userData = {};\n\n// For each username, check if it satisfies the allOf logic\nfor (var username in allUsernames) {\n  var satisfiesAllGroups = true;\n  var foundInAttrs = [];\n\n  // Check each anyOf group in the allOf array\n  for (var g = 0; g < incidentLogic.allOf.length; g++) {\n    var anyOfGroup = incidentLogic.allOf[g].anyOf || [];\n    var foundInThisGroup = false;\n\n    // Check if username appears in ANY field of this group\n    for (var f = 0; f < anyOfGroup.length; f++) {\n      var fieldName = anyOfGroup[f];\n      if (attrMap[fieldName] === username) {\n        foundInThisGroup = true;\n        if (foundInAttrs.indexOf(fieldName) === -1) {\n          foundInAttrs.push(fieldName);\n        }\n      }\n    }\n\n    // If username is not in ANY field of this group, it fails the allOf requirement\n    if (!foundInThisGroup) {\n      satisfiesAllGroups = false;\n      break;\n    }\n  }\n\n  // Only count this user if they satisfy ALL groups (true incident)\n  if (satisfiesAllGroups && foundInAttrs.length > 0) {\n    if (!userData[username]) {\n      userData[username] = { controls: [], totalAmount: 0, TransactionIncidentCount: 0 };\n    }\n\n    var controlEntry = { name: controlName, foundInAttrs: foundInAttrs, amounts: {} };\n    userData[username].controls.push(controlEntry);\n\n    // Add amounts\n    for (var amtKey in amountMap) {\n      controlEntry.amounts[amtKey] = amountMap[amtKey];\n      var amtVal = parseFloat(amountMap[amtKey]) || 0;\n      userData[username].totalAmount += amtVal;\n    }\n\n    // Increment incident count\n    userData[username].TransactionIncidentCount = 1;\n  }\n}\n\nvar result = {\n  incidentId: incidentId,\n  controlName: controlName,\n  users: userData,\n  _debug: {\n    attributeCount: items.length,\n    uniqueValues: Object.keys(allUsernames).length,\n    usersFound: Object.keys(userData).length,\n    logicGroups: incidentLogic.allOf.length\n  }\n};\nreturn result;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "EXTRACT_USER_DATA",
+          "id": "EXTRACT_USER_DATA",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    }\n  }\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": []
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "GRC",
+  "product": "OTHER",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"2\""
+  }
+}

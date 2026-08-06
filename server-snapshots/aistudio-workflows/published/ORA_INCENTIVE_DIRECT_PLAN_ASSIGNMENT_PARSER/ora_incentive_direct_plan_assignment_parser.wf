@@ -1,0 +1,227 @@
+{
+  "workflowId": "100002355227082",
+  "workflowCode": "ORA_INCENTIVE_DIRECT_PLAN_ASSIGNMENT_PARSER",
+  "name": "Incentive Direct Plan Assignment Parser",
+  "description": "Intelligent plan assignment agent that parses participant assignment information from CSV, natural language, or structured text to create, update, or delete compensation plan assignments with flexible date handling.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1764605964394"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Input For Analysis",
+            "returnType": "object",
+            "sourceCode": "// PREPARE_INPUT_FOR_ANALYSIS: Get first 2K chars and metadata for LLM\n\nconst rawInput = $context.$triggers.REST.$input.inputData;\nconst INPUT_BUFFER_LIMIT = 2000;\n\nconst fullLength = rawInput.length;\nconst isLargeInput = fullLength > INPUT_BUFFER_LIMIT;\n\nlet inputBuffer = rawInput;\nif (isLargeInput) {\n  inputBuffer = rawInput.substring(0, INPUT_BUFFER_LIMIT);\n  // Try to cut at line boundary\n  const lastNewline = inputBuffer.lastIndexOf('\\n');\n  if (lastNewline > INPUT_BUFFER_LIMIT * 0.8) {\n    inputBuffer = inputBuffer.substring(0, lastNewline + 1);\n  }\n}\n\nconst lines = inputBuffer.split(/\\r?\\n/).filter(l => l.trim() !== '');\n\nconst dataObject = {\n    inputBuffer: inputBuffer,\n    fullLength: fullLength,\n    isLargeInput: isLargeInput,\n    lineCount: lines.length\n  };\n\n  return JSON.stringify(dataObject);"
+          },
+          "outcomes": {
+            "success": "1764611677200"
+          },
+          "code": "PREPARE_INPUT_FOR_ANALYSIS",
+          "id": "1764605964394",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set Analysis Variables"
+          },
+          "outcomes": {
+            "success": "1764612332728"
+          },
+          "code": "SET_ANALYSIS_VARIABLES",
+          "id": "1764611677200",
+          "inputs": [
+            {
+              "id": "1764611948851",
+              "name": "inputBufferLength",
+              "type": "integer",
+              "value": "{{ JSON.parse( $context.$nodes.PREPARE_INPUT_FOR_ANALYSIS.$output.result ).inputBuffer.length }}"
+            },
+            {
+              "id": "1764611825625",
+              "name": "lineCount",
+              "type": "integer",
+              "value": "{{ JSON.parse( $context.$nodes.PREPARE_INPUT_FOR_ANALYSIS.$output.result ).lineCount }}"
+            },
+            {
+              "id": "1764611791137",
+              "name": "fullLength",
+              "type": "integer",
+              "value": "{{ JSON.parse( $context.$nodes.PREPARE_INPUT_FOR_ANALYSIS.$output.result ).fullLength }}"
+            },
+            {
+              "id": "1764611764535",
+              "name": "isLargeInput",
+              "type": "boolean",
+              "value": "{{ JSON.parse( $context.$nodes.PREPARE_INPUT_FOR_ANALYSIS.$output.result ).isLargeInput }}"
+            },
+            {
+              "id": "1764611693174",
+              "name": "inputBuffer",
+              "type": "string",
+              "value": "{{ JSON.parse( $context.$nodes.PREPARE_INPUT_FOR_ANALYSIS.$output.result ).inputBuffer }}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Parse and Classify"
+          },
+          "outcomes": {
+            "success": "1764612607739"
+          },
+          "code": "PARSE_AND_CLASSIFY",
+          "id": "1764612332728",
+          "inputs": [
+            {
+              "id": "1764612332732_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "# IC Plan Assignment - Input Analyzer\n\nParse input for Oracle Fusion IC plan assignments. Detect format, extract structure, return structured data.\n\n## Context\n- IS_LARGE_INPUT: {{$context.$variables.isLargeInput}} (if true, MUST be TABULAR format)\n- FULL_LENGTH: {{$context.$variables.fullLength}} chars\n- LINE_COUNT: {{$context.$variables.lineCount}} lines\n\n## Format Detection Rules\n\n### 1. BULK (check first)\nKeywords: \"all\", \"everyone\", \"every assignment\", \"all participants\"\n- NO individual names/emails/IDs listed\n- Only UPDATE or DELETE (CREATE = error)\n\n### 2. TAB (Tabular)\n- IS_LARGE_INPUT = true → MUST be TAB\n- Structured rows: CSV, TSV, or one-per-line\n- May have 1-2 prefix lines (dates, operation)\n- Consistent delimiter\n\n### 3. NL (Natural Language)\n- Conversational style\n- Per-record descriptions\n\n## Identifier Type Detection\n\n| Pattern | Type |\n|---------|------|\n| Contains @ | email |\n| 10+ digit number | participantId |\n| Alphanumeric code (WK001, EMP123) | workerNumber |\n| Purely numeric 3-8 digits | participantId |\n| \"First Last\" pattern | fullName |\n\n## Operations\n\n| Keywords | Code |\n|----------|------|\n| add, assign, enroll, create | C |\n| update, modify, change, extend | U |\n| remove, delete, unassign | D |\n\n## Date Parsing\n\n### Default Calendar Quarters (if not overridden):\n\n| Expression | Start Date | End Date |\n|------------|------------|----------|\n| Q1 2025 | 2025-01-01 | 2025-03-31 |\n| Q2 2025 | 2025-04-01 | 2025-06-30 |\n| Q3 2025 | 2025-07-01 | 2025-09-30 |\n| Q4 2025 | 2025-10-01 | 2025-12-31 |\n\n### Fiscal Quarter Overrides:\n\nIf the input specifies quarter definitions (fiscal year), use those INSTEAD of defaults above.\n\nLook for patterns like:\n- \"Q1 is April to June\" or \"Q1 (Apr-Jun)\"\n- \"Our fiscal Q1 starts in April\"\n- \"For Q1 April-June: ...\"\n- \"Q1=Apr-Jun, Q2=Jul-Sep\"\n\nParse the month range and use that for ALL Q1/Q2/Q3/Q4 references in the input.\n\n### Other Date Expressions:\n\n| Expression | Start Date | End Date |\n|------------|------------|----------|\n| 2025 / full year | 2025-01-01 | 2025-12-31 |\n| Jan-Mar 2025 | 2025-01-01 | 2025-03-31 |\n| January to March 2025 | 2025-01-01 | 2025-03-31 |\n| April 2025 | 2025-04-01 | 2025-04-30 |\n| January 2025 | 2025-01-01 | 2025-01-31 |\n| open-ended | - | \"\" (clear) |\n\n## Date Column Detection (TAB Format)\n\n**IMPORTANT:** Empty start dates or end dates are VALID. The IC implementation will use Comp Plan dates, participant dates, or their overlap internally.\n\nWhen detecting date columns WITHOUT headers:\n1. **Position-based detection**: Look for date patterns in columns (left-to-right typically means start, then end)\n2. **Empty dates are OK**: Both start and end dates can be empty/null for any operation (CREATE, UPDATE, DELETE)\n3. **Handle rare edge cases**: If you detect two date columns but many rows seem to have later dates before earlier dates, they may be swapped (end date in left column, start date in right column) - adjust sdCol/edCol accordingly\n\n## IMPORTANT: Lenient Column Handling\n\n**DO NOT error on minor column count variations.** Real-world data often has:\n- Missing trailing commas for empty values\n- Rows with fewer columns than others\n- Empty values represented as missing rather than explicit empty\n\n### Column Handling Rules:\n1. **Determine expected columns** from the MAJORITY of rows or from header\n2. **Rows with fewer columns**: Treat missing columns as EMPTY (not an error)\n3. **Rows with more columns**: Ignore extra columns (not an error)\n4. **Only error if**: Structure is truly ambiguous (e.g., mixed delimiters, unrecognizable format)\n\n### Examples of ACCEPTABLE variations:\n\n    email@example.com,2025-01-01,2025-12-31    → 3 columns\n    email2@example.com,2025-02-01,             → 3 columns (empty end date)\n    email3@example.com,2025-03-01              → 2 columns (treat as: id, startDate, null)\n    email4@example.com,,                       → 3 columns (empty dates)\n    email5@example.com                         → 1 column (treat as: id, null, null)\n\nAll of the above should be parsed successfully, NOT flagged as errors.\n\n### When TO error:\n- Cannot identify ANY delimiter pattern\n- Rows have completely different structures (some CSV, some prose)\n- No identifiable participant column\n\n## Output Schema\n\nReturn this EXACT structure (use null for unused fields):\n\n    {\n      \"ok\": true,\n      \"format\": \"TAB\",\n      \"error\": null,\n      \"suggestions\": null,\n      \"tab\": {\n        \"delimiter\": \"comma\",\n        \"hasHeader\": false,\n        \"idCol\": 0,\n        \"idType\": \"email\",\n        \"opCol\": null,\n        \"defaultOp\": \"C\",\n        \"sdCol\": 1,\n        \"edCol\": 2,\n        \"prefixLines\": 0,\n        \"globalDates\": { \"sd\": null, \"ed\": null },\n        \"expectedCols\": 3\n      },\n      \"nl\": null,\n      \"bulk\": null\n    }\n\n### Error Response (only for TRUE errors):\n\n    {\n      \"ok\": false,\n      \"format\": \"UNKNOWN\",\n      \"error\": \"Cannot identify delimiter pattern\",\n      \"suggestions\": [\"Use comma-separated format\", \"Ensure consistent structure\"],\n      \"tab\": null,\n      \"nl\": null,\n      \"bulk\": null\n    }\n\n## TAB Output Fields\n\n| Field | Description |\n|-------|-------------|\n| delimiter | \"comma\", \"tab\", \"newline\", \"semicolon\", \"pipe\" |\n| hasHeader | true if first row is header |\n| idCol | Column index (0-based) containing identifier |\n| idType | \"email\", \"workerNumber\", \"participantId\", \"fullName\" |\n| opCol | Column index for operation (null if none) |\n| defaultOp | Default operation: \"C\", \"U\", or \"D\" |\n| sdCol | Column index for start date (null if none) |\n| edCol | Column index for end date (null if none) |\n| prefixLines | Number of prefix lines to skip |\n| globalDates | Dates from prefix (if any) |\n| expectedCols | Expected number of columns (for reference, not strict) |\n\n## Examples\n\n### Example 1: CSV with varying column counts (SUCCESS)\n\nINPUT:\n    neil@acme.com,2025-01-02,\n    party@xyz.com,,2025-02-02\n    joe.7896@henreneral.edu,,\n    jane.goo@post.ve,2025-02-02\n\nOUTPUT:\n    {\n      \"ok\": true,\n      \"format\": \"TAB\",\n      \"error\": null,\n      \"suggestions\": null,\n      \"tab\": {\n        \"delimiter\": \"comma\",\n        \"hasHeader\": false,\n        \"idCol\": 0,\n        \"idType\": \"email\",\n        \"opCol\": null,\n        \"defaultOp\": \"C\",\n        \"sdCol\": 1,\n        \"edCol\": 2,\n        \"prefixLines\": 0,\n        \"globalDates\": { \"sd\": null, \"ed\": null },\n        \"expectedCols\": 3\n      },\n      \"nl\": null,\n      \"bulk\": null\n    }\n\nNote: Shows various empty date patterns - empty end (row 1, 4), empty start (row 2), empty both (row 3). All are valid.\n\n### Example 1.5: Numeric participant IDs with CSV format\n\nINPUT:\n    12345,2024-03-15,2024-12-31\n    67890,2024-04-01,\n    54321,,\n    98765,2024-05-20,2025-06-30\n\nOUTPUT:\n    {\n      \"ok\": true,\n      \"format\": \"TAB\",\n      \"error\": null,\n      \"suggestions\": null,\n      \"tab\": {\n        \"delimiter\": \"comma\",\n        \"hasHeader\": false,\n        \"idCol\": 0,\n        \"idType\": \"participantId\",\n        \"opCol\": null,\n        \"defaultOp\": \"C\",\n        \"sdCol\": 1,\n        \"edCol\": 2,\n        \"prefixLines\": 0,\n        \"globalDates\": { \"sd\": null, \"ed\": null },\n        \"expectedCols\": 3\n      },\n      \"nl\": null,\n      \"bulk\": null\n    }\n\nNote: Purely numeric IDs with commas → delimiter is \"comma\", not \"newline\". idType is \"participantId\" for numeric IDs.\n\n### Example 2: Simple list (one column)\n\nINPUT:\n    WK001\n    WK002\n    WK003\n\nOUTPUT:\n    {\n      \"ok\": true,\n      \"format\": \"TAB\",\n      \"error\": null,\n      \"suggestions\": null,\n      \"tab\": {\n        \"delimiter\": \"newline\",\n        \"hasHeader\": false,\n        \"idCol\": 0,\n        \"idType\": \"workerNumber\",\n        \"opCol\": null,\n        \"defaultOp\": \"C\",\n        \"sdCol\": null,\n        \"edCol\": null,\n        \"prefixLines\": 0,\n        \"globalDates\": { \"sd\": null, \"ed\": null },\n        \"expectedCols\": 1\n      },\n      \"nl\": null,\n      \"bulk\": null\n    }\n\n### Example 3: CSV with Header\n\nINPUT:\n    WorkerNumber,StartDate,EndDate\n    WK001,2025-01-01,2025-12-31\n    WK002,2025-01-01,2025-06-30\n\nOUTPUT:\n    {\n      \"ok\": true,\n      \"format\": \"TAB\",\n      \"error\": null,\n      \"suggestions\": null,\n      \"tab\": {\n        \"delimiter\": \"comma\",\n        \"hasHeader\": true,\n        \"idCol\": 0,\n        \"idType\": \"workerNumber\",\n        \"opCol\": null,\n        \"defaultOp\": \"C\",\n        \"sdCol\": 1,\n        \"edCol\": 2,\n        \"prefixLines\": 0,\n        \"globalDates\": { \"sd\": null, \"ed\": null },\n        \"expectedCols\": 3\n      },\n      \"nl\": null,\n      \"bulk\": null\n    }\n\n### Example 4: List with Prefix and Fiscal Quarter Override\n\nINPUT:\n    Add for Q1 (Apr-Jun) 2025:\n    WK001\n    WK002\n    WK003\n\nOUTPUT:\n    {\n      \"ok\": true,\n      \"format\": \"TAB\",\n      \"error\": null,\n      \"suggestions\": null,\n      \"tab\": {\n        \"delimiter\": \"newline\",\n        \"hasHeader\": false,\n        \"idCol\": 0,\n        \"idType\": \"workerNumber\",\n        \"opCol\": null,\n        \"defaultOp\": \"C\",\n        \"sdCol\": null,\n        \"edCol\": null,\n        \"prefixLines\": 1,\n        \"globalDates\": { \"sd\": \"2025-04-01\", \"ed\": \"2025-06-30\" },\n        \"expectedCols\": 1\n      },\n      \"nl\": null,\n      \"bulk\": null\n    }\n\nNote: User specified \"Q1 (Apr-Jun)\" which overrides default calendar Q1. Dates reflect April-June instead of January-March.\n\n### Example 5: Natural Language\n\nINPUT:\n    Add John Smith for Q1 2025 and remove bob@company.com\n\nOUTPUT:\n    {\n      \"ok\": true,\n      \"format\": \"NL\",\n      \"error\": null,\n      \"suggestions\": null,\n      \"tab\": null,\n      \"nl\": {\n        \"items\": [\n          { \"id\": \"John Smith\", \"idType\": \"fullName\", \"op\": \"C\", \"sd\": \"2025-01-01\", \"ed\": \"2025-03-31\" },\n          { \"id\": \"bob@company.com\", \"idType\": \"email\", \"op\": \"D\", \"sd\": null, \"ed\": null }\n        ]\n      },\n      \"bulk\": null\n    }\n\n### Example 6: Bulk Update\n\nINPUT:\n    Update all end dates to December 31, 2025\n\nOUTPUT:\n    {\n      \"ok\": true,\n      \"format\": \"BULK\",\n      \"error\": null,\n      \"suggestions\": null,\n      \"tab\": null,\n      \"nl\": null,\n      \"bulk\": { \"op\": \"U\", \"sd\": null, \"ed\": \"2025-12-31\", \"clear\": false }\n    }\n\n### Example 7: Bulk Open-Ended\n\nINPUT:\n    Make all assignments open-ended\n\nOUTPUT:\n    {\n      \"ok\": true,\n      \"format\": \"BULK\",\n      \"error\": null,\n      \"suggestions\": null,\n      \"tab\": null,\n      \"nl\": null,\n      \"bulk\": { \"op\": \"U\", \"sd\": null, \"ed\": \"\", \"clear\": true }\n    }\n\n### Example 8: Error - No Participants (NL)\n\nINPUT:\n    Add the team members for next quarter\n\nOUTPUT:\n    {\n      \"ok\": false,\n      \"format\": \"NL\",\n      \"error\": \"No identifiable participants found\",\n      \"suggestions\": [\n        \"Specify participants by name, email, or worker number\",\n        \"Example: Add John Smith, Alice Wong for Q1 2025\"\n      ],\n      \"tab\": null,\n      \"nl\": null,\n      \"bulk\": null\n    }\n\n### Example 9: Error - Bulk CREATE\n\nINPUT:\n    Add everyone to the plan\n\nOUTPUT:\n    {\n      \"ok\": false,\n      \"format\": \"BULK\",\n      \"error\": \"CREATE not supported for bulk operations\",\n      \"suggestions\": [\n        \"Bulk only supports UPDATE or DELETE\",\n        \"List participants individually to add them\"\n      ],\n      \"tab\": null,\n      \"nl\": null,\n      \"bulk\": null\n    }\n\n### Example 10: Error - Mixed formats (TRUE error)\n\nINPUT:\n    WK001,2025-01-01,2025-12-31\n    Please also add John Smith for the full year\n    WK003;2025-01-01;2025-12-31\n\nOUTPUT:\n    {\n      \"ok\": false,\n      \"format\": \"UNKNOWN\",\n      \"error\": \"Mixed format detected - rows have different structures\",\n      \"suggestions\": [\n        \"Use consistent format throughout\",\n        \"Either use CSV format for all rows or natural language for all\",\n        \"Don't mix delimiters (comma vs semicolon)\"\n      ],\n      \"tab\": null,\n      \"nl\": null,\n      \"bulk\": null\n    }\n\n---\n\nINPUT ({{$context.$variables.fullLength}} chars, {{$context.$variables.lineCount}} lines):\n{{$context.$variables.inputBuffer}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"type\": \"object\",\n    \"properties\": {\n      \"ok\": { \"type\": \"boolean\" },\n      \"format\": { \n        \"type\": \"string\", \n        \"enum\": [\"TAB\", \"NL\", \"BULK\", \"UNKNOWN\"] \n      },\n      \"error\": { \"type\": [\"string\", \"null\"] },\n      \"suggestions\": { \n        \"type\": [\"array\", \"null\"],\n        \"items\": { \"type\": \"string\" }\n      },\n      \"tab\": {\n        \"type\": [\"object\", \"null\"],\n        \"properties\": {\n          \"delimiter\": { \"type\": \"string\", \"enum\": [\"comma\", \"tab\", \"newline\", \"semicolon\", \"pipe\"] },\n          \"hasHeader\": { \"type\": \"boolean\" },\n          \"idCol\": { \"type\": \"integer\" },\n          \"idType\": { \"type\": \"string\", \"enum\": [\"workerNumber\", \"email\", \"participantId\", \"fullName\"] },\n          \"opCol\": { \"type\": [\"integer\", \"null\"] },\n          \"defaultOp\": { \"type\": \"string\", \"enum\": [\"C\", \"U\", \"D\"] },\n          \"sdCol\": { \"type\": [\"integer\", \"null\"] },\n          \"edCol\": { \"type\": [\"integer\", \"null\"] },\n          \"prefixLines\": { \"type\": \"integer\" },\n          \"globalDates\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"sd\": { \"type\": [\"string\", \"null\"] },\n              \"ed\": { \"type\": [\"string\", \"null\"] }\n            }\n          }\n        }\n      },\n      \"nl\": {\n        \"type\": [\"object\", \"null\"],\n        \"properties\": {\n          \"items\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"id\": { \"type\": \"string\" },\n                \"idType\": { \"type\": \"string\" },\n                \"op\": { \"type\": \"string\" },\n                \"sd\": { \"type\": [\"string\", \"null\"] },\n                \"ed\": { \"type\": [\"string\", \"null\"] }\n              },\n              \"required\": [\"id\", \"idType\", \"op\"]\n            }\n          }\n        }\n      },\n      \"bulk\": {\n        \"type\": [\"object\", \"null\"],\n        \"properties\": {\n          \"op\": { \"type\": \"string\", \"enum\": [\"U\", \"D\"] },\n          \"sd\": { \"type\": [\"string\", \"null\"] },\n          \"ed\": { \"type\": [\"string\", \"null\"] },\n          \"clear\": { \"type\": \"boolean\" }\n        }\n      }\n    },\n    \"required\": [\"ok\", \"format\"]\n  }",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Build Final Output",
+            "returnType": "object",
+            "sourceCode": "// BUILD_FINAL_OUTPUT: Build final JSON from FULL input + LLM analysis\n\nconst rawInput = $context.$triggers.REST.$input.inputData;\nconst analysis = $context.$nodes.PARSE_AND_CLASSIFY.$output;\n\n// Type name mapping\nconst typeNames = {\n  'wn': 'workerNumber', 'workerNumber': 'workerNumber',\n  'email': 'email',\n  'pid': 'participantId', 'participantId': 'participantId',\n  'fn': 'fullName', 'fullName': 'fullName'\n};\n\n// Operation name mapping\nconst opNames = { 'C': 'CREATE', 'U': 'UPDATE', 'D': 'DELETE' };\n\n// Operation keyword mapping\nconst opKeywords = {\n  'add': 'C', 'create': 'C', 'assign': 'C', 'enroll': 'C',\n  'update': 'U', 'modify': 'U', 'change': 'U', 'extend': 'U',\n  'remove': 'D', 'delete': 'D', 'unassign': 'D'\n};\n\n// Delimiter mapping\nconst delimiters = {\n  'comma': ',', 'tab': '\\t', 'semicolon': ';', 'pipe': '|', 'newline': null\n};\n\n// Handle error case\nif (!analysis.ok) {\n  const errorResult = {\n    status: \"ERROR\",\n    scope: \"INDIVIDUAL\",\n    instructions: [],\n    errors: [analysis.error].concat(analysis.suggestions || [])\n  };\n  return JSON.stringify(errorResult);\n}\n\nconst format = analysis.format;\n\n// BULK format\nif (format === 'BULK') {\n  const bulk = analysis.bulk;\n  const bulkResult = {\n    status: \"SUCCESS\",\n    scope: \"ALL\",\n    bulkAction: {\n      operation: opNames[bulk.op] || bulk.op,\n      startDate: bulk.sd || null,\n      endDate: bulk.clear ? null : (bulk.ed || null),\n      clearEndDate: bulk.clear || bulk.ed === ''\n    }\n  };\n  return JSON.stringify(bulkResult);\n}\n\n// NL format\nif (format === 'NL') {\n  const items = analysis.nl.items || [];\n  const instructions = items.map(item => ({\n    operation: opNames[item.op] || item.op,\n    identifier: item.id,\n    identifierType: typeNames[item.idType] || item.idType,\n    startDate: item.sd || null,\n    endDate: item.clear ? null : (item.ed || null),\n    clearEndDate: item.clear || item.ed === ''\n  }));\n  \n  const nlResult = {\n    status: \"SUCCESS\",\n    scope: \"INDIVIDUAL\",\n    instructions: instructions,\n    summary: { total: instructions.length }\n  };\n  return JSON.stringify(nlResult);\n}\n\n// TAB format with delimiter fallback\nif (format === 'TAB') {\n  const tab = analysis.tab;\n  const lines = rawInput.split(/\\r?\\n/).filter(l => l.trim() !== '');\n  const dataStart = (tab.prefixLines || 0) + (tab.hasHeader ? 1 : 0);\n  const dataLines = lines.slice(dataStart);\n\n  // Start from analysis delimiter\n  const delimFromAnalysis = delimiters[tab.delimiter];\n  let chosenDelim = delimFromAnalysis;\n\n  // Score current delimiter: % of lines splitting into 2-4 columns\n  let currentGood = 0;\n  for (let i = 0; i < dataLines.length; i++) {\n    const cols = chosenDelim === null ? [dataLines[i].trim()] : dataLines[i].split(chosenDelim);\n    if (cols.length >= 2 && cols.length <= 4) currentGood++;\n  }\n  const currentRatio = dataLines.length ? (currentGood / dataLines.length) : 0;\n\n  // Find best delimiter candidate\n  const candidates = [',', '\\t', '|', ';'];\n  let bestDelim = null, bestRatio = -1;\n  for (let c = 0; c < candidates.length; c++) {\n    let good = 0;\n    for (let i = 0; i < dataLines.length; i++) {\n      const cols = dataLines[i].split(candidates[c]);\n      if (cols.length >= 2 && cols.length <= 4) good++;\n    }\n    const ratio = dataLines.length ? (good / dataLines.length) : 0;\n    if (ratio > bestRatio) {\n      bestRatio = ratio;\n      bestDelim = candidates[c];\n    }\n  }\n\n  // Simplified fallback: Use best if it's clearly better (≥0.6) and beats current\n  if (bestRatio >= 0.6 && bestRatio > currentRatio) {\n    chosenDelim = bestDelim;\n  }\n\n  // Infer effective column indices if LLM didn't provide workable ones\n  let effIdCol = (tab.idCol != null) ? tab.idCol : 0;\n  let effSdCol = (tab.sdCol != null) ? tab.sdCol : null;\n  let effEdCol = (tab.edCol != null) ? tab.edCol : null;\n\n  if (effSdCol == null || effEdCol == null) {\n    let sdHitsAt1 = 0, edHitsAt2 = 0, rows = 0;\n    const dateRe = /^\\d{4}-\\d{2}-\\d{2}$/;\n    const mdyRe  = /^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})$/;\n    const limit = Math.min(dataLines.length, 25);\n    for (let i = 0; i < limit; i++) {\n      const cols = chosenDelim === null ? [dataLines[i].trim()] : dataLines[i].split(chosenDelim).map(c => c.trim());\n      if (cols.length >= 2) {\n        const c1 = cols[1];\n        if (c1 && (dateRe.test(c1) || mdyRe.test(c1))) sdHitsAt1++;\n        if (cols.length >= 3) {\n          const c2 = cols[2];\n          if (c2 === '' || dateRe.test(c2) || mdyRe.test(c2)) edHitsAt2++;\n        }\n        rows++;\n      }\n    }\n    if (rows > 0) {\n      if (effSdCol == null && sdHitsAt1 / rows >= 0.5) effSdCol = 1;\n      if (effEdCol == null && edHitsAt2 / rows >= 0.5) effEdCol = 2;\n    }\n  }\n\n  const instructions = [];\n  for (let i = 0; i < dataLines.length; i++) {\n    const line = dataLines[i];\n\n    // Split using chosenDelim\n    let cols;\n    if (chosenDelim === null) {\n      cols = [line.trim()];\n    } else {\n      cols = line.split(chosenDelim).map(c => c.trim());\n    }\n\n    // Identifier\n    const id = (effIdCol != null && effIdCol < cols.length) ? cols[effIdCol] : null;\n    if (!id) continue;\n\n    // Operation\n    let op = tab.defaultOp || 'C';\n    if (tab.opCol != null && tab.opCol < cols.length && cols[tab.opCol]) {\n      const opVal = (cols[tab.opCol] || '').toLowerCase().trim();\n      if (opVal) op = opKeywords[opVal] || op;\n    }\n\n    // Dates (with global fallback)\n    let sd = tab.globalDates && tab.globalDates.sd ? tab.globalDates.sd : null;\n    let ed = tab.globalDates && tab.globalDates.ed ? tab.globalDates.ed : null;\n    let clearEndDate = false;\n\n    // Start date\n    if (effSdCol != null && effSdCol < cols.length) {\n      const sdVal = cols[effSdCol];\n      if (sdVal && sdVal.trim() !== '') {\n        const t = sdVal.trim();\n        if (/^\\d{4}-\\d{2}-\\d{2}$/.test(t)) {\n          sd = t;\n        } else {\n          const m = t.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})$/);\n          if (m) sd = `${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;\n          else sd = t;\n        }\n      }\n    }\n\n    // End date\n    if (effEdCol != null && effEdCol < cols.length) {\n      const edVal = cols[effEdCol];\n      if (edVal === '') {\n        clearEndDate = true;\n        ed = null;\n      } else if (edVal && edVal.trim() !== '') {\n        const t = edVal.trim();\n        if (/^\\d{4}-\\d{2}-\\d{2}$/.test(t)) {\n          ed = t;\n        } else {\n          const m = t.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})$/);\n          if (m) ed = `${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;\n          else ed = t;\n        }\n      }\n    }\n\n    instructions.push({\n      operation: opNames[op] || op,\n      identifier: id,\n      identifierType: typeNames[tab.idType] || tab.idType,\n      startDate: sd,\n      endDate: clearEndDate ? null : ed,\n      clearEndDate: clearEndDate\n    });\n  }\n\n  // Numeric ID override: If ≥80% of IDs are purely numeric, force participantId\n  let numericCount = 0;\n  for (let i = 0; i < instructions.length; i++) {\n    if (/^\\d+$/.test(instructions[i].identifier || '')) numericCount++;\n  }\n  const numericRatio = instructions.length ? (numericCount / instructions.length) : 0;\n  const currentType = typeNames[tab.idType] || tab.idType;\n  if (numericRatio >= 0.8 && currentType !== 'email') {\n    for (let i = 0; i < instructions.length; i++) {\n      instructions[i].identifierType = 'participantId';\n    }\n  }\n\n  const tabResult = {\n    status: \"SUCCESS\",\n    scope: \"INDIVIDUAL\",\n    instructions: instructions,\n    summary: { total: instructions.length }\n  };\n  return JSON.stringify(tabResult);\n}\n\n// Unknown format\nconst unknownResult = {\n  status: \"ERROR\",\n  scope: \"INDIVIDUAL\",\n  instructions: [],\n  errors: [\"Unknown format: \" + format]\n};\nreturn JSON.stringify(unknownResult);"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "BUILD_FINAL_OUTPUT",
+          "id": "1764612607739",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1764611304465",
+          "name": "inputBufferLength",
+          "type": "integer"
+        },
+        {
+          "id": "1764611292980",
+          "name": "inputBuffer",
+          "type": "string"
+        },
+        {
+          "id": "1764611284211",
+          "name": "lineCount",
+          "type": "integer"
+        },
+        {
+          "id": "1764611272890",
+          "name": "fullLength",
+          "type": "integer"
+        },
+        {
+          "id": "1764611260594",
+          "name": "isLargeInput",
+          "type": "boolean"
+        },
+        {
+          "id": "1763541688889",
+          "name": "inputData",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "humanApprovalFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1764082249966",
+            "name": "inputData",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "INCENTIVE_COMPENSATION",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

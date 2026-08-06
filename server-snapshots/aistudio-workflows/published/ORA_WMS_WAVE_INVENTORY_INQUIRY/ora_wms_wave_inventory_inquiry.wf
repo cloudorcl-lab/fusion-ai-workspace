@@ -1,0 +1,333 @@
+{
+  "workflowId": "300000323318942",
+  "workflowCode": "ORA_WMS_WAVE_INVENTORY_INQUIRY",
+  "name": "WMS Wave Inventory Inquiry",
+  "description": "This is a workflow agent that will answer questions related to inventory allocation for a given wave",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1764732851868"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "agentCode": "ORA_INVENTORYWAVENUMBERUSERINPUT",
+            "name": "ExtractLPNandActiveLocationsFromUserInput2"
+          },
+          "outcomes": {
+            "success": "1764732956377"
+          },
+          "code": "EXTRACTLPNANDACTIVELOCATIONSFROMUSERINPUT2",
+          "id": "1764732851868",
+          "inputs": [
+            {
+              "id": "1766115304284_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"wavenumber\": {\n            \"type\": \"string\"\n        },\n        \"containernumber\": {\n            \"type\": \"string\"\n        },\n        \"activelocation\": {\n            \"type\": \"string\"\n        },\n        \"area\": {\n            \"type\": \"string\"\n        },\n        \"aisle\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "AGENT"
+        },
+        {
+          "metadata": {
+            "name": "set_variables"
+          },
+          "outcomes": {
+            "success": "1764733082904"
+          },
+          "code": "SETVARIABLES",
+          "id": "1764732956377",
+          "inputs": [
+            {
+              "id": "1764868877855",
+              "name": "aisle",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACTLPNANDACTIVELOCATIONSFROMUSERINPUT2.$output.aisle}}"
+            },
+            {
+              "id": "1764789142185",
+              "name": "area",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACTLPNANDACTIVELOCATIONSFROMUSERINPUT2.$output.area}}"
+            },
+            {
+              "id": "1764733031264",
+              "name": "activelocation",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACTLPNANDACTIVELOCATIONSFROMUSERINPUT2.$output.activelocation}}"
+            },
+            {
+              "id": "1764733000554",
+              "name": "containernumber",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACTLPNANDACTIVELOCATIONSFROMUSERINPUT2.$output.containernumber}}"
+            },
+            {
+              "id": "1764732978374",
+              "name": "WaveNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACTLPNANDACTIVELOCATIONSFROMUSERINPUT2.$output.wavenumber}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_OTHER_WMS26ABO",
+            "functionName": "getLPNInfoFromWaveAllocations",
+            "name": "getInvInfoFromAllocations"
+          },
+          "outcomes": {
+            "success": "1764733495691"
+          },
+          "code": "GETINVINFOFROMALLOCATIONS",
+          "id": "1764733082904",
+          "inputs": [
+            {
+              "id": "1764733108155_1",
+              "name": "pWaveNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACTLPNANDACTIVELOCATIONSFROMUSERINPUT2.$output.wavenumber}}"
+            }
+          ],
+          "outputSpecification": "",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "validateWave"
+          },
+          "outcomes": {
+            "true": "1764881832434",
+            "false": "1764733540712"
+          },
+          "code": "VALIDATEWAVE",
+          "convergenceTargetId": "end",
+          "id": "1764733495691",
+          "inputs": [
+            {
+              "id": "1764733495693_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.GETINVINFOFROMALLOCATIONS.$output.result_count!==0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "errorExitNode"
+          },
+          "outcomes": {},
+          "code": "ERROREXITNODE",
+          "convergenceTargetId": "end",
+          "id": "1764733540712",
+          "inputs": [
+            {
+              "id": "1764733540714_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "Invalid wave number"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "InventorySummary"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "INVENTORYSUMMARY",
+          "id": "1764733561305",
+          "inputs": [
+            {
+              "id": "1764733561307_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Instructions: Return only the final answer (HTML or a single not-found line). Do not explain steps, do not echo nulls/placeholders, and do not ask the user to choose a query type.\n\nSetup:\n- let inputMsg = {{$context.$system.$inputMessage || \"\"}}\n- let normalizedMsg = inputMsg.trim().toLowerCase()\n- let mentionsLpnOrContainer = /(?:\\blpn(?:s)?\\b|\\bcontainer(?:s)?\\b|\\blicense\\s*plate(?:s)?\\b)/i.test(inputMsg)\n- let container_number = {{$context.$nodes.EXTRACTLPNANDACTIVELOCATIONSFROMUSERINPUT2.$output.containernumber}}\n- let loc = {{$context.$nodes.EXTRACTLPNANDACTIVELOCATIONSFROMUSERINPUT2.$output.activelocation}}\n- let area = {{$context.$nodes.EXTRACTLPNANDACTIVELOCATIONSFROMUSERINPUT2.$output.area}}\n- let aisle = {{$context.$nodes.EXTRACTLPNANDACTIVELOCATIONSFROMUSERINPUT2.$output.aisle}}\n- let dataRows ={{$context.$nodes.GETINVINFOFROMALLOCATIONS.$output}}; otherwise an empty array.\n- For all string comparisons, trim and compare case-insensitively.\n- When summing, treat missing or non-numeric values as 0.\n\nIntent selection (priority):\n1. If area and aisle are both non-empty => Area-Aisle branch\n2. Else if area is non-empty => Area branch\n3. Else if {container_number is non-empty OR mentionsLpnOrContainer is true} => Container/LPN branch\n4. Else if loc is non-empty => Active Location branch\n5. Else output: Please provide either a Container, Active Location or Area\n\nContainer/LPN branch:\n-if container_number is non-empty:\n    - let matchedRows =  [row for row in dataRows where row[\"Container\"] equals container_number]\n    - If matchedRows is empty:\n       Check for reasons why [container] might not have been allocated by the user provided wave. Return only the final answer (HTML or a single line). Do not explain steps, do not list “possible reasons,” and do not     speculate. Only cite reasons that can be proven from provided tool outputs. Gather only data-backed reasons; if required data is missing, do not mention that reason.\n      - lpnInfo = {{$context.$nodes.GETIBLPN.$output}} (may be object or array; use the first matching record for container_number)\n      - waveLogs = {{$context.$nodes.SEARCHWAVELOGS.$output}}\n      - lpnStatus = norm(first non-empty of lpnInfo[\"LPN Status\"])\n      - lpnArea = norm(first non-empty of lpnInfo[\"LPN Area\"])\n      - waveAreas = distinct uppercase area codes derived from waveLogs (prefer structured fields like waveLogs[\"target_areas\"] or waveLogs[\"areas\"]; else extract tokens matching /\\barea\\s+([A-Z0-9-]+)\\b/i).     Remove null/empty, trim, uppercase.\n    - Build reasons (only if provable from data):\n      1. Status reason (only if lpnStatus is known and lpnStatus not in {\"LOCATED\",\"PARTLY ALLOCATED\"}): Reason A: LPN status is {{lpnStatus}}; only LOCATED or PARTLY ALLOCATED are eligible.\n      2. Area mismatch reason (only if lpnArea is known and waveAreas has at least one value and lpnArea not in waveAreas): Reason B: LPN is in area {{lpnArea}} while the wave targeted area(s): {{waveAreas.join(\", \")}}.\n      3. LPN is Locked (only if lpnInfo[\"LPN Allocatable for Order\"] = no/false): Reason C: LPN has a non-allocatable inventory lock\n    - Output, in this order:\n      - Line 1: [container_number] was not allocated for the current wave\n      - Then append Reason A if applicable (one line) (do not add the word \"Reason A\")\n      - Then append Reason B if applicable (one line) (do not add the word \"Reason B\")\n      - Then append Reason C if applicable (one line) (do not add the word \"Reason C\")\n      - If neither Reason A, Reason B, Reason C can be proven from available data, do not invent other explanations; stop after Line 1\n    - If matchedRows.length>0:\n      - totalAlloc = sum(row[\"Allocated Qty\"]) for each row in matchedRows\n      - totalPacked = sum(row[\"Packed Qty\"])\n      - locations = unique list of row[\"LPN Current Location\"] for each row in matchedRows (ignore empty)\n      - Output HTML with <strong> tag for field names in only: \n         \"Yes, [container_number] was allocated for the current wave.\"\n         Container Number: [container_number] \n         Allocated Qty: [totalAlloc] \n         Packed Qty: [totalPacked] \n         LPN Current Location: [locations joined by \", \"]\n-if container_number is empty:\n    - let matchedRows = [row for row in dataRows where row[\"Container\"] is not null]\n    - if matchedRows is empty:\n        Output: No Containers were allocated for the current wave\n    - If matchedRows.length>0:\n      - totalAlloc = sum(row[\"Allocated Qty\"]) for each row in matchedRows\n      - totalPacked = sum(row[\"Packed Qty\"])\n      - locBarcodes = distinct non-empty row[\"LPN Current Location\"] for each row in matchedRows\n      - lpnLocns = distinct non-empty row[\"Container\"] for each row in matchedRows\n      - totalLocations = size(locBarcodes)\n      - totalLPNs = size(lpnLocns)\n       - Output HTML with <strong> tag for field names in only: \n         \"For the current wave:\"\n         Total Containers: [totalLPNs] \n         Allocated Qty: [totalAlloc] \n         Packed Qty: [totalPacked] \n         Total Locations: [totalLocations]\n        \n\nActive Location branch:\n- let matchedRows = [row for row in dataRows where row[\"Active Location Barcode\"] equals loc]\n- If matchedRows is empty: \n       Check for reasons why [loc] might not have been allocated by the user provided wave. Return only the final answer (HTML or a single line). Do not explain steps, do not list “possible reasons,” and do not speculate. Only cite reasons that can be proven from provided tool outputs. Gather only data-backed reasons; if required data is missing, do not mention that reason.\n      - locInfo = {{$context.$nodes.GETLOCATION.$output}} (may be object or array; use the first matching record for loc)\n      - waveLogs = {{$context.$nodes.SEARCHWAVELOGS.$output}}\n      - locType = norm(first non-empty of locInfo[\"Active Location Type\"])\n      - locArea = norm(first non-empty of locInfo[\"Active Location Area\"])\n      - waveAreas = distinct uppercase area codes derived from waveLogs (prefer structured fields like waveLogs[\"target_areas\"] or waveLogs[\"areas\"]; else extract tokens matching /\\barea\\s+([A-Z0-9-]+)\\b/i). Remove null/empty, trim, uppercase.\n      - Build reasons (only if provable from data):\n            1. LocationType reason (only if locType is known and locType not in {\"RESERVE\",\"ACTIVE\"}): Reason A: Location Type is {{locType}}; only ACTIVE or RESERVE locations are eligible.\n            2. Area mismatch reason (only if locArea is known and waveAreas has at least one value and locArea not in waveAreas): Reason B: Location is in area {{locArea}} while the wave targeted area(s): {{waveAreas.join(\", \")}}.\n            3. Location is Locked (only if locInfo[\"Location Allocatable for Order\"] = no/false): Reason C: Location has a non-allocatable inventory lock\n      - Output, in this order:\n          - Line 1: [loc] was not allocated for the current wave\n         - Then append Reason A if applicable (one line) (do not add the word \"Reason A\")\n         - Then append Reason B if applicable (one line) (do not add the word \"Reason B\")\n         - Then append Reason C if applicable (one line) (do not add the word \"Reason C\")\n         - If neither Reason A, Reason B, Reason C can be proven from available data, do not invent other explanations; stop after Line 1. Stop processing here\n- If matchedRows is non-empty:\n  - totalAlloc = sum(row[\"Allocated Qty\"]) for row in matchedRows\n  - totalPacked = sum(row[\"Packed Qty\"]) for row in matchedRows\n  - Output HTML with <strong> tag for field names in only: \n    \"Yes, the current wave did allocate from [loc].\"\n    Location Barcode: [loc] \n    Allocated Qty: [totalAlloc] \n    Packed Qty: [totalPacked] \n    Location Information: [optional concatenation of available fields such as area/aisle/bay values]\n    matchedRows: [matchedRows]\n\nArea branch:\n- let targetArea = area trimmed and uppercase.\n- let matchedRows = [row for row in dataRows where row[\"LPN Area\"] equals targetArea OR row[\"Active Location Area\"] equals targetArea]\n- If matchedRows is empty:\n    Check for reasons why [targetArea] might not have been allocated by the user provided wave. Return only the final answer (HTML or a single line). Do not explain steps, do not list “possible reasons,” and do not speculate. Only cite reasons that can be proven from provided tool outputs. Gather only data-backed reasons; if required data is missing, do not mention that reason.\n      - waveLogs = {{$context.$nodes.SEARCHWAVELOGS.$output}}\n      - waveAreas = distinct uppercase area codes derived from waveLogs (prefer structured fields like waveLogs[\"target_areas\"] or waveLogs[\"areas\"]; else extract tokens matching /\\barea\\s+([A-Z0-9-]+)\\b/i). Remove null/empty, trim, uppercase.\n      - Build reasons (only if provable from data):\n            1. Area mismatch reason (only if targetArea is known and waveAreas has at least one value and targetArea not in waveAreas): Reason A: The wave targeted area(s): {{waveAreas.join(\", \")}}.\n      - Output, in this order:\n          - Line 1: Area [targetArea] was not allocated for the current wave\n         - Then append Reason A if applicable (one line) (do not add the word \"Reason A\")\n         - If Reason A cannot be proven from available data, do not invent other explanations; stop after Line 1. Stop processing here\n- If matchedRows is non-empty:\n  - totalAlloc = sum(row[\"Allocated Qty\"]) for each row in matchedRows\n  - totalPacked = sum(row[\"Packed Qty\"]) for each row in matchedRows\n  - locBarcodes = distinct non-empty row[\"Active Location Barcode\"] for each row in matchedRows\n  - lpnLocns = distinct non-empty row[\"LPN Current Location\"] for each row in matchedRows\n  - totalLocations = size(locBarcodes) + size(lpnLocns)\n  - Output HTML with <strong> tag for field names in only: \n    Area: [targetArea] \n    Allocated Qty: [totalAlloc]\n    Packed Qty: [totalPacked]\n    Total Locations: [totalLocations]\n\nArea-Aisle branch:\n- let targetArea = area trimmed and uppercase;  \n- let targetAisle = aisle trimmed and uppercase\n- let matchedRows = Match rows where row[\"LPN Area\"] equals targetArea OR row[\"Active Location Area\"] equals targetArea and where row[\"LPN Aisle\"] equals targetAisle OR row[\"Active Location Aisle\"] equals targetAisle for each row in dataRows\n- If matchedRows is empty:\n    Check for reasons why [targetArea] and [targetAisle] might not have been allocated by the user provided wave. Return only the final answer (HTML or a single line). Do not explain steps, do not list “possible reasons,” and do not speculate. Only cite reasons that can be proven from provided tool outputs. Gather only data-backed reasons; if required data is missing, do not mention that reason.\n      - waveLogs = {{$context.$nodes.SEARCHWAVELOGS.$output}}\n      - waveAreas = distinct uppercase area codes derived from waveLogs (prefer structured fields like waveLogs[\"target_areas\"] or waveLogs[\"areas\"]; else extract tokens matching /\\barea\\s+([A-Z0-9-]+)\\b/i). Remove null/empty, trim, uppercase.\n      - Build reasons (only if provable from data):\n            1. Area mismatch reason (only if targetArea is known and waveAreas has at least one value and targetArea not in waveAreas): Reason A: The wave targeted area(s): {{waveAreas.join(\", \")}}.\n      - Output, in this order:\n          - Line 1: Area [targetArea] and [targetAisle] were not allocated for the current wave\n         - Then append Reason A if applicable (one line) (do not add the word \"Reason A\")\n         - If Reason A cannot be proven from available data, do not invent other explanations; stop after Line 1. Stop processing here    \n- If matchedRows in non-empty:\n  - totalAlloc = sum(row[\"Allocated Qty\"]) for each row in matchedRows\n  - totalPacked = sum(row[\"Packed Qty\"]) for each row in matchedRows\n  - locBarcodes = distinct non-empty row[\"Active Location Barcode\"] for each row in matchedRows\n  - lpnLocns = distinct non-empty row[\"LPN Current Location\"] for each row in matchedRows\n  - totalLocations = size(locBarcodes) + size(lpnLocns)\n  - Output HTML with <strong> tag for field names in only: \n    Area: [targetArea] \n    Aisle: [targetAisle ]\n    Allocated Qty: [totalAlloc]\n    Packed Qty: [totalPacked]\n    Total Locations: [totalLocations]\n\nRules:\n- Never print variables as unresolved objects (e.g., {source=null, value=null}). Use plain resolved text.\n- Do not output any explanation, steps, or summaries of behavior—only the HTML or the single not-found line.\n- If dataRows is empty, treat as no match for the chosen branch."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_OTHER_WMS26ABO",
+            "functionName": "searchWaveLogs",
+            "name": "searchWaveLogs"
+          },
+          "outcomes": {
+            "success": "1764883849927"
+          },
+          "code": "SEARCHWAVELOGS",
+          "id": "1764881832434",
+          "inputs": [
+            {
+              "id": "1764881848192_1",
+              "name": "pWaveNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACTLPNANDACTIVELOCATIONSFROMUSERINPUT2.$output.wavenumber}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_OTHER_WMS26ABO",
+            "functionName": "getIBLPN",
+            "name": "getIBLPN"
+          },
+          "outcomes": {
+            "success": "1764883885755"
+          },
+          "code": "GETIBLPN",
+          "id": "1764883849927",
+          "inputs": [
+            {
+              "id": "1764883860601_1",
+              "name": "pContainerNumber",
+              "type": "string",
+              "value": "{{$context.$variables.containernumber}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_OTHER_WMS26ABO",
+            "functionName": "getLocation",
+            "name": "getLocation"
+          },
+          "outcomes": {
+            "success": "1764733561305"
+          },
+          "code": "GETLOCATION",
+          "id": "1764883885755",
+          "inputs": [
+            {
+              "id": "1764883900470_1",
+              "name": "pLocationBarcode",
+              "type": "string",
+              "value": "{{$context.$variables.activelocation}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1764868696838",
+          "name": "aisle",
+          "type": "string"
+        },
+        {
+          "id": "1764789065821",
+          "name": "area",
+          "type": "string"
+        },
+        {
+          "id": "1764732935564",
+          "name": "activelocation",
+          "type": "string"
+        },
+        {
+          "id": "1764732925088",
+          "name": "containernumber",
+          "type": "string"
+        },
+        {
+          "id": "1764732917021",
+          "name": "WaveNumber",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "humanApprovalFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "SCM",
+  "product": "OTHER",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

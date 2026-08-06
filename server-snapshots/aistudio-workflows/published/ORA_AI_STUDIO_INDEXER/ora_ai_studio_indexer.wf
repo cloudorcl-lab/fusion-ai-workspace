@@ -1,0 +1,3397 @@
+{
+  "workflowId": "100002240709071",
+  "workflowCode": "ORA_AI_STUDIO_INDEXER",
+  "name": "AI Studio Indexer",
+  "description": "Workflow to index all AI Studio artifacts.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1759072774703"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START",
+          "diagram": {
+            "x": 6633.75,
+            "y": 5000
+          }
+        },
+        {
+          "metadata": {
+            "name": "Set Variables"
+          },
+          "outcomes": {
+            "success": "1775532749584"
+          },
+          "code": "SET_VARIABLES",
+          "id": "1759072774703",
+          "inputs": [
+            {
+              "id": "1759072782153",
+              "name": "fetchSize",
+              "value": "200"
+            },
+            {
+              "id": "fe460e60-d46f-4f47-a621-dce83c1a9e67",
+              "name": "hasMoreBO",
+              "value": "true"
+            },
+            {
+              "id": "407a466b-8eb3-4c9c-9777-4efaff35d26b",
+              "name": "boOffset",
+              "value": "0"
+            },
+            {
+              "id": "1759072774703_hasMoreWorkflow",
+              "name": "hasMoreWorkflow",
+              "value": "true"
+            },
+            {
+              "id": "1759072774703_workflowOffset",
+              "name": "workflowOffset",
+              "value": "0"
+            },
+            {
+              "id": "1759072774703_hasMoreTools",
+              "name": "hasMoreTools",
+              "value": "true"
+            },
+            {
+              "id": "1759072774703_toolOffset",
+              "name": "toolOffset",
+              "value": "0"
+            },
+            {
+              "id": "1759072774703_hasMoreAgents",
+              "name": "hasMoreAgents",
+              "value": "true"
+            },
+            {
+              "id": "1759072774703_agentOffset",
+              "name": "agentOffset",
+              "value": "0"
+            },
+            {
+              "id": "1759072774703_hasMoreTopics",
+              "name": "hasMoreTopics",
+              "value": "true"
+            },
+            {
+              "id": "1759072774703_topicsOffset",
+              "name": "topicsOffset",
+              "value": "0"
+            },
+            {
+              "id": "1759072774703_deepLinkOffset",
+              "name": "deepLinkOffset",
+              "value": "0"
+            },
+            {
+              "id": "1759072774703_hasMoreDeeplinks",
+              "name": "hasMoreDeeplinks",
+              "value": "true"
+            },
+            {
+              "id": "1759072774703_hasMoreApps",
+              "name": "hasMoreApps",
+              "value": "true"
+            },
+            {
+              "id": "1759072774703_appsOffset",
+              "name": "appsOffset",
+              "value": "0"
+            },
+            {
+              "id": "1759072774703_policyOffset",
+              "name": "policyOffset",
+              "value": "0"
+            },
+            {
+              "id": "1759072774703_hasMorePolicy",
+              "name": "hasMorePolicy",
+              "value": "true"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 6531.75,
+            "y": 5246
+          }
+        },
+        {
+          "id": "1775532749584",
+          "code": "ROUTE_INDEX_MODE",
+          "type": "CONDITION",
+          "metadata": {
+            "name": "Route Index Mode",
+            "condition": "{{$context.$triggers.REST.$input.ItemsToIndex&&$context.$triggers.REST.$input.ItemsToIndex.length>0}}"
+          },
+          "outcomes": {
+            "true": "1775532749585",
+            "false": "1774461143600"
+          },
+          "inputs": [
+            {
+              "id": "1775532749584_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.ItemsToIndex&&$context.$triggers.REST.$input.ItemsToIndex.length>0}}"
+            }
+          ],
+          "diagram": {
+            "x": 6531.75,
+            "y": 5468
+          },
+          "convergenceTargetId": "end"
+        },
+        {
+          "id": "1775532749585",
+          "code": "PREPARE_ITEMS_TO_INDEX",
+          "type": "CODE",
+          "metadata": {
+            "name": "Prepare Items To Index",
+            "returnType": "object",
+            "sourceCode": "let result = {\n  BUSINESSOBJECTS: '',\n  AGENTTEAMS: '',\n  TOOLS: '',\n  AGENTS: '',\n  TOPICS: '',\n  DEEPLINKS: '',\n  APPS: '',\n  POLICY: '',\n  hasBUSINESSOBJECTS: false,\n  hasAGENTTEAMS: false,\n  hasTOOLS: false,\n  hasAGENTS: false,\n  hasTOPICS: false,\n  hasDEEPLINKS: false,\n  hasAPPS: false,\n  hasPOLICY: false,\n  hasAny: false\n};\n\nconst appendCodes = (prev, next) => {\n  if (!next) return prev;\n  if (!prev) return next;\n  return prev + ',' + next;\n};\n\nconst allowed = new Set(['BUSINESSOBJECTS','AGENTTEAMS','TOOLS','AGENTS','TOPICS','DEEPLINKS','APPS','POLICY']);\nconst inputItems = Array.isArray($context.$triggers?.REST?.$input?.ItemsToIndex) ? $context.$triggers.REST.$input.ItemsToIndex : [];\n\nfor (const item of inputItems) {\n  if (!item || typeof item !== 'object') continue;\n  const type = String(item.type || '').trim().toUpperCase();\n  if (!allowed.has(type)) continue;\n  const codesArray = Array.isArray(item.codes) ? item.codes : [];\n  if (codesArray.length === 0) continue;\n\n  // Wrap each code in single quotes and join with commas\n  const quotedCodes = codesArray.map(code => `'${String(code).replace(/'/g, \"\\\\'\")}'`).join(',');\n\n  result[type] = appendCodes(result[type], quotedCodes);\n}\n\nfor (const type of allowed) {\n  const flag = 'has' + type;\n  result[flag] = !!result[type];\n  if (result[flag]) result.hasAny = true;\n}\n\nreturn result;\n"
+          },
+          "outcomes": {
+            "success": "1775532749629"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 6306.75,
+            "y": 5690
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "metadata": {
+            "name": "Get Current Blue Green"
+          },
+          "outcomes": {
+            "success": "1774461385908"
+          },
+          "code": "GET_CURRENT_BLUE_GREEN",
+          "id": "1774461143600",
+          "inputs": [
+            {
+              "id": "1774461143600_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "AI_STUDIO_INDEX_METADATA"
+            },
+            {
+              "id": "1774461143600_query",
+              "name": "query",
+              "type": "string",
+              "value": "blue or green"
+            },
+            {
+              "id": "1774461143600_documentId",
+              "name": "documentId",
+              "type": "string",
+              "value": "current_index"
+            },
+            {
+              "id": "1774461143600_fields",
+              "name": "fields",
+              "type": "string",
+              "value": ""
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"index\": {\n        \"type\": \"integer\"\n      },\n      \"text\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\n      \"index\",\n      \"text\"\n    ]\n  }\n}",
+          "type": "VECTOR_DB_READER",
+          "diagram": {
+            "x": 6756.75,
+            "y": 5690
+          }
+        },
+        {
+          "id": "1775532749629",
+          "code": "SELECTIVE_PROCESS_PARALLEL_1",
+          "type": "PARALLEL",
+          "metadata": {
+            "name": "Selective Process Parallel 1"
+          },
+          "outcomes": {
+            "0": "1775532749618",
+            "1": "1775532749588",
+            "2": "1775532749593",
+            "3": "1775532749608"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 5584,
+            "y": 5912,
+            "width": 1745.5,
+            "height": 1221
+          },
+          "convergenceTargetId": "1775532749630"
+        },
+        {
+          "metadata": {
+            "name": "Get New Index Prefix",
+            "returnType": "string",
+            "sourceCode": "let liveIndex = \"\";\nconst outputArray = $context.$nodes.GET_CURRENT_BLUE_GREEN.$output;\nif (Array.isArray(outputArray) && outputArray.length > 0) {\n  liveIndex = outputArray[0].text;\n  liveIndex = liveIndex? liveIndex.trim(): liveIndex;\n}\nlet newIndex = \"\";\nif (!liveIndex) {\n  newIndex = \"BLUE\";\n} else if (liveIndex === \"BLUE\") {\n  newIndex = \"GREEN\";\n} else if (liveIndex === \"GREEN\") {\n  newIndex = \"BLUE\";\n} else {\n  newIndex = \"BLUE\";\n}\nreturn newIndex;"
+          },
+          "outcomes": {
+            "success": "1774721067791"
+          },
+          "code": "GET_NEW_INDEX_PREFIX",
+          "id": "1774461385908",
+          "inputs": [],
+          "type": "CODE",
+          "diagram": {
+            "x": 8763.01424744934,
+            "y": 5876.116805985286
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1775532749630",
+          "code": "SELECTIVE_PROCESS_PARALLEL_2",
+          "type": "PARALLEL",
+          "metadata": {
+            "name": "Selective Process Parallel 2"
+          },
+          "outcomes": {
+            "0": "1775532749623",
+            "1": "1775532749598",
+            "2": "1775532749603",
+            "3": "1775532749613"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 5573.25,
+            "y": 7283,
+            "width": 1767,
+            "height": 1221
+          },
+          "convergenceTargetId": "1775532749628"
+        },
+        {
+          "metadata": {
+            "name": "Before Start CleanUp",
+            "referenceableBlockId": "CLEANUPINDICES"
+          },
+          "outcomes": {
+            "success": "1774734492073"
+          },
+          "code": "BEFORE_START_CLEANUP",
+          "id": "1774721067791",
+          "inputs": [
+            {
+              "id": "1774721067791_indexprefix",
+              "name": "indexprefix",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_NEW_INDEX_PREFIX.$output.result}}"
+            }
+          ],
+          "type": "REFERENCE",
+          "diagram": {
+            "x": 8762.72326467558,
+            "y": 6046.409929339131
+          }
+        },
+        {
+          "id": "1775532749628",
+          "code": "RETURN_SELECTED_INDEXING_RESULT",
+          "type": "RETURN",
+          "metadata": {
+            "name": "Return Selected Indexing Result"
+          },
+          "outcomes": {},
+          "inputs": [
+            {
+              "id": "1775532749628_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "\"done\""
+            }
+          ],
+          "diagram": {
+            "x": 6294.555230223096,
+            "y": 8709.204913868789
+          }
+        },
+        {
+          "metadata": {
+            "name": "Process parallel"
+          },
+          "outcomes": {
+            "0": "1774735114081",
+            "1": "1774769210039",
+            "2": "1774983716044",
+            "3": "1774990454828"
+          },
+          "code": "PROCESS_PARALLEL",
+          "convergenceTargetId": "1775532175737",
+          "id": "1774734492073",
+          "inputs": [],
+          "type": "PARALLEL",
+          "diagram": {
+            "x": 7469.467818966515,
+            "y": 6433.285040967278,
+            "width": 2890,
+            "height": 1260
+          }
+        },
+        {
+          "id": "1775532175737",
+          "code": "PROCESS_PARALLEL2",
+          "type": "PARALLEL",
+          "metadata": {
+            "name": "Process parallel2"
+          },
+          "diagram": {
+            "x": 7469.788765992505,
+            "y": 7872.364919409083,
+            "width": 2890,
+            "height": 1260
+          },
+          "outcomes": {
+            "0": "1775532465797",
+            "1": "1775532614747",
+            "2": "1775532682721",
+            "3": "1775532749578"
+          },
+          "inputs": [],
+          "convergenceTargetId": "1774462521555"
+        },
+        {
+          "metadata": {
+            "name": "Update Live Index Prefix"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "UPDATE_LIVE_INDEX_PREFIX",
+          "id": "1774462521555",
+          "inputs": [
+            {
+              "id": "1774462521555_operation",
+              "name": "operation",
+              "type": "string",
+              "value": "OVERWRITE"
+            },
+            {
+              "id": "1774462521555_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "AI_STUDIO_INDEX_METADATA"
+            },
+            {
+              "id": "1774462521555_content",
+              "name": "content",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_NEW_INDEX_PREFIX.$output.result}}"
+            },
+            {
+              "id": "1774462521555_contentType",
+              "name": "contentType",
+              "type": "string",
+              "value": "text"
+            },
+            {
+              "id": "1774462521555_documentId",
+              "name": "documentId",
+              "type": "string",
+              "value": "current_index"
+            },
+            {
+              "id": "1774462521555_metaData",
+              "name": "metaData",
+              "type": "string",
+              "value": [
+                {
+                  "id": "1774462676210",
+                  "name": "color",
+                  "type": "string",
+                  "value": "{{$context.$nodes.GET_NEW_INDEX_PREFIX.$output.result}}"
+                }
+              ]
+            }
+          ],
+          "type": "VECTOR_DB_WRITER",
+          "diagram": {
+            "x": 8764.788765992507,
+            "y": 9304.446884956602
+          }
+        },
+        {
+          "id": "1775532749618",
+          "code": "COND_APPS_SELECTED",
+          "type": "CONDITION",
+          "metadata": {
+            "name": "Check Apps In Input",
+            "condition": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.hasAPPS}}"
+          },
+          "outcomes": {
+            "true": "1775532749619",
+            "false": ""
+          },
+          "inputs": [
+            {
+              "id": "1775532749618_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.hasAPPS}}"
+            }
+          ],
+          "diagram": {
+            "x": 5631.75,
+            "y": 6143
+          },
+          "convergenceTargetId": "end"
+        },
+        {
+          "id": "1775532749588",
+          "code": "CHECK_BOS_IN_INPUT",
+          "type": "CONDITION",
+          "metadata": {
+            "name": "Check BOs In Input",
+            "condition": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.hasBOS}}"
+          },
+          "outcomes": {
+            "true": "1775532749589",
+            "false": ""
+          },
+          "inputs": [
+            {
+              "id": "1775532749588_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.hasBUSINESSOBJECTS}}"
+            }
+          ],
+          "diagram": {
+            "x": 6081.75,
+            "y": 6143
+          },
+          "convergenceTargetId": "end"
+        },
+        {
+          "id": "1775532749593",
+          "code": "COND_WORKFLOWS_SELECTED",
+          "type": "CONDITION",
+          "metadata": {
+            "name": "Check Workflows In Input",
+            "condition": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.hasWORKFLOWS}}"
+          },
+          "outcomes": {
+            "true": "1775532749594",
+            "false": ""
+          },
+          "inputs": [
+            {
+              "id": "1775532749593_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.hasAGENTTEAMS}}"
+            }
+          ],
+          "diagram": {
+            "x": 6531.75,
+            "y": 6143
+          },
+          "convergenceTargetId": "end"
+        },
+        {
+          "id": "1775532749608",
+          "code": "COND_TOPICS_SELECTED",
+          "type": "CONDITION",
+          "metadata": {
+            "name": "Check Topics In Input",
+            "condition": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.hasTOPICS}}"
+          },
+          "outcomes": {
+            "true": "1775532749609",
+            "false": ""
+          },
+          "inputs": [
+            {
+              "id": "1775532749608_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.hasTOPICS}}"
+            }
+          ],
+          "diagram": {
+            "x": 6981.75,
+            "y": 6143
+          },
+          "convergenceTargetId": "end"
+        },
+        {
+          "id": "1775532749619",
+          "code": "FETCH_APPS_BY_CODES",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Fetch Apps By Codes",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOAPPLICATIONSV2",
+            "functionName": "GetByCodes"
+          },
+          "outcomes": {
+            "success": "1775532749620"
+          },
+          "inputs": [
+            {
+              "id": "1775532749619_codes",
+              "name": "codes",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.APPS}}"
+            }
+          ],
+          "diagram": {
+            "x": 5631.75,
+            "y": 6365
+          }
+        },
+        {
+          "id": "1775532749589",
+          "code": "FETCH_BOS_BY_CODES",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Fetch BOs By Codes",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOBUSINESSOBJECTSBOSS",
+            "functionName": "GetByCodes"
+          },
+          "outcomes": {
+            "success": "1775532749590"
+          },
+          "inputs": [
+            {
+              "id": "1775532749589_codes",
+              "name": "codes",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.BUSINESSOBJECTS}}"
+            }
+          ],
+          "diagram": {
+            "x": 6078.3608971715375,
+            "y": 6373.472757071157
+          }
+        },
+        {
+          "id": "1775532749594",
+          "code": "FETCH_WORKFLOWS_BY_CODES",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Fetch Workflows By Codes",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOAGENTTEAMSV2",
+            "functionName": "GetByCodes"
+          },
+          "outcomes": {
+            "success": "1775532749595"
+          },
+          "inputs": [
+            {
+              "id": "1775532749594_codes",
+              "name": "codes",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.AGENTTEAMS}}"
+            }
+          ],
+          "diagram": {
+            "x": 6531.75,
+            "y": 6365
+          }
+        },
+        {
+          "id": "1775532749609",
+          "code": "FETCH_TOPICS_BY_CODES",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Fetch Topics By Codes",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOTOPICSV2",
+            "functionName": "GetByCode"
+          },
+          "outcomes": {
+            "success": "1775532749610"
+          },
+          "inputs": [
+            {
+              "id": "1775532749609_codes",
+              "name": "codes",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.TOPICS}}"
+            }
+          ],
+          "diagram": {
+            "x": 6981.75,
+            "y": 6365
+          }
+        },
+        {
+          "id": "1775532749620",
+          "code": "CREATE_APPS_SELECTED_PAYLOAD",
+          "type": "CODE",
+          "metadata": {
+            "name": "Create Apps Selected Payload",
+            "returnType": "array",
+            "sourceCode": "let allResult = [];\n\nconst buildEmbeddingText = (obj) => {\n  let content = '';\n  if (obj && typeof obj === 'object') {\n    if (obj.name) content += 'Name: ' + obj.name + '\\n';\n    if (obj.description) content += 'Description: ' + obj.description + '\\n';\n  }\n  return content.trim();\n};\n\ntry {\n  const entities = $context.$nodes?.FETCH_APPS_BY_CODES?.$output?.items || [];\n  allResult = entities\n    .filter(entity => entity?.code !== undefined && entity?.code !== null)\n    .map(entity => ({\n      documentId: entity.code,\n      parentObjectId: 'artifacts',\n      content: buildEmbeddingText(entity),\n      metaData: { code: entity.code }\n    }));\n} catch (error) {\n  allResult = [];\n}\n\nreturn allResult;"
+          },
+          "outcomes": {
+            "success": "1775532749621"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 5604,
+            "y": 6587
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1775532749590",
+          "code": "CREATE_BOS_SELECTED_PAYLOAD",
+          "type": "CODE",
+          "metadata": {
+            "name": "Create BOs Selected Payload",
+            "returnType": "array",
+            "sourceCode": "const buildEmbeddingText = (obj) => {\n  let content = '';\n  let hasExample = false;\n\n  if (obj && typeof obj === 'object') {\n    if (obj.name) content += 'Name: ' + obj.name + '\\n';\n    if (obj.description) content += 'Description: ' + obj.description + '\\n';\n\n    let objectProps = null;\n    if (obj.objectProperties) {\n      if (typeof obj.objectProperties === 'string') {\n        try { objectProps = JSON.parse(obj.objectProperties); } catch (e) { objectProps = null; }\n      } else if (typeof obj.objectProperties === 'object') {\n        objectProps = obj.objectProperties;\n      }\n    }\n\n    if (objectProps && objectProps.tools && objectProps.tools.length) {\n      content += 'Tools:\\n';\n      for (let i = 0; i < objectProps.tools.length; i++) {\n        const tool = objectProps.tools[i];\n        if (!tool) continue;\n        if (tool.sampleQueries && Array.isArray(tool.sampleQueries) && tool.sampleQueries.length > 0) hasExample = true;\n        content += '- ';\n        if (tool.name) content += tool.name;\n        if (tool.description) content += ': ' + tool.description;\n        content += '\\n';\n      }\n    }\n  }\n\n  return { content: content.trim(), hasExample };\n};\n\nlet allResult = [];\n\ntry {\n  const entities = $context.$nodes?.FETCH_BOS_BY_CODES?.$output?.items || [];\n  for (let i = 0; i < entities.length; i++) {\n    const bo = entities[i];\n    if (!bo || bo.objectCode === undefined || bo.objectCode === null) continue;\n    const built = buildEmbeddingText(bo);\n    allResult.push({\n      documentId: bo.objectCode,\n      parentObjectId: 'artifacts',\n      content: built.content,\n      metaData: { code: bo.objectCode, hasExample: built.hasExample }\n    });\n  }\n} catch (error) {\n  allResult = [];\n}\n\nreturn allResult;"
+          },
+          "outcomes": {
+            "success": "1775532749591"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 6054,
+            "y": 6587
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1775532749595",
+          "code": "CREATE_WORKFLOWS_SELECTED_PAYLOAD",
+          "type": "CODE",
+          "metadata": {
+            "name": "Create Workflows Selected Payload",
+            "returnType": "array",
+            "sourceCode": "let allResult = [];\n\nconst buildEmbeddingText = (obj) => {\n  let content = '';\n  if (obj && typeof obj === 'object') {\n    if (obj.name) content += 'Name: ' + obj.name + '\\n';\n    if (obj.description) content += 'Description: ' + obj.description + '\\n';\n  }\n  return content.trim();\n};\n\ntry {\n  const entities = $context.$nodes?.FETCH_WORKFLOWS_BY_CODES?.$output?.items || [];\n  allResult = entities\n    .filter(wf => wf?.workflowCode !== undefined && wf?.workflowCode !== null && wf?.hiddenFlag !== true)\n    .map(wf => ({\n      documentId: wf.workflowCode,\n      parentObjectId: 'artifacts',\n      content: buildEmbeddingText(wf),\n      metaData: { code: wf.workflowCode, aiAppsCompatibleFlag: wf.aiAppsCompatibleFlag }\n    }));\n} catch (error) {\n  allResult = [];\n}\n\nreturn allResult;"
+          },
+          "outcomes": {
+            "success": "1775532749596"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 6504,
+            "y": 6587
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1775532749610",
+          "code": "CREATE_TOPICS_SELECTED_PAYLOAD",
+          "type": "CODE",
+          "metadata": {
+            "name": "Create Topics Selected Payload",
+            "returnType": "array",
+            "sourceCode": "let allResult = [];\n\nconst buildEmbeddingText = (obj) => {\n  let content = '';\n  if (obj && typeof obj === 'object') {\n    if (obj.name) content += 'Name: ' + obj.name + '\\n';\n    if (obj.description) content += 'Description: ' + obj.description + '\\n';\n  }\n  return content.trim();\n};\n\ntry {\n  const entities = $context.$nodes?.FETCH_TOPICS_BY_CODES?.$output?.items || [];\n  allResult = entities\n    .filter(entity => entity?.topicCode !== undefined && entity?.topicCode !== null)\n    .map(entity => ({\n      documentId: entity.topicCode,\n      parentObjectId: 'artifacts',\n      content: buildEmbeddingText(entity),\n      metaData: { code: entity.topicCode }\n    }));\n} catch (error) {\n  allResult = [];\n}\n\nreturn allResult;"
+          },
+          "outcomes": {
+            "success": "1775532749611"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 6994.5,
+            "y": 6587
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1775532749621",
+          "code": "WRITE_APPS_TO_BLUE",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Write Apps To Blue",
+            "referenceableBlockId": "INDEX_IN_BULK"
+          },
+          "outcomes": {
+            "success": "1775532749622"
+          },
+          "inputs": [
+            {
+              "id": "1775532749621_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{'ORA_AI_STUDIO_APPS_BLUE'}}"
+            },
+            {
+              "id": "1775532749621_data",
+              "name": "data",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_APPS_SELECTED_PAYLOAD.$output.result}}"
+            }
+          ],
+          "diagram": {
+            "x": 5631.75,
+            "y": 6809
+          }
+        },
+        {
+          "id": "1775532749591",
+          "code": "WRITE_BOS_TO_BLUE",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Write BOs To Blue",
+            "referenceableBlockId": "INDEX_IN_BULK"
+          },
+          "outcomes": {
+            "success": "1775532749592"
+          },
+          "inputs": [
+            {
+              "id": "1775532749591_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{'ORA_AI_STUDIO_BO_BLUE'}}"
+            },
+            {
+              "id": "1775532749591_data",
+              "name": "data",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_BOS_SELECTED_PAYLOAD.$output.result}}"
+            }
+          ],
+          "diagram": {
+            "x": 6081.75,
+            "y": 6809
+          }
+        },
+        {
+          "id": "1775532749596",
+          "code": "WRITE_WORKFLOWS_TO_BLUE",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Write Workflows To Blue",
+            "referenceableBlockId": "INDEX_IN_BULK"
+          },
+          "outcomes": {
+            "success": "1775532749597"
+          },
+          "inputs": [
+            {
+              "id": "1775532749596_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{'ORA_AI_STUDIO_WORKFLOWS_BLUE'}}"
+            },
+            {
+              "id": "1775532749596_data",
+              "name": "data",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_WORKFLOWS_SELECTED_PAYLOAD.$output.result}}"
+            }
+          ],
+          "diagram": {
+            "x": 6531.75,
+            "y": 6809
+          }
+        },
+        {
+          "id": "1775532749611",
+          "code": "WRITE_TOPICS_TO_BLUE",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Write Topics To Blue",
+            "referenceableBlockId": "INDEX_IN_BULK"
+          },
+          "outcomes": {
+            "success": "1775532749612"
+          },
+          "inputs": [
+            {
+              "id": "1775532749611_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{'ORA_AI_STUDIO_TOPICS_BLUE'}}"
+            },
+            {
+              "id": "1775532749611_data",
+              "name": "data",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_TOPICS_SELECTED_PAYLOAD.$output.result}}"
+            }
+          ],
+          "diagram": {
+            "x": 6981.75,
+            "y": 6809
+          }
+        },
+        {
+          "id": "1775532749622",
+          "code": "WRITE_APPS_TO_GREEN",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Write Apps To Green",
+            "referenceableBlockId": "INDEX_IN_BULK"
+          },
+          "outcomes": {
+            "success": "1775532749630"
+          },
+          "inputs": [
+            {
+              "id": "1775532749622_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{'ORA_AI_STUDIO_APPS_GREEN'}}"
+            },
+            {
+              "id": "1775532749622_data",
+              "name": "data",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_APPS_SELECTED_PAYLOAD.$output.result}}"
+            }
+          ],
+          "diagram": {
+            "x": 5631.75,
+            "y": 7031
+          }
+        },
+        {
+          "id": "1775532749592",
+          "code": "WRITE_BOS_TO_GREEN",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Write BOs To Green",
+            "referenceableBlockId": "INDEX_IN_BULK"
+          },
+          "outcomes": {
+            "success": "1775532749630"
+          },
+          "inputs": [
+            {
+              "id": "1775532749592_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{'ORA_AI_STUDIO_BO_GREEN'}}"
+            },
+            {
+              "id": "1775532749592_data",
+              "name": "data",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_BOS_SELECTED_PAYLOAD.$output.result}}"
+            }
+          ],
+          "diagram": {
+            "x": 6081.75,
+            "y": 7031
+          }
+        },
+        {
+          "id": "1775532749597",
+          "code": "WRITE_WORKFLOWS_TO_GREEN",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Write Workflows To Green",
+            "referenceableBlockId": "INDEX_IN_BULK"
+          },
+          "outcomes": {
+            "success": "1775532749630"
+          },
+          "inputs": [
+            {
+              "id": "1775532749597_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{'ORA_AI_STUDIO_WORKFLOWS_GREEN'}}"
+            },
+            {
+              "id": "1775532749597_data",
+              "name": "data",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_WORKFLOWS_SELECTED_PAYLOAD.$output.result}}"
+            }
+          ],
+          "diagram": {
+            "x": 6531.75,
+            "y": 7031
+          }
+        },
+        {
+          "id": "1775532749612",
+          "code": "WRITE_TOPICS_TO_GREEN",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Write Topics To Green",
+            "referenceableBlockId": "INDEX_IN_BULK"
+          },
+          "outcomes": {
+            "success": "1775532749630"
+          },
+          "inputs": [
+            {
+              "id": "1775532749612_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{'ORA_AI_STUDIO_TOPICS_GREEN'}}"
+            },
+            {
+              "id": "1775532749612_data",
+              "name": "data",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_TOPICS_SELECTED_PAYLOAD.$output.result}}"
+            }
+          ],
+          "diagram": {
+            "x": 6981.75,
+            "y": 7031
+          }
+        },
+        {
+          "id": "1775532749623",
+          "code": "COND_POLICY_SELECTED",
+          "type": "CONDITION",
+          "metadata": {
+            "name": "Check Policy In Input",
+            "condition": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.hasPOLICY}}"
+          },
+          "outcomes": {
+            "true": "1775532749624",
+            "false": ""
+          },
+          "inputs": [
+            {
+              "id": "1775532749623_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.hasPOLICY}}"
+            }
+          ],
+          "diagram": {
+            "x": 5631.75,
+            "y": 7514
+          },
+          "convergenceTargetId": "end"
+        },
+        {
+          "id": "1775532749598",
+          "code": "COND_TOOLS_SELECTED",
+          "type": "CONDITION",
+          "metadata": {
+            "name": "Check Tools In Input",
+            "condition": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.hasTOOLS}}"
+          },
+          "outcomes": {
+            "true": "1775532749599",
+            "false": ""
+          },
+          "inputs": [
+            {
+              "id": "1775532749598_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.hasTOOLS}}"
+            }
+          ],
+          "diagram": {
+            "x": 6081.75,
+            "y": 7514
+          },
+          "convergenceTargetId": "end"
+        },
+        {
+          "id": "1775532749603",
+          "code": "COND_AGENTS_SELECTED",
+          "type": "CONDITION",
+          "metadata": {
+            "name": "Check Agents In Input",
+            "condition": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.hasAGENTS}}"
+          },
+          "outcomes": {
+            "true": "1775532749604",
+            "false": ""
+          },
+          "inputs": [
+            {
+              "id": "1775532749603_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.hasAGENTS}}"
+            }
+          ],
+          "diagram": {
+            "x": 6531.75,
+            "y": 7514
+          },
+          "convergenceTargetId": "end"
+        },
+        {
+          "id": "1775532749613",
+          "code": "COND_DEEPLINKS_SELECTED",
+          "type": "CONDITION",
+          "metadata": {
+            "name": "Check Deeplinks In Input",
+            "condition": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.hasDEEPLINKS}}"
+          },
+          "outcomes": {
+            "true": "1775532749614",
+            "false": ""
+          },
+          "inputs": [
+            {
+              "id": "1775532749613_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.hasDEEPLINKS}}"
+            }
+          ],
+          "diagram": {
+            "x": 6981.75,
+            "y": 7514
+          },
+          "convergenceTargetId": "end"
+        },
+        {
+          "id": "1775532749624",
+          "code": "FETCH_POLICY_BY_CODES",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Fetch Policy By Codes",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOPOLICYV2",
+            "functionName": "getByCodes"
+          },
+          "outcomes": {
+            "success": "1775532749625"
+          },
+          "inputs": [
+            {
+              "id": "1775532749624_codes",
+              "name": "codes",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.POLICY}}"
+            }
+          ],
+          "diagram": {
+            "x": 5631.75,
+            "y": 7736
+          }
+        },
+        {
+          "id": "1775532749599",
+          "code": "FETCH_TOOLS_BY_CODES",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Fetch Tools By Codes",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOTOOLSV2",
+            "functionName": "GetByCodes"
+          },
+          "outcomes": {
+            "success": "1775532749600"
+          },
+          "inputs": [
+            {
+              "id": "1775532749599_codes",
+              "name": "codes",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.TOOLS}}"
+            }
+          ],
+          "diagram": {
+            "x": 6081.75,
+            "y": 7736
+          }
+        },
+        {
+          "id": "1775532749604",
+          "code": "FETCH_AGENTS_BY_CODES",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Fetch Agents By Codes",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOAGENTSV2",
+            "functionName": "GetByCodes"
+          },
+          "outcomes": {
+            "success": "1775532749605"
+          },
+          "inputs": [
+            {
+              "id": "1775532749604_codes",
+              "name": "codes",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.AGENTS}}"
+            }
+          ],
+          "diagram": {
+            "x": 6531.75,
+            "y": 7736
+          }
+        },
+        {
+          "id": "1775532749614",
+          "code": "FETCH_DEEPLINKS_BY_CODES",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Fetch Deeplinks By Codes",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIODEEPLINKSV2",
+            "functionName": "getByCodes"
+          },
+          "outcomes": {
+            "success": "1775532749615"
+          },
+          "inputs": [
+            {
+              "id": "1775532749614_codes",
+              "name": "codes",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ITEMS_TO_INDEX.$output.result.DEEPLINKS}}"
+            }
+          ],
+          "diagram": {
+            "x": 6981.75,
+            "y": 7736
+          }
+        },
+        {
+          "id": "1775532749625",
+          "code": "CREATE_POLICY_SELECTED_PAYLOAD",
+          "type": "CODE",
+          "metadata": {
+            "name": "Create Policy Selected Payload",
+            "returnType": "array",
+            "sourceCode": "let allResult = [];\n\nconst buildEmbeddingText = (obj) => {\n  let content = '';\n  if (obj && typeof obj === 'object') {\n    if (obj.name) content += 'Name: ' + obj.name + '\\n';\n    if (obj.description) content += 'Description: ' + obj.description + '\\n';\n  }\n  return content.trim();\n};\n\ntry {\n  const entities = $context.$nodes?.FETCH_POLICY_BY_CODES?.$output?.items || [];\n  allResult = entities\n    .filter(entity => entity?.code !== undefined && entity?.code !== null)\n    .map(entity => ({\n      documentId: entity.code,\n      parentObjectId: 'artifacts',\n      content: buildEmbeddingText(entity),\n      metaData: { code: entity.code }\n    }));\n} catch (error) {\n  allResult = [];\n}\n\nreturn allResult;"
+          },
+          "outcomes": {
+            "success": "1775532749626"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 5593.25,
+            "y": 7958
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1775532749600",
+          "code": "CREATE_TOOLS_SELECTED_PAYLOAD",
+          "type": "CODE",
+          "metadata": {
+            "name": "Create Tools Selected Payload",
+            "returnType": "array",
+            "sourceCode": "let allResult = [];\n\nconst buildEmbeddingText = (obj) => {\n  let content = '';\n  if (obj && typeof obj === 'object') {\n    if (obj.name) content += 'Name: ' + obj.name + '\\n';\n    if (obj.description) content += 'Description: ' + obj.description + '\\n';\n  }\n  return content.trim();\n};\n\ntry {\n  const entities = $context.$nodes?.FETCH_TOOLS_BY_CODES?.$output?.items || [];\n  allResult = entities\n    .filter(entity => entity?.toolCode !== undefined && entity?.toolCode !== null)\n    .map(entity => ({\n      documentId: entity.toolCode,\n      parentObjectId: 'artifacts',\n      content: buildEmbeddingText(entity),\n      metaData: { code: entity.toolCode, type: entity.type }\n    }));\n} catch (error) {\n  allResult = [];\n}\n\nreturn allResult;"
+          },
+          "outcomes": {
+            "success": "1775532749601"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 6058.25,
+            "y": 7958
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1775532749605",
+          "code": "CREATE_AGENTS_SELECTED_PAYLOAD",
+          "type": "CODE",
+          "metadata": {
+            "name": "Create Agents Selected Payload",
+            "returnType": "array",
+            "sourceCode": "let allResult = [];\n\nconst buildEmbeddingText = (obj) => {\n  let content = '';\n  if (obj && typeof obj === 'object') {\n    if (obj.name) content += 'Name: ' + obj.name + '\\n';\n    if (obj.description) content += 'Description: ' + obj.description + '\\n';\n  }\n  return content.trim();\n};\n\ntry {\n  const entities = $context.$nodes?.FETCH_AGENTS_BY_CODES?.$output?.items || [];\n  allResult = entities\n    .filter(entity => entity?.agentCode !== undefined && entity?.agentCode !== null)\n    .map(entity => ({\n      documentId: entity.agentCode,\n      parentObjectId: 'artifacts',\n      content: buildEmbeddingText(entity),\n      metaData: { code: entity.agentCode }\n    }));\n} catch (error) {\n  allResult = [];\n}\n\nreturn allResult;"
+          },
+          "outcomes": {
+            "success": "1775532749606"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 6514.75,
+            "y": 7958
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1775532749615",
+          "code": "CREATE_DEEPLINKS_SELECTED_PAYLOAD",
+          "type": "CODE",
+          "metadata": {
+            "name": "Create Deeplinks Selected Payload",
+            "returnType": "array",
+            "sourceCode": "let allResult = [];\n\nconst buildEmbeddingText = (obj) => {\n  let content = '';\n  if (obj && typeof obj === 'object') {\n    if (obj.name) content += 'Name: ' + obj.name + '\\n';\n    if (obj.description) content += 'Description: ' + obj.description + '\\n';\n  }\n  return content.trim();\n};\n\ntry {\n  const entities = $context.$nodes?.FETCH_DEEPLINKS_BY_CODES?.$output?.items || [];\n  allResult = entities\n    .filter(entity => entity?.deepLinkCode !== undefined && entity?.deepLinkCode !== null)\n    .map(entity => ({\n      documentId: entity.deepLinkCode,\n      parentObjectId: 'artifacts',\n      content: buildEmbeddingText(entity),\n      metaData: { code: entity.deepLinkCode }\n    }));\n} catch (error) {\n  allResult = [];\n}\n\nreturn allResult;"
+          },
+          "outcomes": {
+            "success": "1775532749616"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 6979.75,
+            "y": 7958
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1775532749626",
+          "code": "WRITE_POLICY_TO_BLUE",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Write Policy To Blue",
+            "referenceableBlockId": "INDEX_IN_BULK"
+          },
+          "outcomes": {
+            "success": "1775532749627"
+          },
+          "inputs": [
+            {
+              "id": "1775532749626_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{'ORA_AI_STUDIO_POLICY_BLUE'}}"
+            },
+            {
+              "id": "1775532749626_data",
+              "name": "data",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_POLICY_SELECTED_PAYLOAD.$output.result}}"
+            }
+          ],
+          "diagram": {
+            "x": 5631.75,
+            "y": 8180
+          }
+        },
+        {
+          "id": "1775532749601",
+          "code": "WRITE_TOOLS_TO_BLUE",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Write Tools To Blue",
+            "referenceableBlockId": "INDEX_IN_BULK"
+          },
+          "outcomes": {
+            "success": "1775532749602"
+          },
+          "inputs": [
+            {
+              "id": "1775532749601_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{'ORA_AI_STUDIO_TOOLS_BLUE'}}"
+            },
+            {
+              "id": "1775532749601_data",
+              "name": "data",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_TOOLS_SELECTED_PAYLOAD.$output.result}}"
+            }
+          ],
+          "diagram": {
+            "x": 6081.75,
+            "y": 8180
+          }
+        },
+        {
+          "id": "1775532749606",
+          "code": "WRITE_AGENTS_TO_BLUE",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Write Agents To Blue",
+            "referenceableBlockId": "INDEX_IN_BULK"
+          },
+          "outcomes": {
+            "success": "1775532749607"
+          },
+          "inputs": [
+            {
+              "id": "1775532749606_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{'ORA_AI_STUDIO_AGENTS_BLUE'}}"
+            },
+            {
+              "id": "1775532749606_data",
+              "name": "data",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_AGENTS_SELECTED_PAYLOAD.$output.result}}"
+            }
+          ],
+          "diagram": {
+            "x": 6531.75,
+            "y": 8180
+          }
+        },
+        {
+          "id": "1775532749616",
+          "code": "WRITE_DEEPLINKS_TO_BLUE",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Write Deeplinks To Blue",
+            "referenceableBlockId": "INDEX_IN_BULK"
+          },
+          "outcomes": {
+            "success": "1775532749617"
+          },
+          "inputs": [
+            {
+              "id": "1775532749616_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{'ORA_AI_STUDIO_DEEPLINKS_BLUE'}}"
+            },
+            {
+              "id": "1775532749616_data",
+              "name": "data",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_DEEPLINKS_SELECTED_PAYLOAD.$output.result}}"
+            }
+          ],
+          "diagram": {
+            "x": 6981.75,
+            "y": 8180
+          }
+        },
+        {
+          "id": "1775532749627",
+          "code": "WRITE_POLICY_TO_GREEN",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Write Policy To Green",
+            "referenceableBlockId": "INDEX_IN_BULK"
+          },
+          "outcomes": {
+            "success": "1775532749628"
+          },
+          "inputs": [
+            {
+              "id": "1775532749627_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{'ORA_AI_STUDIO_POLICY_GREEN'}}"
+            },
+            {
+              "id": "1775532749627_data",
+              "name": "data",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_POLICY_SELECTED_PAYLOAD.$output.result}}"
+            }
+          ],
+          "diagram": {
+            "x": 5631.75,
+            "y": 8402
+          }
+        },
+        {
+          "id": "1775532749602",
+          "code": "WRITE_TOOLS_TO_GREEN",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Write Tools To Green",
+            "referenceableBlockId": "INDEX_IN_BULK"
+          },
+          "outcomes": {
+            "success": "1775532749628"
+          },
+          "inputs": [
+            {
+              "id": "1775532749602_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{'ORA_AI_STUDIO_TOOLS_GREEN'}}"
+            },
+            {
+              "id": "1775532749602_data",
+              "name": "data",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_TOOLS_SELECTED_PAYLOAD.$output.result}}"
+            }
+          ],
+          "diagram": {
+            "x": 6081.75,
+            "y": 8402
+          }
+        },
+        {
+          "id": "1775532749607",
+          "code": "WRITE_AGENTS_TO_GREEN",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Write Agents To Green",
+            "referenceableBlockId": "INDEX_IN_BULK"
+          },
+          "outcomes": {
+            "success": "1775532749628"
+          },
+          "inputs": [
+            {
+              "id": "1775532749607_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{'ORA_AI_STUDIO_AGENTS_GREEN'}}"
+            },
+            {
+              "id": "1775532749607_data",
+              "name": "data",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_AGENTS_SELECTED_PAYLOAD.$output.result}}"
+            }
+          ],
+          "diagram": {
+            "x": 6531.75,
+            "y": 8402
+          }
+        },
+        {
+          "id": "1775532749617",
+          "code": "WRITE_DEEPLINKS_TO_GREEN",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Write Deeplinks To Green",
+            "referenceableBlockId": "INDEX_IN_BULK"
+          },
+          "outcomes": {
+            "success": "1775532749628"
+          },
+          "inputs": [
+            {
+              "id": "1775532749617_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{'ORA_AI_STUDIO_DEEPLINKS_GREEN'}}"
+            },
+            {
+              "id": "1775532749617_data",
+              "name": "data",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_DEEPLINKS_SELECTED_PAYLOAD.$output.result}}"
+            }
+          ],
+          "diagram": {
+            "x": 6981.75,
+            "y": 8402
+          }
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "rootNode": "start_1774735114081",
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "description": "Start of data pipeline",
+                    "name": "Start"
+                  },
+                  "diagram": {
+                    "x": 7788.967818966515,
+                    "y": 6744.285040967278
+                  },
+                  "outcomes": {
+                    "success": "1774735114083"
+                  },
+                  "id": "start_1774735114081",
+                  "code": "START",
+                  "type": "START",
+                  "inputs": []
+                },
+                {
+                  "metadata": {
+                    "name": "Fetch BOs",
+                    "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOBUSINESSOBJECTSBOSS",
+                    "functionName": "List_All"
+                  },
+                  "diagram": {
+                    "x": 7639.467818966515,
+                    "y": 6895.285040967272
+                  },
+                  "outcomes": {
+                    "success": "1774735114084"
+                  },
+                  "id": "1774735114083",
+                  "code": "FETCH_BOS",
+                  "type": "BO_FUNCTION",
+                  "inputs": [
+                    {
+                      "id": "1772467127057_limit",
+                      "name": "limit",
+                      "type": "string",
+                      "value": "{{$context.$variables.fetchSize}} "
+                    },
+                    {
+                      "id": "1772467127057_offset",
+                      "name": "offset",
+                      "type": "string",
+                      "value": "{{$context.$variables.boOffset}} "
+                    }
+                  ]
+                },
+                {
+                  "metadata": {
+                    "name": "Update BO iterators"
+                  },
+                  "diagram": {
+                    "x": 7639.467818966515,
+                    "y": 7117.285040967271
+                  },
+                  "outcomes": {
+                    "success": "1774735114086"
+                  },
+                  "id": "1774735114084",
+                  "code": "UPDATE_BO_ITERATORS",
+                  "type": "SET_FIELDS",
+                  "inputs": [
+                    {
+                      "id": "fe460e60-d46f-4f47-a621-dce83c1a9e67",
+                      "name": "hasMoreBO",
+                      "value": "{{$context.$nodes.FETCH_AND_INDEX_BOS.FETCH_BOS.$output.hasMore}}"
+                    },
+                    {
+                      "id": "407a466b-8eb3-4c9c-9777-4efaff35d26b",
+                      "name": "boOffset",
+                      "value": "{{$context.$variables.boOffset + $context.$nodes.FETCH_AND_INDEX_BOS.FETCH_BOS.$output.items.length}}"
+                    }
+                  ]
+                },
+                {
+                  "metadata": {
+                    "name": "Create BO Payload",
+                    "returnType": "array",
+                    "sourceCode": "const buildEmbeddingText = (obj) => {\n  let content = \"\";\n  let hasExample = false;\n\n  if (obj && typeof obj === \"object\") {\n    if (obj.name) {\n      content += \"Name: \" + obj.name + \"\\n\";\n    }\n\n    if (obj.description) {\n      content += \"Description: \" + obj.description + \"\\n\";\n    }\n\n    let objectProps = null;\n\n    if (obj.objectProperties) {\n      if (typeof obj.objectProperties === \"string\") {\n        try {\n          objectProps = JSON.parse(obj.objectProperties);\n        } catch (e) {\n          objectProps = null;\n        }\n      } else if (typeof obj.objectProperties === \"object\") {\n        objectProps = obj.objectProperties;\n      }\n    }\n\n    if (objectProps && objectProps.tools && objectProps.tools.length) {\n      content += \"Tools:\\n\";\n\n      for (let i = 0; i < objectProps.tools.length; i++) {\n        const tool = objectProps.tools[i];\n        if (!tool) continue;\n\n        if (tool.sampleQueries && Array.isArray(tool.sampleQueries) && tool.sampleQueries.length > 0) {\n          hasExample = true;\n        }\n\n        content += \"- \";\n        if (tool.name) {\n          content += tool.name;\n        }\n\n        if (tool.description) {\n          content += \": \" + tool.description;\n        }\n\n        content += \"\\n\";\n      }\n    }\n  }\n\n  return {\n    content: content.trim(),\n    hasExample: hasExample\n  };\n};\n\nlet allResult = [];\n\ntry {\n  const bos = $context.$nodes?.FETCH_BOS?.$output?.items || [];\n\n  for (let i = 0; i < bos.length; i++) {\n    const bo = bos[i];\n    if (!bo || bo.objectCode === undefined || bo.objectCode === null) continue;\n\n    const built = buildEmbeddingText(bo);\n\n    allResult.push({\n      documentId: bo.objectCode,\n      parentObjectId: \"artifacts\",\n      content: built.content,\n      metaData: {\n        code: bo.objectCode,\n        hasExample: built.hasExample\n      }\n    });\n  }\n\n} catch (error) {\n  allResult = [];\n}\n\nreturn allResult;"
+                  },
+                  "diagram": {
+                    "x": 7639.467818966515,
+                    "y": 7339.285040967269
+                  },
+                  "outcomes": {
+                    "success": "1774735114087"
+                  },
+                  "id": "1774735114086",
+                  "code": "CREATE_BO_PAYLOAD",
+                  "type": "CODE",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "metadata": {
+                    "name": "Write to db",
+                    "referenceableBlockId": "INDEX_IN_BULK"
+                  },
+                  "diagram": {
+                    "x": 7639.467818966515,
+                    "y": 7561.285040967266
+                  },
+                  "outcomes": {
+                    "success": "end_1774735114081"
+                  },
+                  "id": "1774735114087",
+                  "code": "WRITE_TO_DB",
+                  "type": "REFERENCE",
+                  "inputs": [
+                    {
+                      "id": "1774550555351_idProperty",
+                      "name": "idProperty",
+                      "type": "string",
+                      "value": "objectCode"
+                    },
+                    {
+                      "id": "1774550555351_indexName",
+                      "name": "indexName",
+                      "type": "string",
+                      "value": "{{'ORA_AI_STUDIO_BO_'+ $context.$nodes.GET_NEW_INDEX_PREFIX.$output.result}}"
+                    },
+                    {
+                      "id": "1774550555351_data",
+                      "name": "data",
+                      "type": "array",
+                      "value": "{{$context.$nodes.FETCH_AND_INDEX_BOS.CREATE_BO_PAYLOAD.$output.result}}"
+                    }
+                  ]
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "id": "end_1774735114081",
+                  "code": "END",
+                  "type": "END",
+                  "inputs": []
+                }
+              ]
+            },
+            "name": "Fetch And Index BOs"
+          },
+          "outcomes": {
+            "success": "1775532175737"
+          },
+          "code": "FETCH_AND_INDEX_BOS",
+          "id": "1774735114081",
+          "inputs": [
+            {
+              "id": "1772467086764_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.hasMoreBO}}"
+            }
+          ],
+          "type": "WHILE",
+          "diagram": {
+            "x": 7489.467818966515,
+            "y": 6664.285040967278,
+            "width": 600,
+            "height": 999
+          }
+        },
+        {
+          "id": "1774769210039",
+          "code": "FETCH_AND_INDEX_WORKFLOWS",
+          "type": "WHILE",
+          "metadata": {
+            "name": "Fetch and index workflows",
+            "dataPipeline": {
+              "rootNode": "start_1774769210039",
+              "pipelineNodes": [
+                {
+                  "id": "start_1774769210039",
+                  "code": "START",
+                  "type": "START",
+                  "metadata": {
+                    "description": "Start of data pipeline",
+                    "name": "Start"
+                  },
+                  "diagram": {
+                    "x": 8538.967818966514,
+                    "y": 6744.285040967278
+                  },
+                  "outcomes": {
+                    "success": "1774769258089"
+                  },
+                  "inputs": []
+                },
+                {
+                  "id": "1774769258089",
+                  "code": "FETCH_AGENT_TEAMS",
+                  "type": "BO_FUNCTION",
+                  "metadata": {
+                    "name": "Fetch Agent Teams",
+                    "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOAGENTTEAMSV2",
+                    "functionName": "List_workflows"
+                  },
+                  "diagram": {
+                    "x": 8389.467818966514,
+                    "y": 6895.285040967272
+                  },
+                  "outcomes": {
+                    "success": "1774769350370"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774769258089_limit",
+                      "name": "limit",
+                      "type": "string",
+                      "value": "{{$context.$variables.fetchSize}}"
+                    },
+                    {
+                      "id": "1774769258089_offset",
+                      "name": "offset",
+                      "type": "string",
+                      "value": "{{$context.$variables.workflowOffset}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "1774769350370",
+                  "code": "UPDATE_AGENT_TEAM_ITERATORS",
+                  "type": "SET_FIELDS",
+                  "metadata": {
+                    "name": "Update Agent Team iterators"
+                  },
+                  "diagram": {
+                    "x": 8389.467818966514,
+                    "y": 7117.285040967271
+                  },
+                  "outcomes": {
+                    "success": "1774769672172"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774769350370_hasMoreWorkflow",
+                      "name": "hasMoreWorkflow",
+                      "value": "{{$context.$nodes.FETCH_AND_INDEX_WORKFLOWS.FETCH_AGENT_TEAMS.$output.hasMore}}"
+                    },
+                    {
+                      "id": "1774769350370_workflowOffset",
+                      "name": "workflowOffset",
+                      "value": "{{$context.$variables.workflowOffset + $context.$nodes.FETCH_AND_INDEX_WORKFLOWS.FETCH_AGENT_TEAMS.$output.items.length}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "1774769672172",
+                  "code": "CREATE_WORKFLOW_PAYLOAD",
+                  "type": "CODE",
+                  "metadata": {
+                    "name": "Create Workflow Payload",
+                    "returnType": "array",
+                    "sourceCode": "let allResult = [];\n\nconst buildEmbeddingText = ( obj) => {\n  let content = \"\";\n  if( obj && typeof obj === \"object\") {\n    if( obj.name) {\n      content += \"Name: \" + obj.name + \"\\n\";\n    }\n    if( obj.description) {\n      content += \"Description: \" + obj.description + \"\\n\";\n    }\n  }\n  return content.trim();\n};\n\ntry {\n  // Safely access the items array from FETCH_AGENT_TEAMS output\n  \n  const agentTeams = $context.$nodes?.FETCH_AGENT_TEAMS?.$output?.items || [];\n  allResult = agentTeams.filter( wf => wf?.workflowCode !== undefined && wf?.workflowCode !== null && wf?.hiddenFlag !== true ).map( wf => ( {\n    documentId: wf.workflowCode,\n    parentObjectId: \"artifacts\",\n    content: buildEmbeddingText(wf),\n    metaData: {\n      code: wf.workflowCode,\n      aiAppsCompatibleFlag: wf.aiAppsCompatibleFlag\n    }\n  }));\n}\ncatch( error) {\n  allResult = [];\n}\nreturn allResult;"
+                  },
+                  "diagram": {
+                    "x": 8389.467818966514,
+                    "y": 7339.285040967269
+                  },
+                  "outcomes": {
+                    "success": "1774770034110"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "id": "1774770034110",
+                  "code": "WRITE_AGENTS_TEAMS_TO_DB",
+                  "type": "REFERENCE",
+                  "metadata": {
+                    "name": "Write Agents teams to db",
+                    "referenceableBlockId": "INDEX_IN_BULK"
+                  },
+                  "diagram": {
+                    "x": 8389.467818966514,
+                    "y": 7561.285040967266
+                  },
+                  "outcomes": {
+                    "success": "end_1774769210039"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774770034110_indexName",
+                      "name": "indexName",
+                      "type": "string",
+                      "value": "{{'ORA_AI_STUDIO_WORKFLOWS_'+ $context.$nodes.GET_NEW_INDEX_PREFIX.$output.result}}"
+                    },
+                    {
+                      "id": "1774770034110_data",
+                      "name": "data",
+                      "type": "array",
+                      "value": "{{$context.$nodes.FETCH_AND_INDEX_WORKFLOWS.CREATE_WORKFLOW_PAYLOAD.$output.result}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "end_1774769210039",
+                  "code": "END",
+                  "type": "END",
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "inputs": []
+                }
+              ]
+            }
+          },
+          "diagram": {
+            "x": 8239.467818966514,
+            "y": 6664.285040967278,
+            "width": 600,
+            "height": 999
+          },
+          "outcomes": {
+            "success": "1775532175737"
+          },
+          "inputs": [
+            {
+              "id": "1774769210039_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.hasMoreWorkflow}}"
+            }
+          ]
+        },
+        {
+          "id": "1774983716044",
+          "code": "FETCH_AND_INDEX_TOPICS",
+          "type": "WHILE",
+          "metadata": {
+            "name": "Fetch and index topics",
+            "dataPipeline": {
+              "rootNode": "start_1774983716044",
+              "pipelineNodes": [
+                {
+                  "id": "start_1774983716044",
+                  "code": "START",
+                  "type": "START",
+                  "metadata": {
+                    "description": "Start of data pipeline",
+                    "name": "Start"
+                  },
+                  "diagram": {
+                    "x": 9288.967818966514,
+                    "y": 6744.285040967278
+                  },
+                  "outcomes": {
+                    "success": "1774983743854"
+                  },
+                  "inputs": []
+                },
+                {
+                  "id": "1774983743854",
+                  "code": "FETCH_TOPICS",
+                  "type": "BO_FUNCTION",
+                  "metadata": {
+                    "name": "Fetch Topics",
+                    "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOTOPICSV2",
+                    "functionName": "List_topics"
+                  },
+                  "diagram": {
+                    "x": 9139.467818966514,
+                    "y": 6895.285040967272
+                  },
+                  "outcomes": {
+                    "success": "1774983916166"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774983743854_limit",
+                      "name": "limit",
+                      "type": "string",
+                      "value": "{{$context.$variables.fetchSize}}"
+                    },
+                    {
+                      "id": "1774983743854_offset",
+                      "name": "offset",
+                      "type": "string",
+                      "value": "{{$context.$variables.topicsOffset}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "1774983916166",
+                  "code": "UPDATE_TOPICS_ITERATORS",
+                  "type": "SET_FIELDS",
+                  "metadata": {
+                    "name": "Update Topics Iterators"
+                  },
+                  "diagram": {
+                    "x": 9139.467818966514,
+                    "y": 7117.285040967271
+                  },
+                  "outcomes": {
+                    "success": "1774984064705"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774983916166_topicsOffset",
+                      "name": "topicsOffset",
+                      "value": "{{$context.$variables.topicsOffset+ $context.$nodes.FETCH_AND_INDEX_TOPICS.FETCH_TOPICS.$output.items.length}}"
+                    },
+                    {
+                      "id": "1774983916166_hasMoreTopics",
+                      "name": "hasMoreTopics",
+                      "value": "{{$context.$nodes.FETCH_AND_INDEX_TOPICS.FETCH_TOPICS.$output.hasMore}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "1774984064705",
+                  "code": "CREATE_TOPICS_PAYLOAD",
+                  "type": "CODE",
+                  "metadata": {
+                    "name": "Create Topics Payload",
+                    "returnType": "array",
+                    "sourceCode": "let allResult = [];\n\nconst buildEmbeddingText = ( obj) => {\n  let content = \"\";\n  if( obj && typeof obj === \"object\") {\n    if( obj.name) {\n      content += \"Name: \" + obj.name + \"\\n\";\n    }\n    if( obj.description) {\n      content += \"Description: \" + obj.description + \"\\n\";\n    }\n  }\n  return content.trim();\n};\n\ntry {\n  // Safely access the items array from FETCH_AGENT_TEAMS output\n  \n  const entities = $context.$nodes?.FETCH_TOPICS?.$output?.items || [];\n  allResult = entities.filter( entity => entity?.topicCode!== undefined && entity?.topicCode !== null).map( entity => ( {\n    documentId: entity.topicCode,\n    parentObjectId: \"artifacts\",\n    content: buildEmbeddingText(entity),\n    metaData: {\n      code: entity.topicCode\n    }\n  }));\n}\ncatch( error) {\n  allResult = [];\n}\nreturn allResult;"
+                  },
+                  "diagram": {
+                    "x": 9139.467818966514,
+                    "y": 7339.285040967269
+                  },
+                  "outcomes": {
+                    "success": "1774984209682"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "id": "1774984209682",
+                  "code": "WRITE_TOPICS_TO_DB",
+                  "type": "REFERENCE",
+                  "metadata": {
+                    "name": "Write Topics to DB",
+                    "referenceableBlockId": "INDEX_IN_BULK"
+                  },
+                  "diagram": {
+                    "x": 9139.467818966514,
+                    "y": 7561.285040967266
+                  },
+                  "outcomes": {
+                    "success": "end_1774983716044"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774770034110_indexName",
+                      "name": "indexName",
+                      "type": "string",
+                      "value": "{{'ORA_AI_STUDIO_TOPICS_'+ $context.$nodes.GET_NEW_INDEX_PREFIX.$output.result}}"
+                    },
+                    {
+                      "id": "1774770034110_data",
+                      "name": "data",
+                      "type": "array",
+                      "value": "{{$context.$nodes.FETCH_AND_INDEX_TOPICS.CREATE_TOPICS_PAYLOAD.$output.result}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "end_1774983716044",
+                  "code": "END",
+                  "type": "END",
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "inputs": []
+                }
+              ]
+            }
+          },
+          "diagram": {
+            "x": 8989.467818966514,
+            "y": 6664.285040967278,
+            "width": 600,
+            "height": 999
+          },
+          "outcomes": {
+            "success": "1775532175737"
+          },
+          "inputs": [
+            {
+              "id": "1774983716044_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.hasMoreTopics}}"
+            }
+          ]
+        },
+        {
+          "id": "1774990454828",
+          "code": "FETCH_AND_INDEX_APPS",
+          "type": "WHILE",
+          "metadata": {
+            "name": "Fetch and index apps",
+            "dataPipeline": {
+              "rootNode": "start_1774990454828",
+              "pipelineNodes": [
+                {
+                  "id": "start_1774990454828",
+                  "code": "START",
+                  "type": "START",
+                  "metadata": {
+                    "description": "Start of data pipeline",
+                    "name": "Start"
+                  },
+                  "diagram": {
+                    "x": 10038.967818966514,
+                    "y": 6744.285040967278
+                  },
+                  "outcomes": {
+                    "success": "1774990454830"
+                  },
+                  "inputs": []
+                },
+                {
+                  "id": "1774990454830",
+                  "code": "FETCH_APPS",
+                  "type": "BO_FUNCTION",
+                  "metadata": {
+                    "name": "Fetch Apps",
+                    "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOAPPLICATIONSV2",
+                    "functionName": "List_applications"
+                  },
+                  "diagram": {
+                    "x": 9889.467818966514,
+                    "y": 6895.285040967272
+                  },
+                  "outcomes": {
+                    "success": "1774990454831"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774990454830_limit",
+                      "name": "limit",
+                      "type": "string",
+                      "value": "{{$context.$variables.fetchSize}}"
+                    },
+                    {
+                      "id": "1774990454830_offset",
+                      "name": "offset",
+                      "type": "string",
+                      "value": "{{$context.$variables.appsOffset}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "1774990454831",
+                  "code": "UPDATE_APPS_ITERATORS",
+                  "type": "SET_FIELDS",
+                  "metadata": {
+                    "name": "Update Apps Iterators"
+                  },
+                  "diagram": {
+                    "x": 9889.467818966514,
+                    "y": 7117.285040967271
+                  },
+                  "outcomes": {
+                    "success": "1774990454832"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774990454831_hasMoreApps",
+                      "name": "hasMoreApps",
+                      "value": "{{$context.$nodes.FETCH_AND_INDEX_APPS.FETCH_APPS.$output.hasMore}}"
+                    },
+                    {
+                      "id": "1774990454831_appsOffset",
+                      "name": "appsOffset",
+                      "value": "{{$context.$variables.appsOffset+ $context.$nodes.FETCH_AND_INDEX_APPS.FETCH_APPS.$output.items.length}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "1774990454832",
+                  "code": "CREATE_APPS_PAYLOAD",
+                  "type": "CODE",
+                  "metadata": {
+                    "name": "Create Apps Payload",
+                    "returnType": "array",
+                    "sourceCode": "let allResult = [];\n\nconst buildEmbeddingText = ( obj) => {\n  let content = \"\";\n  if( obj && typeof obj === \"object\") {\n    if( obj.name) {\n      content += \"Name: \" + obj.name + \"\\n\";\n    }\n    if( obj.description) {\n      content += \"Description: \" + obj.description + \"\\n\";\n    }\n  }\n  return content.trim();\n};\n\ntry {\n  // Safely access the items array from FETCH_AGENT_TEAMS output\n  \n  const entities = $context.$nodes?.FETCH_APPS?.$output?.items || [];\n  allResult = entities.filter( entity => entity?.code!== undefined && entity?.code !== null).map( entity => ( {\n    documentId: entity.code,\n    parentObjectId: \"artifacts\",\n    content: buildEmbeddingText(entity),\n    metaData: {\n      code: entity.code\n    }\n  }));\n}\ncatch( error) {\n  allResult = [];\n}\nreturn allResult;"
+                  },
+                  "diagram": {
+                    "x": 9889.467818966514,
+                    "y": 7339.285040967269
+                  },
+                  "outcomes": {
+                    "success": "1774990454833"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "id": "1774990454833",
+                  "code": "WRITE_APPS_TO_DB",
+                  "type": "REFERENCE",
+                  "metadata": {
+                    "name": "Write Apps to DB",
+                    "referenceableBlockId": "INDEX_IN_BULK"
+                  },
+                  "diagram": {
+                    "x": 9889.467818966514,
+                    "y": 7561.285040967266
+                  },
+                  "outcomes": {
+                    "success": "end_1774990454828"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774770034110_indexName",
+                      "name": "indexName",
+                      "type": "string",
+                      "value": "{{'ORA_AI_STUDIO_APPS_'+ $context.$nodes.GET_NEW_INDEX_PREFIX.$output.result}}"
+                    },
+                    {
+                      "id": "1774770034110_data",
+                      "name": "data",
+                      "type": "array",
+                      "value": "{{$context.$nodes.FETCH_AND_INDEX_APPS.CREATE_APPS_PAYLOAD.$output.result}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "end_1774990454828",
+                  "code": "END",
+                  "type": "END",
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "inputs": []
+                }
+              ]
+            }
+          },
+          "diagram": {
+            "x": 9739.467818966514,
+            "y": 6664.285040967278,
+            "width": 600,
+            "height": 999
+          },
+          "outcomes": {
+            "success": "1775532175737"
+          },
+          "inputs": [
+            {
+              "id": "1774983716044_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.hasMoreApps}}"
+            }
+          ]
+        },
+        {
+          "id": "1775532465797",
+          "code": "FETCH_AND_INDEX_TOOLS",
+          "type": "WHILE",
+          "metadata": {
+            "name": "Fetch and index Tools",
+            "dataPipeline": {
+              "rootNode": "start_1775532465797",
+              "pipelineNodes": [
+                {
+                  "id": "start_1775532465797",
+                  "code": "START",
+                  "type": "START",
+                  "metadata": {
+                    "description": "Start of data pipeline",
+                    "name": "Start"
+                  },
+                  "diagram": {
+                    "x": 7789.288765992505,
+                    "y": 8183.364919409083
+                  },
+                  "outcomes": {
+                    "success": "1775532465799"
+                  },
+                  "inputs": []
+                },
+                {
+                  "id": "1775532465799",
+                  "code": "FETCH_TOOLS",
+                  "type": "BO_FUNCTION",
+                  "metadata": {
+                    "description": "",
+                    "name": "Fetch Tools",
+                    "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOTOOLSV2",
+                    "functionName": "List_tools"
+                  },
+                  "diagram": {
+                    "x": 7639.788765992505,
+                    "y": 8334.364919409083
+                  },
+                  "outcomes": {
+                    "success": "1775532465800"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774970158737_limit",
+                      "name": "limit",
+                      "type": "string",
+                      "value": "{{$context.$variables.fetchSize}}"
+                    },
+                    {
+                      "id": "1774970158737_offset",
+                      "name": "offset",
+                      "type": "string",
+                      "value": "{{$context.$variables.toolOffset}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "1775532465800",
+                  "code": "UPDATE_TOOLS_ITERATORS",
+                  "type": "SET_FIELDS",
+                  "metadata": {
+                    "name": "Update Tools Iterators"
+                  },
+                  "diagram": {
+                    "x": 7639.788765992505,
+                    "y": 8556.364919409083
+                  },
+                  "outcomes": {
+                    "success": "1775532465801"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774970329885_hasMoreTools",
+                      "name": "hasMoreTools",
+                      "value": "{{$context.$nodes.FETCH_AND_INDEX_TOOLS.FETCH_TOOLS.$output.hasMore}}"
+                    },
+                    {
+                      "id": "1774970329885_toolOffset",
+                      "name": "toolOffset",
+                      "value": "{{$context.$variables.toolOffset + $context.$nodes.FETCH_AND_INDEX_TOOLS.FETCH_TOOLS.$output.items.length}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "1775532465801",
+                  "code": "CREATE_TOOLS_PAYLOAD",
+                  "type": "CODE",
+                  "metadata": {
+                    "name": "Create Tools Payload",
+                    "returnType": "array",
+                    "sourceCode": "let allResult = [];\n\nconst buildEmbeddingText = ( obj) => {\n  let content = \"\";\n  if( obj && typeof obj === \"object\") {\n    if( obj.name) {\n      content += \"Name: \" + obj.name + \"\\n\";\n    }\n    if( obj.description) {\n      content += \"Description: \" + obj.description + \"\\n\";\n    }\n  }\n  return content.trim();\n};\n\ntry {\n  // Safely access the items array from FETCH_AGENT_TEAMS output\n  \n  const entities = $context.$nodes?.FETCH_TOOLS?.$output?.items || [];\n  allResult = entities.filter( entity => entity?.toolCode!== undefined && entity?.toolCode !== null).map( entity => ( {\n    documentId: entity.toolCode,\n    parentObjectId: \"artifacts\",\n    content: buildEmbeddingText(entity),\n    metaData: {\n      code: entity.toolCode,\n      type: entity.type\n    }\n  }));\n}\ncatch( error) {\n  allResult = [];\n}\nreturn allResult;"
+                  },
+                  "diagram": {
+                    "x": 7639.788765992505,
+                    "y": 8778.364919409083
+                  },
+                  "outcomes": {
+                    "success": "1775532465802"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "id": "1775532465802",
+                  "code": "WRITE_TOOLS_TO_DB_1",
+                  "type": "REFERENCE",
+                  "metadata": {
+                    "name": "Write Tools to db 1",
+                    "referenceableBlockId": "INDEX_IN_BULK"
+                  },
+                  "diagram": {
+                    "x": 7639.788765992505,
+                    "y": 9000.364919409083
+                  },
+                  "outcomes": {
+                    "success": "end_1775532465797"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774770034110_indexName",
+                      "name": "indexName",
+                      "type": "string",
+                      "value": "{{'ORA_AI_STUDIO_TOOLS_'+ $context.$nodes.GET_NEW_INDEX_PREFIX.$output.result}}"
+                    },
+                    {
+                      "id": "1774770034110_data",
+                      "name": "data",
+                      "type": "array",
+                      "value": "{{$context.$nodes.FETCH_AND_INDEX_TOOLS.CREATE_TOOLS_PAYLOAD.$output.result}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "end_1775532465797",
+                  "code": "END",
+                  "type": "END",
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "inputs": []
+                }
+              ]
+            }
+          },
+          "diagram": {
+            "x": 7489.788765992505,
+            "y": 8103.364919409083,
+            "width": 600,
+            "height": 999
+          },
+          "outcomes": {
+            "success": "1774462521555"
+          },
+          "inputs": [
+            {
+              "id": "1774938011995_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.hasMoreTools}}"
+            }
+          ]
+        },
+        {
+          "id": "1775532614747",
+          "code": "FETCH_AND_INDEX_AGENTS",
+          "type": "WHILE",
+          "metadata": {
+            "name": "Fetch and index agents",
+            "dataPipeline": {
+              "rootNode": "start_1775532614747",
+              "pipelineNodes": [
+                {
+                  "id": "start_1775532614747",
+                  "code": "START",
+                  "type": "START",
+                  "metadata": {
+                    "description": "Start of data pipeline",
+                    "name": "Start"
+                  },
+                  "diagram": {
+                    "x": 8539.288765992505,
+                    "y": 8183.364919409083
+                  },
+                  "outcomes": {
+                    "success": "1775532614749"
+                  },
+                  "inputs": []
+                },
+                {
+                  "id": "1775532614749",
+                  "code": "FETCH_AGENTS",
+                  "type": "BO_FUNCTION",
+                  "metadata": {
+                    "name": "Fetch Agents",
+                    "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOAGENTSV2",
+                    "functionName": "List_agents"
+                  },
+                  "diagram": {
+                    "x": 8389.788765992505,
+                    "y": 8334.364919409083
+                  },
+                  "outcomes": {
+                    "success": "1775532614750"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774978801922_limit",
+                      "name": "limit",
+                      "type": "string",
+                      "value": "{{$context.$variables.fetchSize}}"
+                    },
+                    {
+                      "id": "1774978801922_offset",
+                      "name": "offset",
+                      "type": "string",
+                      "value": "{{$context.$variables.agentOffset}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "1775532614750",
+                  "code": "UPDATE_AGENT_ITERATORS",
+                  "type": "SET_FIELDS",
+                  "metadata": {
+                    "name": "Update Agent Iterators"
+                  },
+                  "diagram": {
+                    "x": 8389.788765992505,
+                    "y": 8556.364919409083
+                  },
+                  "outcomes": {
+                    "success": "1775532614751"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774978962983_hasMoreAgents",
+                      "name": "hasMoreAgents",
+                      "value": "{{$context.$nodes.FETCH_AND_INDEX_AGENTS.FETCH_AGENTS.$output.hasMore}}"
+                    },
+                    {
+                      "id": "1774978962983_agentOffset",
+                      "name": "agentOffset",
+                      "value": "{{$context.$variables.agentOffset + $context.$nodes.FETCH_AND_INDEX_AGENTS.FETCH_AGENTS.$output.items.length}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "1775532614751",
+                  "code": "CREATE_AGENTS_PAYLOAD",
+                  "type": "CODE",
+                  "metadata": {
+                    "name": "Create Agents Payload",
+                    "returnType": "array",
+                    "sourceCode": "let allResult = [];\n\nconst buildEmbeddingText = ( obj) => {\n  let content = \"\";\n  if( obj && typeof obj === \"object\") {\n    if( obj.name) {\n      content += \"Name: \" + obj.name + \"\\n\";\n    }\n    if( obj.description) {\n      content += \"Description: \" + obj.description + \"\\n\";\n    }\n  }\n  return content.trim();\n};\n\ntry {\n  // Safely access the items array from FETCH_AGENT_TEAMS output\n  \n  const entities = $context.$nodes?.FETCH_AGENTS?.$output?.items || [];\n  allResult = entities.filter( entity => entity?.agentCode!== undefined && entity?.agentCode !== null).map( entity => ( {\n    documentId: entity.agentCode,\n    parentObjectId: \"artifacts\",\n    content: buildEmbeddingText(entity),\n    metaData: {\n      code: entity.agentCode\n    }\n  }));\n}\ncatch( error) {\n  allResult = [];\n}\nreturn allResult;"
+                  },
+                  "diagram": {
+                    "x": 8389.788765992505,
+                    "y": 8778.364919409083
+                  },
+                  "outcomes": {
+                    "success": "1775532614752"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "id": "1775532614752",
+                  "code": "WRITE_AGENTS_TO_DB",
+                  "type": "REFERENCE",
+                  "metadata": {
+                    "name": "Write Agents to db",
+                    "referenceableBlockId": "INDEX_IN_BULK"
+                  },
+                  "diagram": {
+                    "x": 8389.788765992505,
+                    "y": 9000.364919409083
+                  },
+                  "outcomes": {
+                    "success": "end_1775532614747"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774770034110_indexName",
+                      "name": "indexName",
+                      "type": "string",
+                      "value": "{{'ORA_AI_STUDIO_AGENTS_'+ $context.$nodes.GET_NEW_INDEX_PREFIX.$output.result}}"
+                    },
+                    {
+                      "id": "1774770034110_data",
+                      "name": "data",
+                      "type": "array",
+                      "value": "{{$context.$nodes.FETCH_AND_INDEX_AGENTS.CREATE_AGENTS_PAYLOAD.$output.result}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "end_1775532614747",
+                  "code": "END",
+                  "type": "END",
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "inputs": []
+                }
+              ]
+            }
+          },
+          "diagram": {
+            "x": 8239.788765992505,
+            "y": 8103.364919409083,
+            "width": 600,
+            "height": 999
+          },
+          "outcomes": {
+            "success": "1774462521555"
+          },
+          "inputs": [
+            {
+              "id": "1774977185140_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.hasMoreAgents}}"
+            }
+          ]
+        },
+        {
+          "id": "1775532682721",
+          "code": "FETCH_AND_INDEX_DEEPLINKS",
+          "type": "WHILE",
+          "metadata": {
+            "name": "Fetch and index deeplinks",
+            "dataPipeline": {
+              "rootNode": "start_1775532682721",
+              "pipelineNodes": [
+                {
+                  "id": "start_1775532682721",
+                  "code": "START",
+                  "type": "START",
+                  "metadata": {
+                    "description": "Start of data pipeline",
+                    "name": "Start"
+                  },
+                  "diagram": {
+                    "x": 9289.28876599251,
+                    "y": 8183.364919409083
+                  },
+                  "outcomes": {
+                    "success": "1775532682723"
+                  },
+                  "inputs": []
+                },
+                {
+                  "id": "1775532682723",
+                  "code": "FETCH_DEEPLINKS",
+                  "type": "BO_FUNCTION",
+                  "metadata": {
+                    "name": "Fetch Deeplinks",
+                    "businessObjectCode": "ORA_HCM_OTHER_AISTUDIODEEPLINKSV2",
+                    "functionName": "List_deepLinks"
+                  },
+                  "diagram": {
+                    "x": 9139.78876599251,
+                    "y": 8334.364919409083
+                  },
+                  "outcomes": {
+                    "success": "1775532682724"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774989047468_limit",
+                      "name": "limit",
+                      "type": "string",
+                      "value": "{{$context.$variables.fetchSize}}"
+                    },
+                    {
+                      "id": "1774989047468_offset",
+                      "name": "offset",
+                      "type": "string",
+                      "value": "{{$context.$variables.deepLinkOffset}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "1775532682724",
+                  "code": "UPDATE_DEEPLINK_ITERATORS",
+                  "type": "SET_FIELDS",
+                  "metadata": {
+                    "name": "Update Deeplink Iterators"
+                  },
+                  "diagram": {
+                    "x": 9139.78876599251,
+                    "y": 8556.364919409083
+                  },
+                  "outcomes": {
+                    "success": "1775532682725"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774989047469_deepLinkOffset",
+                      "name": "deepLinkOffset",
+                      "value": "{{$context.$variables.topicsOffset+ $context.$nodes.FETCH_AND_INDEX_DEEPLINKS.FETCH_DEEPLINKS.$output.items.length}}"
+                    },
+                    {
+                      "id": "1774989047469_hasMoreDeeplinks",
+                      "name": "hasMoreDeeplinks",
+                      "value": "{{$context.$nodes.FETCH_AND_INDEX_DEEPLINKS.FETCH_DEEPLINKS.$output.hasMore}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "1775532682725",
+                  "code": "CREATE_DEEPLINKS_PAYLOAD",
+                  "type": "CODE",
+                  "metadata": {
+                    "name": "Create Deeplinks Payload",
+                    "returnType": "array",
+                    "sourceCode": "let allResult = [];\n\nconst buildEmbeddingText = ( obj) => {\n  let content = \"\";\n  if( obj && typeof obj === \"object\") {\n    if( obj.name) {\n      content += \"Name: \" + obj.name + \"\\n\";\n    }\n    if( obj.description) {\n      content += \"Description: \" + obj.description + \"\\n\";\n    }\n  }\n  return content.trim();\n};\n\ntry {\n  // Safely access the items array from FETCH_AGENT_TEAMS output\n  \n  const entities = $context.$nodes?.FETCH_DEEPLINKS?.$output?.items || [];\n  allResult = entities.filter( entity => entity?.deepLinkCode!== undefined && entity?.deepLinkCode !== null).map( entity => ( {\n    documentId: entity.deepLinkCode,\n    parentObjectId: \"artifacts\",\n    content: buildEmbeddingText(entity),\n    metaData: {\n      code: entity.deepLinkCode\n    }\n  }));\n}\ncatch( error) {\n  allResult = [];\n}\nreturn allResult;"
+                  },
+                  "diagram": {
+                    "x": 9139.78876599251,
+                    "y": 8778.364919409083
+                  },
+                  "outcomes": {
+                    "success": "1775532682726"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "id": "1775532682726",
+                  "code": "WRITE_DEEPLINKS_TO_DB",
+                  "type": "REFERENCE",
+                  "metadata": {
+                    "name": "Write Deeplinks to DB",
+                    "referenceableBlockId": "INDEX_IN_BULK"
+                  },
+                  "diagram": {
+                    "x": 9139.78876599251,
+                    "y": 9000.364919409083
+                  },
+                  "outcomes": {
+                    "success": "end_1775532682721"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774770034110_indexName",
+                      "name": "indexName",
+                      "type": "string",
+                      "value": "{{'ORA_AI_STUDIO_DEEPLINKS_'+ $context.$nodes.GET_NEW_INDEX_PREFIX.$output.result}}"
+                    },
+                    {
+                      "id": "1774770034110_data",
+                      "name": "data",
+                      "type": "array",
+                      "value": "{{$context.$nodes.FETCH_AND_INDEX_DEEPLINKS.CREATE_DEEPLINKS_PAYLOAD.$output.result}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "end_1775532682721",
+                  "code": "END",
+                  "type": "END",
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "inputs": []
+                }
+              ]
+            }
+          },
+          "diagram": {
+            "x": 8989.78876599251,
+            "y": 8103.364919409083,
+            "width": 600,
+            "height": 999
+          },
+          "outcomes": {
+            "success": "1774462521555"
+          },
+          "inputs": [
+            {
+              "id": "1774983716044_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.hasMoreDeeplinks}}"
+            }
+          ]
+        },
+        {
+          "id": "1775532749578",
+          "code": "FETCH_AND_INDEX_POLICY",
+          "type": "WHILE",
+          "metadata": {
+            "name": "Fetch and index policy",
+            "dataPipeline": {
+              "rootNode": "start_1775532749578",
+              "pipelineNodes": [
+                {
+                  "id": "start_1775532749578",
+                  "code": "START",
+                  "type": "START",
+                  "metadata": {
+                    "description": "Start of data pipeline",
+                    "name": "Start"
+                  },
+                  "diagram": {
+                    "x": 10039.28876599251,
+                    "y": 8183.364919409083
+                  },
+                  "outcomes": {
+                    "success": "1775532749580"
+                  },
+                  "inputs": []
+                },
+                {
+                  "id": "1775532749580",
+                  "code": "FETCH_POLICIES",
+                  "type": "BO_FUNCTION",
+                  "metadata": {
+                    "name": "Fetch Policies",
+                    "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOPOLICYV2",
+                    "functionName": "List_policies"
+                  },
+                  "diagram": {
+                    "x": 9889.78876599251,
+                    "y": 8334.364919409083
+                  },
+                  "outcomes": {
+                    "success": "1775532749581"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774994385042_limit",
+                      "name": "limit",
+                      "type": "string",
+                      "value": "{{$context.$variables.fetchSize}}"
+                    },
+                    {
+                      "id": "1774994385042_offset",
+                      "name": "offset",
+                      "type": "string",
+                      "value": "{{$context.$variables.policyOffset}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "1775532749581",
+                  "code": "UPDATE_POLICY_ITERATORS",
+                  "type": "SET_FIELDS",
+                  "metadata": {
+                    "name": "Update Policy Iterators"
+                  },
+                  "diagram": {
+                    "x": 9889.78876599251,
+                    "y": 8556.364919409083
+                  },
+                  "outcomes": {
+                    "success": "1775532749582"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774994385043_policyOffset",
+                      "name": "policyOffset",
+                      "value": "{{$context.$variables.policyOffset+ $context.$nodes.FETCH_AND_INDEX_POLICY.FETCH_POLICIES.$output.items.length}}"
+                    },
+                    {
+                      "id": "1774994385043_hasMorePolicy",
+                      "name": "hasMorePolicy",
+                      "value": "{{$context.$nodes.FETCH_AND_INDEX_POLICY.FETCH_POLICIES.$output.hasMore}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "1775532749582",
+                  "code": "CREATE_POLICY_PAYLOAD",
+                  "type": "CODE",
+                  "metadata": {
+                    "name": "Create Policy Payload",
+                    "returnType": "array",
+                    "sourceCode": "let allResult = [];\n\nconst buildEmbeddingText = ( obj) => {\n  let content = \"\";\n  if( obj && typeof obj === \"object\") {\n    if( obj.name) {\n      content += \"Name: \" + obj.name + \"\\n\";\n    }\n    if( obj.description) {\n      content += \"Description: \" + obj.description + \"\\n\";\n    }\n  }\n  return content.trim();\n};\n\ntry {\n  // Safely access the items array from FETCH_AGENT_TEAMS output\n  \n  const entities = $context.$nodes?.FETCH_POLICIES?.$output?.items || [];\n  allResult = entities.filter( entity => entity?.code!== undefined && entity?.code !== null).map( entity => ( {\n    documentId: entity.code,\n    parentObjectId: \"artifacts\",\n    content: buildEmbeddingText(entity),\n    metaData: {\n      code: entity.code\n    }\n  }));\n}\ncatch( error) {\n  allResult = [];\n}\nreturn allResult;"
+                  },
+                  "diagram": {
+                    "x": 9889.78876599251,
+                    "y": 8778.364919409083
+                  },
+                  "outcomes": {
+                    "success": "1775532749583"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "id": "1775532749583",
+                  "code": "WRITE_POLICIES_TO_DB",
+                  "type": "REFERENCE",
+                  "metadata": {
+                    "name": "Write Policies to DB",
+                    "referenceableBlockId": "INDEX_IN_BULK"
+                  },
+                  "diagram": {
+                    "x": 9889.78876599251,
+                    "y": 9000.364919409083
+                  },
+                  "outcomes": {
+                    "success": "end_1775532749578"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1774770034110_indexName",
+                      "name": "indexName",
+                      "type": "string",
+                      "value": "{{'ORA_AI_STUDIO_POLICY_'+ $context.$nodes.GET_NEW_INDEX_PREFIX.$output.result}}"
+                    },
+                    {
+                      "id": "1774770034110_data",
+                      "name": "data",
+                      "type": "array",
+                      "value": "{{$context.$nodes.FETCH_AND_INDEX_POLICY.CREATE_POLICY_PAYLOAD.$output.result}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "end_1775532749578",
+                  "code": "END",
+                  "type": "END",
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "inputs": []
+                }
+              ]
+            }
+          },
+          "diagram": {
+            "x": 9739.78876599251,
+            "y": 8103.364919409083,
+            "width": 600,
+            "height": 999
+          },
+          "outcomes": {
+            "success": "1774462521555"
+          },
+          "inputs": [
+            {
+              "id": "1774983716044_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.hasMorePolicy}}"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "rootNode": "start_1774549456816",
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "description": "Start of data pipeline",
+                    "name": "Start"
+                  },
+                  "diagram": {
+                    "x": 8763,
+                    "y": 5080
+                  },
+                  "outcomes": {
+                    "success": "1774725889159"
+                  },
+                  "id": "start_1774549456816",
+                  "code": "START",
+                  "type": "START",
+                  "inputs": []
+                },
+                {
+                  "metadata": {
+                    "name": "Write to Index 1",
+                    "bulkMode": true
+                  },
+                  "diagram": {
+                    "x": 8613.5,
+                    "y": 5231
+                  },
+                  "outcomes": {
+                    "success": "1774550418900"
+                  },
+                  "id": "1774725889159",
+                  "code": "WRITE_TO_INDEX_1",
+                  "type": "VECTOR_DB_WRITER",
+                  "inputs": [
+                    {
+                      "id": "1774725889159_operation",
+                      "name": "operation",
+                      "type": "string",
+                      "value": "INSERT"
+                    },
+                    {
+                      "id": "1774725889159_indexName",
+                      "name": "indexName",
+                      "type": "string",
+                      "value": "{{$context.$input.indexName}}"
+                    },
+                    {
+                      "id": "1774725889159_content",
+                      "name": "content",
+                      "type": "string",
+                      "value": ""
+                    },
+                    {
+                      "id": "1774725889159_contentType",
+                      "name": "contentType",
+                      "type": "string",
+                      "value": ""
+                    },
+                    {
+                      "id": "1774725889159_documentId",
+                      "name": "documentId",
+                      "type": "string",
+                      "value": ""
+                    },
+                    {
+                      "id": "1774725889159_parentObjectId",
+                      "name": "parentObjectId",
+                      "type": "string",
+                      "value": "artifacts"
+                    },
+                    {
+                      "id": "1774725889159_metaData",
+                      "name": "metaData",
+                      "type": "string",
+                      "value": [
+                        {
+                          "id": "1774723153769",
+                          "name": "code",
+                          "type": "string",
+                          "value": "test"
+                        },
+                        {
+                          "id": "1774773185797",
+                          "name": "aiAppsCompatibleFlag",
+                          "type": "string",
+                          "value": ""
+                        },
+                        {
+                          "id": "1774896846736",
+                          "name": "hasExample",
+                          "type": "string",
+                          "value": ""
+                        },
+                        {
+                          "id": "1774972268711",
+                          "name": "type",
+                          "type": "string",
+                          "value": ""
+                        }
+                      ]
+                    },
+                    {
+                      "id": "1774725889159_payload",
+                      "name": "payload",
+                      "type": "string",
+                      "value": "{{$context.$input.data}}"
+                    }
+                  ]
+                },
+                {
+                  "metadata": {
+                    "name": "Return Indexing Result"
+                  },
+                  "diagram": {
+                    "x": 8613.5,
+                    "y": 5453
+                  },
+                  "outcomes": {},
+                  "id": "1774550418900",
+                  "code": "RETURN_INDEXING_RESULT",
+                  "type": "RETURN",
+                  "inputs": [
+                    {
+                      "id": "1774550418900_returnValue",
+                      "name": "returnValue",
+                      "type": "string",
+                      "value": "{{$context.$nodes.WRITE_TO_INDEX_1.$output}} "
+                    }
+                  ]
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "id": "end_1774549456816",
+                  "code": "END",
+                  "type": "END",
+                  "inputs": []
+                }
+              ],
+              "variables": [
+                {
+                  "id": "1774549510954",
+                  "name": "indexName",
+                  "type": "string"
+                },
+                {
+                  "id": "1774549500993",
+                  "name": "data",
+                  "type": "array"
+                }
+              ]
+            },
+            "description": "Reusable block for bulk indexing",
+            "name": "Index In Bulk"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "INDEX_IN_BULK",
+          "id": "1774549456816",
+          "inputs": [],
+          "type": "REFERENCEABLEBLOCK",
+          "diagram": {
+            "x": 8463.5,
+            "y": 5000,
+            "width": 600,
+            "height": 555
+          }
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "rootNode": "start_1774720592269",
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "description": "Start of data pipeline",
+                    "name": "Start"
+                  },
+                  "diagram": {
+                    "x": 9483,
+                    "y": 5080
+                  },
+                  "outcomes": {
+                    "success": "1774720684806"
+                  },
+                  "id": "start_1774720592269",
+                  "code": "START",
+                  "type": "START",
+                  "inputs": []
+                },
+                {
+                  "metadata": {
+                    "name": "Generate Indices To Clean",
+                    "returnType": "array",
+                    "sourceCode": "let prefix = $context.$input.indexprefix;\nlet result = [];\nresult.push('ORA_AI_STUDIO_BO_' + prefix);\nresult.push('ORA_AI_STUDIO_WORKFLOWS_' + prefix);\nresult.push('ORA_AI_STUDIO_TOOLS_' + prefix);\nresult.push('ORA_AI_STUDIO_AGENTS_' + prefix);\nresult.push('ORA_AI_STUDIO_TOPICS_' + prefix);\nresult.push('ORA_AI_STUDIO_DEEPLINKS_' + prefix);\nresult.push('ORA_AI_STUDIO_APPS_' + prefix);\nresult.push('ORA_AI_STUDIO_POLICY_' + prefix);\nreturn result;"
+                  },
+                  "diagram": {
+                    "x": 9333.5,
+                    "y": 5231
+                  },
+                  "outcomes": {
+                    "success": "1774720843032"
+                  },
+                  "id": "1774720684806",
+                  "code": "GENERATE_INDICES_TO_CLEAN",
+                  "type": "CODE",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "metadata": {
+                    "dataPipeline": {
+                      "rootNode": "start_1774720843032",
+                      "pipelineNodes": [
+                        {
+                          "metadata": {
+                            "description": "Start of data pipeline",
+                            "name": "Start"
+                          },
+                          "diagram": {
+                            "x": 9483,
+                            "y": 5533
+                          },
+                          "outcomes": {
+                            "success": "1774720884474"
+                          },
+                          "id": "start_1774720843032",
+                          "code": "START",
+                          "type": "START",
+                          "inputs": []
+                        },
+                        {
+                          "metadata": {
+                            "description": "Clean up the index before we start indexing",
+                            "name": "Clean Index",
+                            "bulkMode": false
+                          },
+                          "diagram": {
+                            "x": 9333.5,
+                            "y": 5684
+                          },
+                          "outcomes": {
+                            "success": "end_1774720843032"
+                          },
+                          "id": "1774720884474",
+                          "code": "CLEAN_INDEX",
+                          "type": "VECTOR_DB_WRITER",
+                          "inputs": [
+                            {
+                              "id": "1774720884474_operation",
+                              "name": "operation",
+                              "type": "string",
+                              "value": "DELETE"
+                            },
+                            {
+                              "id": "1774720884474_indexName",
+                              "name": "indexName",
+                              "type": "string",
+                              "value": "{{$context.$nodes.CLEAN_ALL.$currentItem}}"
+                            },
+                            {
+                              "id": "1774720884474_parentObjectId",
+                              "name": "parentObjectId",
+                              "type": "string",
+                              "value": "artifacts"
+                            },
+                            {
+                              "id": "1774720884474_content",
+                              "name": "content",
+                              "type": "string",
+                              "value": "dummy"
+                            },
+                            {
+                              "id": "1774720884474_contentType",
+                              "name": "contentType",
+                              "type": "string",
+                              "value": "text"
+                            }
+                          ]
+                        },
+                        {
+                          "metadata": {
+                            "name": "End",
+                            "description": "End of data pipeline"
+                          },
+                          "outcomes": {},
+                          "id": "end_1774720843032",
+                          "code": "END",
+                          "type": "END",
+                          "inputs": []
+                        }
+                      ]
+                    },
+                    "name": "Clean All",
+                    "loopType": "SEQUENTIAL"
+                  },
+                  "diagram": {
+                    "x": 9183.5,
+                    "y": 5453,
+                    "width": 600,
+                    "height": 333
+                  },
+                  "outcomes": {
+                    "success": "1774721017178"
+                  },
+                  "id": "1774720843032",
+                  "code": "CLEAN_ALL",
+                  "type": "LOOP",
+                  "inputs": [
+                    {
+                      "id": "1774720843032_collection",
+                      "name": "collection",
+                      "type": "string",
+                      "value": "{{$context.$nodes.GENERATE_INDICES_TO_CLEAN.$output.result}}"
+                    }
+                  ]
+                },
+                {
+                  "metadata": {
+                    "name": "Clean up result"
+                  },
+                  "diagram": {
+                    "x": 9333.5,
+                    "y": 5936
+                  },
+                  "outcomes": {},
+                  "id": "1774721017178",
+                  "code": "CLEAN_UP_RESULT",
+                  "type": "RETURN",
+                  "inputs": [
+                    {
+                      "id": "1774721017178_returnValue",
+                      "name": "returnValue",
+                      "type": "string",
+                      "value": "\"done\""
+                    }
+                  ]
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "id": "end_1774720592269",
+                  "code": "END",
+                  "type": "END",
+                  "inputs": []
+                }
+              ],
+              "variables": [
+                {
+                  "id": "1774720733173",
+                  "name": "indexprefix",
+                  "type": "string"
+                }
+              ]
+            },
+            "name": "CleanUpIndices"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "CLEANUPINDICES",
+          "id": "1774720592269",
+          "inputs": [],
+          "type": "REFERENCEABLEBLOCK",
+          "diagram": {
+            "x": 9163.5,
+            "y": 5000,
+            "width": 640,
+            "height": 1038
+          }
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "725e8443-1dc3-41a4-a5bd-e54b42163dbf",
+          "name": "policyOffset",
+          "type": "number",
+          "scope": "JOB"
+        },
+        {
+          "id": "64f2cf28-4483-4e99-a2fa-4affc0de9d36",
+          "name": "hasMorePolicy",
+          "type": "boolean",
+          "scope": "JOB"
+        },
+        {
+          "id": "16481320-d7e7-4a69-aaf8-a8dd6eb48c3a",
+          "name": "hasMoreApps",
+          "type": "boolean",
+          "scope": "JOB"
+        },
+        {
+          "id": "73f1f47b-c242-4f26-a88b-c9f4c7eaec01",
+          "name": "appsOffset",
+          "type": "number",
+          "scope": "JOB"
+        },
+        {
+          "id": "ae46b5c5-a582-4e4b-8cc8-235b8fabf5aa",
+          "name": "deepLinkOffset",
+          "type": "number",
+          "scope": "JOB"
+        },
+        {
+          "id": "02511dbe-9db7-4a13-9963-7f4753f71b2d",
+          "name": "hasMoreDeeplinks",
+          "type": "boolean",
+          "scope": "JOB"
+        },
+        {
+          "id": "581e718b-62c7-4ce0-b09b-f1e0544013cc",
+          "name": "topicsOffset",
+          "type": "number",
+          "scope": "JOB"
+        },
+        {
+          "id": "1110db24-59f4-49d7-acc6-8d6bf9556379",
+          "name": "hasMoreTopics",
+          "type": "boolean",
+          "scope": "JOB"
+        },
+        {
+          "id": "477f0c53-3f9d-4cfa-bce5-b70efe73c6c9",
+          "name": "hasMoreAgents",
+          "type": "boolean",
+          "scope": "JOB"
+        },
+        {
+          "id": "73fd712c-ca83-4e9f-98c5-7bf05b5c31ac",
+          "name": "agentOffset",
+          "type": "number",
+          "scope": "JOB"
+        },
+        {
+          "id": "548f97e4-8f94-4380-990e-f3a96513aabb",
+          "name": "toolOffset",
+          "type": "number",
+          "scope": "JOB"
+        },
+        {
+          "id": "d3aaae8b-841d-40fa-b84b-6afcf8fe1ee5",
+          "name": "hasMoreTools",
+          "type": "boolean",
+          "scope": "JOB"
+        },
+        {
+          "id": "159cef9b-e4d5-43fa-a592-b202c62dd206",
+          "name": "workflowOffset",
+          "scope": "JOB",
+          "type": "number"
+        },
+        {
+          "id": "c0079ace-6dc5-4030-8da7-8fa4de37d9ac",
+          "name": "hasMoreWorkflow",
+          "scope": "JOB",
+          "type": "boolean"
+        },
+        {
+          "id": "1759072748260",
+          "name": "fetchSize",
+          "scope": "JOB",
+          "type": "number"
+        },
+        {
+          "id": "fe460e60-d46f-4f47-a621-dce83c1a9e67",
+          "name": "hasMoreBO",
+          "scope": "JOB",
+          "type": "boolean"
+        },
+        {
+          "id": "407a466b-8eb3-4c9c-9777-4efaff35d26b",
+          "name": "boOffset",
+          "scope": "JOB",
+          "type": "number"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1775148745523",
+            "name": "ItemsToIndex",
+            "type": "array"
+          }
+        ]
+      }
+    ],
+    "deletedTriggerTypes": [],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    },
+    "dtRunProfiles": {
+      "activeProfileId": "1e3424d2-09db-4009-ad4f-f6ac5e2b1d0a",
+      "profiles": [
+        {
+          "id": "b6949a98-fe4e-4805-a6c0-aff856384351",
+          "name": "run",
+          "type": "chat",
+          "agenticAppMode": "query",
+          "inputMessage": "hi"
+        },
+        {
+          "id": "0ce2b84c-32a7-4e31-a84a-ca712f5d2b71",
+          "name": "run selected",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"ItemsToIndex\": [\n    {\n      \"type\": \"BUSINESSOBJECTS\",\n      \"codes\": [\n        \"ORA_HCM_ABSENCES_FERRARITEST\",\n        \"ORA_HCM_GLOBALHUMA_PUBLICWORKERSBO\"\n      ]\n    },\n    {\n      \"type\": \"AGENTTEAMS\",\n      \"codes\": [\n        \"FERRARI_TEST\"\n      ]\n    },\n    {\n      \"type\": \"TOOLS\",\n      \"codes\": [\n        \"CHANGE_MANAGER_GHRQA\"\n      ]\n    },\n    {\n      \"type\": \"AGENTS\",\n      \"codes\": [\n        \"ATS_FETCH_REPORTS\"\n      ]\n    },\n    {\n      \"type\": \"TOPICS\",\n      \"codes\": [\n        \"ORA_RECORD_TO_REPORT\"\n      ]\n    },\n    {\n      \"type\": \"DEEPLINKS\",\n      \"codes\": [\n        \"ORA_HCM_GLOBALHUMA_CONTACTINFOFOROTHERSLINK\"\n      ]\n    },\n    {\n      \"type\": \"APPS\",\n      \"codes\": [\n        \"YITHE_TEST_SEEDED_APP\"\n      ]\n    },\n    {\n      \"type\": \"POLICY\",\n      \"codes\": [\n        \"SA_SALES_COMMAND_CENTER\"\n      ]\n    },\n    {\n      \"type\": \"BUSINESSOBJECTS\",\n      \"codes\": [\n        \"ORA_FIN_OTHER_EPMPTXARCSPERIODS\"\n      ]\n    },\n    {\n      \"type\": \"AGENTTEAMS\",\n      \"codes\": [\n        \"ORA_AI_STUDIO_INDEXER\"\n      ]\n    }\n  ]\n}",
+          "inputMessage": ""
+        },
+        {
+          "id": "1e3424d2-09db-4009-ad4f-f6ac5e2b1d0a",
+          "name": "simple one index",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"ItemsToIndex\": [\n    {\n      \"type\": \"BUSINESSOBJECTS\",\n      \"codes\": [\n        \"ORA_HCM_BENEFITS_LAMBO\",\n        \"ORA_HCM_GLOBALHUMA_PUBLICWORKERSBO\"\n      ]\n    }\n  ]\n}"
+        }
+      ]
+    },
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI"
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "OTHER",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": true,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"2\""
+  }
+}

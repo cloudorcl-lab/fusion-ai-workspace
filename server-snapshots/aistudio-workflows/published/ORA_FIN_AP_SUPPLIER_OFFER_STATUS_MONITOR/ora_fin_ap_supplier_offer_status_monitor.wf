@@ -1,0 +1,515 @@
+{
+  "workflowId": "300000327004569",
+  "workflowCode": "ORA_FIN_AP_SUPPLIER_OFFER_STATUS_MONITOR",
+  "name": "Supplier Offer Status Monitor",
+  "description": "Helps in retrieving the status of current send out offers",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1780684562837"
+          },
+          "diagram": {
+            "x": 5600.5,
+            "y": 5000
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "name": "Seeded Prompt Intent Identifier"
+          },
+          "outcomes": {
+            "success": "1780684680774"
+          },
+          "diagram": {
+            "x": 5458,
+            "y": 5175
+          },
+          "code": "FIN_AP_SEEDED_PROMPT_INTENT_IDENTIFIER",
+          "id": "1780684562837",
+          "inputs": [
+            {
+              "id": "1780684562838_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "\nYou are a seeded prompt classifier for Supplier Offer Status Monitor.\n\nReturn only valid JSON. Do not return markdown, explanation, reasoning, or extra keys.\n\nInputs:\nUser message: {{$context.$system.$inputMessage}}\n\nThe user message will match one of these fixed UI suggestion prompts, where only the time frame is free text:\n\n1. AcceptanceRatePrompt:\nShow communicated offers in last [time frame] and acceptance rate by supplier\n\n2. LossOfBenefitPrompt:\nShow communicated offers that are expiring in the next [time frame] and estimated loss of benefit\n\n3. SupplierCommunication:\nShow communicated offers that suppliers haven't responded to in over [time frame]\n\nTask:\n- Identify which fixed prompt the user selected.\n- Extract only the time frame value.\n- Convert the time frame to number of days.\n\nTime frame conversion:\n- N day/days = N\n- N week/weeks = N * 7\n- N month/months = N * 30\n- N year/years = N * 365\n- Convert simple number words like one, two, three, five, ten into numbers.\n- If the time frame is missing, invalid, or has no supported unit, return seededPrompt as false.\n\nFor any message that does not match one of the three fixed prompt patterns, return seededPrompt as false.\n\nOutput for seeded prompt:\n{\n  \"seededPrompt\": true,\n  \"seededPromptType\": \"AcceptanceRatePrompt\",\n  \"parameter\": {\n    \"timeFrame\": 90\n  }\n}\n\nOutput for all other cases:\n{\n  \"seededPrompt\": false,\n  \"seededPromptType\": \"\",\n  \"parameter\": {\n    \"timeFrame\": 0\n  }\n}\n"
+            }
+          ],
+          "type": "LLM",
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"Supplier Offer Status Monitor Seeded Prompt Output\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"seededPrompt\": {\n      \"type\": \"boolean\"\n    },\n    \"seededPromptType\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"\",\n        \"AcceptanceRatePrompt\",\n        \"LossOfBenefitPrompt\",\n        \"SupplierCommunication\"\n      ]\n    },\n    \"parameter\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"timeFrame\": {\n          \"type\": \"integer\",\n          \"minimum\": 0\n        }\n      },\n      \"required\": [\n        \"timeFrame\"\n      ],\n      \"additionalProperties\": false\n    }\n  },\n  \"required\": [\n    \"seededPrompt\",\n    \"seededPromptType\",\n    \"parameter\"\n  ],\n  \"additionalProperties\": false\n}"
+        },
+        {
+          "metadata": {
+            "name": "Seeded Prompt Check"
+          },
+          "outcomes": {
+            "true": "1780686754058",
+            "false": "1769057518895"
+          },
+          "diagram": {
+            "x": 5478.5,
+            "y": 5428
+          },
+          "code": "FIN_AP_CONDITION_SEEDED_PROMPT_CHECK",
+          "convergenceTargetId": "end",
+          "id": "1780684680774",
+          "inputs": [
+            {
+              "id": "1780684680775_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_SEEDED_PROMPT_INTENT_IDENTIFIER.$output.seededPrompt}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Intent Identifier"
+          },
+          "outcomes": {
+            "success": "1769057655026"
+          },
+          "diagram": {
+            "x": 5225,
+            "y": 5650
+          },
+          "code": "FIN_AP_LLM_INTENT_IDENTIFIER",
+          "id": "1769057518895",
+          "inputs": [
+            {
+              "id": "1769057518897_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You have **one responsibility only**:\n\n**Construct a runtime filter object for offer status retrieval.**\n\nYou must do **nothing else**:\n\n* No explanation\n* No reasoning output\n* No validation commentary\n* No assumptions beyond rules below\n\n---\n\n## Inputs\n\n### Current User Message (AUTHORITATIVE)\n\n```\n{{$context.$system.$inputMessage}}\n```\n\n---\n\n### Conversation Context (USER MESSAGES ONLY — INTENT RESOLUTION)\n\nChat History (local child workflow):\n\n```\n{{$context.$system.$chatHistory}}\n```\n\nREST Trigger Chat History:\n\n```\n{{$context.$triggers.REST.$input.chatHistory}}\n```\n **IMPORTANT**\nConversation context may contain **assistant responses**.\nYou must evaluate **only user-authored messages**.\nAssistant messages are **non-authoritative** and must be ignored entirely.\n\n**List of identified suppliers**: (Optional).\n\n{{$context.$triggers.REST.$input.suppliers}}\n\nConversation context *may* reference:\n\n* Supplier\n* Program type\n* Offer status\n* Date ranges\n* Discount rate/ APR rate\n\nYou must evaluate **all valid user inputs together**, applying **strict recency and relevance**.\nThe **current user message always has highest priority**.\n\n---\n\n## Source of Truth Guardrail (MANDATORY)\n\nYou may rely **only** on:\n\n* Explicit signals in the **current user message**\n* Clear, unambiguous references in **prior user-authored messages**\n\nYou must **never** extract, infer, or reuse data from:\n\n* Assistant responses\n* Model-generated summaries\n* Tool or workflow outputs\n* Previously returned filter objects\n\nIf a value appears **only** in assistant responses and not in user-authored input, it must be treated as **absent**.\n\nIf excluding assistant responses causes ambiguity:\n\n* Return empty values as defined\n* Do not infer or compensate\n* Determinism overrides completeness\n\n---\n\n## Evidence Rules (STRICT)\n\nYou must **not**:\n\n* Infer intent\n* Assume defaults beyond those explicitly defined\n* Treat conversation history as factual truth\n\nConversation history is permitted **only** to resolve *implicit references* made by the user\n(e.g., “same supplier”, “those offers again”).\n\n---\n\n## Parameter Extraction Rules\n\nPopulate a parameter **only when confidence is high**.\n\n---\n\n## 1. `supplier`\n\nPopulate **only if**:\n\n### Filtering on supplierName\n\n*Only the values available in the list of supplier names should be used for filtering. If its missing, then use the name provided in user input.\n*Analyse the user input and chat history to see if data needs to be filtered on supplier name.\n*User input or chat history would have incorrect spellings of supplier, so always use the values in list of suppliers that coincide with the required intent\n\n* Must resolve to **exactly one supplier**\n* If multiple suppliers are referenced, pick the most matching one based on user input.\n\nRules:\n\n* Must resolve to **one supplier only**\n* If multiple suppliers appear → select the **most relevant**\n* If ambiguous or unresolved → return `\"\"`\n\n---\n\n## 2. `programType`\n\nPopulate **only if explicitly stated** by the user.\n\n| User Signal                   | programType            |.\n| ----------------------------- | ---------------------- |\n| Dynamic Discounting           | DYNAMIC_DISCOUNTING    |\n| Virtual Card / Virtual Credit | VIRTUAL_CREDIT_CARD    |\n| Supply Chain Finance / SCF    | SUPPLY_CHAIN_FINANCING |\n\nRules:\n\n* No inference from supplier or offer status\n* Must resolve to **exactly one**\n* Ambiguous or multiple → return `\"\"`\n\n---\n\n## 3. `offerStatus`\n\n### Supported Values Only\n\n| User Signal | offerStatus | Description |\n| --- | --- | --- |\n| Approved / Finalized | ORA_CE_OFFER_FINALIZED | Offer approved, but mail is yet to be sent |\n| Sent / Communicated | ORA_CE_OFFER_COMMUNICATED | Offer approved, mail is sent |\n| Accepted one-time / One-time accepted / Supplier accepted | ORA_CE_ONE_TIME_ACCEPTED | One-time offer accepted by supplier |\n| Accepted standing / Standing accepted | ORA_CE_STANDING_ACCEPTED | Standing offer accepted by supplier |\n| Supplier Declined | ORA_CE_DECLINED | Offer rejected by supplier |\n| Expired | ORA_CE_EXPIRED | Offer accepted and sent out, but no action was taken by supplier and offer expired |\n| Unsubscribed | ORA_CE_UNSUBSCRIBED | Supplier unsubscribed from the offer |\n| Withdrawn | ORA_CE_WITHDRAWN | Offer was withdrawn |\n| Error | ORA_CE_ERROR | Offer is in error status |\n---\n\n### Multi-Status Resolution (CRITICAL)\n\nThe user may request **multiple statuses**.\n\nApply rules **in order**:\n\n1. If statuses are explicitly mentioned → return **all matching values**\n2. Else if a single clear status exists in recent, relevant **user history** → return it\n3. Else → return `[]`\n\nInterpretation rules:\n\n* “Accepted but not sent out” → `ORA_CE_OFFER_FINALIZED`\n* “Accepted standing”, “standing accepted”, or “standing offers accepted” → `ORA_CE_STANDING_ACCEPTED`\n* “Accepted one-time”, “one-time accepted”, or generic “supplier accepted” → `ORA_CE_ONE_TIME_ACCEPTED`\n* Do **not** map “accepted standing” to `ORA_CE_ONE_TIME_ACCEPTED`\n* “Accepted”, “accepted offers”, “show me the accepted offers”, or “accepted offers in the system” → return both ORA_CE_ONE_TIME_ACCEPTED and ORA_CE_STANDING_ACCEPTED\n* “Unsubscribed” → `ORA_CE_UNSUBSCRIBED`\n* “Withdrawn” → `ORA_CE_WITHDRAWN`\n* “Error” or “error offers” → `ORA_CE_ERROR`\n\nIf the user says only “accepted” without specifying one-time or standing, return both accepted statuses.\nIf the user explicitly says one-time or standing, return only the matching status.\n\n* Sent-out / communicated-offer lifecycle rule (HIGHEST PRIORITY)\n\nIf the user requests sent-out or communicated offers, including phrases like:\n* \"sent out offers\"\n* \"already sent out\"\n* \"sent to supplier\"\n* \"communicated to supplier\"\n* \"communicated offers\"\n* \"offers communicated to suppliers\"\n\nThen return all of:\n\n* `ORA_CE_OFFER_COMMUNICATED`\n* `ORA_CE_ONE_TIME_ACCEPTED`\n* `ORA_CE_DECLINED`\n* `ORA_CE_EXPIRED`\n* `ORA_CE_STANDING_ACCEPTED`\n* `ORA_CE_UNSUBSCRIBED`\n* `ORA_CE_WITHDRAWN`\n\nDo not return only `ORA_CE_OFFER_COMMUNICATED` for these phrases.\n\nException:\nIf the user explicitly asks for \"pending response\", \"awaiting response\", \"waiting for supplier response\", \"not responded\", or \"open communicated offers\", return only:\n* `ORA_CE_OFFER_COMMUNICATED`\n\n\nConstraints:\n\n* Do not invent statuses\n* Do not partially infer\n* Do not collapse unrelated statuses\n* If the user explicitly asks for a supported status above, never return an empty `offerStatus` array for that status\n\n---\n\n## 4. `dateRange`\n\n### Explicit Dates\n\nExtract **only if explicitly stated** by the user:\n\n* Relative (e.g., “last 7 days”, “this week”)\n* Absolute calendar dates\n\n---\n\n### Relative Date Construction Rules (MANDATORY)\n\nAll relative ranges must be constructed strictly relative to today:\n\n{{$context.$system.$currentDate}}\n\nYou must never generate a range that extends beyond today.\nThe to date must always be <= currentDate.\n\nFor relative duration phrases such as \"last N days\", \"past N days\", \"last N weeks\", \"past N weeks\", \"last 14 days\", or \"fortnight\":\nfrom = currentDate - N days\nto = currentDate\n\nFor N weeks, convert weeks to days first.\nFor fortnight, use N = 14 days.\nDo not use currentDate - (N - 1).\n\n---\n\n### Relative Phrase Mapping (STRICT)\n\nInterpret relative date phrases as follows:\n\n* today -> from = today, to = today\n* yesterday -> from = today-1, to = today-1\n* last 7 days -> from = today-7, to = today\n* past N days -> from = today-N, to = today\n* this week -> from = start of current week (Mon), to = today\n* last week -> from = start of previous week (Mon), to = end of previous week (Sun)\n* last N weeks / past N weeks -> from = today-(N*7), to = today\n* last 2 weeks / past 2 weeks -> from = today-14, to = today\n* this month -> from = first day of current month, to = today\n* last month -> from = first day of previous month, to = last day of previous month\n* last 1 month -> from = today-30, to = today\n* fortnight / this fortnight / last fortnight / past fortnight -> from = today-14, to = today\n* beginning of time -> no date filter\n\nIf the computed `to` would fall after today, clamp it to **today**.\n\n---\n\n### Default Date Rules (MANDATORY)\n\n#### Standard Default\n\nIf **no date is explicitly specified** by the user:\n\n* Default to **last 7 days including today**, relative to currentDate\n  (from = today-6, to = today)\n\n\nLatest date override:\nIf the current user message contains an explicit date or duration such as \"last 2 weeks\", \"past 3 weeks\", \"last 14 days\", or a date range, use that date range.\n\nDo not apply the default last 7 days when the current user message has an explicit date or duration.\n\nDo not copy date ranges from assistant responses in chat history. If the current user message says \"last 2 weeks\", it overrides any earlier \"last 7 days\" text in history.\n\n---\n\n#### Finalized-Only Override (CRITICAL)\n\nIf `offerStatus` contains **only**:\n\n```\nORA_CE_OFFER_FINALIZED\n```\n\n**and** user intent clearly means *finalized but not sent*:\n\n* Do **not** apply default dates\n* Return empty strings for both `from` and `to`\n\nRules:\n\n* Never infer send dates for unsent offers\n* Never fabricate dates\n* If unclear → apply standard default\n\n---\n\n## 5. `rateFilters` (DISCOUNT RATE or APR RATE)  \n\n### Purpose  \nSupport user-provided filtering on **Discount Rate**  or **APR Rate**, including comparisons like:  \n* greater than / at least / minimum  \n* less than / at most / maximum  \n* equal to  \n* between two values  \n\n### What counts as a rate  \nA rate is valid only if clearly tied to:  \n* “discount rate”, “discount”, “dd rate”, \" apr rate\" → **discountRate**  \n\n\nIf the user provides a number without clearly indicating discount vs APR, do **not** guess → leave both empty.\n\n### Accepted user phrasing → operator mapping (STRICT)  \nMap only when unambiguous:  \n* `>=`, “at least”, “no less than”, “or more”, “minimum” → `GTE`  \n* `>`, “greater than”, “above”, “over”, “more than” → `GT`  \n* `<=`, “at most”, “no more than”, “or less”, “maximum” → `LTE`  \n* `<`, “less than”, “below”, “under” → `LT`  \n* `=`, “exactly”, “equal to”, “is” (in a rate context) → `EQ`  \n* “between X and Y”, “from X to Y”, “X–Y” (rate context) → `BETWEEN`  \n\n### Value parsing rules (STRICT)  \n* Capture numeric values as strings (e.g., `\"7\"`, `\"7.5\"`)  \n* If user includes `%`, ignore the symbol but keep the numeric value (e.g., “7%” → `\"7\"`)  \n* If user uses “bps”/“basis points”, convert only if explicitly defined by the user (otherwise do not convert; treat as ambiguous and leave empty)  \n* For `BETWEEN`, require **two** explicit values; otherwise do not populate the filter  \n* Never infer a missing bound  \n\n### Recency and conflict rules  \n* Current user message overrides prior user-authored messages  \n* If user provides multiple constraints for the same rate type, prefer the **most recent clear** constraint; do not merge unless user explicitly requests a range (BETWEEN)  \n\n### Output population rules  \nPopulate each rate filter only when:  \n* The rate type (discount vs APR) is explicit **and**  \n* An operator and value(s) can be extracted with high confidence  \n\nOtherwise return empty strings for that filter fields.  \n\n---\n\n## 6. `daysSinceCommunication`\n\nPopulate only when the user expresses communicated offers older than a number of days.\n\nSupported patterns:\n* \"over N days\"\n* \"more than N days\"\n* \"older than N days\"\n* \"haven't responded in N days\"\n* \"no response for N days\"\n\nOutput format:\n{\n  \"operator\": \"GT\" | \"GTE\",\n  \"value\": \"<N>\"\n}\n\nMapping:\n* \"over N days\", \"more than N days\", \"older than N days\" → `GT`\n* \"at least N days\", \"N days or more\" → `GTE`\n\nRules:\n* Capture N as a string\n* Do not infer missing values\n* Do not convert to dates\n* If the user does not specify a number, return empty strings\n\n---\n## Chat History Handling\n\n* Current user input always wins\n* Use **only user-authored history** for implicit references\n* Ignore stale, unrelated, or cross-topic context\n* Never merge intent across separate threads\n* Never reuse assistant-generated content\n\n---\n\n## Output Contract (HARD REQUIREMENT)\n\nReturn **only** this JSON object.\nNo prose. No markdown. No extra keys.\n\n\n{\n  \"supplier\": \"\",\n  \"programType\": \"\",\n      \"discountRate\": {  \n    \"operator\": \"\",  \n    \"value\": \"\",  \n    \"toValue\": \"\"  \n  }, \n  \"offerStatus\": [],\n  \"dateRange\": {\n    \"from\": \"\",\n    \"to\": \"\"\n  }\n\n\n---\n\n## Output Invariants\n\n* Empty string (`\"\"`) for missing scalar values\n* Empty array (`[]`) if no offer status is resolved\n* Never return `null`\n* Deterministic output only\n* Backend-compatible values only\n* `offerStatus` values must be selected only from:\n  * `ORA_CE_OFFER_FINALIZED`\n  * `ORA_CE_OFFER_COMMUNICATED`\n  * `ORA_CE_ONE_TIME_ACCEPTED`\n  * `ORA_CE_STANDING_ACCEPTED`\n  * `ORA_CE_DECLINED`\n  * `ORA_CE_EXPIRED`\n  * `ORA_CE_UNSUBSCRIBED`\n  * `ORA_CE_WITHDRAWN`\n  * `ORA_CE_ERROR`\n\n\nSample examples\n\nAssume currentDate = 2026-03-03\n\nuser: Show Sent out offers\n{\n  \"supplier\": \"\",\n  \"programType\": \"\",\n  \"discountRate\": {\n    \"operator\": \"\",\n    \"value\": \"\",\n    \"toValue\": \"\"\n  },\n  \"offerStatus\": [\n    \"ORA_CE_OFFER_COMMUNICATED\",\n    \"ORA_CE_ONE_TIME_ACCEPTED\",\n    \"ORA_CE_DECLINED\",\n    \"ORA_CE_EXPIRED\",\n    \"ORA_CE_STANDING_ACCEPTED\",\n    \"ORA_CE_UNSUBSCRIBED\",\n    \"ORA_CE_WITHDRAWN\"\n  ],\n  \"dateRange\": {\n    \"from\": \"2026-02-25\",\n    \"to\": \"2026-03-03\"\n  }\n}\n\nAssume currentDate = 2026-03-03\n\nuser: Show accepted standing offers\n{\n  \"supplier\": \"\",\n  \"programType\": \"\",\n  \"discountRate\": {\n    \"operator\": \"\",\n    \"value\": \"\",\n    \"toValue\": \"\"\n  },\n  \"offerStatus\": [\n    \"ORA_CE_STANDING_ACCEPTED\"\n  ],\n  \"dateRange\": {\n    \"from\": \"2026-02-25\",\n    \"to\": \"2026-03-03\"\n  }\n}\n\nAssume currentDate = 2026-06-04\n\nuser: Show the status of accepted offers for the last 1 month\n{\n  \"supplier\": \"\",\n  \"programType\": \"\",\n  \"discountRate\": {\n    \"operator\": \"\",\n    \"value\": \"\",\n    \"toValue\": \"\"\n  },\n  \"offerStatus\": [\n    \"ORA_CE_ONE_TIME_ACCEPTED\",\n    \"ORA_CE_STANDING_ACCEPTED\"\n  ],\n  \"dateRange\": {\n    \"from\": \"2026-05-05\",\n    \"to\": \"2026-06-04\"\n  }\n}\n\nAssume currentDate = 2026-03-03\n\nuser: Show accepted one-time offers\n{\n  \"supplier\": \"\",\n  \"programType\": \"\",\n  \"discountRate\": {\n    \"operator\": \"\",\n    \"value\": \"\",\n    \"toValue\": \"\"\n  },\n  \"offerStatus\": [\n    \"ORA_CE_ONE_TIME_ACCEPTED\"\n  ],\n  \"dateRange\": {\n    \"from\": \"2026-02-25\",\n    \"to\": \"2026-03-03\"\n  }\n}\n\nAssume currentDate = 2026-03-03\n\nuser: Show error offers\n{\n  \"supplier\": \"\",\n  \"programType\": \"\",\n  \"discountRate\": {\n    \"operator\": \"\",\n    \"value\": \"\",\n    \"toValue\": \"\"\n  },\n  \"offerStatus\": [\n    \"ORA_CE_ERROR\"\n  ],\n  \"dateRange\": {\n    \"from\": \"2026-02-25\",\n    \"to\": \"2026-03-03\"\n  }\n}\n\nAssume currentDate = 2026-03-03\n\nuser: Show offers with status unsubscribed\n{\n  \"supplier\": \"\",\n  \"programType\": \"\",\n  \"discountRate\": {\n    \"operator\": \"\",\n    \"value\": \"\",\n    \"toValue\": \"\"\n  },\n  \"offerStatus\": [\n    \"ORA_CE_UNSUBSCRIBED\"\n  ],\n  \"dateRange\": {\n    \"from\": \"2026-02-25\",\n    \"to\": \"2026-03-03\"\n  }\n}\nAssume currentDate = 2026-03-03\n\nuser: Show offers with status withdrawn\n{\n  \"supplier\": \"\",\n  \"programType\": \"\",\n  \"discountRate\": {\n    \"operator\": \"\",\n    \"value\": \"\",\n    \"toValue\": \"\"\n  },\n  \"offerStatus\": [\n    \"ORA_CE_WITHDRAWN\"\n  ],\n  \"dateRange\": {\n    \"from\": \"2026-02-25\",\n    \"to\": \"2026-03-03\"\n  }\n}\n\nAssume currentDate = 2026-06-04\n\nuser: show me the accepted offers in the system in the last 30 days\n{\n  \"supplier\": \"\",\n  \"programType\": \"\",\n  \"discountRate\": {\n    \"operator\": \"\",\n    \"value\": \"\",\n    \"toValue\": \"\"\n  },\n  \"offerStatus\": [\n    \"ORA_CE_ONE_TIME_ACCEPTED\",\n    \"ORA_CE_STANDING_ACCEPTED\"\n  ],\n  \"dateRange\": {\n    \"from\": \"2026-05-05\",\n    \"to\": \"2026-06-04\"\n  }\n}\n\nAssume currentDate = 2026-07-06\n\nuser: Show offers already sent out\n{\n  \"supplier\": \"\",\n  \"programType\": \"\",\n  \"discountRate\": {\n    \"operator\": \"\",\n    \"value\": \"\",\n    \"toValue\": \"\"\n  },\n  \"offerStatus\": [\n    \"ORA_CE_OFFER_COMMUNICATED\",\n    \"ORA_CE_ONE_TIME_ACCEPTED\",\n    \"ORA_CE_DECLINED\",\n    \"ORA_CE_EXPIRED\",\n    \"ORA_CE_STANDING_ACCEPTED\",\n    \"ORA_CE_UNSUBSCRIBED\",\n    \"ORA_CE_WITHDRAWN\"\n  ],\n  \"dateRange\": {\n    \"from\": \"2026-06-30\",\n    \"to\": \"2026-07-06\"\n  }\n}\n\nAssume currentDate = 2026-07-06\n\nuser: Show offers communicated to supplier\n{\n  \"supplier\": \"\",\n  \"programType\": \"\",\n  \"discountRate\": {\n    \"operator\": \"\",\n    \"value\": \"\",\n    \"toValue\": \"\"\n  },\n  \"offerStatus\": [\n    \"ORA_CE_OFFER_COMMUNICATED\",\n    \"ORA_CE_ONE_TIME_ACCEPTED\",\n    \"ORA_CE_DECLINED\",\n    \"ORA_CE_EXPIRED\",\n    \"ORA_CE_STANDING_ACCEPTED\",\n    \"ORA_CE_UNSUBSCRIBED\",\n    \"ORA_CE_WITHDRAWN\"\n  ],\n  \"dateRange\": {\n    \"from\": \"2026-06-30\",\n    \"to\": \"2026-07-06\"\n  }\n}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"OfferFilterSpecification\",\n  \"type\": \"object\",\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"supplier\": {\n      \"type\": \"string\",\n      \"description\": \"Supplier name or an empty string if not specified\"\n    },\n    \"programType\": {\n      \"type\": \"string\",\n      \"description\": \"Program type or an empty string if not specified\"\n    },\n    \"discountRate\": {\n      \"type\": \"object\",\n      \"description\": \"Discount rate filter; all fields empty strings if not specified\",\n      \"additionalProperties\": false,\n      \"properties\": {\n        \"operator\": {\n          \"type\": \"string\",\n          \"description\": \"Comparison operator for discount rate or empty string if not specified\",\n          \"enum\": [\"\", \"GT\", \"GTE\", \"LT\", \"LTE\", \"EQ\", \"BETWEEN\"]\n        },\n        \"value\": {\n          \"type\": \"string\",\n          \"description\": \"Primary discount rate value (numeric as string) or empty string if not specified\",\n          \"pattern\": \"^$|^-?\\\\d+(\\\\.\\\\d+)?$\"\n        },\n        \"toValue\": {\n          \"type\": \"string\",\n          \"description\": \"Secondary discount rate value used only for BETWEEN (numeric as string) or empty string if not specified\",\n          \"pattern\": \"^$|^-?\\\\d+(\\\\.\\\\d+)?$\"\n        }\n      },\n      \"required\": [\"operator\", \"value\", \"toValue\"]\n    },\n    \"offerStatus\": {\n      \"type\": \"array\",\n      \"description\": \"List of offer statuses; empty array if not specified\",\n      \"items\": {\n        \"type\": \"string\",\n        \"enum\": [\n          \"ORA_CE_OFFER_FINALIZED\",\n          \"ORA_CE_OFFER_COMMUNICATED\",\n          \"ORA_CE_ONE_TIME_ACCEPTED\",\n          \"ORA_CE_DECLINED\",\n          \"ORA_CE_STANDING_ACCEPTED\",\n          \"ORA_CE_UNSUBSCRIBED\",\n          \"ORA_CE_WITHDRAWN\",\n          \"ORA_CE_ERROR\",\n          \"ORA_CE_EXPIRED\"\n        ]\n      }\n    },\n    \"dateRange\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"properties\": {\n        \"from\": {\n          \"type\": \"string\",\n          \"description\": \"Start date (ISO 8601) or an empty string if not specified\",\n          \"pattern\": \"^$|^\\\\d{4}-\\\\d{2}-\\\\d{2}$\"\n        },\n        \"to\": {\n          \"type\": \"string\",\n          \"description\": \"End date (ISO 8601) or an empty string if not specified\",\n          \"pattern\": \"^$|^\\\\d{4}-\\\\d{2}-\\\\d{2}$\"\n        }\n      },\n      \"required\": [\"from\", \"to\"]\n    }\n  },\n  \"required\": [\"supplier\", \"programType\", \"discountRate\", \"offerStatus\", \"dateRange\"]\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Generate FIlter",
+            "returnType": "object",
+            "sourceCode": "/* ===============================\n   READ AND NORMALIZE FILTER INPUT\n================================ */\nlet filters = $context.$nodes.FIN_AP_LLM_INTENT_IDENTIFIER.$output;\n\n/* Parse if string */\nif (typeof filters === \"string\") {\n  try {\n    filters = JSON.parse(filters);\n  } catch (e) {\n    filters = {};\n  }\n}\n\n/* Ensure object */\nif (!filters || typeof filters !== \"object\") {\n  filters = {};\n}\n\n/* Normalize expected shapes */\nif (!Array.isArray(filters.offerStatus)) {\n  filters.offerStatus = [];\n}\n\nif (!filters.dateRange || typeof filters.dateRange !== \"object\") {\n  filters.dateRange = { from: \"\", to: \"\" };\n}\nif (typeof filters.dateRange.from !== \"string\") filters.dateRange.from = \"\";\nif (typeof filters.dateRange.to !== \"string\") filters.dateRange.to = \"\";\n\n/* Normalize discountRate:\n   supports either legacy string filters.discountRate or new object {operator,value,toValue} */\nif (\n  !filters.discountRate ||\n  (typeof filters.discountRate !== \"object\" && typeof filters.discountRate !== \"string\")\n) {\n  filters.discountRate = { operator: \"\", value: \"\", toValue: \"\" };\n}\n\nif (typeof filters.discountRate === \"string\") {\n  /* Legacy behavior: treat as EQ if numeric, otherwise blank */\n  const dr = filters.discountRate.trim();\n  if (dr !== \"\" && /^-?\\d+(\\.\\d+)?$/.test(dr)) {\n    filters.discountRate = { operator: \"EQ\", value: dr, toValue: \"\" };\n  } else {\n    filters.discountRate = { operator: \"\", value: \"\", toValue: \"\" };\n  }\n} else {\n  if (typeof filters.discountRate.operator !== \"string\") filters.discountRate.operator = \"\";\n  if (typeof filters.discountRate.value !== \"string\") filters.discountRate.value = \"\";\n  if (typeof filters.discountRate.toValue !== \"string\") filters.discountRate.toValue = \"\";\n  filters.discountRate.operator = filters.discountRate.operator.trim().toUpperCase();\n  filters.discountRate.value = filters.discountRate.value.trim();\n  filters.discountRate.toValue = filters.discountRate.toValue.trim();\n}\n\nconst supportedStatusMap = {\n  ORA_CE_OFFER_FINALIZED: \"approved\",\n  ORA_CE_OFFER_COMMUNICATED: \"sent\",\n  ORA_CE_ONE_TIME_ACCEPTED: \"accepted one-time\",\n  ORA_CE_STANDING_ACCEPTED: \"accepted standing\",\n  ORA_CE_DECLINED: \"declined\",\n  ORA_CE_EXPIRED: \"expired\",\n  ORA_CE_UNSUBSCRIBED: \"unsubscribed\",\n  ORA_CE_WITHDRAWN: \"withdrawn\",\n  ORA_CE_ERROR: \"error\"\n};\n\nfilters.offerStatus = filters.offerStatus\n  .filter(s => typeof s === \"string\")\n  .map(s => s.trim())\n  .filter(s => s !== \"\");\n\n/* ===============================\n   BUILD WHERE CLAUSE\n================================ */\nlet whereClause = \" WHERE programType = 'SIGNED_FINANCING_PROGRAM'\";\n\n/* Supplier (escape single quotes) */\nif (typeof filters.supplier === \"string\" && filters.supplier.trim() !== \"\") {\n  const supplierSafe = filters.supplier.trim().replace(/'/g, \"''\");\n  whereClause += \" AND supplierName = '\" + supplierSafe + \"'\";\n}\n\n/* Program Type (escape single quotes) */\nif (typeof filters.programType === \"string\" && filters.programType.trim() !== \"\") {\n  const programSafe = filters.programType.trim().replace(/'/g, \"''\");\n  whereClause += \" AND financingOptionType = '\" + programSafe + \"'\";\n}\n\n/* Offer Status */\nif (filters.offerStatus.length > 0) {\n  const statusList = filters.offerStatus\n    .filter(s => typeof s === \"string\" && s.trim() !== \"\")\n    .map(s => \"'\" + s.trim().replace(/'/g, \"''\") + \"'\")\n    .join(\",\");\n  if (statusList !== \"\") {\n    whereClause += \" AND offerStatusCode IN (\" + statusList + \")\";\n  }\n}\n\n/* Discount Rate filter\n   NOTE: Replace column name \"discountRate\" if your DB uses a different name. */\n{\n  const op = filters.discountRate.operator;\n  const v1 = filters.discountRate.value;\n  const v2 = filters.discountRate.toValue;\n\n  const v1ok = (typeof v1 === \"string\" && v1 !== \"\" && /^-?\\d+(\\.\\d+)?$/.test(v1));\n  const v2ok = (typeof v2 === \"string\" && v2 !== \"\" && /^-?\\d+(\\.\\d+)?$/.test(v2));\n\n  if (op === \"BETWEEN\") {\n    if (v1ok && v2ok) {\n      whereClause += \" AND discountRate BETWEEN \" + Number(v1) + \" AND \" + Number(v2);\n    }\n  } else if (op === \"GT\" && v1ok) {\n    whereClause += \" AND discountRate > \" + Number(v1);\n  } else if (op === \"GTE\" && v1ok) {\n    whereClause += \" AND discountRate >= \" + Number(v1);\n  } else if (op === \"LT\" && v1ok) {\n    whereClause += \" AND discountRate < \" + Number(v1);\n  } else if (op === \"LTE\" && v1ok) {\n    whereClause += \" AND discountRate <= \" + Number(v1);\n  } else if (op === \"EQ\" && v1ok) {\n    whereClause += \" AND discountRate = \" + Number(v1);\n  }\n}\n\n/* Date Range */\nif (\n  typeof filters.dateRange.from === \"string\" &&\n  typeof filters.dateRange.to === \"string\" &&\n  filters.dateRange.from.trim() !== \"\" &&\n  filters.dateRange.to.trim() !== \"\"\n) {\n  const fromSafe = filters.dateRange.from.trim().replace(/'/g, \"''\");\n  const toSafe = filters.dateRange.to.trim().replace(/'/g, \"''\");\n\n  whereClause +=\n    \" AND trunc(sendDate) IS NOT NULL\" +\n    \" AND trunc(sendDate) >= TO_DATE('\" + fromSafe + \"', 'YYYY-MM-DD')\" +\n    \" AND trunc(sendDate) <= TO_DATE('\" + toSafe + \"', 'YYYY-MM-DD')\";\n}\n\n/* ===============================\n   BUILD FILTER DESCRIPTION\n================================ */\nlet filterText = \"\";\n\n/* ---- Offer Status ---- */\nif (filters.offerStatus.length > 0) {\n  const labels = filters.offerStatus\n    .map(s => supportedStatusMap[s])\n    .filter(Boolean);\n\n  if (labels.length === 1) {\n    filterText += labels[0];\n  } else if (labels.length === 2) {\n    filterText += labels[0] + \" and \" + labels[1];\n  } else if (labels.length > 2) {\n    filterText += labels.slice(0, -1).join(\", \") + \" and \" + labels[labels.length - 1];\n  }\n}\n\n/* ---- Append 'offers' correctly ---- */\nfilterText += (filterText.trim() ? \" offers\" : \"offers\");\n\n/* ---- Supplier ---- */\nif (typeof filters.supplier === \"string\" && filters.supplier.trim() !== \"\") {\n  filterText += \" for \" + filters.supplier.trim();\n}\n\n/* ---- Program Type ---- */\nif (typeof filters.programType === \"string\") {\n  switch (filters.programType) {\n    case \"DYNAMIC_DISCOUNTING\":\n      filterText += \" under the Dynamic Discounting program\";\n      break;\n    case \"VIRTUAL_CREDIT_CARD\":\n      filterText += \" under the Virtual Card program\";\n      break;\n    case \"SUPPLY_CHAIN_FINANCING\":\n      filterText += \" under the Supply Chain Financing program\";\n      break;\n  }\n}\n\n/* ---- Discount Rate text ---- */\nlet discountRateText = \"\";\n{\n  const op = filters.discountRate.operator;\n  const v1 = filters.discountRate.value;\n  const v2 = filters.discountRate.toValue;\n\n  const v1ok = (typeof v1 === \"string\" && v1 !== \"\" && /^-?\\d+(\\.\\d+)?$/.test(v1));\n  const v2ok = (typeof v2 === \"string\" && v2 !== \"\" && /^-?\\d+(\\.\\d+)?$/.test(v2));\n\n  if (op === \"BETWEEN\" && v1ok && v2ok) {\n    discountRateText = \"discount rate between \" + v1 + \"% and \" + v2 + \"%\";\n  } else if (op === \"GT\" && v1ok) {\n    discountRateText = \"discount rate greater than \" + v1 + \"%\";\n  } else if (op === \"GTE\" && v1ok) {\n    discountRateText = \"discount rate at least \" + v1 + \"%\";\n  } else if (op === \"LT\" && v1ok) {\n    discountRateText = \"discount rate less than \" + v1 + \"%\";\n  } else if (op === \"LTE\" && v1ok) {\n    discountRateText = \"discount rate at most \" + v1 + \"%\";\n  } else if (op === \"EQ\" && v1ok) {\n    discountRateText = \"discount rate equal to \" + v1 + \"%\";\n  }\n}\n\nif (discountRateText) {\n  filterText += \" with \" + discountRateText;\n}\n\n/* ---- INLINE DATE RANGE TEXT ---- */\nlet dateText = \"\";\nif (typeof filters.dateRange.from === \"string\" && typeof filters.dateRange.to === \"string\") {\n  const fromDate = new Date(filters.dateRange.from);\n  const toDate = new Date(filters.dateRange.to);\n\n  if (!isNaN(fromDate) && !isNaN(toDate)) {\n    fromDate.setHours(0, 0, 0, 0);\n    toDate.setHours(0, 0, 0, 0);\n\n    const today = new Date();\n    today.setHours(0, 0, 0, 0);\n\n    const diffDays = Math.round((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1;\n\n    if (toDate.getTime() === today.getTime()) {\n      if (diffDays === 1) {\n        dateText = \" today\";\n      } else if (diffDays === 7) {\n        dateText = \" in the last 7 days\";\n      } else if (diffDays === 14) {\n        dateText = \" in the last 2 weeks\";\n      } else if (diffDays % 7 === 0) {\n        dateText = \" in the last \" + diffDays / 7 + \" weeks\";\n      } else if (diffDays >= 28 && diffDays <= 31) {\n        dateText = \" in the last month\";\n      } else if (diffDays >= 60 && diffDays <= 92) {\n        dateText = \" in the last \" + Math.round(diffDays / 30) + \" months\";\n      }\n    }\n\n    if (dateText === \"\") {\n      const fromLabel = fromDate.toLocaleDateString(\"en-US\", { month: \"short\", day: \"numeric\" });\n      const toLabel = toDate.toLocaleDateString(\"en-US\", { month: \"short\", day: \"numeric\" });\n      dateText = \" from \" + fromLabel + \" to \" + toLabel;\n    }\n  }\n}\nfilterText += dateText;\n\n/* ===============================\n   FINAL OUTPUT OBJECT\n================================ */\nconst output = {\n  whereClause: whereClause,\n  summaryText: filterText\n};\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1769170586357"
+          },
+          "diagram": {
+            "x": 5225,
+            "y": 5872
+          },
+          "code": "FIN_AP_CODE_GENERATE_FILTER",
+          "id": "1769057655026",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_PAYABLES_GETSUPPLIEROFFERSTATUS",
+            "errorNodeId": "1769923362014",
+            "functionName": "getAllOfferStatus",
+            "name": "Get Offer Status"
+          },
+          "outcomes": {
+            "success": "1769923318319"
+          },
+          "diagram": {
+            "x": 5225,
+            "y": 6094
+          },
+          "code": "FIN_AP_BO_GET_OFFER_STATUS",
+          "id": "1769170586357",
+          "inputs": [
+            {
+              "id": "1770032142310_1",
+              "name": "filter",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_GENERATE_FILTER.$output.result.whereClause}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Check Data Exist"
+          },
+          "outcomes": {
+            "true": "1769178221360",
+            "false": "1769923362014"
+          },
+          "diagram": {
+            "x": 5225,
+            "y": 6316
+          },
+          "code": "FIN_AP_IF_CHECK_DATA_EXIST",
+          "convergenceTargetId": "end",
+          "id": "1769923318319",
+          "inputs": [
+            {
+              "id": "1769923318319_1",
+              "name": "condition",
+              "type": "string",
+              "value": "true"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1769923362014",
+            "name": "Get Response",
+            "returnType": "array",
+            "sourceCode": "// Offer data (post-query)\nconst offers = Array.isArray(\n  $context.$nodes.FIN_AP_BO_GET_OFFER_STATUS.$output\n)\n  ? $context.$nodes.FIN_AP_BO_GET_OFFER_STATUS.$output\n  : [];\n\n// Base summary text generated from filters\nconst baseSummaryText =\n  $context.$nodes.FIN_AP_CODE_GENERATE_FILTER?.$output?.result?.summaryText || \"\";\n\n\n\nlet normalizedSummary = \"\";\n\nif (typeof baseSummaryText === \"string\") {\n  normalizedSummary = baseSummaryText.trim();\n}\n\n// Ensure summary always attaches grammatically to \"offers\"\nif (normalizedSummary !== \"\" && !normalizedSummary.startsWith(\"for \")) {\n  normalizedSummary = \" for \" + normalizedSummary;\n}\n\n\n\nconst prefixedSummaryText =\n  (offers.length === 0\n    ? \"No offers were found\"\n    : \"Showing offers\") +\n  normalizedSummary +\n  \".\";\n\n/* ===============================\n   BUILD FINAL OUTPUT\n================================ */\n\nlet finalOutput;\n\n// Case: no offers returned\nif (offers.length === 0) {\n  finalOutput = [\n    {\n      type: \"text\",\n      sequence: 1,\n      content: [prefixedSummaryText]\n    }\n  ];\n} else {\n  // Build table rows (max 10)\n  const tableContent = offers.slice(0, 10).map(o => {\n    let formattedSentDate = \"\";\n\n    if (o.sendDate) {\n      let d;\n\n      if (o.sendDate instanceof Date) {\n        d = o.sendDate;\n      } else if (typeof o.sendDate === \"number\") {\n        d = new Date(o.sendDate);\n      } else if (typeof o.sendDate === \"string\") {\n        d = new Date(o.sendDate.replace(\" \", \"T\"));\n      }\n\n      if (d && !isNaN(d.getTime())) {\n        formattedSentDate =\n          d.getFullYear() +\n          \"-\" +\n          String(d.getMonth() + 1).padStart(2, \"0\") +\n          \"-\" +\n          String(d.getDate()).padStart(2, \"0\");\n      }\n    }\n\n\n\n    let programTypeText = \"\";\n\n    if (o.financingOptionType === \"DYNAMIC_DISCOUNTING\") {\n      programTypeText = \"Dynamic Discounting\";\n    } else if (o.financingOptionType === \"VIRTUAL_CREDIT_CARD\") {\n      programTypeText = \"Virtual Card\";\n    } else if (o.financingOptionType === \"SUPPLY_CHAIN_FINANCING\") {\n      programTypeText = \"Supply Chain Finance\";\n    }\n\n    return {\n      supplier: o.supplierName || \"\",\n      programType: programTypeText,\n      offerSentDate: formattedSentDate,\n       discountRate: o.discountRate,\n      offerStatus: o.offerStatus || \"\"\n    };\n  });\n\n  finalOutput = [\n    {\n      type: \"text\",\n      sequence: 1,\n      content: [prefixedSummaryText]\n    },\n    {\n      type: \"table\",\n      sequence: 2,\n      heading: \"Offer Status Details\",\n      content: tableContent,\n      columnOrder: [\n        \"supplier\",\n        \"programType\",\n        \"offerSentDate\",\n        \"discountRate\",\n        \"offerStatus\"\n      ]\n    },\n    {\n      type: \"actions\",\n      sequence: 3,\n      content: [\n        \"Show the offers sent out for a time period\",\n        \"Show the draft offers\"\n      ]\n    }\n  ];\n}\n\n\n\nreturn finalOutput;"
+          },
+          "outcomes": {
+            "success": "1770899987867"
+          },
+          "diagram": {
+            "x": 5000,
+            "y": 6538
+          },
+          "code": "FIN_AP_CODE_GET_RESPONSE",
+          "convergenceTargetId": "1769923437587",
+          "id": "1769178221360",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Format Response"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "diagram": {
+            "x": 5450,
+            "y": 6538
+          },
+          "code": "FIN_AP_LLM_FORMAT_RESPONSE",
+          "id": "1769923362014",
+          "inputs": [
+            {
+              "id": "1769923362016_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an Offer Status Response Formatter.\n\nYou will be provided with:\n\n• Offer status data retrieved from a backend tool:\n  {{$context.$nodes.FIN_AP_BO_GET_OFFER_STATUS.$output}}\n\n\n• Optional summary context generated earlier:\n  {{$context.$nodes.FIN_AP_CODE_GENERATE_FILTER.$output.result.summaryText}}\n\nYour responsibility is to FORMAT the response only.\n\nYou must NOT:\n• Infer intent\n• Apply or modify filters\n• Invoke tools\n• Ask follow-up questions\n• Add recommendations, commentary, or explanations\n• Reorder or enrich data\n\n--------------------------------------------------\n\nOUTPUT CONTRACT (STRICT)\n\nReturn a JSON array only.\nDo not return prose, markdown, or explanations.\n\n--------------------------------------------------\n## Additional User Query Handling (MANDATORY)\n\nIf the user asks **any additional question** beyond what is available in the backend JSON response (example: clarification, summary, interpretation, meaning of offer status, or next steps), you must:\n\n* Still return the JSON array in the **same schema**\n* Provide the answer as an additional **text sentence** appended inside the existing **sequence = 1** text block content array.\n\n\n\nOUTPUT BLOCKS\n\n1) Text Block (ALWAYS REQUIRED)\n\n{\n  \"type\": \"text\",\n  \"sequence\": 1,\n  \"content\": [\"<summary sentence>\"]\n}\n\nRules:\n• If no offers exist, start with:\n  \"No offers were found\"\n• If one or more offers exist, start with:\n  \"Showing offers\"\n• Append the provided summary text if present\n• Ensure grammatical correctness\n• End with a period\n\nExamples:\n• \"No offers were found for approved offers for GE Capital.\"\n• \"Showing offers under the Dynamic Discounting program.\"\n• \"Showing offers for the selected filters.\"\n\n--------------------------------------------------\n\n2) Table Block (ONLY IF OFFERS EXIST)\n\nInclude this block only when at least one offer exists.\n\n{\n  \"type\": \"table\",\n  \"sequence\": 2,\n  \"heading\": \"Offer Status Details\",\n  \"content\": []\n}\n\nRules:\n• Display a maximum of 10 rows\n• Preserve the original backend ordering\n• Do NOT compute, normalize, or derive values\n• Do NOT add or remove columns\n\nField Mapping (STRICT):\n\nsupplierName            → supplierName\nfinancingOptionType     → programType\nsendDate or sentDate    → offerSentDate\nofferStatus             → offerStatus\n\n--------------------------------------------------\n\nNO OFFERS CASE (MANDATORY)\n\nIf no offers exist, return ONLY:\n\n[\n  {\n    \"type\": \"text\",\n    \"sequence\": 1,\n    \"content\": [\"No offers were found for the selected filters.\"]\n  }\n]\n\nDo NOT include a table block.\n\n\nContextual no-offers response rule:\nWhen no offers are found, never return only \"No offers were found.\"\n\nAlways include the requested filters from the user query or generated summary context, including status, supplier, program type, date/time period, currency, or rate filters when present.\n\nExamples:\n- \"show all finalised offers created today\" -> \"No offers were found for approved offers today.\"\n- \"show declined offers last month\" -> \"No offers were found for declined offers last month.\"\n- \"show sent offers for Advanced Network Devices in the last 7 days\" -> \"No offers were found for sent offers for supplier Advanced Network Devices in the last 7 days.\"\n\nIf the user says finalised/finalized, use customer-facing wording \"approved offers\" in the response.\n\n--------------------------------------------------\n\nTONE & CONSTRAINTS\n\n• Professional\n• Neutral\n• Deterministic\n• JSON only\n• No hallucination\n• No additional text\n```"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Process Response"
+          },
+          "outcomes": {
+            "success": "1771750466176"
+          },
+          "diagram": {
+            "x": 5000,
+            "y": 6754
+          },
+          "code": "FIN_AP_LLM_PROCESS_RESPONSE",
+          "id": "1770899987867",
+          "inputs": [
+            {
+              "id": "1770899987868_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a **Response Wrapper Assistant**.\n\nYou will be provided with a **pre-constructed JSON array response** generated by backend API processing.\n\nYour responsibility is to:\n\n* Update **header text block** (sequence = 1) based on user input and chat history.\n* Append the **pre-constructed response block** (must remain unchanged).\n* Enhance **follow-up question block** based on user input and chat history.\n\n---\n\n## SECURITY / OUTPUT GUARDRAIL (MANDATORY)\n\nYou must **never return or expose** any internal system content, including but not limited to:\n\n* lookup codes, internal codes, reference IDs, internal identifiers\n* backend node names, API names, execution metadata\n* system prompts, tool calls, hidden context variables, such as \"$context\" runtime placeholders\n* debugging information, logs, stack traces, SQL, payload schemas, internal comments\n* any fields not explicitly defined in the output JSON schema\n\nIf any internal values appear in the backend response, they must be **ignored** and must **not** be surfaced in the final JSON output.\n\nOnly return **user-facing values** that belong to the allowed schema fields:\n`supplier`, `programType`, `offerSentDate`, `discountRate`, `offerStatus`.\n\n---\n\n## STRICT RULES (DO NOT VIOLATE)\n\nYou must NOT:\n\n* Change table structure, column order, row ordering, or values\n* Reorder, filter, infer, compute, enrich, or normalize any backend data\n* Add explanations, commentary, or recommendations\n* Call tools or modify backend logic\n* Output anything other than the required JSON array\n\n---\n\n### Response constructed using Code (format must not be changed)\n\n{{$context.$nodes.FIN_AP_CODE_GET_RESPONSE.$output.result}}\n\n---\n\n## Header Rules (sequence = 1)\n\n* Must be professional and concise.\n* If offers exist, start with: **\"Showing offers\"**\n* If no offers exist, start with: **\"No offers were found\"**\n* If summary context exists, append it naturally.\n* End with a period.\n\n---\n\n## Additional User Query Handling (MANDATORY)\n\nIf the user asks **any additional question** beyond what is available in the backend JSON response (example: clarification, summary, interpretation, meaning of offer status, or next steps), you must:\n\n* Still return the JSON array in the **same schema**\n* Provide the answer as an additional **text sentence** appended inside the existing **sequence = 1** text block content array.\n\nRules:\n\n* Do NOT create new sequences or new block types.\n* Do NOT modify the backend table data.\n* The additional response must be concise, professional, and based only on the available table fields and chat history.\n* If the additional question cannot be answered using available information, respond with:\n  **\"That information is not available in the current offer data.\"**\n\n---\n\n## Follow-up Question Rules (final sequence)\n\nGenerate exactly **one or two short follow-up question** based on:\n\n* user’s latest request\n* chat history context\n* offers shown (if any)\n\nExamples:\n\n* Would you like to filter by supplier or offer status? -> only more than 10 records are present\n* Do you want to view details for a specific supplier?\n* View the shortlisted offers\n* View the status of send out offers\n\n---\n\n## Output Contract (STRICT)\n\nReturn **only a JSON array**.\n\nNo prose. No markdown. No explanations.\n\n---\n\n## JSON Array Specification (STRICT)\n\nThe final output must follow this structure:\n\n```json\n[\n  {\n    \"sequence\": 1,\n    \"type\": \"text\",\n    \"content\": [\"<header sentence>\"]\n  },\n  {\n    \"sequence\": 2,\n    \"type\": \"table\",\n    \"heading\": \"Offer Status Details\",\n    \"columnOrder\": [\"supplier\", \"programType\", \"offerSentDate\", \"discountRate\",\"offerStatus\"],\n    \"content\": [\n      {\n        \"supplier\": \"<string>\",\n        \"programType\": \"<string>\",\n        \"offerSentDate\": \"<string>\",\n         \"discountRate\": \"<string>\",\n        \"offerStatus\": \"<string>\"\n      }\n    ]\n  },\n  {\n    \"sequence\": 3,\n    \"type\": \"actions\",\n    \"content\": [\"<follow-up question>\"]\n  }\n]\n```\n\nRules:\n\n* Sequence must start at 1 and increase in order.\n* If no offers exist, return only the sequence 1 text block (no table, no follow-up).\n* The table block must preserve backend ordering and values exactly.\n* Do not add/remove columns.\n* Maximum 10 rows in table output.\n\n---\n\n## No Offers Case\n\nIf no offers exist, return only the sequence 1 text block (no table, no follow-up)."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Return Response"
+          },
+          "outcomes": {},
+          "diagram": {
+            "x": 5000,
+            "y": 6982
+          },
+          "code": "FIN_AP_RETURN_RESPONSE",
+          "convergenceTargetId": "end",
+          "id": "1771750466176",
+          "inputs": [
+            {
+              "id": "1771750466177_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_LLM_PROCESS_RESPONSE.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Payload Constructor ",
+            "returnType": "object",
+            "sourceCode": "let result = $context.$nodes.FIN_AP_SEEDED_PROMPT_INTENT_IDENTIFIER.$output;\n\nif (typeof result === \"string\") {\n  result = JSON.parse(result);\n}\n\nlet filter = \"\";\n\nif (result.seededPrompt === true) {\n  const days = Number(result.parameter.timeFrame);\n\n  if (result.seededPromptType === \"AcceptanceRatePrompt\") {\n    filter =\n      \"sendDate <= sysdate - \" +\n      days +\n      \" and offerStatusCode in ('ORA_CE_COMMUNICATED','ORA_CE_ONE_TIME_ACCEPTED')\";\n  }\n\n  if (result.seededPromptType === \"LossOfBenefitPrompt\") {\n    filter =\n      \"sendDate <= sysdate - 14 + \" +\n      days +\n      \" and offerStatusCode in ('ORA_CE_COMMUNICATED')\";\n  }\n\n  if (result.seededPromptType === \"SupplierCommunication\") {\n    filter = {\n      viewQueries: {\n        financingProgramOfferDetails: {\n          module: \"oraErpCoreFinancingProgramSetup\",\n          businessObject: \"FinancingProgramOffer\",\n          fieldAliases: {\n            financingProgramOfferId: \"financingProgramOfferId\",\n            discountRate: \"discountRate\",\n            \"thirdPartyCandidate.thirdPartyAccountOrSite.supplier.name\": \"supplierName\",\n            \"offerStatus.meaning\": \"offerStatus\",\n            \"offerStatus.lookupCode\": \"offerStatusCode\",\n            emailAddress: \"emailAddress\",\n            sendDate: \"sendDate\",\n            \"currency.currencyCode\": \"currencyCode\"\n          }\n        },\n        payablesInvoiceInstallments: {\n          module: \"oraErpCorePayablesInvoices\",\n          businessObject: \"PayablesInvoiceInstallment\",\n          view: \"payablesPaymentScheduleDetail\",\n          fieldAliases: {\n            invoiceId: \"invoiceId\",\n            installmentNumber: \"installmentNumber\",\n            dueDate: \"dueDate\",\n            \"invoiceCurrencyGrossAmount\": \"unpaidAmount\",\n            \"invoiceTransaction.invoiceCurrency.currencyCode\": \"currencyCode\",\n            \"financeProgramOffer.financingProgramOfferId\": \"financingProgramOfferId\"\n          },\n          filter: \"financeProgramOffer.financingProgramOfferId != null\"\n        }\n      },\n      select:\n        \"select fp.supplierName as supplier, \" +\n        \"to_char(TRUNC(fp.sendDate), 'YYYY-MM-DD') as offerSentDate, \" +\n        \"to_char(trunc(sysdate) - trunc(fp.sendDate)) as daysSinceCommunication, \" +\n        \"to_char(count(pi.installmentNumber)) as numberOfInstallments, \" +\n        \"trim(to_char(round(nvl(sum(pi.unpaidAmount), 0), 0), 'FM999999999999999990.00') || ' ' || coalesce(fp.currencyCode, pi.currencyCode)) as outstandingAmount, \" +\n        \"trim(to_char(nvl(sum(((fp.discountRate / 100) * pi.unpaidAmount * (trunc(pi.dueDate) - trunc(sysdate))) / 360), 0), 'FM999999999999999990.00') || ' ' || coalesce(fp.currencyCode, pi.currencyCode)) as discountLost, \" +\n        \"fp.emailAddress as recipient, \" +\n        \"fp.offerStatus as status \" +\n        \"from financingProgramOfferDetails fp \" +\n        \"left join payablesInvoiceInstallments pi on fp.financingProgramOfferId = pi.financingProgramOfferId \" +\n        \"where fp.offerStatusCode = 'ORA_CE_OFFER_COMMUNICATED' \" +\n        \"AND (trunc(sysdate) - trunc(fp.sendDate) > \" + days + \") \" +\n        \"group by fp.supplierName, fp.sendDate, fp.emailAddress, fp.offerStatus, fp.financingProgramOfferId, fp.currencyCode, pi.currencyCode FETCH FIRST 20 ROWS ONLY\",\n      return: [\n        { name: \"supplier\", type: \"string\" },\n        { name: \"offerSentDate\", type: \"string\" },\n        { name: \"daysSinceCommunication\", type: \"string\" },\n        { name: \"numberOfInstallments\", type: \"string\" },\n        { name: \"outstandingAmount\", type: \"string\" },\n        { name: \"discountLost\", type: \"string\" },\n        { name: \"recipient\", type: \"string\" },\n        { name: \"status\", type: \"string\" }\n      ]\n    };\n  }\n}\n\nreturn filter;"
+          },
+          "outcomes": {
+            "success": "1780688787579"
+          },
+          "diagram": {
+            "x": 5928.5,
+            "y": 5650
+          },
+          "code": "FIN_AP_CODE_PAYLOAD_CONSTRUCTOR",
+          "id": "1780686754058",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_PAYABLES_BUSINESSOBJECTDATAEXTRACT",
+            "errorNodeId": "1769923362014",
+            "functionName": "Extract",
+            "processJson": true,
+            "name": "Data Extract for Seeded Prompts"
+          },
+          "outcomes": {
+            "success": "1780712806110"
+          },
+          "diagram": {
+            "x": 5909,
+            "y": 5872
+          },
+          "code": "FIN_AP_BO_DATA_EXTRACT_FOR_SEEDED_PROMPTS",
+          "id": "1780688787579",
+          "inputs": [
+            {
+              "id": "1780712563063_1",
+              "name": "extraction_query_json_object",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_PAYLOAD_CONSTRUCTOR.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Construct Data Parser",
+            "returnType": "object",
+            "sourceCode": "let intentOutput = $context.$nodes.FIN_AP_SEEDED_PROMPT_INTENT_IDENTIFIER.$output;\n\nif (intentOutput && intentOutput.result !== undefined) {\n  intentOutput = intentOutput.result;\n}\n\nif (typeof intentOutput === \"string\") {\n  try {\n    intentOutput = JSON.parse(intentOutput);\n  } catch (e) {\n    intentOutput = {};\n  }\n}\n\nlet seededPrompt = intentOutput.seededPromptType || \"\";\nlet timeFrame = intentOutput.parameter.timeFrame;\n\nlet dataOutput = $context.$nodes.FIN_AP_BO_DATA_EXTRACT_FOR_SEEDED_PROMPTS.$output;\n\nif (dataOutput && dataOutput.result !== undefined) {\n  dataOutput = dataOutput.result;\n}\n\nif (typeof dataOutput === \"string\") {\n  try {\n    dataOutput = JSON.parse(dataOutput);\n  } catch (e) {\n    dataOutput = [];\n  }\n}\n\nif (!Array.isArray(dataOutput)) {\n  if (dataOutput && Array.isArray(dataOutput.data)) {\n    dataOutput = dataOutput.data;\n  } else if (dataOutput && Array.isArray(dataOutput.records)) {\n    dataOutput = dataOutput.records;\n  } else if (dataOutput && Array.isArray(dataOutput.offers)) {\n    dataOutput = dataOutput.offers;\n  } else {\n    dataOutput = [];\n  }\n}\n\nlet finalOutput;\n\nif (seededPrompt === \"SupplierCommunication\") {\n  let summaryText =\n    dataOutput.length === 0\n      ? \"No communicated offers were found that have not received a supplier response in over \" + timeFrame + \" days.\"\n      : \"Here are the communicated offers that have not received a supplier response in over \" + timeFrame + \" days.\";\n\n  if (dataOutput.length === 0) {\n    finalOutput = [\n      {\n        type: \"text\",\n        sequence: 1,\n        content: [summaryText]\n      }\n    ];\n  } else {\n    let tableContent = [];\n\n    for (let i = 0; i < dataOutput.length && i < 10; i++) {\n      let row = dataOutput[i] || {};\n\n      tableContent.push({\n        supplier: row.supplier || row.supplierName || \"\",\n        offerSentDate: row.offerSentDate || row.sendDate || row.sentDate || row.communicationDate || \"\",\n        daysSinceCommunication: row.daysSinceCommunication || row.daysSinceLastCommunication || row.daysSinceOfferSent || row.daysSinceSent || \"\",\n        numberOfInstallments: row.numberOfInstallments || row.installmentCount || row.numInstallments || row.numberInstallments || \"\",\n        outstandingAmount: row.outstandingAmount || row.totalOutstandingAmount || row.amountOutstanding || \"\",\n        discountLost: row.discountLost || row.estimatedDiscountLost || row.lostDiscount || row.estimatedLossOfBenefit || \"\",\n        recipient: row.recipient !== undefined ? row.recipient : null,\n        status:\n          row.status === \"OFFER_COMMUNICATED\" || row.offerStatus === \"OFFER_COMMUNICATED\"\n            ? \"Offer communicated\"\n            : row.status || row.offerStatus || \"\"\n      });\n    }\n\n    finalOutput = [\n      {\n        type: \"text\",\n        sequence: 1,\n        content: [summaryText]\n      },\n      {\n        type: \"table\",\n        sequence: 2,\n        heading: \"Supplier Communication Details\",\n        content: tableContent,\n        columnOrder: [\n          \"supplier\",\n          \"offerSentDate\",\n          \"daysSinceCommunication\",\n          \"numberOfInstallments\",\n          \"outstandingAmount\",\n          \"discountLost\",\n          \"recipient\",\n          \"status\"\n        ]\n      },\n      {\n        type: \"text\",\n        sequence: 3,\n        content: \"These offers may require follow-up to avoid delays in acceptance or expiry of discount benefits.\"\n      }\n    ];\n  }\n} else {\n  finalOutput = [\n    {\n      type: \"text\",\n      sequence: 1,\n      content: [\"No matching offers were found\"]\n    }\n  ];\n}\n\nreturn finalOutput;"
+          },
+          "outcomes": {
+            "success": "1780716669453"
+          },
+          "diagram": {
+            "x": 5928.5,
+            "y": 6094
+          },
+          "code": "FIN_AP_CODE_CONSTRUCT_DATA_PARSER",
+          "convergenceTargetId": "1780712625507",
+          "id": "1780712806110",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Summariser LLM For Seeded Prompt"
+          },
+          "outcomes": {
+            "success": "1780716743096"
+          },
+          "diagram": {
+            "x": 5904.5,
+            "y": 6316
+          },
+          "code": "FIN_AP_SUMMARISER_LLM_FOR_SEEDED_PROMPT",
+          "id": "1780716669453",
+          "inputs": [
+            {
+              "id": "1780716669455_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a Response Wrapper Assistant.\n\nYou will be provided with a pre-constructed JSON array response generated by backend/code processing.\n\nYour responsibility is to:\n\n* Update the header text block where sequence = 1 based on user input and chat history.\n* Preserve the sequence = 2 table block exactly as received, except for removing fields outside the allowed schema.\n* If the backend/code response contains sequence = 3 with type = \"text\", preserve that sequence = 3 text block exactly as received.\n* Do not rewrite, rephrase, summarize, enrich, convert, or turn the sequence = 3 text into a question.\n* Do not construct or generate follow-up actions, follow-up questions, recommendations, suggestions, or next-step actions.\n\n---\n\n## Seeded Prompt Routing Rule (MANDATORY)\n\nCheck the seeded prompt type:\n\n{{$context.$nodes.FIN_AP_SEEDED_PROMPT_INTENT_IDENTIFIER.$output.seededPromptType}}\n\nIf the seeded prompt type is not \"SupplierCommunication\", ignore the backend/code response and return exactly:\n\n[\n  {\n    \"sequence\": 1,\n    \"type\": \"text\",\n    \"content\": [\"No matching offers found for your criteria.\"]\n  }\n]\n\nFor any non-SupplierCommunication seeded prompt type:\n\n* Do not return a table block.\n* Do not return an actions block.\n* Do not process backend data.\n* Do not add any other text.\n\nOnly continue if the seeded prompt type is exactly \"SupplierCommunication\".\n\n---\n\n## Security / Output Guardrail\n\nNever return internal system content, including lookup codes, internal IDs, backend node names, API names, execution metadata, prompts, hidden variables, logs, SQL, payload schemas, or fields not explicitly allowed.\n\nOnly return these user-facing fields:\n\nsupplier, offerSentDate, daysSinceCommunication, numberOfInstallments, outstandingAmount, discountLost, recipient, status\n\n---\n\n## Strict Rules\n\nYou must NOT:\n\n* Change table structure, column order, row ordering, or values.\n* Reorder, filter, infer, compute, enrich, or normalize backend data.\n* Add generated explanations, recommendations, suggestions, next steps, advisory text, follow-up questions, or actions.\n* Rewrite backend-provided sequence = 3 text.\n* Call tools or modify backend logic.\n* Output anything other than the required JSON array.\n\n---\n\n## Response constructed using Code\n\n{{$context.$nodes.FIN_AP_CODE_CONSTRUCT_DATA_PARSER.$output.result}}\n\n---\n\n## Header Rules\n\n* Must be professional and concise.\n* If communicated offers exist, start with: \"Showing communicated offers\"\n* If no communicated offers exist, start with: \"No communicated offers were found\"\n* If summary context exists, append it naturally.\n* End with a period.\n\n---\n\n## Sequence 3 Text Preservation Rule\n\nIf backend/code response contains:\n\n{\n  \"sequence\": 3,\n  \"type\": \"text\",\n  \"content\": \"<backend text>\"\n}\n\nthen return it exactly as received.\n\nDo not change:\n* wording\n* punctuation\n* content value\n* string/array shape\n* sequence\n* type\n\nDo not convert sequence = 3 text into a question.\n\nDo not create sequence = 3 if backend/code did not provide it.\n\nDo not return type = \"actions\".\n\n---\n\n## Output Contract\n\nReturn only a JSON array.\n\nNo prose. No markdown. No explanations.\n\n---\n\n## Final Validation Before Responding\n\nBefore returning the response, verify:\n\n* Output is valid JSON.\n* Output is only a JSON array.\n* If no communicated offers exist, only sequence = 1 is returned.\n* If communicated offers exist, sequence = 1 and sequence = 2 are returned.\n* Sequence = 3 is returned only when backend/code already provides sequence = 3 with type = \"text\".\n* Sequence = 3 content is preserved exactly as received.\n* No type = \"actions\" block is returned.\n* No generated follow-up question is returned.\n* Table contains only allowed schema fields.\n* Table values and row order are preserved exactly."
+            }
+          ],
+          "type": "LLM",
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"oneOf\": [\n      {\n        \"type\": \"object\",\n        \"properties\": {\n          \"sequence\": {\n            \"type\": \"integer\",\n            \"enum\": [\n              1\n            ]\n          },\n          \"type\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"text\"\n            ]\n          },\n          \"content\": {\n            \"oneOf\": [\n              {\n                \"type\": \"string\"\n              },\n              {\n                \"type\": \"array\",\n                \"items\": {\n                  \"type\": \"string\"\n                }\n              }\n            ]\n          }\n        },\n        \"required\": [\n          \"sequence\",\n          \"type\",\n          \"content\"\n        ],\n        \"additionalProperties\": false\n      },\n      {\n        \"type\": \"object\",\n        \"properties\": {\n          \"sequence\": {\n            \"type\": \"integer\",\n            \"enum\": [\n              2\n            ]\n          },\n          \"type\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"table\"\n            ]\n          },\n          \"content\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"supplier\": {\n                  \"type\": \"string\"\n                },\n                \"offerSentDate\": {\n                  \"type\": \"string\",\n                  \"format\": \"date-time\"\n                },\n                \"daysSinceCommunication\": {\n                  \"type\": \"integer\"\n                },\n                \"numberOfInstallments\": {\n                  \"type\": \"integer\"\n                },\n                \"outstandingAmount\": {\n                  \"type\": \"number\"\n                },\n                \"discountLost\": {\n                  \"type\": \"boolean\"\n                },\n                \"recipient\": {\n                  \"type\": \"string\"\n                },\n                \"status\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"supplier\",\n                \"offerSentDate\",\n                \"daysSinceCommunication\",\n                \"numberOfInstallments\",\n                \"outstandingAmount\",\n                \"discountLost\",\n                \"recipient\",\n                \"status\"\n              ],\n              \"additionalProperties\": false\n            }\n          }\n        },\n        \"required\": [\n          \"sequence\",\n          \"type\",\n          \"content\"\n        ],\n        \"additionalProperties\": false\n      },\n      {\n        \"type\": \"object\",\n        \"properties\": {\n          \"sequence\": {\n            \"type\": \"integer\",\n            \"enum\": [\n              3\n            ]\n          },\n          \"type\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"text\"\n            ]\n          },\n          \"content\": {\n            \"oneOf\": [\n              {\n                \"type\": \"string\"\n              },\n              {\n                \"type\": \"array\",\n                \"items\": {\n                  \"type\": \"string\"\n                }\n              }\n            ]\n          }\n        },\n        \"required\": [\n          \"sequence\",\n          \"type\",\n          \"content\"\n        ],\n        \"additionalProperties\": false\n      }\n    ]\n  },\n  \"minItems\": 1,\n  \"additionalItems\": false\n}"
+        },
+        {
+          "metadata": {
+            "name": "Return Response For Seeded Prompt"
+          },
+          "outcomes": {},
+          "diagram": {
+            "x": 5900,
+            "y": 6538
+          },
+          "code": "FIN_AP_RETURN_RESPONSE_FOR_SEEDED_PROMPT",
+          "convergenceTargetId": "end",
+          "id": "1780716743096",
+          "inputs": [
+            {
+              "id": "1780716743096_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_SUMMARISER_LLM_FOR_SEEDED_PROMPT.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.25
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "modelName": "GPT OSS 120B (Basic)",
+      "provider": "CERT_BASIC"
+    },
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    },
+    "dtRunProfiles": {
+      "activeProfileId": null,
+      "profiles": []
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1769921164407",
+            "name": "suppliers",
+            "type": "array"
+          },
+          {
+            "id": "1769921154261",
+            "name": "chatHistory",
+            "type": "object"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "FIN",
+  "product": "PAYABLES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"6\""
+  }
+}

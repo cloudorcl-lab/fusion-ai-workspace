@@ -1,0 +1,952 @@
+{
+  "workflowId": "300000322201336",
+  "workflowCode": "ORA_CAREER_COACH",
+  "name": "Career Coach",
+  "description": "You are a workflow agent responsible for orchestrating a multi-turn conversation between a candidate (USER) and a set of specialized worker agents. Your task is to determine which single agent is best positioned to handle the user’s current request, based on both the latest user input and the full conversation history. You must delegate control to only one agent at a time.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1769141181408"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Router"
+          },
+          "outcomes": {
+            "success": "1763589323509"
+          },
+          "code": "ROUTER",
+          "id": "1763426080755",
+          "inputs": [
+            {
+              "id": "1763426080757_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are the Supervisor Agent.\nOn every turn, select exactly one worker agent based on the latest user message and the full conversation history.\nOutput exactly one token and nothing else from the options below:\nCANDIDATE_PROFILE_BUILDER | JOB_RECOMMENDATION_AGENT | JOB_FIT_AGENT | JOB_POSTING_INFO_AGENT | CE_RAG_AGENT | INTERVIEW_SCHEDULING_AGENT | INTERVIEW_COACHING_AGENT | TC_SIGNUP_AGENT | NO_AGENT_FIT\n\nGlobal Rules (Highest Priority)\n\n0) Safety and Topic Guard\nRoute only safe, career-coach-related intents, such as candidate profiles, job search, job fit, job posting questions, company recruiting questions, interview scheduling/coaching, applications, and talent community signup.\n\nUnsafe requests or content MUST route to NO_AGENT_FIT, including hate/harassment, self-harm, harm to others, illegal activity, explicit sexual content, policy evasion, weapons, cyber abuse, fraud, or harmful operational guidance.\n\nUnrelated non-career topics MUST route to NO_AGENT_FIT, including trivia, news, sports, entertainment, politics, weather, recipes, travel, coding support, medical/legal/financial advice, schoolwork, shopping, lifestyle advice, creative writing, games, jokes, roleplay, or small talk with no career-coach request.\n\nMixed messages:\n Unsafe content always takes priority ? NO_AGENT_FIT.\n Safe unrelated asides may be ignored if there is also a valid career-coach request.\n \nEven when the request is within a supported intent, the response must remain bounded to the specific ask. Requests for repeated expansion, additional sample generation, unlimited variations, or open-ended continuation beyond the original coaching need must be routed to NO_AGENT_FIT. If the message is reasonably safe and career-related, route to the closest eligible worker agent using the existing rules. Otherwise route to NO_AGENT_FIT.\n\n1) Interview Scheduling (Independent of Profile)\nIf the user intent involves:\n* Scheduling an interview\n* Rescheduling an interview\n* Cancelling an interview\n* Requesting additional interview time slots\nMUST route to: INTERVIEW_SCHEDULING_AGENT\nThis rule applies regardless of whether {CandidateProfileSummary} exists.\n\n2) Interview Coaching (Independent of Profile)\nIf the user intent involves interview coaching or preparation, such as:\n* Asking for interview tips, practice, or coaching\n* Requesting mock interviews or role-play\n* Asking for help answering interview questions (behavioral, technical, leadership)\n* Asking for feedback on interview answers or stories (e.g., STAR refinement)\n* Asking how to negotiate or discuss comp/level in an interview context\nMUST route to: INTERVIEW_COACHING_AGENT\nThis rule applies regardless of whether {CandidateProfileSummary} exists.\n\n3) Profile Gate\nIf no confirmed {CandidateProfileSummary} exists, then ANY request for:\n* job search\n* job browsing\n* job recommendations\n* job fit or qualification (“am I a fit?”, “do I qualify?”)\nMUST route to: CANDIDATE_PROFILE_BUILDER\n\nExceptions (only if the request is purely informational):\n* Job-specific factual questions → JOB_POSTING_INFO_AGENT\n* General company or policy questions → CE_RAG_AGENT\nIf there is any ambiguity, default to CANDIDATE_PROFILE_BUILDER.\n\n4) Conversation Completion / No Further Action\nIf the agent is NOT in the midst of completing the user's previous query based on the conversation history AND the user's latest message is a conversational acknowledgement or explicit signal that no further help is needed, such as:\n* \"Perfect\"\n* \"Looks good\"\n* \"That works\"\n* \"All set\"\n* \"I'm good\"\n* \"Thanks\"\n* \"No, that's all\"\n* \"Nothing else\"\n* \"You answered my question\"\n\nAND the latest message does NOT contain a new request, question, or task,\n\nMUST route to: NO_AGENT_FIT\n\nAgent Rules\n\nCANDIDATE_PROFILE_BUILDER\nUse when:\n* The candidate profile is missing, incomplete, or unconfirmed, AND\n* The user intent involves jobs, job fit, or recommendations\nContinue invoking this agent until the candidate explicitly confirms the profile.\n\nJOB_RECOMMENDATION_AGENT\nUse ONLY IF:\n* {CandidateProfileSummary} exists and is confirmed, AND\n* The user asks to find jobs, browse roles, or get job recommendations\nIf the profile is missing or unconfirmed, this agent is ineligible and you MUST route to CANDIDATE_PROFILE_BUILDER.\n\nJOB_FIT_AGENT\nUse ONLY IF:\n* {CandidateProfileSummary} exists and is confirmed, AND\n* The user asks about assessing job fit or qualification in the conversation history preceding the latest user query. \nIf the profile is missing or unconfirmed, this agent is ineligible and you MUST route to CANDIDATE_PROFILE_BUILDER.\n\nJOB_POSTING_INFO_AGENT\nUse when the user asks factual or descriptive questions about a job posting (responsibilities, requirements, location, salary, etc.).\nUse when the user asks to apply to a specific job or request the job application link\nDo NOT use for fit, qualification, or job recommendations.\n\nCE_RAG_AGENT\nUse when the user asks general company-level questions (hiring process, benefits, remote work policy, culture, internal mobility).\nDo NOT use for job-specific questions, job fit, recommendations, or profile collection.\n\nINTERVIEW_SCHEDULING_AGENT\nUse when the user intent involves:\n* Scheduling an interview\n* Rescheduling an interview\n* Cancelling an interview\n* Requesting additional interview time slots\nExamples:\n“I want to schedule my interview”; “Can I reschedule my interview?”; “I need to cancel my interview”; “Do you have more interview slots available?”\nThis agent is independent of profile creation and should be selected regardless of whether {CandidateProfileSummary} exists.\n\nINTERVIEW_COACHING_AGENT\nUse when the user intent involves interview coaching or preparation:\n* Tips, coaching, or guidance for an upcoming interview\n* Mock interview / role-play\n* Practice questions and answer refinement\n* Feedback on responses, stories, or communication\nThis agent is independent of profile creation and should be selected regardless of whether {CandidateProfileSummary} exists.\n\nTC_SIGNUP_AGENT\nUse this agent when user's intent is to join or sign-up for talent community or wants to create a talent profile.\nTC_SIGNUP_AGENT is independent of {CandidateProfileSummary}.\nDuring an active TC signup flow, user-provided job preferences (desired roles, location, work type, interests, etc.) MUST remain with TC_SIGNUP_AGENT.\n\nFallback\nIf none of the above rules apply, output: NO_AGENT_FIT\n\nHere is the message (with chat history) from the user:\n{{$context.$variables.fqMessage}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "chatHistory",
+            "returnType": "object",
+            "sourceCode": "var additionalContext = $context.$triggers.REST.$input.additionalContext || {};\nObject.assign(additionalContext, $context.$variables.globalCESettings );\nvar urlPrefix = \"\";\nif (additionalContext?.CeBaseUrl != null) {\n    // ceBaseUrl is neither null nor undefined\n    //urlPrefix = CeBaseUrl + \"/\" + additionalContext?.SiteLanguage + \"/sites/\" + additionalContext?.SiteNumber;\n    urlPrefix = additionalContext?.CeBaseUrl + \"/\" + additionalContext?.SiteLanguage + \"/sites/\" + additionalContext?.SiteNumber;\n}\nadditionalContext.UrlPrefix = urlPrefix;\n// We will uncomment the line below when AI Agent studio reads the BO parameter name from the agent variable\n//delete additionalContext[\"OraIrcAccessCode\"];\n\nvar fqMessage = \"System: Here's additional context parameters that can be used in responding to the user query: \" + JSON.stringify(additionalContext) + \"\\n\";\nfqMessage += \"If any of the context parameters are empty, then use the empty string as the value in the prompt instructions. For example, if 'UrlPrefix' is empty string, then replace {UrlPrefix} with an empty string in the output.\\n\";\n\nif (additionalContext?.ChannelType === \"ORA_SMS\" || additionalContext?.ChannelType === \"ORA_WHATSAPP\") {\n     fqMessage += \"System: Format your responses to be short and concise that's appropriate for SMS/WhatsApp channel. Use plain text only. Do NOT use HTML. Do NOT use Markdown.\" + \"\\n\";\n}\nfqMessage += $context.$system.$chatHistory + \"\\n\" +  \"User: \" + $context.$system.$inputMessage;\n\nreturn {\"context\":additionalContext, \"fqMessage\":fqMessage};"
+          },
+          "outcomes": {
+            "success": "1763537061023"
+          },
+          "code": "CHAT_HISTORY",
+          "id": "1763536954600",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "setGlobalVars"
+          },
+          "outcomes": {
+            "success": "1763426080755"
+          },
+          "code": "SET_GLOBAL_VARS",
+          "id": "1763537061023",
+          "inputs": [
+            {
+              "id": "1765223645453",
+              "name": "context",
+              "type": "object",
+              "value": "{{$context.$nodes.CHAT_HISTORY.$output.result.context}}"
+            },
+            {
+              "id": "1763537070999",
+              "name": "fqMessage",
+              "type": "string",
+              "value": "{{$context.$nodes.CHAT_HISTORY.$output.result.fqMessage}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Selected Agent"
+          },
+          "outcomes": {
+            "CANDIDATE_PROFILE_BUILDER": "1765220251322",
+            "JOB_RECOMMENDATION_AGENT": "1765826973148",
+            "JOB_FIT_AGENT": "1763589965547",
+            "JOB_POSTING_INFO_AGENT": "1763590022032",
+            "CE_RAG_AGENT": "1763590241411",
+            "NO_AGENT_FIT": "1763591528350",
+            "INTERVIEW_SCHEDULING_AGENT": "1769206019230",
+            "CANDIDATE_SELF_SERVICE_AGENT": "1768030381516",
+            "TC_SIGNUP_AGENT": "1768030469498",
+            "INTERVIEW_COACHING_AGENT": "1768418990404"
+          },
+          "code": "SELECTED_AGENT_",
+          "convergenceTargetId": "end",
+          "id": "1763589323509",
+          "inputs": [
+            {
+              "id": "1763589323510_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.ROUTER.$output}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "agentCode": "ORA_CE_JOB_FIT",
+            "name": "Job Fit Agent",
+            "type": "REUSABLE"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "JOB_FIT_AGENT",
+          "id": "1763589965547",
+          "inputs": [
+            {
+              "id": "1770039908759_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$variables.fqMessage}}"
+            }
+          ],
+          "outputSpecification": " ",
+          "type": "AGENT"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "agentCode": "ORA_CE_JOB_POSTING_INFORMATION",
+            "name": "Posting Info",
+            "type": "REUSABLE"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "POSTING_INFO",
+          "id": "1763590022032",
+          "inputs": [
+            {
+              "id": "1770039948823_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$variables.fqMessage}}"
+            }
+          ],
+          "outputSpecification": " ",
+          "type": "AGENT"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "agentCode": "ORA_CAREER_SITE_DOCUMENT_AGENT",
+            "name": "Policy Info"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "POLICY_INFO",
+          "id": "1763590241411",
+          "inputs": [
+            {
+              "id": "1764715911517_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$variables.fqMessage}}"
+            }
+          ],
+          "outputSpecification": "",
+          "type": "AGENT"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "agentCode": "ORA_CE_NO_AGENT_FITS",
+            "name": "No Agent Fits",
+            "type": "REUSABLE"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "NO_AGENT_FITS",
+          "id": "1763591528350",
+          "inputs": [
+            {
+              "id": "1766086879635_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            },
+            {
+              "id": "1766086879636_2",
+              "name": "Test",
+              "type": "string",
+              "value": ""
+            }
+          ],
+          "outputSpecification": " ",
+          "type": "AGENT"
+        },
+        {
+          "metadata": {
+            "name": "Update FQ Message",
+            "returnType": "string",
+            "sourceCode": "const geoLocations = $context.$nodes.EXTRACT_RELEVANT_LOCATION.$output.map(item => {\n  return {\n    \"geo id\": item.GeographyId,\n    \"flat name\": item.GeographyFlatName,\n    \"shortname\": item.GeographyShortName\n  };\n});\n\nvar fqMessage = \"System: Here's the list of geo locations that can be used in responding to the user query: \" + JSON.stringify(geoLocations) + \"\\n\" + \n\"System: Here's the expanded candidate summary to use for job matching: \" + $context.$nodes.EXPAND_CANDIDATE_SUMMARY.$output + \"\\n\" + \n$context.$variables.fqMessage;\n\nreturn fqMessage;"
+          },
+          "outcomes": {
+            "success": "1764992089948"
+          },
+          "code": "UPDATE_FQ_MESSAGE",
+          "id": "1764991910970",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set Updated Message"
+          },
+          "outcomes": {
+            "success": "1765220457427"
+          },
+          "code": "SET_UPDATED_MESSAGE",
+          "id": "1764992089948",
+          "inputs": [
+            {
+              "id": "1764992101944",
+              "name": "fqMessage",
+              "type": "string",
+              "value": "{{$context.$nodes.UPDATE_FQ_MESSAGE.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "isTextChannel"
+          },
+          "outcomes": {
+            "true": "1765220341848",
+            "false": "1765220377576"
+          },
+          "code": "IS_TEXT_CHANNEL",
+          "convergenceTargetId": "end",
+          "id": "1765220251322",
+          "inputs": [
+            {
+              "id": "1765220251323_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.context.Channel === \"TEXT\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "agentCode": "ORA_CE_CANDIDATE_PROFILE_BUILDER_TEXT",
+            "name": "Text Profile Builder"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "TEXT_PROFILE_BUILDER",
+          "id": "1765220341848",
+          "inputs": [
+            {
+              "id": "1765220362863_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$variables.fqMessage}}"
+            }
+          ],
+          "outputSpecification": "",
+          "type": "AGENT"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "agentCode": "ORA_CE_CANDIDATE_PROFILE_BUILDER",
+            "name": "Profile Builder"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "PROFILE_BUILDER",
+          "id": "1765220377576",
+          "inputs": [
+            {
+              "id": "1765220390263_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$variables.fqMessage}}"
+            }
+          ],
+          "outputSpecification": "",
+          "type": "AGENT"
+        },
+        {
+          "metadata": {
+            "name": "isText"
+          },
+          "outcomes": {
+            "true": "1765220625638",
+            "false": "1765220653744"
+          },
+          "code": "ISTEXT",
+          "convergenceTargetId": "end",
+          "id": "1765220457427",
+          "inputs": [
+            {
+              "id": "1765220457428_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.context.Channel === \"TEXT\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "agentCode": "ORA_CE_JOB_RECOMMENDATION_TEXT",
+            "name": "Job Recommender Text",
+            "type": "REUSABLE"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "JOB_RECOMMENDER_TEXT",
+          "id": "1765220625638",
+          "inputs": [
+            {
+              "id": "1770039809214_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$variables.fqMessage}}"
+            }
+          ],
+          "outputSpecification": " ",
+          "type": "AGENT"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "agentCode": "ORA_CE_JOB_RECOMMENDATION",
+            "name": "Job Recommender",
+            "type": "REUSABLE"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "JOB_RECOMMENDER",
+          "id": "1765220653744",
+          "inputs": [
+            {
+              "id": "1770039851930_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$variables.fqMessage}}"
+            }
+          ],
+          "outputSpecification": " ",
+          "type": "AGENT"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1765827001314",
+            "1": "1765827053782",
+            "2": "add_1765826973148_2"
+          },
+          "code": "PARALLEL_1765826973149",
+          "convergenceTargetId": "1764991910970",
+          "id": "1765826973148",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_RECRUITING_CEGETRECRUITING",
+            "functionName": "CE_Get_AllRecruitingLocations",
+            "name": "Job Locations"
+          },
+          "outcomes": {
+            "success": "1765827479818"
+          },
+          "code": "JOB_LOCATIONS",
+          "id": "1765827001314",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Expand Candidate Summary"
+          },
+          "outcomes": {
+            "success": "1764991910970"
+          },
+          "code": "EXPAND_CANDIDATE_SUMMARY",
+          "id": "1765827053782",
+          "inputs": [
+            {
+              "id": "1765827053783_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Conversation History: {{$context.$variables.fqMessage}} \n\nYou are an expert in resume normalization and embedding optimization for job matching. \n\nUse the short candidate mini profile in the conversation history, expand it into a structured profile that improves semantic recall for job description matching. Rules: Keep the same section headings as the original profile (e.g., Job Title, Skills, Certifications, Experience Level, Preferred Location). Do not add new sections. Expand each section by listing alternate titles, synonymous roles, or closely related terms, not descriptive paragraphs. Use semicolon-separated phrases. Preserve factual accuracy—do not invent experience, skills, or seniority. Remove company section and keep the preferred location as i without expanding it. Optimize for embeddings by increasing terminology coverage while staying concise. Keep the total output under 400 words."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "description": "Add node for branch 2",
+            "name": "Add 2"
+          },
+          "outcomes": {
+            "success": "1764991910970"
+          },
+          "id": "add_1765826973148_2",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Extract Relevant Location"
+          },
+          "outcomes": {
+            "success": "1764991910970"
+          },
+          "code": "EXTRACT_RELEVANT_LOCATION",
+          "id": "1765827479818",
+          "inputs": [
+            {
+              "id": "1765827479819_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Your task is to find a geographyID that matches the candidate's preferred location from the list of locations using the following logic:\n- If an exact match is found, use it.\n- If not, find a location within 50 miles.\n- If none, fall back to a state or country match.\n\nList of locations:\n {{$context.$nodes.JOB_LOCATIONS.$output}}\n\nFind the candidate's preferred location from this Conversation history:\n```{{$context.$variables.fqMessage}} ```\n\nOutput the matching location entity as a single-item JSON array, strictly as valid RFC-8259 compatible JSON without any extra formatting, prefixes, or code blocks."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "agentCode": "ORA_CE_CANDIDATE_SELFSERVICE",
+            "name": "Candidate Self Service",
+            "type": "REUSABLE"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "CANDIDATE_SELF_SERVICE",
+          "id": "1768030381516",
+          "inputs": [
+            {
+              "id": "1770040092333_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$variables.fqMessage}}"
+            },
+            {
+              "id": "1770040092334_2",
+              "name": "OraIrcAccessCode",
+              "type": "string",
+              "value": "{{$context.$variables.OraIrcAccessCode}}"
+            }
+          ],
+          "outputSpecification": " ",
+          "type": "AGENT"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "agentCode": "ORA_CE_TALENT_COMMUNITY_SIGNUP",
+            "name": "Talent Community Sign Up",
+            "type": "REUSABLE"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "TALENT_COMMUNITY_SIGN_UP",
+          "id": "1768030469498",
+          "inputs": [
+            {
+              "id": "1770040148129_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$variables.fqMessage}}"
+            }
+          ],
+          "outputSpecification": " ",
+          "type": "AGENT"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "agentCode": "ORA_CE_INTERVIEW_COACHING",
+            "name": "Interview Coaching",
+            "type": "REUSABLE"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "INTERVIEW_COACHING",
+          "id": "1768418990404",
+          "inputs": [
+            {
+              "id": "1770040187169_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$variables.fqMessage}}"
+            },
+            {
+              "id": "1770040187171_2",
+              "name": "OraIrcAccessCode",
+              "type": "string",
+              "value": "{{$context.$variables.OraIrcAccessCode}}"
+            }
+          ],
+          "outputSpecification": " ",
+          "type": "AGENT"
+        },
+        {
+          "metadata": {
+            "name": "Global Settings Not Set"
+          },
+          "outcomes": {
+            "true": "1769141319747",
+            "false": "add_false_1769141181408"
+          },
+          "code": "GLOBAL_SETTINGS_NOT_SET",
+          "convergenceTargetId": "1763536954600",
+          "id": "1769141181408",
+          "inputs": [
+            {
+              "id": "1769141181409_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{Object.keys($context.$variables.globalCESettings).length === 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1763536954600"
+          },
+          "id": "add_false_1769141181408",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_RECRUITING_CEGETGLOBALSETTINGSBO",
+            "functionName": "CE_Get_AllGlobalSettings",
+            "name": "Get Global Settings"
+          },
+          "outcomes": {
+            "success": "1769141406931"
+          },
+          "code": "GET_GLOBAL_SETTINGS",
+          "id": "1769141319747",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Extract Global Settings",
+            "returnType": "object",
+            "sourceCode": "// 1. Define the specific keys you want to extract\nconst keysToExtract = [\n  \"ORA_IRC_TC_OPTIN_ENABLED\"\n];\n\n// 2. Extract and populate the new object\nconst extractedSettings = $context.$nodes.GET_GLOBAL_SETTINGS.$output.settings.reduce((acc, item) => {\n  if (keysToExtract.includes(item.settingKey)) {\n    acc[item.settingKey] = item.settingValue;\n  }\n  return acc;\n}, {});\n\nreturn extractedSettings;"
+          },
+          "outcomes": {
+            "success": "1769143088206"
+          },
+          "code": "EXTRACT_GLOBAL_SETTINGS",
+          "id": "1769141406931",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set Global Settings"
+          },
+          "outcomes": {
+            "success": "1763536954600"
+          },
+          "code": "SET_GLOBAL_SETTINGS",
+          "id": "1769143088206",
+          "inputs": [
+            {
+              "id": "1769143104499",
+              "name": "globalCESettings",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.EXTRACT_GLOBAL_SETTINGS.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "isTextChannel_IS"
+          },
+          "outcomes": {
+            "true": "1769207055745",
+            "false": "1769206045317"
+          },
+          "code": "ISTEXTCHANNELIS",
+          "convergenceTargetId": "end",
+          "id": "1769206019230",
+          "inputs": [
+            {
+              "id": "1769206019231_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.context.Channel === \"TEXT\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "agentCode": "ORA_CE_INTERVIEW_SCHEDULING",
+            "name": "Interview Scheduling",
+            "type": "REUSABLE"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "INTERVIEW_SCHEDULING",
+          "id": "1769206045317",
+          "inputs": [
+            {
+              "id": "1770040024172_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$variables.fqMessage}}"
+            },
+            {
+              "id": "1770040024174_2",
+              "name": "OraIrcAccessCode",
+              "type": "string",
+              "value": "{{$context.$variables.OraIrcAccessCode}}"
+            }
+          ],
+          "outputSpecification": " ",
+          "type": "AGENT"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "agentCode": "ORA_CE_INTERVIEW_SCHEDULING_TEXT",
+            "name": "Text Interview Scheduling",
+            "type": "REUSABLE"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "TEXT_INTERVIEW_SCHEDULING",
+          "id": "1769207055745",
+          "inputs": [
+            {
+              "id": "1769207075807_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$variables.fqMessage}}"
+            }
+          ],
+          "outputSpecification": " ",
+          "type": "AGENT"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1769141104181",
+          "name": "globalCESettings",
+          "scope": "CONVERSATION",
+          "type": "object"
+        },
+        {
+          "id": "1765223624530",
+          "name": "context",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1763537044840",
+          "name": "fqMessage",
+          "scope": "JOB",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_completion_tokens": 32000,
+        "reasoning_effort": "low"
+      },
+      "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+      "model": "OCI_GPT_5_MINI",
+      "modelName": "Gpt-5 Mini",
+      "provider": "CERT_PREMIUM"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1770057165509",
+            "name": "additionalContext",
+            "scope": "JOB",
+            "type": "object"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": [
+      "1105113"
+    ]
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "RECRUITING",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "seededRoles": [
+    {
+      "role": "ORA_DR_HCM_IRC_CE_AGENT_ACCESS_DUTY",
+      "id": "300000322201337"
+    }
+  ],
+  "header": {
+    "ETag": "\"4\""
+  }
+}

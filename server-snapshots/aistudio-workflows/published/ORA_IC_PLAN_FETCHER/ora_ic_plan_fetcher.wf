@@ -1,0 +1,1018 @@
+{
+  "workflowId": "300000331067449",
+  "workflowCode": "ORA_IC_PLAN_FETCHER",
+  "name": "IC Plan Fetcher",
+  "description": "Canonical flat queue fetcher for existing IC plan reads and normalization.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "id": "start",
+          "code": "START",
+          "type": "START",
+          "metadata": {
+            "name": "Start",
+            "description": "Start of data pipeline"
+          },
+          "outcomes": {
+            "success": "1"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 5000,
+            "y": 5000
+          }
+        },
+        {
+          "id": "1",
+          "code": "STORE_INPUTS",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Store Inputs"
+          },
+          "outcomes": {
+            "success": "2"
+          },
+          "inputs": [
+            {
+              "id": "1_compensationPlanId",
+              "name": "compensationPlanId",
+              "type": "number",
+              "value": "{{$context.$triggers.REST.$input.compensationPlanId}}"
+            },
+            {
+              "id": "1_orgId",
+              "name": "orgId",
+              "type": "number",
+              "value": "{{$context.$triggers.REST.$input.orgId}}"
+            },
+            {
+              "id": "1_onlyData",
+              "name": "onlyData",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.onlyData || 'true'}}"
+            },
+            {
+              "id": "1_limit",
+              "name": "limit",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.limit || '1000'}}"
+            }
+          ],
+          "diagram": {
+            "x": 5000,
+            "y": 5440
+          }
+        },
+        {
+          "id": "2",
+          "code": "GET_PLAN",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get Compensation Plan",
+            "businessObjectCode": "ORA_CX_IC_COMPENSATION_PLANS",
+            "functionName": "get",
+            "processJson": true
+          },
+          "outcomes": {
+            "success": "3"
+          },
+          "inputs": [
+            {
+              "id": "2_planId",
+              "name": "planId",
+              "type": "number",
+              "value": "{{$context.$variables.compensationPlanId}}"
+            }
+          ],
+          "diagram": {
+            "x": 5000,
+            "y": 5660
+          },
+          "outputSpecification": "{}"
+        },
+        {
+          "id": "3",
+          "code": "GET_PLAN_COMPONENTS",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get Plan Components",
+            "businessObjectCode": "ORA_CX_IC_COMPENSATION_PLANS",
+            "functionName": "getPlanComponentLinks",
+            "processJson": true
+          },
+          "outcomes": {
+            "success": "4"
+          },
+          "inputs": [
+            {
+              "id": "3_planId",
+              "name": "planId",
+              "type": "number",
+              "value": "{{$context.$variables.compensationPlanId}}"
+            },
+            {
+              "id": "3_onlyData",
+              "name": "onlyData",
+              "type": "string",
+              "value": "{{$context.$variables.onlyData}}"
+            },
+            {
+              "id": "3_limit",
+              "name": "limit",
+              "type": "string",
+              "value": "{{$context.$variables.limit}}"
+            }
+          ],
+          "diagram": {
+            "x": 5000,
+            "y": 5880
+          },
+          "outputSpecification": "{}"
+        },
+        {
+          "id": "4",
+          "code": "INIT_FETCH_STATE",
+          "type": "CODE",
+          "metadata": {
+            "name": "Init Fetch State",
+            "returnType": "object",
+            "sourceCode": "var parseMaybeJson = function(value) {\n  if (value === null || value === undefined) return null;\n  if (typeof value !== 'string') return value;\n  try { return JSON.parse(value); } catch (_err) { return null; }\n};\n\nvar extractBoObject = function(raw) {\n  var obj = parseMaybeJson(raw);\n  if (!obj || typeof obj !== 'object') return null;\n  if (obj.output && obj.output.response) return parseMaybeJson(obj.output.response);\n  return obj;\n};\n\nvar extractBoItems = function(raw) {\n  var obj = parseMaybeJson(raw);\n  if (!obj || typeof obj !== 'object') return [];\n  if (obj.items && obj.items.length !== undefined) return obj.items;\n  if (obj.result && obj.result.items && obj.result.items.length !== undefined) return obj.result.items;\n  return [];\n};\n\nvar makeActionKey = function(action) {\n  if (!action || !action.type) return null;\n  if (action.type === 'component') return 'component:' + String(action.componentId);\n  return null;\n};\n\nvar enqueue = function(actions, seen, action) {\n  var key = makeActionKey(action);\n  if (!key || seen[key]) return;\n  seen[key] = true;\n  actions.push(action);\n};\n\nvar plan = extractBoObject($context.$nodes.GET_PLAN ? $context.$nodes.GET_PLAN.$output : null);\nvar planComponents = extractBoItems($context.$nodes.GET_PLAN_COMPONENTS ? $context.$nodes.GET_PLAN_COMPONENTS.$output : null);\nvar actions = [];\nvar seen = new Object();\nvar componentsById = new Object();\nvar componentOrder = [];\nvar i = 0;\n\nfor (i = 0; i < planComponents.length; i += 1) {\n  var association = planComponents[i] ? planComponents[i] : new Object();\n  var componentId = association.PlanComponentId !== undefined && association.PlanComponentId !== null\n    ? Number(association.PlanComponentId)\n    : null;\n  if (componentId === null || isNaN(componentId)) continue;\n  if (!componentsById[String(componentId)]) {\n    componentsById[String(componentId)] = {\n      componentId: componentId,\n      planComponentAssociation: association,\n      component: null,\n      measures: [],\n      formulas: [],\n      formulaRateTables: [],\n      formulaRateDimInputs: [],\n      canonicalUrl: null\n    };\n    componentOrder.push(componentId);\n  }\n  enqueue(actions, seen, { type: 'component', componentId: componentId });\n}\n\nvar result = new Object();\nresult.fetchActions = actions;\nresult.fetchCache = {\n  plan: plan,\n  planComponents: planComponents,\n  componentsById: componentsById,\n  componentOrder: componentOrder,\n  measuresById: new Object(),\n  measureOrder: [],\n  rateTablesById: new Object(),\n  rateTableOrder: [],\n  expressionsByKey: new Object(),\n  expressionOrder: [],\n  seenActionKeys: seen\n};\nreturn result;"
+          },
+          "outcomes": {
+            "success": "5"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 5000,
+            "y": 6100
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "5",
+          "code": "SET_FETCH_STATE_INIT",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set Fetch State Init"
+          },
+          "outcomes": {
+            "success": "6"
+          },
+          "inputs": [
+            {
+              "id": "5_fetchActions",
+              "name": "fetchActions",
+              "type": "array",
+              "value": "{{$context.$nodes.INIT_FETCH_STATE.$output.result.fetchActions}}"
+            },
+            {
+              "id": "5_fetchCache",
+              "name": "fetchCache",
+              "type": "object",
+              "value": "{{$context.$nodes.INIT_FETCH_STATE.$output.result.fetchCache}}"
+            },
+            {
+              "id": "5_currentFetchIndex",
+              "name": "currentFetchIndex",
+              "type": "integer",
+              "value": "0"
+            }
+          ],
+          "diagram": {
+            "x": 5000,
+            "y": 6320
+          }
+        },
+        {
+          "id": "6",
+          "code": "WHILE_HAS_FETCH_ACTIONS",
+          "type": "WHILE",
+          "metadata": {
+            "name": "While Has Fetch Actions",
+            "dataPipeline": {
+              "rootNode": "start_WHILE_FETCH_ACTIONS",
+              "pipelineNodes": [
+                {
+                  "type": "START",
+                  "code": "START_WHILE_FETCH_ACTIONS",
+                  "id": "start_WHILE_FETCH_ACTIONS",
+                  "metadata": {
+                    "name": "Start"
+                  },
+                  "outcomes": {
+                    "success": "PREPARE_FETCH_ACTION"
+                  },
+                  "inputs": []
+                },
+                {
+                  "type": "END",
+                  "code": "END_WHILE_FETCH_ACTIONS",
+                  "id": "end_WHILE_FETCH_ACTIONS",
+                  "metadata": {
+                    "name": "End"
+                  },
+                  "outcomes": {},
+                  "inputs": []
+                },
+                {
+                  "type": "CODE",
+                  "code": "PREPARE_FETCH_ACTION",
+                  "id": "PREPARE_FETCH_ACTION",
+                  "metadata": {
+                    "name": "Prepare Fetch Action",
+                    "returnType": "object",
+                    "position": {
+                      "x": 100,
+                      "y": 200
+                    },
+                    "sourceCode": "var actions = $context.$variables.fetchActions ? $context.$variables.fetchActions : [];\nvar idx = Number($context.$variables.currentFetchIndex || 0);\nvar action = idx >= 0 && idx < actions.length ? actions[idx] : null;\nvar result = new Object();\nvar cloneAction = function(value) {\n  var out = new Object();\n  var source = value ? value : new Object();\n  var key;\n  for (key in source) {\n    if (Object.prototype.hasOwnProperty.call(source, key)) {\n      out[key] = source[key];\n    }\n  }\n  return out;\n};\n\nvar pathTailAfterResource = function(value, resourceName) {\n  if (value === null || value === undefined) {\n    return null;\n  }\n  var text = String(value).trim();\n  if (!text) {\n    return null;\n  }\n  var resource = String(resourceName || '').replace(/^\\/|\\/$/g, '');\n  var escapedResource = resource.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n  var match = text.match(new RegExp('/fscmRestApi/resources/[^/]+/' + escapedResource + '/([^?]+)'));\n  if (match && match[1]) {\n    return match[1];\n  }\n\n  var marker = '/' + resource + '/';\n  var idx = text.indexOf(marker);\n  if (idx === 0) {\n    var tail = text.substring(marker.length);\n    var queryIdx = tail.indexOf('?');\n    if (queryIdx >= 0) {\n      tail = tail.substring(0, queryIdx);\n    }\n    return tail ? tail : null;\n  }\n  if (text.indexOf('/fscmRestApi/') >= 0 || /^https?:\\/\\//i.test(text) || text.charAt(0) === '/') {\n    return null;\n  }\n  return text;\n};\n\nvar componentPathTail = function(value) {\n  return pathTailAfterResource(value, 'planComponents');\n};\n\nresult.action = action ? cloneAction(action) : action;\nresult.actionType = action && action.type ? String(action.type) : 'default';\nresult.componentQuery = null;\nresult.expressionQuery = null;\nif (result.action && result.action.canonicalUrl) {\n  result.action.canonicalUrl = componentPathTail(result.action.canonicalUrl);\n}\nif (result.action && result.action.incentiveFormulaUrl) {\n  result.action.incentiveFormulaUrl = componentPathTail(result.action.incentiveFormulaUrl);\n}\nif (result.actionType === 'component' && action && action.componentId !== undefined && action.componentId !== null) {\n  result.componentQuery = 'PlanComponentId=' + String(Number(action.componentId)) + ' and OrgId=' + String($context.$variables.orgId);\n}\nif (result.actionType === 'expressionById' && action && action.expressionId !== undefined && action.expressionId !== null && action.orgId !== undefined && action.orgId !== null) {\n  result.expressionQuery = 'ExpressionId=' + String(Number(action.expressionId)) + ' and OrgId=' + String(action.orgId);\n}\nif (result.actionType === 'expressionByName' && action && action.expressionName && action.orgId !== undefined && action.orgId !== null) {\n  result.expressionQuery = \"Name='\" + String(action.expressionName).replace(/'/g, \"''\") + \"' and OrgId=\" + String(action.orgId);\n}\nreturn result;"
+                  },
+                  "outcomes": {
+                    "success": "FETCH_ACTION_SWITCH"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "type": "SWITCH",
+                  "code": "FETCH_ACTION_SWITCH",
+                  "id": "FETCH_ACTION_SWITCH",
+                  "metadata": {
+                    "name": "Fetch Action Switch",
+                    "position": {
+                      "x": 260,
+                      "y": 200
+                    }
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_FETCH_ACTION_SWITCH_0",
+                      "name": "caseExpression",
+                      "type": "string",
+                      "value": "{{$context.$nodes.PREPARE_FETCH_ACTION.$output.result.actionType}}"
+                    }
+                  ],
+                  "outcomes": {
+                    "component": "GET_COMPONENT_ACTION",
+                    "componentMeasures": "GET_COMPONENT_MEASURES_ACTION",
+                    "componentFormulas": "GET_COMPONENT_FORMULAS_ACTION",
+                    "formulaRateTables": "GET_FORMULA_RATE_TABLES_ACTION",
+                    "formulaRateDimInputs": "GET_FORMULA_RATE_DIM_INPUTS_ACTION",
+                    "measure": "GET_MEASURE_ACTION",
+                    "measureGoals": "GET_MEASURE_GOALS_ACTION",
+                    "measureRateDimInputs": "GET_MEASURE_RATE_DIM_INPUTS_ACTION",
+                    "rateTable": "GET_RATE_TABLE_ACTION",
+                    "rateTableDimensions": "GET_RATE_TABLE_DIMENSIONS_ACTION",
+                    "rateTableRates": "GET_RATE_TABLE_RATES_ACTION",
+                    "dimensionTiers": "GET_DIMENSION_TIERS_ACTION",
+                    "expressionById": "GET_EXPRESSION_BY_ID_ACTION",
+                    "expressionByName": "GET_EXPRESSION_BY_NAME_ACTION",
+                    "expressionDetails": "GET_EXPRESSION_DETAILS_ACTION",
+                    "default": "ADVANCE_FETCH_INDEX"
+                  },
+                  "convergenceTargetId": "ADVANCE_FETCH_INDEX"
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "GET_COMPONENT_ACTION",
+                  "id": "GET_COMPONENT_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_COMPONENTS",
+                    "functionName": "queryByName",
+                    "processJson": true,
+                    "name": "Get Component By Query",
+                    "position": {
+                      "x": 460,
+                      "y": 40
+                    }
+                  },
+                  "outcomes": {
+                    "success": "CACHE_FETCH_RESULT"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_GET_COMPONENT_ACTION_0",
+                      "name": "q",
+                      "type": "string",
+                      "value": "{{$context.$nodes.PREPARE_FETCH_ACTION.$output.result.componentQuery}}"
+                    },
+                    {
+                      "id": "in_GET_COMPONENT_ACTION_1",
+                      "name": "onlyData",
+                      "type": "string",
+                      "value": "false"
+                    },
+                    {
+                      "id": "in_GET_COMPONENT_ACTION_2",
+                      "name": "limit",
+                      "type": "string",
+                      "value": "1000"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "GET_COMPONENT_MEASURES_ACTION",
+                  "id": "GET_COMPONENT_MEASURES_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_COMPONENTS",
+                    "functionName": "getComponentMeasures",
+                    "processJson": true,
+                    "name": "Get Component Measures",
+                    "position": {
+                      "x": 460,
+                      "y": 100
+                    }
+                  },
+                  "outcomes": {
+                    "success": "CACHE_FETCH_RESULT"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_GET_COMPONENT_MEASURES_ACTION_0",
+                      "name": "canonicalUrl",
+                      "type": "string",
+                      "value": "{{$context.$nodes.PREPARE_FETCH_ACTION.$output.result.action.canonicalUrl}}"
+                    },
+                    {
+                      "id": "in_GET_COMPONENT_MEASURES_ACTION_1",
+                      "name": "onlyData",
+                      "type": "string",
+                      "value": "{{$context.$variables.onlyData || 'true'}}"
+                    },
+                    {
+                      "id": "in_GET_COMPONENT_MEASURES_ACTION_2",
+                      "name": "limit",
+                      "type": "string",
+                      "value": "{{$context.$variables.limit || '1000'}}"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "GET_COMPONENT_FORMULAS_ACTION",
+                  "id": "GET_COMPONENT_FORMULAS_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_COMPONENTS",
+                    "functionName": "getIncentiveFormulas",
+                    "processJson": true,
+                    "name": "Get Component Formulas",
+                    "position": {
+                      "x": 460,
+                      "y": 160
+                    }
+                  },
+                  "outcomes": {
+                    "success": "CACHE_FETCH_RESULT"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_GET_COMPONENT_FORMULAS_ACTION_0",
+                      "name": "canonicalUrl",
+                      "type": "string",
+                      "value": "{{$context.$nodes.PREPARE_FETCH_ACTION.$output.result.action.canonicalUrl}}"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "GET_FORMULA_RATE_TABLES_ACTION",
+                  "id": "GET_FORMULA_RATE_TABLES_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_COMPONENTS",
+                    "functionName": "getRateTableLinks",
+                    "processJson": true,
+                    "name": "Get Formula Rate Tables",
+                    "position": {
+                      "x": 460,
+                      "y": 220
+                    }
+                  },
+                  "outcomes": {
+                    "success": "CACHE_FETCH_RESULT"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_GET_FORMULA_RATE_TABLES_ACTION_0",
+                      "name": "incentiveFormulaUrl",
+                      "type": "string",
+                      "value": "{{$context.$nodes.PREPARE_FETCH_ACTION.$output.result.action.incentiveFormulaUrl}}"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "GET_FORMULA_RATE_DIM_INPUTS_ACTION",
+                  "id": "GET_FORMULA_RATE_DIM_INPUTS_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_COMPONENTS",
+                    "functionName": "getRateDimensionalInputs",
+                    "processJson": true,
+                    "name": "Get Formula Rate Dim Inputs",
+                    "position": {
+                      "x": 460,
+                      "y": 280
+                    }
+                  },
+                  "outcomes": {
+                    "success": "CACHE_FETCH_RESULT"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_GET_FORMULA_RATE_DIM_INPUTS_ACTION_0",
+                      "name": "incentiveFormulaUrl",
+                      "type": "string",
+                      "value": "{{$context.$nodes.PREPARE_FETCH_ACTION.$output.result.action.incentiveFormulaUrl}}"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "GET_MEASURE_ACTION",
+                  "id": "GET_MEASURE_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_MEASURES",
+                    "functionName": "get",
+                    "processJson": true,
+                    "name": "Get Measure",
+                    "position": {
+                      "x": 760,
+                      "y": 40
+                    }
+                  },
+                  "outcomes": {
+                    "success": "CACHE_FETCH_RESULT"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_GET_MEASURE_ACTION_0",
+                      "name": "measureId",
+                      "type": "number",
+                      "value": "{{$context.$nodes.PREPARE_FETCH_ACTION.$output.result.action.measureId}}"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "GET_MEASURE_GOALS_ACTION",
+                  "id": "GET_MEASURE_GOALS_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_GOALS",
+                    "functionName": "queryExisting",
+                    "processJson": true,
+                    "name": "Get Measure Goals",
+                    "position": {
+                      "x": 760,
+                      "y": 100
+                    }
+                  },
+                  "outcomes": {
+                    "success": "CACHE_FETCH_RESULT"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_GET_MEASURE_GOALS_ACTION_0",
+                      "name": "measureId",
+                      "type": "number",
+                      "value": "{{$context.$nodes.PREPARE_FETCH_ACTION.$output.result.action.measureId}}"
+                    },
+                    {
+                      "id": "in_GET_MEASURE_GOALS_ACTION_1",
+                      "name": "onlyData",
+                      "type": "string",
+                      "value": "true"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "GET_MEASURE_RATE_DIM_INPUTS_ACTION",
+                  "id": "GET_MEASURE_RATE_DIM_INPUTS_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_MEASURES",
+                    "functionName": "getRateDimensionalInputs",
+                    "processJson": true,
+                    "name": "Get Measure Rate Dim Inputs",
+                    "position": {
+                      "x": 760,
+                      "y": 220
+                    }
+                  },
+                  "outcomes": {
+                    "success": "CACHE_FETCH_RESULT"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_GET_MEASURE_RATE_DIM_INPUTS_ACTION_0",
+                      "name": "measureId",
+                      "type": "number",
+                      "value": "{{$context.$nodes.PREPARE_FETCH_ACTION.$output.result.action.measureId}}"
+                    },
+                    {
+                      "id": "in_GET_MEASURE_RATE_DIM_INPUTS_ACTION_1",
+                      "name": "onlyData",
+                      "type": "string",
+                      "value": "{{$context.$variables.onlyData || 'true'}}"
+                    },
+                    {
+                      "id": "in_GET_MEASURE_RATE_DIM_INPUTS_ACTION_2",
+                      "name": "limit",
+                      "type": "string",
+                      "value": "{{$context.$variables.limit || '1000'}}"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "GET_RATE_TABLE_ACTION",
+                  "id": "GET_RATE_TABLE_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_RATE_TABLES",
+                    "functionName": "get",
+                    "processJson": true,
+                    "name": "Get Rate Table",
+                    "position": {
+                      "x": 1080,
+                      "y": 40
+                    }
+                  },
+                  "outcomes": {
+                    "success": "CACHE_FETCH_RESULT"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_GET_RATE_TABLE_ACTION_0",
+                      "name": "rateTableId",
+                      "type": "number",
+                      "value": "{{$context.$nodes.PREPARE_FETCH_ACTION.$output.result.action.rateTableId}}"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "GET_RATE_TABLE_DIMENSIONS_ACTION",
+                  "id": "GET_RATE_TABLE_DIMENSIONS_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_RATE_TABLES",
+                    "functionName": "getDimensions",
+                    "processJson": true,
+                    "name": "Get Rate Table Dimensions",
+                    "position": {
+                      "x": 1080,
+                      "y": 100
+                    }
+                  },
+                  "outcomes": {
+                    "success": "CACHE_FETCH_RESULT"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_GET_RATE_TABLE_DIMENSIONS_ACTION_0",
+                      "name": "rateTableId",
+                      "type": "number",
+                      "value": "{{$context.$nodes.PREPARE_FETCH_ACTION.$output.result.action.rateTableId}}"
+                    },
+                    {
+                      "id": "in_GET_RATE_TABLE_DIMENSIONS_ACTION_1",
+                      "name": "onlyData",
+                      "type": "string",
+                      "value": "{{$context.$variables.onlyData || 'true'}}"
+                    },
+                    {
+                      "id": "in_GET_RATE_TABLE_DIMENSIONS_ACTION_2",
+                      "name": "limit",
+                      "type": "string",
+                      "value": "{{$context.$variables.limit || '1000'}}"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "GET_RATE_TABLE_RATES_ACTION",
+                  "id": "GET_RATE_TABLE_RATES_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_RATE_TABLE_RATES",
+                    "functionName": "queryExisting",
+                    "processJson": true,
+                    "name": "Get Rate Table Rates",
+                    "position": {
+                      "x": 1080,
+                      "y": 160
+                    }
+                  },
+                  "outcomes": {
+                    "success": "CACHE_FETCH_RESULT"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_GET_RATE_TABLE_RATES_ACTION_0",
+                      "name": "rateTableId",
+                      "type": "number",
+                      "value": "{{$context.$nodes.PREPARE_FETCH_ACTION.$output.result.action.rateTableId}}"
+                    },
+                    {
+                      "id": "in_GET_RATE_TABLE_RATES_ACTION_1",
+                      "name": "onlyData",
+                      "type": "string",
+                      "value": "true"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "GET_DIMENSION_TIERS_ACTION",
+                  "id": "GET_DIMENSION_TIERS_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_RATE_DIMENSION_TIERS",
+                    "functionName": "queryExisting",
+                    "processJson": true,
+                    "name": "Get Dimension Tiers",
+                    "position": {
+                      "x": 1080,
+                      "y": 220
+                    }
+                  },
+                  "outcomes": {
+                    "success": "CACHE_FETCH_RESULT"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_GET_DIMENSION_TIERS_ACTION_0",
+                      "name": "dimensionId",
+                      "type": "number",
+                      "value": "{{$context.$nodes.PREPARE_FETCH_ACTION.$output.result.action.rateDimensionId}}"
+                    },
+                    {
+                      "id": "in_GET_DIMENSION_TIERS_ACTION_1",
+                      "name": "onlyData",
+                      "type": "string",
+                      "value": "true"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "GET_EXPRESSION_BY_ID_ACTION",
+                  "id": "GET_EXPRESSION_BY_ID_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_EXPRESSIONS",
+                    "functionName": "queryByName",
+                    "processJson": true,
+                    "name": "Get Expression By Id Query",
+                    "position": {
+                      "x": 1400,
+                      "y": 40
+                    }
+                  },
+                  "outcomes": {
+                    "success": "CACHE_FETCH_RESULT"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_GET_EXPRESSION_BY_ID_ACTION_0",
+                      "name": "q",
+                      "type": "string",
+                      "value": "{{$context.$nodes.PREPARE_FETCH_ACTION.$output.result.expressionQuery}}"
+                    },
+                    {
+                      "id": "in_GET_EXPRESSION_BY_ID_ACTION_1",
+                      "name": "onlyData",
+                      "type": "string",
+                      "value": "false"
+                    },
+                    {
+                      "id": "in_GET_EXPRESSION_BY_ID_ACTION_2",
+                      "name": "limit",
+                      "type": "string",
+                      "value": "1000"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "GET_EXPRESSION_BY_NAME_ACTION",
+                  "id": "GET_EXPRESSION_BY_NAME_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_EXPRESSIONS",
+                    "functionName": "queryByName",
+                    "processJson": true,
+                    "name": "Get Expression By Name",
+                    "position": {
+                      "x": 1400,
+                      "y": 100
+                    }
+                  },
+                  "outcomes": {
+                    "success": "CACHE_FETCH_RESULT"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_GET_EXPRESSION_BY_NAME_ACTION_0",
+                      "name": "q",
+                      "type": "string",
+                      "value": "{{$context.$nodes.PREPARE_FETCH_ACTION.$output.result.expressionQuery}}"
+                    },
+                    {
+                      "id": "in_GET_EXPRESSION_BY_NAME_ACTION_1",
+                      "name": "onlyData",
+                      "type": "string",
+                      "value": "false"
+                    },
+                    {
+                      "id": "in_GET_EXPRESSION_BY_NAME_ACTION_2",
+                      "name": "limit",
+                      "type": "string",
+                      "value": "1000"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "GET_EXPRESSION_DETAILS_ACTION",
+                  "id": "GET_EXPRESSION_DETAILS_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_EXPRESSION_DETAILS",
+                    "functionName": "queryExisting",
+                    "processJson": true,
+                    "name": "Get Expression Details",
+                    "position": {
+                      "x": 1400,
+                      "y": 160
+                    }
+                  },
+                  "outcomes": {
+                    "success": "CACHE_FETCH_RESULT"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_GET_EXPRESSION_DETAILS_ACTION_0",
+                      "name": "expressionId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.PREPARE_FETCH_ACTION.$output.result.action.expressionId}}"
+                    },
+                    {
+                      "id": "in_GET_EXPRESSION_DETAILS_ACTION_1",
+                      "name": "onlyData",
+                      "type": "string",
+                      "value": "true"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "CODE",
+                  "code": "CACHE_FETCH_RESULT",
+                  "id": "CACHE_FETCH_RESULT",
+                  "metadata": {
+                    "name": "Cache Fetch Result",
+                    "returnType": "object",
+                    "position": {
+                      "x": 1700,
+                      "y": 200
+                    },
+                    "sourceCode": "var parseMaybeJson = function(value) {\n  if (value === null || value === undefined) return null;\n  if (typeof value !== 'string') return value;\n  try { return JSON.parse(value); } catch (_err) { return null; }\n};\n\nvar clone = function(value) {\n  var parsed = parseMaybeJson(JSON.stringify(value));\n  return parsed === null ? new Object() : parsed;\n};\n\nvar extractBoObject = function(raw) {\n  var obj = parseMaybeJson(raw);\n  if (!obj || typeof obj !== 'object') return null;\n  if (obj.output && obj.output.response) return parseMaybeJson(obj.output.response);\n  return obj;\n};\n\nvar extractBoItems = function(raw) {\n  var obj = parseMaybeJson(raw);\n  if (!obj || typeof obj !== 'object') return [];\n  if (obj.items && obj.items.length !== undefined) return obj.items;\n  if (obj.result && obj.result.items && obj.result.items.length !== undefined) return obj.result.items;\n  return [];\n};\n\nvar normalizeRestPath = function(url) {\n  if (url === null || url === undefined) return null;\n  var text = String(url);\n  var marker = '/fscmRestApi/';\n  var idx = text.indexOf(marker);\n  if (idx >= 0) return text.substring(idx);\n  return text;\n};\n\nvar getCanonicalUrl = function(obj) {\n  if (!obj || !obj['@context'] || !obj['@context'].links) return null;\n  var i = 0;\n  for (i = 0; i < obj['@context'].links.length; i += 1) {\n    var link = obj['@context'].links[i] ? obj['@context'].links[i] : new Object();\n    if (link.rel === 'canonical' && link.href) return normalizeRestPath(link.href);\n  }\n  return null;\n};\n\nvar getContextKey = function(obj) {\n  if (!obj || !obj['@context'] || obj['@context'].key === undefined || obj['@context'].key === null) return null;\n  return String(obj['@context'].key);\n};\n\nvar makeActionKey = function(action) {\n  if (!action || !action.type) return null;\n  if (action.type === 'component') return 'component:' + String(action.componentId);\n  if (action.type === 'componentMeasures') return 'componentMeasures:' + String(action.componentId);\n  if (action.type === 'componentFormulas') return 'componentFormulas:' + String(action.componentId);\n  if (action.type === 'formulaRateTables') return 'formulaRateTables:' + String(action.componentId) + ':' + String(action.formulaId);\n  if (action.type === 'formulaRateDimInputs') return 'formulaRateDimInputs:' + String(action.componentId) + ':' + String(action.formulaId);\n  if (action.type === 'measure') return 'measure:' + String(action.measureId);\n  if (action.type === 'measureGoals') return 'measureGoals:' + String(action.measureId);\n  if (action.type === 'measureRateDimInputs') return 'measureRateDimInputs:' + String(action.measureId);\n  if (action.type === 'rateTable') return 'rateTable:' + String(action.rateTableId);\n  if (action.type === 'rateTableDimensions') return 'rateTableDimensions:' + String(action.rateTableId);\n  if (action.type === 'rateTableRates') return 'rateTableRates:' + String(action.rateTableId);\n  if (action.type === 'dimensionTiers') return 'dimensionTiers:' + String(action.rateTableId) + ':' + String(action.rateTableDimId || action.rateDimensionId);\n  if (action.type === 'expressionById') return 'expressionById:' + String(action.expressionKey || action.expressionId);\n  if (action.type === 'expressionByName') return 'expressionByName:' + String(action.orgId) + ':' + String(action.expressionName || '');\n  if (action.type === 'expressionDetails') return 'expressionDetails:' + String(action.expressionId);\n  return null;\n};\n\nvar enqueue = function(actions, seen, action) {\n  var key = makeActionKey(action);\n  if (!key || seen[key]) return;\n  seen[key] = true;\n  actions.push(action);\n};\n\nvar enqueueExpressionRef = function(actions, seen, orgId, expressionId, expressionName) {\n  if (expressionName !== null && expressionName !== undefined && String(expressionName).trim().length > 0 && orgId !== null && orgId !== undefined) {\n    enqueue(actions, seen, {\n      type: 'expressionByName',\n      expressionName: String(expressionName).trim(),\n      orgId: Number(orgId),\n      expressionKey: 'NAME:' + String(expressionName).trim()\n    });\n    return;\n  }\n  if (expressionId !== null && expressionId !== undefined && !isNaN(Number(expressionId)) && orgId !== null && orgId !== undefined) {\n    enqueue(actions, seen, {\n      type: 'expressionById',\n      expressionId: Number(expressionId),\n      orgId: Number(orgId),\n      expressionKey: 'ID:' + String(Number(expressionId))\n    });\n  }\n};\n\nvar ensureEntry = function(map, order, key, createValue) {\n  if (!map[key]) {\n    map[key] = createValue;\n    order.push(createValue.componentId || createValue.measureId || createValue.rateTableId || key);\n  }\n  return map[key];\n};\n\nvar upsertFormulaChildren = function(list, formulaId, fieldName, items) {\n  var i = 0;\n  for (i = 0; i < list.length; i += 1) {\n    if (Number(list[i].formulaId) === Number(formulaId)) {\n      list[i][fieldName] = items;\n      return;\n    }\n  }\n  var entry = new Object();\n  entry.formulaId = Number(formulaId);\n  entry[fieldName] = items;\n  list.push(entry);\n};\n\nvar upsertDimensionTiers = function(list, dimensionId, items) {\n  var normalizedItems = [];\n  var i = 0;\n  for (i = 0; i < items.length; i += 1) {\n    var tier = clone(items[i]);\n    if (tier && tier.MinimumAmount !== undefined && tier.MinimumAmount !== null && !isNaN(Number(tier.MinimumAmount))) tier.MinimumAmount = Number(tier.MinimumAmount);\n    if (tier && tier.MaximumAmount !== undefined && tier.MaximumAmount !== null && !isNaN(Number(tier.MaximumAmount))) tier.MaximumAmount = Number(tier.MaximumAmount);\n    if (tier && tier.MinValue !== undefined && tier.MinValue !== null && !isNaN(Number(tier.MinValue))) tier.MinValue = Number(tier.MinValue);\n    if (tier && tier.MaxValue !== undefined && tier.MaxValue !== null && !isNaN(Number(tier.MaxValue))) tier.MaxValue = Number(tier.MaxValue);\n    normalizedItems.push(tier);\n  }\n  for (i = 0; i < list.length; i += 1) {\n    if (String(list[i].dimensionId) === String(dimensionId)) {\n      list[i].tiers = normalizedItems;\n      return;\n    }\n  }\n  list.push({ dimensionId: String(dimensionId), tiers: normalizedItems });\n};\n\nvar prep = $context.$nodes.PREPARE_FETCH_ACTION && $context.$nodes.PREPARE_FETCH_ACTION.$output\n  ? $context.$nodes.PREPARE_FETCH_ACTION.$output.result\n  : new Object();\nvar action = prep && prep.action ? prep.action : new Object();\nvar actions = clone($context.$variables.fetchActions ? $context.$variables.fetchActions : []);\nvar cache = clone($context.$variables.fetchCache ? $context.$variables.fetchCache : new Object());\nvar seen = cache.seenActionKeys ? cache.seenActionKeys : new Object();\nvar nodeMap = {\n  component: 'GET_COMPONENT_ACTION',\n  componentMeasures: 'GET_COMPONENT_MEASURES_ACTION',\n  componentFormulas: 'GET_COMPONENT_FORMULAS_ACTION',\n  formulaRateTables: 'GET_FORMULA_RATE_TABLES_ACTION',\n  formulaRateDimInputs: 'GET_FORMULA_RATE_DIM_INPUTS_ACTION',\n  measure: 'GET_MEASURE_ACTION',\n  measureGoals: 'GET_MEASURE_GOALS_ACTION',\n  measureRateDimInputs: 'GET_MEASURE_RATE_DIM_INPUTS_ACTION',\n  rateTable: 'GET_RATE_TABLE_ACTION',\n  rateTableDimensions: 'GET_RATE_TABLE_DIMENSIONS_ACTION',\n  rateTableRates: 'GET_RATE_TABLE_RATES_ACTION',\n  dimensionTiers: 'GET_DIMENSION_TIERS_ACTION',\n  expressionById: 'GET_EXPRESSION_BY_ID_ACTION',\n  expressionByName: 'GET_EXPRESSION_BY_NAME_ACTION',\n  expressionDetails: 'GET_EXPRESSION_DETAILS_ACTION'\n};\nvar raw = $context.$nodes && nodeMap[action.type] && $context.$nodes[nodeMap[action.type]]\n  ? $context.$nodes[nodeMap[action.type]].$output\n  : null;\nvar items = extractBoItems(raw);\nvar obj = extractBoObject(raw);\nvar key = null;\nvar entry = null;\nvar i = 0;\nvar j = 0;\n\nif (!cache.componentsById) cache.componentsById = new Object();\nif (!cache.componentOrder) cache.componentOrder = [];\nif (!cache.measuresById) cache.measuresById = new Object();\nif (!cache.measureOrder) cache.measureOrder = [];\nif (!cache.rateTablesById) cache.rateTablesById = new Object();\nif (!cache.rateTableOrder) cache.rateTableOrder = [];\nif (!cache.expressionsByKey) cache.expressionsByKey = new Object();\nif (!cache.expressionOrder) cache.expressionOrder = [];\n\nif (action.type === 'component') {\n  key = String(action.componentId);\n  entry = ensureEntry(cache.componentsById, cache.componentOrder, key, {\n    componentId: Number(action.componentId),\n    planComponentAssociation: null,\n    component: null,\n    measures: [],\n    formulas: [],\n    formulaRateTables: [],\n    formulaRateDimInputs: [],\n    canonicalUrl: null\n  });\n  if ((!obj || typeof obj !== 'object' || !obj.PlanComponentId) && items.length > 0) {\n    obj = items[0];\n  }\n  entry.component = obj;\n  entry.canonicalUrl = getCanonicalUrl(obj);\n  enqueue(actions, seen, { type: 'componentMeasures', componentId: Number(action.componentId), canonicalUrl: entry.canonicalUrl });\n  enqueue(actions, seen, { type: 'componentFormulas', componentId: Number(action.componentId), canonicalUrl: entry.canonicalUrl });\n}\n\nif (action.type === 'componentMeasures') {\n  key = String(action.componentId);\n  entry = cache.componentsById[key] ? cache.componentsById[key] : null;\n  if (entry) entry.measures = items;\n  for (i = 0; i < items.length; i += 1) {\n    var measureId = items[i] && items[i].PerformanceMeasureId !== undefined ? Number(items[i].PerformanceMeasureId) : null;\n    if (measureId !== null && !isNaN(measureId)) {\n      enqueue(actions, seen, { type: 'measure', measureId: measureId });\n    }\n  }\n}\n\nif (action.type === 'componentFormulas') {\n  key = String(action.componentId);\n  entry = cache.componentsById[key] ? cache.componentsById[key] : null;\n  if (entry) entry.formulas = items;\n  for (i = 0; i < items.length; i += 1) {\n    var formulaId = items[i] && items[i].IncentiveFormulaId !== undefined ? Number(items[i].IncentiveFormulaId) : null;\n    var canonicalUrl = entry && entry.canonicalUrl ? String(entry.canonicalUrl) : '';\n    var incentiveFormulaUrl = formulaId !== null && canonicalUrl ? (canonicalUrl + '/child/planComponentIncentiveFormulas/' + String(formulaId)) : null;\n    if (formulaId !== null && !isNaN(formulaId) && incentiveFormulaUrl) {\n      enqueue(actions, seen, { type: 'formulaRateTables', componentId: Number(action.componentId), formulaId: formulaId, incentiveFormulaUrl: incentiveFormulaUrl });\n      enqueue(actions, seen, { type: 'formulaRateDimInputs', componentId: Number(action.componentId), formulaId: formulaId, incentiveFormulaUrl: incentiveFormulaUrl });\n      enqueueExpressionRef(actions, seen, $context.$variables.orgId, items[i].IncentiveFormulaExpressionId, items[i].IncentiveFormulaExpressionName);\n    }\n  }\n}\n\nif (action.type === 'formulaRateTables') {\n  entry = cache.componentsById[String(action.componentId)] ? cache.componentsById[String(action.componentId)] : null;\n  if (entry) upsertFormulaChildren(entry.formulaRateTables, action.formulaId, 'rateTables', items);\n  for (i = 0; i < items.length; i += 1) {\n    var formulaRateTableId = items[i] && items[i].RateTableId !== undefined ? Number(items[i].RateTableId) : null;\n    if (formulaRateTableId !== null && !isNaN(formulaRateTableId)) {\n      enqueue(actions, seen, { type: 'rateTable', rateTableId: formulaRateTableId });\n    }\n  }\n}\n\nif (action.type === 'formulaRateDimInputs') {\n  entry = cache.componentsById[String(action.componentId)] ? cache.componentsById[String(action.componentId)] : null;\n  if (entry) upsertFormulaChildren(entry.formulaRateDimInputs, action.formulaId, 'inputs', items);\n  for (i = 0; i < items.length; i += 1) {\n    enqueueExpressionRef(actions, seen, action.orgId || $context.$variables.orgId, items[i] ? items[i].InputExpressionId : null, items[i] ? items[i].InputExpressionName : null);\n  }\n}\n\nif (action.type === 'measure') {\n  key = String(action.measureId);\n  entry = ensureEntry(cache.measuresById, cache.measureOrder, key, {\n    measureId: Number(action.measureId),\n    measure: null,\n    goals: [],\n    scorecards: [],\n    rateDimInputs: [],\n    creditCategories: []\n  });\n  entry.measure = obj;\n  enqueue(actions, seen, { type: 'measureGoals', measureId: Number(action.measureId) });\n  enqueue(actions, seen, { type: 'measureRateDimInputs', measureId: Number(action.measureId), orgId: $context.$variables.orgId });\n  enqueueExpressionRef(actions, seen, $context.$variables.orgId, obj ? obj.MeasureFormulaExpressionId : null, obj ? obj.MeasureFormulaExpressionName : null);\n}\n\nif (action.type === 'measureGoals' || action.type === 'measureRateDimInputs') {\n  entry = cache.measuresById[String(action.measureId)] ? cache.measuresById[String(action.measureId)] : null;\n  if (entry) {\n    if (action.type === 'measureGoals') entry.goals = items;\n    if (action.type === 'measureRateDimInputs') entry.rateDimInputs = items;\n  }\n  if (action.type === 'measureRateDimInputs') {\n    for (i = 0; i < items.length; i += 1) {\n      enqueueExpressionRef(actions, seen, action.orgId || $context.$variables.orgId, items[i] ? items[i].InputExpressionId : null, items[i] ? items[i].InputExpressionName : null);\n    }\n  }\n}\n\nif (action.type === 'rateTable') {\n  key = String(action.rateTableId);\n  entry = ensureEntry(cache.rateTablesById, cache.rateTableOrder, key, {\n    rateTableId: Number(action.rateTableId),\n    rateTable: null,\n    dimensions: [],\n    dimensionTiers: [],\n    rates: []\n  });\n  entry.rateTable = obj;\n  enqueue(actions, seen, { type: 'rateTableDimensions', rateTableId: Number(action.rateTableId) });\n  enqueue(actions, seen, { type: 'rateTableRates', rateTableId: Number(action.rateTableId) });\n}\n\nif (action.type === 'rateTableDimensions') {\n  entry = cache.rateTablesById[String(action.rateTableId)] ? cache.rateTablesById[String(action.rateTableId)] : null;\n  if (entry) entry.dimensions = items;\n  for (i = 0; i < items.length; i += 1) {\n    var rateTableDimId = items[i] && items[i].RateTableDimId !== undefined ? Number(items[i].RateTableDimId) : null;\n    var rateDimensionId = items[i] && items[i].RateDimensionId !== undefined ? Number(items[i].RateDimensionId) : null;\n    if (rateDimensionId !== null && !isNaN(rateDimensionId)) {\n      enqueue(actions, seen, {\n        type: 'dimensionTiers',\n        rateTableId: Number(action.rateTableId),\n        rateTableDimId: rateTableDimId,\n        rateDimensionId: rateDimensionId\n      });\n    }\n  }\n}\n\nif (action.type === 'rateTableRates') {\n  entry = cache.rateTablesById[String(action.rateTableId)] ? cache.rateTablesById[String(action.rateTableId)] : null;\n  if (entry) entry.rates = items;\n}\n\nif (action.type === 'dimensionTiers') {\n  entry = cache.rateTablesById[String(action.rateTableId)] ? cache.rateTablesById[String(action.rateTableId)] : null;\n  if (entry) upsertDimensionTiers(entry.dimensionTiers, action.rateTableDimId !== undefined ? action.rateTableDimId : action.rateDimensionId, items);\n}\n\nif (action.type === 'expressionById' || action.type === 'expressionByName') {\n  var expr = action.type === 'expressionByName' ? (items.length ? items[0] : null) : obj;\n  var exprId = expr && expr.ExpressionId !== undefined && expr.ExpressionId !== null ? Number(expr.ExpressionId) : (action.expressionId !== undefined ? Number(action.expressionId) : null);\n  key = exprId !== null && !isNaN(exprId) ? 'ID:' + String(exprId) : String(action.expressionKey || ('NAME:' + String(action.expressionName || '')));\n  if (!cache.expressionsByKey[key]) {\n    cache.expressionsByKey[key] = { expressionKey: key, expressionId: exprId, expressionRef: null, lookupMode: action.type === 'expressionByName' ? 'name' : 'id', expressionName: action.expressionName || null, expression: null, details: [], canonicalUrl: null };\n    cache.expressionOrder.push(key);\n  }\n  entry = cache.expressionsByKey[key];\n  entry.expressionId = exprId;\n  entry.expressionRef = getContextKey(expr);\n  entry.expression = expr;\n  entry.canonicalUrl = getCanonicalUrl(expr);\n  if (!entry.canonicalUrl && expr && expr.incentiveCompensationExpressionsUniqID) {\n    entry.canonicalUrl = '/fscmRestApi/resources/latest/incentiveCompensationExpressions/' + String(expr.incentiveCompensationExpressionsUniqID);\n  }\n  if ((entry.expressionRef && String(entry.expressionRef).length > 0) || (exprId !== null && !isNaN(exprId))) {\n    enqueue(actions, seen, { type: 'expressionDetails', expressionId: entry.expressionRef ? entry.expressionRef : exprId, expressionKey: key });\n  }\n}\n\nif (action.type === 'expressionDetails') {\n  key = String(action.expressionKey || ('ID:' + String(action.expressionId)));\n  if (!cache.expressionsByKey[key]) {\n    cache.expressionsByKey[key] = { expressionKey: key, expressionId: Number(action.expressionId), expressionRef: String(action.expressionId), lookupMode: 'id', expressionName: null, expression: null, details: [], canonicalUrl: null };\n    cache.expressionOrder.push(key);\n  }\n  cache.expressionsByKey[key].details = items;\n}\n\ncache.seenActionKeys = seen;\n\nvar result = new Object();\nresult.fetchActions = actions;\nresult.fetchCache = cache;\nreturn result;"
+                  },
+                  "outcomes": {
+                    "success": "SET_FETCH_STATE"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "type": "SET_FIELDS",
+                  "code": "SET_FETCH_STATE",
+                  "id": "SET_FETCH_STATE",
+                  "metadata": {
+                    "name": "Set Fetch State",
+                    "position": {
+                      "x": 1880,
+                      "y": 200
+                    }
+                  },
+                  "outcomes": {
+                    "success": "ADVANCE_FETCH_INDEX"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_SET_FETCH_STATE_0",
+                      "name": "fetchActions",
+                      "type": "array",
+                      "value": "{{$context.$nodes.CACHE_FETCH_RESULT.$output.result.fetchActions}}"
+                    },
+                    {
+                      "id": "in_SET_FETCH_STATE_1",
+                      "name": "fetchCache",
+                      "type": "object",
+                      "value": "{{$context.$nodes.CACHE_FETCH_RESULT.$output.result.fetchCache}}"
+                    }
+                  ]
+                },
+                {
+                  "type": "SET_FIELDS",
+                  "code": "ADVANCE_FETCH_INDEX",
+                  "id": "ADVANCE_FETCH_INDEX",
+                  "metadata": {
+                    "name": "Advance Fetch Index",
+                    "position": {
+                      "x": 2060,
+                      "y": 200
+                    }
+                  },
+                  "outcomes": {
+                    "success": "end_WHILE_FETCH_ACTIONS"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_ADVANCE_FETCH_INDEX_0",
+                      "name": "currentFetchIndex",
+                      "type": "integer",
+                      "value": "{{$context.$variables.currentFetchIndex + 1}}"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "outcomes": {
+            "success": "7"
+          },
+          "inputs": [
+            {
+              "id": "6_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.currentFetchIndex < $context.$variables.fetchActions.length}}"
+            }
+          ],
+          "diagram": {
+            "x": 5000,
+            "y": 6540
+          }
+        },
+        {
+          "id": "7",
+          "code": "ASSEMBLE_FETCH_RESULT",
+          "type": "CODE",
+          "metadata": {
+            "name": "Assemble Fetch Result",
+            "returnType": "object",
+            "sourceCode": "var cache = $context.$variables.fetchCache ? $context.$variables.fetchCache : new Object();\nvar fetchedComponents = [];\nvar fetchedMeasures = [];\nvar fetchedRateTables = [];\nvar fetchedExpressions = [];\nvar i = 0;\n\nvar componentOrder = cache.componentOrder ? cache.componentOrder : [];\nfor (i = 0; i < componentOrder.length; i += 1) {\n  var component = cache.componentsById && cache.componentsById[String(componentOrder[i])] ? cache.componentsById[String(componentOrder[i])] : null;\n  if (component) fetchedComponents.push(component);\n}\n\nvar measureOrder = cache.measureOrder ? cache.measureOrder : [];\nfor (i = 0; i < measureOrder.length; i += 1) {\n  var measure = cache.measuresById && cache.measuresById[String(measureOrder[i])] ? cache.measuresById[String(measureOrder[i])] : null;\n  if (measure) fetchedMeasures.push(measure);\n}\n\nvar rateTableOrder = cache.rateTableOrder ? cache.rateTableOrder : [];\nfor (i = 0; i < rateTableOrder.length; i += 1) {\n  var rateTable = cache.rateTablesById && cache.rateTablesById[String(rateTableOrder[i])] ? cache.rateTablesById[String(rateTableOrder[i])] : null;\n  if (rateTable) fetchedRateTables.push(rateTable);\n}\n\nvar expressionOrder = cache.expressionOrder ? cache.expressionOrder : [];\nfor (i = 0; i < expressionOrder.length; i += 1) {\n  var expression = cache.expressionsByKey && cache.expressionsByKey[String(expressionOrder[i])] ? cache.expressionsByKey[String(expressionOrder[i])] : null;\n  if (expression) fetchedExpressions.push(expression);\n}\n\nvar result = new Object();\nresult.success = cache.plan !== null && cache.plan !== undefined;\nresult.compensationPlanId = $context.$variables.compensationPlanId;\nresult.orgId = $context.$variables.orgId;\nresult.plan = cache.plan ? cache.plan : null;\nresult.planComponents = cache.planComponents ? cache.planComponents : [];\nresult.fetchedComponents = fetchedComponents;\nresult.fetchedMeasures = fetchedMeasures;\nresult.fetchedRateTables = fetchedRateTables;\nresult.fetchedExpressions = fetchedExpressions;\nresult.summary = {\n  fetchedComponentCount: fetchedComponents.length,\n  fetchedMeasureCount: fetchedMeasures.length,\n  fetchedRateTableCount: fetchedRateTables.length,\n  fetchedExpressionCount: fetchedExpressions.length,\n  processedActionCount: Number($context.$variables.currentFetchIndex || 0),\n  totalActionCount: $context.$variables.fetchActions && $context.$variables.fetchActions.length ? Number($context.$variables.fetchActions.length) : 0\n};\nreturn result;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 5000,
+            "y": 6760
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "end",
+          "code": "END",
+          "type": "END",
+          "metadata": {
+            "name": "End",
+            "description": "End of data pipeline"
+          },
+          "outcomes": {},
+          "inputs": [],
+          "diagram": {
+            "x": 5000,
+            "y": 5220
+          }
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "var_compensationPlanId",
+          "name": "compensationPlanId",
+          "type": "number",
+          "scope": "JOB"
+        },
+        {
+          "id": "var_orgId",
+          "name": "orgId",
+          "type": "number",
+          "scope": "JOB"
+        },
+        {
+          "id": "var_onlyData",
+          "name": "onlyData",
+          "type": "string",
+          "value": "true",
+          "scope": "JOB"
+        },
+        {
+          "id": "var_limit",
+          "name": "limit",
+          "type": "string",
+          "value": "1000",
+          "scope": "JOB"
+        },
+        {
+          "id": "var_fetchActions",
+          "name": "fetchActions",
+          "type": "array",
+          "value": [],
+          "scope": "JOB"
+        },
+        {
+          "id": "var_currentFetchIndex",
+          "name": "currentFetchIndex",
+          "type": "integer",
+          "value": 0,
+          "scope": "JOB"
+        },
+        {
+          "id": "var_fetchCache",
+          "name": "fetchCache",
+          "type": "object",
+          "value": {},
+          "scope": "JOB"
+        }
+      ],
+      "errorHandlers": []
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "tr_compensationPlanId",
+            "name": "compensationPlanId",
+            "type": "number"
+          },
+          {
+            "id": "tr_orgId",
+            "name": "orgId",
+            "type": "number"
+          },
+          {
+            "id": "tr_onlyData",
+            "name": "onlyData",
+            "type": "string"
+          },
+          {
+            "id": "tr_limit",
+            "name": "limit",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "deletedTriggerTypes": [],
+    "answerInUserLanguage": false,
+    "userLanguagePrompt": "",
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    },
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI"
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "INCENTIVE_COMPENSATION",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": true,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"1\""
+  }
+}

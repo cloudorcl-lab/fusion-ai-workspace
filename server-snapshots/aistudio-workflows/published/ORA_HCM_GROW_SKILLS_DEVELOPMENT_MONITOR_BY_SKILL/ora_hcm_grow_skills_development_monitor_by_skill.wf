@@ -1,0 +1,541 @@
+{
+  "workflowId": "300000326919785",
+  "workflowCode": "ORA_HCM_GROW_SKILLS_DEVELOPMENT_MONITOR_BY_SKILL",
+  "name": "Skills Development Monitor by Skill",
+  "description": "Lists out skills being developed most by the learners in your organization.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1769647344867"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_LOGGEDINUSERASS",
+            "functionName": "fetch_loggedIn_user_assignmentId",
+            "name": "Get Manager Id"
+          },
+          "outcomes": {
+            "success": "1769647890107"
+          },
+          "code": "GET_MANAGER_ID",
+          "id": "1769647344867",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Set Manager Id"
+          },
+          "outcomes": {
+            "success": "1769717207050"
+          },
+          "code": "SET_MANAGER_ID",
+          "id": "1769647890107",
+          "inputs": [
+            {
+              "id": "1769647899157",
+              "name": "managerId",
+              "scope": "JOB",
+              "type": "integer",
+              "value": "{{$context.$nodes.GET_MANAGER_ID.$output.items[0].PersonId}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Hint"
+          },
+          "outcomes": {
+            "AdditionalContent": "1770230322062",
+            "Init": "1769726891504",
+            "Summary": "1770148772377"
+          },
+          "code": "HINT",
+          "convergenceTargetId": "end",
+          "id": "1769726864394",
+          "inputs": [
+            {
+              "id": "1769726864396_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.SET_HINT.$output.result}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MESSAGES_LIST"
+              ],
+              "enableActions": false,
+              "enableCommunications": false,
+              "customNotes": "Role\nYou are rendering a MessageListWidget that lists skills and the employees currently developing each skill.\n\nRendering constraints\n- Output only the messageListWidget JSON payload; no extra prose.\n- Use only Title and Summary per item. Do not set Subtitle, badgeText, Priority, Timestamp, image, Action, or AdditionalAction.\n\nInputs\n- Generic step output (already available in this node):\n  <data>{{$context.$nodes.FOR_EACH_DEVELOPING_SKILL.$output}}</data>\n\nParsing and aggregation\n- Each element in <data> is a JSON string. Parse into an object with a top-level \"result\" array.\n- For each entry in result:\n  - skillName = entry.skill (skip if missing/empty).\n  - employees = entry.employees[0].items (array; skip safely if missing).\n  - Include an employee only if DevelopingCount > 0 for that person-skill.\n  - Collect employee DisplayName values; deduplicate per skill by exact DisplayName match.\n- Preserve input skill order:\n  - Maintain the order in which skills first appear across the parsed input; do not re-sort skills.\n\nList construction\n- Create one list item per unique skill in the preserved input order.\n- Limit to at most 10 skills.\n\nMessageListWidget construction\n- type: messageListWidget\n- items: array of objects with:\n  - Title: skillName (preserve exactly).\n  - Summary:\n    - If at least 1 employee: comma-separated DisplayName list.\n      - If more than 10 names: include first 10 alphabetically, then append \" +<remainingCount> more\".\n    - If 0 employees after filtering: \"No employees developing this skill\".\n\nPrivacy and formatting\n- Use DisplayName only; do not include PersonId, emails, or other identifiers.\n- Preserve provided casing; do not fabricate names or skills.\n- Do not add badges, priorities, images, or actions.\n\nEdge cases\n- If no valid skills or no employees with DevelopingCount > 0 exist, emit a messageListWidget with an empty items array.\n- If employees array is missing/empty for a skill, Summary = \"No employees developing this skill\"."
+            }
+          },
+          "metadata": {
+            "name": "Render Skills with Employee Details"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RENDER_SKILLS_WITH_EMPLOYEE_DETAILS",
+          "id": "1769726947823",
+          "inputs": [
+            {
+              "id": "1769726947824_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Input:\n{{$context.$nodes.FOR_EACH_DEVELOPING_SKILL.$output}}\n\nInstructions:\nGenerate a list of skills, one item per unique skill, and include the associated employees (deduplicated) developing each skill based on the input data."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Set Hint",
+            "returnType": "string",
+            "sourceCode": "let hint = $context?.$app?.$OraMessageHint;\nif (hint === \"InitDisplay\" || hint == null) hint = \"Init\";\nreturn hint;"
+          },
+          "outcomes": {
+            "success": "1769726864394"
+          },
+          "code": "SET_HINT",
+          "id": "1769727645834",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_PROFILEMAN_TEAMSKILLS",
+            "functionName": "teamSkillSearches",
+            "name": "Get Skills Sorted By Developing Count"
+          },
+          "outcomes": {
+            "success": "1770144982871"
+          },
+          "code": "GET_SKILLS_SORTED_BY_DEVELOPING_COUNT",
+          "convergenceTargetId": "1769727645834",
+          "id": "1769717207050",
+          "inputs": [
+            {
+              "id": "1769796068818_1",
+              "name": "skillType",
+              "type": "string",
+              "value": "All"
+            },
+            {
+              "id": "1769796068820_2",
+              "name": "managerId",
+              "type": "integer",
+              "value": "{{$context.$variables.managerId}}"
+            },
+            {
+              "id": "1769796068822_3",
+              "name": "reportsType",
+              "type": "string",
+              "value": "directs"
+            },
+            {
+              "id": "1769796068823_4",
+              "name": "limit",
+              "type": "string",
+              "value": "10"
+            },
+            {
+              "id": "1769796068824_5",
+              "name": "offset",
+              "type": "string",
+              "value": "0"
+            },
+            {
+              "id": "1769796068828_6",
+              "name": "sortAttributeName",
+              "type": "string",
+              "value": "DevelopingCount"
+            },
+            {
+              "id": "1769796068829_7",
+              "name": "sortDirection",
+              "type": "string",
+              "value": "DESC"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"SkillsSortedByDevelopingCountResponse\",\n  \"type\": \"object\",\n  \"required\": [\"totalResults\", \"offset\", \"hasMore\", \"limit\", \"count\", \"items\"],\n  \"properties\": {\n    \"totalResults\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"description\": \"Total number of results matching the query across all pages.\"\n    },\n    \"offset\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"description\": \"Zero-based index of the first result returned in this page.\"\n    },\n    \"hasMore\": {\n      \"type\": \"boolean\",\n      \"description\": \"Indicates if additional pages are available after this page.\"\n    },\n    \"limit\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"description\": \"Maximum number of items requested per page.\"\n    },\n    \"count\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"description\": \"Number of items actually returned in this page.\"\n    },\n    \"items\": {\n      \"type\": \"array\",\n      \"description\": \"List of skill aggregates for this page.\",\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\"SkillName\", \"SkillId\", \"AchievedCount\", \"DevelopingCount\", \"TotalCount\"],\n        \"properties\": {\n          \"SkillName\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"Display name of the skill.\"\n          },\n          \"SkillId\": {\n            \"description\": \"Unique identifier of the skill.\",\n            \"oneOf\": [\n              { \"type\": \"integer\" },\n              { \"type\": \"string\", \"minLength\": 1 }\n            ]\n          },\n          \"AchievedCount\": {\n            \"type\": \"integer\",\n            \"minimum\": 0,\n            \"description\": \"Count of people who achieved the skill.\"\n          },\n          \"DevelopingCount\": {\n            \"type\": \"integer\",\n            \"minimum\": 0,\n            \"description\": \"Count of people currently developing the skill.\"\n          },\n          \"TotalCount\": {\n            \"type\": \"integer\",\n            \"minimum\": 0,\n            \"description\": \"Total count for the skill; typically equals AchievedCount + DevelopingCount.\"\n          }\n        },\n        \"additionalProperties\": false\n      }\n    },\n    \"query\": {\n      \"description\": \"Query string or JSON used to generate the results; may be null.\",\n      \"type\": [\"string\", \"null\"]\n    }\n  },\n  \"additionalProperties\": false\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Extract Developing Skills Names",
+            "returnType": "array",
+            "sourceCode": "var src = $context.$nodes.GET_SKILLS_SORTED_BY_DEVELOPING_COUNT.$output.items;\nvar items = Array.isArray(src) ? src : [];\n\nvar skillsNamesArray = items\n  .filter(function(it) {\n    return it &&\n      typeof it.SkillName === 'string' &&\n      it.SkillName.length > 0 &&\n      Number(it.DevelopingCount) > 0;\n  })\n  .map(function(it) { return it.SkillName; });\n\nreturn skillsNamesArray;"
+          },
+          "outcomes": {
+            "success": "1770145152571"
+          },
+          "code": "EXTRACT_DEVELOPING_SKILLS_NAMES",
+          "convergenceTargetId": "1769727645834",
+          "id": "1770144982871",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set Variables"
+          },
+          "outcomes": {
+            "success": "1769727645834"
+          },
+          "code": "SET_VARIABLES",
+          "convergenceTargetId": "1769727645834",
+          "id": "1770145152571",
+          "inputs": [
+            {
+              "id": "1770231175929",
+              "name": "employeesDevelopingSkills",
+              "scope": "JOB",
+              "type": "array",
+              "value": "[]"
+            },
+            {
+              "id": "1770145161811",
+              "name": "developingSkillsNames",
+              "scope": "JOB",
+              "type": "array",
+              "value": "{{$context.$nodes.EXTRACT_DEVELOPING_SKILLS_NAMES.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Render Summary"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RENDER_SUMMARY",
+          "convergenceTargetId": "1770167543810",
+          "id": "1770148772377",
+          "inputs": [
+            {
+              "id": "1770148772379_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Inputs\n- Skills (pre-fetched, sorted by DevelopingCount desc):\n  <skills>{{$context.$nodes.GET_SKILLS_SORTED_BY_DEVELOPING_COUNT.$output.items}}</skills>\n- Skills to include (array of skill names; empty means none to report):\n  <keepNames>{{$context.$variables.developingSkillsNames}}</keepNames>\n- Current date/time (ISO 8601; for timestamping only):\n  <now>{{$context.$system.$currentDateTime}}</now>\n\nInstructions\n- If keepNames is empty (length = 0), output exactly: No active skill development\n- Otherwise:\n  1) Treat keepNames as an array of exact SkillName strings (case-sensitive). Ignore non-string entries.\n  2) From skills, keep only items whose SkillName is in keepNames, preserving input order. Truncate to 10.\n  3) Output one short sentence, no labels:\n     - Format: \"{N} skills in active development. Top: <SkillName> (Dev <DevelopingCount>, Ach <AchievedCount>). Updated <YYYY-MM-DD>\"\n       - N = number of kept items after truncation.\n       - Top refers to the first kept item.\n       - Use <now> to render YYYY-MM-DD."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MULTIRECORD"
+              ],
+              "enableActions": false,
+              "enableCommunications": false,
+              "customNotes": "Role\nYou are generating a manager-facing panel consisting of:\n1) A concise, telling panel-level title summarizing team skill development activity.\n2) A subtitle describing the top skill by DevelopingCount, if it exists.\n3) A MultiRecordWidget table that shows per-skill aggregates for the managers team.\n\nRendering constraints\n- Consume the final, filtered, and sorted results produced by the prior generic step:\n  <skills>{{$context.$nodes.GET_SKILLS_SORTED_BY_DEVELOPING_COUNT.$output.items}}</skills>\n  <keepNames>{{$context.$variables.developingSkillsNames}}</keepNames>\n- Do not re-query, re-filter, or re-sort beyond what is specified below.\n- Produce exactly one panel-level title and one subtitle before the table.\n- Keep both lines concise and decision-oriented; no extra prose before/after.\n- Then output only the multiRecordWidget JSON payload for the table.\n\nPerformance-oriented selection\n- If keepNames is an empty array (length = 0), there are no developing skills to display:\n  - displayedRows = []\n- Else:\n  - Treat keepNames as an array of exact SkillName strings (case-sensitive). Ignore any non-string entries.\n  - displayedRows = the subset of skills from <skills> whose SkillName is in keepNames, preserving the incoming order.\n  - Do not re-sort; preserve the order provided by <skills>.\n- Truncate displayedRows to at most 10 entries.\n\nPanel title and subtitle\n- If displayedRows.length == 0:\n  - Title: No active skill development\n  - Subtitle: All clear at this time  Updated <YYYY-MM-DD>\n- Else:\n  - Title: {displayedRows.length} skills actively being developed\n  - Subtitle:\n    - Let top = displayedRows[0].\n    - Top skill: <top.SkillName>  Developing <top.DevelopingCount>, Achieved <top.AchievedCount>  Updated <YYYY-MM-DD>\n- Use {{$context.$system.$currentDateTime}} for the date (YYYY-MM-DD).\n\nTable construction (MultiRecordWidget)\n- multiRecordWidget:\n  - cols: [\"Skill\", \"Developing\", \"Achieved\", \"Progress\"]\n- For each row in displayedRows:\n  - Skill: text = SkillName (preserve exactly)\n  - Developing: String(DevelopingCount)\n  - Achieved: String(AchievedCount)\n  - Progress:\n    - If progressPercent was already computed upstream, use it directly as String(progressPercent) + \"%\".\n    - Otherwise:\n      - TotalCount = (TotalCount if present) else AchievedCount + DevelopingCount\n      - If TotalCount > 0: percent = floor(100 * AchievedCount / TotalCount) else 0\n      - text = String(percent) + \"%\"\n    - Badge:\n      - If AchievedCount == 0 AND DevelopingCount > 0:\n        - priority \"warning\", badgeText \"No Completions\"\n\nPrivacy and formatting\n- Preserve SkillName exactly; do not add PII.\n- Do not fabricate fields; only use available inputs.\n\nEdge cases\n- Skip records with missing SkillName.\n- Treat missing AchievedCount as 0.\n- If DevelopingCount is missing or 0, the record should not appear via keepNames; if encountered, skip.\n- Do not display TotalCount as a column.\n\nNotes\n- Ensure the output order is: title line, subtitle line, then only the multiRecordWidget JSON payload.\n- Keep strings succinct and manager-friendly."
+            }
+          },
+          "metadata": {
+            "name": "Render Developing Skills"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RENDER_DEVELOPING_SKILLS",
+          "convergenceTargetId": "1770148039848",
+          "id": "1769726891504",
+          "inputs": [
+            {
+              "id": "1769726891506_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Generate a list of skills being most developed by manager team given the inputs below.\nInputs\n- Skills being developed (authoritative; aggregated per skill):\n  <skills>{{$context.$nodes.GET_SKILLS_SORTED_BY_DEVELOPING_COUNT.$output.items}}</skills>\n  Each item may include:\n  - SkillName (string)\n  - SkillId (number/string)\n  - AchievedCount (number)\n  - DevelopingCount (number)\n  - TotalCount (number)\n- Names of skills to keep (array of skill names; empty array means none to report):\n  <developing_skill_names>{{$context.$variables.developingSkillsNames}}</developing_skill_names>\n- Current date/time (ISO 8601; for timestamping only):\n  <now>{{$context.$system.$currentDateTime}}</now>\n\nFiltering and ordering rules\n- If <developing_skill_names> is an empty array (length = 0), treat as no developing skills: produce an empty result set.\n- Otherwise, build keepList from <developing_skill_names>:\n  - Include only entries that are strings with length > 0; preserve case and whitespace as provided.\n- Include only skills whose SkillName exactly matches one of the names in keepList (case-sensitive exact match).\n- Do not include any other skills, even if DevelopingCount > 0 in the raw input.\n- Sort the included skills by:\n  1) DevelopingCount (descending),\n  2) then AchievedCount (descending),\n  3) then SkillName (alphabetical ascending).\n- Limit to at most 10 skills after sorting."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1770162531931"
+                  },
+                  "id": "start_1770230322062",
+                  "code": "START_1770230322062",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1770230322062",
+                  "code": "END_1770230322062",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_HCM_PROFILEMAN_TEAMSKILLS",
+                    "functionName": "personSkillsSearchesBySkill",
+                    "processJson": true,
+                    "name": "Get Employees"
+                  },
+                  "outcomes": {
+                    "success": "1770231319469"
+                  },
+                  "code": "GET_EMPLOYEES",
+                  "convergenceTargetId": "1770230414460",
+                  "id": "1770162531931",
+                  "inputs": [
+                    {
+                      "id": "1770229700857_1",
+                      "name": "skillType",
+                      "type": "string",
+                      "value": "All"
+                    },
+                    {
+                      "id": "1770229700858_2",
+                      "name": "managerId",
+                      "type": "string",
+                      "value": "{{$context.$variables.managerId}}"
+                    },
+                    {
+                      "id": "1770229700859_3",
+                      "name": "reportsType",
+                      "type": "string",
+                      "value": "directs"
+                    },
+                    {
+                      "id": "1770229700860_4",
+                      "name": "skillName",
+                      "type": "string",
+                      "value": "{{$context.$variables.developingSkillsNames[$context.$nodes.FOR_EACH_DEVELOPING_SKILL.$currentItemIndex]}}"
+                    },
+                    {
+                      "id": "1770229700861_5",
+                      "name": "limit",
+                      "type": "string",
+                      "value": "10"
+                    },
+                    {
+                      "id": "1770229700863_6",
+                      "name": "offset",
+                      "type": "string",
+                      "value": "0"
+                    },
+                    {
+                      "id": "1770229700864_7",
+                      "name": "sortAttributeName",
+                      "type": "string",
+                      "value": "DevelopingCount"
+                    },
+                    {
+                      "id": "1770229700865_8",
+                      "name": "sortDirection",
+                      "type": "string",
+                      "value": "DESC"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "name": "Add Employees to Skill",
+                    "returnType": "array",
+                    "sourceCode": "var acc = $context.$variables.employeesDevelopingSkills;\nif (!Array.isArray(acc)) {\n  acc = [];\n}\n\n// Inputs from the loop\nvar currentSkillName = $context.$nodes.FOR_EACH_DEVELOPING_SKILL.$currentItem;\nvar currentEmployeeItems = $context.$nodes.FOR_EACH_DEVELOPING_SKILL.GET_EMPLOYEES.$output;\n\n// Normalize inputs\nvar skill = String(currentSkillName || '');\nvar itemsToAdd = Array.isArray(currentEmployeeItems)\n  ? currentEmployeeItems\n  : (currentEmployeeItems ? [currentEmployeeItems] : []);\n\n// Find existing entry for this skill\nvar idx = -1;\nfor (var i = 0; i < acc.length; i++) {\n  if (acc[i] && acc[i].skill === skill) { idx = i; break; }\n}\n\n// Insert or update\nif (idx === -1) {\n  acc.push({ skill: skill, employees: itemsToAdd.slice() });\n} else {\n  // Append to existing employees array\n  Array.prototype.push.apply(acc[idx].employees, itemsToAdd);\n}\n\n// Return the updated array (persist in a separate node as needed)\nreturn acc;"
+                  },
+                  "outcomes": {
+                    "success": "1770239622422"
+                  },
+                  "code": "ADD_EMPLOYEES_TO_SKILL",
+                  "id": "1770231319469",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "name": "Accrue Result"
+                  },
+                  "outcomes": {
+                    "success": "1770239707940"
+                  },
+                  "code": "ACCRUE_RESULT",
+                  "id": "1770239622422",
+                  "inputs": [
+                    {
+                      "id": "1770239630735",
+                      "name": "employeesDevelopingSkills",
+                      "scope": "JOB",
+                      "type": "array",
+                      "value": "{{$context.$nodes.FOR_EACH_DEVELOPING_SKILL.ADD_EMPLOYEES_TO_SKILL.$output.result}}"
+                    }
+                  ],
+                  "type": "SET_FIELDS"
+                },
+                {
+                  "metadata": {
+                    "name": "Return Result",
+                    "returnType": "array",
+                    "sourceCode": "return $context.$variables.employeesDevelopingSkills;"
+                  },
+                  "outcomes": {
+                    "success": "end_1770230322062"
+                  },
+                  "code": "RETURN_RESULT",
+                  "id": "1770239707940",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                }
+              ],
+              "rootNode": "start_1770230322062"
+            },
+            "loopType": "SEQUENTIAL",
+            "name": "For Each Developing Skill"
+          },
+          "outcomes": {
+            "success": "1769726947823"
+          },
+          "code": "FOR_EACH_DEVELOPING_SKILL",
+          "id": "1770230322062",
+          "inputs": [
+            {
+              "id": "1770230322062_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$variables.developingSkillsNames}}"
+            }
+          ],
+          "type": "LOOP"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1770231127845",
+          "name": "employeesDevelopingSkills",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1770144944668",
+          "name": "developingSkillsNames",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1769647874225",
+          "name": "managerId",
+          "scope": "JOB",
+          "type": "integer"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {},
+      "code": "ORA_LLM_PREMIUM",
+      "model": "OPEN_AI_GPT_4_1_MINI",
+      "modelName": "GPT-4.1 mini",
+      "provider": "CERT_PREMIUM"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "PROFILE_MANAGEMENT",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": true,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

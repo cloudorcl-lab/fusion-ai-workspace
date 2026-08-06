@@ -1,0 +1,684 @@
+{
+  "workflowId": "100002355226979",
+  "workflowCode": "ORA_FIN_AP_PAYMENT_EXECUTION_DATA_ANALYST_FOR_INSIGHTS",
+  "name": "Payment Execution Data Analyst for Insights",
+  "description": "Extracts the latest payment execution related data associated with insights. The analyst supports payment specialists by analyzing current transaction status and execution details based on defined monitoring prompts. Used to supply accurate, up to date data for insight review and follow on actions.",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1779795843964"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Pre Process Extraction Data for Execution",
+            "returnType": "array",
+            "sourceCode": "const input = $context.$nodes.FIN_AP_BO_FUNCTION_EXTRACT_BQL_FOR_EXECUTION.$output;\nconst output = Array.isArray(input)\n  ? input.map(item => {\n      // Create a shallow copy of the item\n      const newItem = {};\n      Object.keys(item).forEach(key => {\n        newItem[key] = item[key] === null ? \"\" : item[key];\n      });\n      return newItem;\n    })\n  : [];\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1777006584968"
+          },
+          "code": "FIN_AP_CODE_PRE_PROCESS_EXTRACTION_DATA_EXECUTION",
+          "convergenceTargetId": "1777375883073",
+          "id": "1765978489189",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Preprocess Summary Data",
+            "returnType": "object",
+            "sourceCode": "const insightName = $context.$triggers.REST.$input.insightContext.insightsName;\nconst data = $context.$nodes.FIN_AP_BO_FUNCTION_EXTRACT_SUMMARY_DATA.$output || [];\nlet result = [];\n\nconst n = (value) => Number(value || 0);\nconst hasValue = (value) =>\n  value !== null &&\n  value !== undefined &&\n  value !== \"\" &&\n  value !== \"-\" &&\n  value !== \"N/A\";\n\nconst minDate = (current, next) => {\n  if (!hasValue(next)) return current;\n  if (!hasValue(current)) return next;\n  return next < current ? next : current;\n};\n\nconst sortByAmountDesc = (items) =>\n  items.sort((a, b) => n(b.totalPaymentAmount) - n(a.totalPaymentAmount));\n\nif (insightName === \"Payment runs requiring attention\") {\n  const grouped = {};\n\n  for (const item of data) {\n    const condition = item[\"Business Condition\"];\n    if (!hasValue(condition)) continue;\n\n    if (!grouped[condition]) {\n      grouped[condition] = {\n        businessCondition: condition,\n        totalPaymentProcessRequestCount: 0,\n        totalPaymentFileCount: 0,\n        earliestPendingSince: null,\n        businessUnits: {}\n      };\n    }\n\n    grouped[condition].totalPaymentProcessRequestCount += n(item[\"Payment Process Request Count\"]);\n    grouped[condition].totalPaymentFileCount += n(item[\"Payment File Count\"]);\n    grouped[condition].earliestPendingSince = minDate(\n      grouped[condition].earliestPendingSince,\n      item[\"Pending Since or Termination Date\"]\n    );\n\n    const bu = item[\"Business Unit\"];\n    if (hasValue(bu)) {\n      if (!grouped[condition].businessUnits[bu]) {\n        grouped[condition].businessUnits[bu] = 0;\n      }\n      grouped[condition].businessUnits[bu] += n(item[\"Payment Process Request Count\"]);\n    }\n  }\n\n  result = Object.values(grouped).map((obs) => ({\n    ...obs,\n    businessUnits: Object.entries(obs.businessUnits).map(([name, count]) => ({ name, count }))\n  }));\n} else if (insightName === \"Payments remaining unsettled or unreconciled\") {\n  const grouped = {};\n\n  for (const item of data) {\n    const condition = item[\"Business Condition\"];\n    if (!hasValue(condition)) continue;\n\n    if (!grouped[condition]) {\n      grouped[condition] = {\n        businessCondition: condition,\n        totalPaymentCount: 0,\n        totalPayeeCount: 0,\n        currencies: {}\n      };\n    }\n\n    grouped[condition].totalPaymentCount += n(item[\"Payment Count\"]);\n    grouped[condition].totalPayeeCount += n(item[\"Payee Count\"]);\n\n    const currency = hasValue(item[\"Currency\"]) ? item[\"Currency\"] : item[\"Payment Currency\"];\n    if (hasValue(currency)) {\n      if (!grouped[condition].currencies[currency]) {\n        grouped[condition].currencies[currency] = {\n          currency,\n          paymentCount: 0,\n          payeeCount: 0,\n          totalPaymentAmount: 0\n        };\n      }\n\n      grouped[condition].currencies[currency].paymentCount += n(item[\"Payment Count\"]);\n      grouped[condition].currencies[currency].payeeCount += n(item[\"Payee Count\"]);\n      grouped[condition].currencies[currency].totalPaymentAmount += n(item[\"Total Payment Amount\"]);\n    }\n  }\n\n  result = Object.values(grouped).map((obs) => ({\n    ...obs,\n    currencies: sortByAmountDesc(Object.values(obs.currencies))\n  }));\n} else if (insightName === \"Payments pending approval for more than 5 days\") {\n  const grouped = {};\n\n  for (const item of data) {\n    const condition = item[\"Business Condition\"];\n    if (!hasValue(condition)) continue;\n\n    if (!grouped[condition]) {\n      grouped[condition] = {\n        businessCondition: condition,\n        totalPaymentProcessRequestCount: 0,\n        totalPaymentCount: 0,\n        totalInstallmentCount: 0,\n        currencies: {}\n      };\n    }\n\n    grouped[condition].totalPaymentProcessRequestCount += n(item[\"Payment Process Request Count\"]);\n    grouped[condition].totalPaymentCount += n(item[\"Payment Count\"]);\n    grouped[condition].totalInstallmentCount += n(item[\"Installment Count\"]);\n\n    const currency = item[\"Payment Currency\"];\n    if (hasValue(currency)) {\n      if (!grouped[condition].currencies[currency]) {\n        grouped[condition].currencies[currency] = {\n          currency,\n          paymentCount: 0,\n          installmentCount: 0,\n          totalPaymentAmount: 0\n        };\n      }\n\n      grouped[condition].currencies[currency].paymentCount += n(item[\"Payment Count\"]);\n      grouped[condition].currencies[currency].installmentCount += n(item[\"Installment Count\"]);\n      grouped[condition].currencies[currency].totalPaymentAmount += n(item[\"Total Payment Amount\"]);\n    }\n  }\n\n  result = Object.values(grouped).map((obs) => ({\n    ...obs,\n    currencies: sortByAmountDesc(Object.values(obs.currencies))\n  }));\n} else if (insightName === \"Recurring payment rejection errors in last 30 days\") {\n  const grouped = {};\n\n  for (const item of data) {\n    const condition = item[\"Business Condition\"];\n    const reason = item[\"Rejection Reason\"];\n    if (!hasValue(condition)) continue;\n\n    if (!grouped[condition]) {\n      grouped[condition] = {\n        businessCondition: condition,\n        totalPaymentFileCount: 0,\n        totalPaymentCount: 0,\n        rejectionReasons: {}\n      };\n    }\n\n    grouped[condition].totalPaymentFileCount += n(item[\"Payment File Count\"]);\n    grouped[condition].totalPaymentCount += n(item[\"Payment Count\"]);\n\n    if (hasValue(reason)) {\n      if (!grouped[condition].rejectionReasons[reason]) {\n        grouped[condition].rejectionReasons[reason] = {\n          reason,\n          paymentFileCount: 0,\n          paymentCount: 0\n        };\n      }\n\n      grouped[condition].rejectionReasons[reason].paymentFileCount += n(item[\"Payment File Count\"]);\n      grouped[condition].rejectionReasons[reason].paymentCount += n(item[\"Payment Count\"]);\n    }\n  }\n\n  result = Object.values(grouped).map((obs) => ({\n    ...obs,\n    rejectionReasons: Object.values(obs.rejectionReasons).sort(\n      (a, b) => n(b.paymentCount) - n(a.paymentCount)\n    )\n  }));\n} else if (insightName === \"Recurring card settlement errors in last 30 days\") {\n  const grouped = {};\n\n  for (const item of data) {\n    const condition = item[\"Business Condition\"];\n    const reason = item[\"Error Reason\"];\n    if (!hasValue(condition)) continue;\n\n    if (!grouped[condition]) {\n      grouped[condition] = {\n        businessCondition: condition,\n        totalPaymentFileCount: 0,\n        totalPaymentCount: 0,\n        errorReasons: {}\n      };\n    }\n\n    grouped[condition].totalPaymentFileCount += n(item[\"Payment File Count\"]);\n    grouped[condition].totalPaymentCount += n(item[\"Payment Count\"]);\n\n    if (hasValue(reason)) {\n      if (!grouped[condition].errorReasons[reason]) {\n        grouped[condition].errorReasons[reason] = {\n          reason,\n          paymentFileCount: 0,\n          paymentCount: 0\n        };\n      }\n\n      grouped[condition].errorReasons[reason].paymentFileCount += n(item[\"Payment File Count\"]);\n      grouped[condition].errorReasons[reason].paymentCount += n(item[\"Payment Count\"]);\n    }\n  }\n\n  result = Object.values(grouped).map((obs) => ({\n    ...obs,\n    errorReasons: Object.values(obs.errorReasons).sort(\n      (a, b) => n(b.paymentCount) - n(a.paymentCount)\n    )\n  }));\n} else if (insightName === \"Payments with unresolved acknowledgments, rejections, or validation errors\") {\n  const grouped = {};\n\n  const fileLevelConditions = new Set([\n    \"Payment files rejected in acknowledgment\",\n    \"Payment files pending action due to acknowledgment failure\",\n    \"Payment files partially acknowledged\",\n    \"Payment files pending acknowledgment for more than 24 hours\"\n  ]);\n\n  const paymentLevelConditions = new Set([\n    \"Payments rejected in acknowledgment\",\n    \"Payments failed validation\"\n  ]);\n\n  for (const item of data) {\n    const condition = item[\"Business Condition\"];\n    if (!hasValue(condition)) continue;\n\n    if (!grouped[condition]) {\n      grouped[condition] = {\n        businessCondition: condition,\n        earliestPendingSince: null\n      };\n    }\n\n    grouped[condition].earliestPendingSince = minDate(\n      grouped[condition].earliestPendingSince,\n      item[\"Pending Since or Termination Date\"] || item[\"Payment Date\"]\n    );\n\n    if (fileLevelConditions.has(condition)) {\n      if (!grouped[condition].banks) {\n        grouped[condition].totalPaymentFileCount = 0;\n        grouped[condition].banks = {};\n      }\n\n      grouped[condition].totalPaymentFileCount += n(item[\"Payment File Count\"]);\n\n      const bank = item[\"Disbursement Bank or Funding Card Issuer\"];\n      if (hasValue(bank)) {\n        if (!grouped[condition].banks[bank]) {\n          grouped[condition].banks[bank] = {\n            bank,\n            paymentFileCount: 0\n          };\n        }\n        grouped[condition].banks[bank].paymentFileCount += n(item[\"Payment File Count\"]);\n      }\n    }\n\n    if (paymentLevelConditions.has(condition)) {\n      if (!grouped[condition].currencies) {\n        grouped[condition].totalPaymentCount = 0;\n        grouped[condition].currencies = {};\n      }\n\n      grouped[condition].totalPaymentCount += n(item[\"Payment Count\"]);\n\n      const currency = item[\"Payment Currency\"];\n      if (hasValue(currency)) {\n        if (!grouped[condition].currencies[currency]) {\n          grouped[condition].currencies[currency] = {\n            currency,\n            paymentCount: 0,\n            totalPaymentAmount: 0\n          };\n        }\n\n        grouped[condition].currencies[currency].paymentCount += n(item[\"Payment Count\"]);\n        grouped[condition].currencies[currency].totalPaymentAmount += n(item[\"Total Payment Amount\"]);\n      }\n    }\n  }\n\n  result = Object.values(grouped).map((obs) => {\n    if (obs.banks) {\n      return {\n        businessCondition: obs.businessCondition,\n        totalPaymentFileCount: obs.totalPaymentFileCount,\n        earliestPendingSince: obs.earliestPendingSince,\n        banks: Object.values(obs.banks).sort(\n          (a, b) => n(b.paymentFileCount) - n(a.paymentFileCount)\n        )\n      };\n    }\n\n    if (obs.currencies) {\n      return {\n        businessCondition: obs.businessCondition,\n        totalPaymentCount: obs.totalPaymentCount,\n        earliestPendingSince: obs.earliestPendingSince,\n        currencies: sortByAmountDesc(Object.values(obs.currencies))\n      };\n    }\n\n    return obs;\n  });\n} else if (insightName === \"Supplier financial profile requiring attention\") {\n  const grouped = {};\n\n  for (const item of data) {\n    const condition = item[\"Business Condition\"];\n    if (!hasValue(condition)) continue;\n\n    if (!grouped[condition]) {\n      grouped[condition] = {\n        businessCondition: condition,\n        totalSupplierCount: 0,\n        totalInstallmentCount: 0,\n        currencies: {}\n      };\n    }\n\n    grouped[condition].totalSupplierCount += n(item[\"Supplier Count\"]);\n    grouped[condition].totalInstallmentCount += n(item[\"Installment Count\"]);\n\n    const currency = item[\"Payment Currency\"];\n    if (hasValue(currency)) {\n      if (!grouped[condition].currencies[currency]) {\n        grouped[condition].currencies[currency] = {\n          currency,\n          supplierCount: 0,\n          installmentCount: 0,\n          totalOutstandingBalance: 0\n        };\n      }\n\n      grouped[condition].currencies[currency].supplierCount += n(item[\"Supplier Count\"]);\n      grouped[condition].currencies[currency].installmentCount += n(item[\"Installment Count\"]);\n      grouped[condition].currencies[currency].totalOutstandingBalance += n(item[\"Total Outstanding Balance\"]);\n    }\n  }\n\n  result = Object.values(grouped).map((obs) => ({\n    ...obs,\n    currencies: Object.values(obs.currencies).sort(\n      (a, b) => n(b.totalOutstandingBalance) - n(a.totalOutstandingBalance)\n    )\n  }));\n}\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1777013880370"
+          },
+          "code": "FIN_AP_CODE_PREPROCESS_SUMMARY_DATA",
+          "convergenceTargetId": "1777375883073",
+          "id": "1777006584968",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check token size",
+            "returnType": "number",
+            "sourceCode": "let data = $context.$nodes.FIN_AP_CODE_PREPROCESS_SUMMARY_DATA.$output.result;\nconst str = typeof data === \"string\" ? data : JSON.stringify(data);\n\n// optional: normalize whitespace (slightly better estimate)\nconst cleaned = str.replace(/\\s+/g, \" \");\n\n// rough estimate: 1 token ≈ 4 characters\nconst tokenCount = Math.ceil(cleaned.length / 4);\nreturn tokenCount;"
+          },
+          "outcomes": {
+            "success": "1777013165932"
+          },
+          "code": "FIN_AP_CODE_CHECK_TOKEN_SIZE",
+          "convergenceTargetId": "1777375883073",
+          "id": "1777013880370",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check if token limit exceeded"
+          },
+          "outcomes": {
+            "true": "1777013298064",
+            "false": "1777013486253"
+          },
+          "code": "FIN_AP_CONDITION_CHECK_IF_TOKEN_LIMIT_EXCEEDED",
+          "convergenceTargetId": "end",
+          "id": "1777013165932",
+          "inputs": [
+            {
+              "id": "1777013165934_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_CHECK_TOKEN_SIZE.$output.result > 24000}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Set Default Summary"
+          },
+          "outcomes": {
+            "success": "1766035142630"
+          },
+          "code": "FIN_AP_VARIABLES_SET_DEFAULT_SUMMARY",
+          "id": "1777013298064",
+          "inputs": [
+            {
+              "id": "1777013347166",
+              "name": "summary",
+              "scope": "JOB",
+              "type": "string",
+              "value": "Here are the details:"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Execution Insight Router"
+          },
+          "outcomes": {
+            "Payment runs requiring attention": "1766035908676",
+            "Payments pending approval for more than 5 days": "1773727018313",
+            "Payments with unresolved acknowledgments, rejections, or validation errors": "1768889362422",
+            "Recurring payment rejection errors in last 30 days": "1768899905716",
+            "Recurring card settlement errors in last 30 days": "1768892872158",
+            "Payments remaining unsettled or unreconciled": "1776083815491",
+            "Supplier financial profile requiring attention": "1779901461850"
+          },
+          "code": "FIN_AP_SWITCH_EXECUTION_INSIGHT_ROUTER",
+          "convergenceTargetId": "end",
+          "id": "1766035142630",
+          "inputs": [
+            {
+              "id": "1766035142632_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.insightContext.insightsName}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "Process Execution Payment Runs Requiring Attention",
+            "returnType": "object",
+            "sourceCode": "const data = $context.$nodes.FIN_AP_CODE_PRE_PROCESS_EXTRACTION_DATA_EXECUTION.$output.result;\nconst summaryText =($context.$variables.summary ?? \"\").toString().trim() ||\"Here are the details:\";\n\n// Hardcoded mapping from your HTML table (columns with '-' omitted)\nconst observationColumnMap = {\n  \"Payment process requests need more information\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Pending Since\"\n  ],\n  \"Payment process requests pending installments review\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Pending Since\"\n  ],\n  \"Payment files that failed transmission\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Pending Since\",\n    \"Payment File Reference\",\n    \"Payment File Status\"\n  ],\n  \"Payment process requests failed document validation\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Termination Date\"\n  ],\n  \"Payment files failed formatting and pending action\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Pending Since\",\n    \"Payment File Reference\",\n    \"Payment File Status\"\n  ],\n  \"Payment process requests failed payment validation\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Termination Date\"\n  ],\n  \"Payment process requests missing cross-currency rates\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Pending Since\"\n  ],\n  \"Payment process requests pending proposed payment review\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Pending Since\"\n  ],\n  \"Payment process requests pending to resolve document errors\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Pending Since\"\n  ],\n  \"Payment process requests missing payment conversion rates\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Pending Since\"\n  ],\n  \"Payment process requests pending to resolve payment errors\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Pending Since\"\n  ],\n  \"Payment files formatted and ready for printing\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Pending Since\",\n    \"Payment File Reference\",\n    \"Payment File Status\"\n  ],\n  \"Payment files submitted for printing awaiting confirmation\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Pending Since\",\n    \"Payment File Reference\",\n    \"Payment File Status\"\n  ],\n  \"Payment process requests waiting for payment file creation\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Pending Since\"\n  ],\n  \"Payment files formatted and ready for transmission\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Pending Since\",\n    \"Payment File Reference\",\n    \"Payment File Status\"\n  ],\n  \"Payment files created and pending action\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Pending Since\",\n    \"Payment File Reference\",\n    \"Payment File Status\"\n  ],\n  \"Payment files with validation failures and pending action\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Pending Since\",\n    \"Payment File Reference\",\n    \"Payment File Status\"\n  ],\n  \"Payment files ready for recording check print status\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Pending Since\",\n    \"Payment File Reference\",\n    \"Payment File Status\"\n  ],\n  \"Payments pending confirmation\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Pending Since\",\n    \"Payment File Reference\",\n    \"Payment File Status\"\n  ]\n};\n\n// For deeplink logic\nconst fileBasedObservations = [\n  \"Payment files failed formatting and pending action\",\n  \"Payment files that failed transmission\",\n  \"Payment files formatted and ready for printing\",\n  \"Payment files submitted for printing awaiting confirmation\",\n  \"Payment files formatted and ready for transmission\",\n  \"Payment files created and pending action\",\n  \"Payment files with validation failures and pending action\",\n  \"Payment files ready for recording check print status\",\n  \"Payments pending confirmation\"\n];\n\nconst requestBasedObservations = [\n  \"Payment process requests failed document validation\",\n  \"Payment process requests failed payment validation\",\n  \"Payment process requests missing cross-currency rates\",\n  \"Payment process requests pending installments review\",\n  \"Payment process requests need more information\",\n  \"Payment process requests pending proposed payment review\",\n  \"Payment process requests pending to resolve document errors\",\n  \"Payment process requests missing payment conversion rates\",\n  \"Payment process requests pending to resolve payment errors\",\n  \"Payment process requests waiting for payment file creation\"\n];\n\n// Status code sets for deeplinks\nconst pprStatusCodesForDeeplink = new Set([\n  \"PENDING_REVIEW_PMT_VAL_ERRORS\",\n  \"PENDING_REVIEW\",\n  \"ORA_REQUIRE_APPROVAL\",\n  \"ORA_APPROVAL_INITIATED\",\n  \"ORA_APPROVED\",\n  \"ORA_APPROVAL_ERROR\",\n  \"ORA_APPROVAL_WITHDRAWN\",\n  \"PENDING_REVIEW_DOC_VAL_ERRORS\",\n  \"REVIEW\",\n  \"MISSING RATES\",\n  \"MISSING_X_RATES\",\n  \"INFORMATION_REQUIRED\"\n]);\n\nconst paymentFileStatusCodesForDeeplink = new Set([\n  \"PENDING_ACK\",\n  \"CREATED\",\n  \"CREATED_READY_FOR_FORMATTING\",\n  \"CREATED_READY_FOR_PRINTING\",\n  \"CREATION_ERROR\",\n  \"FORMATTED\",\n  \"FORMATTED_READY_FOR_PRINTING\",\n  \"FORMATTED_READY_TO_TRANSMIT\",\n  \"FORMATTING_FAILED\",\n  \"PENDING_ACTION_ACK_FAILURE\",\n  \"SUBMITTED_FOR_PRINTING\",\n  \"TRANSMISSION_FAILED\",\n  \"FORMATTED_ELECTRONIC\",\n  \"TRANSMITTED\",\n  \"PRINTED\"\n]);\n\nconst formatDate = (val) => {\n  if (!val) {\n    return val;\n  }\n  if (typeof val === \"string\" && /^\\d{4}-\\d{2}-\\d{2}/.test(val)) {\n    return val.substring(0, 10);\n  }\n  const d = new Date(val);\n  if (!isNaN(d.valueOf())) {\n    const month = String(d.getMonth() + 1).padStart(2, \"0\");\n    const day = String(d.getDate()).padStart(2, \"0\");\n    return `${d.getFullYear()}-${month}-${day}`;\n  }\n  return val;\n};\n\nconst buildPprObjKey = (item) => {\n  let objKey = `checkrunId=${item.checkrunid}`;\n  objKey = item.paymentProcessRequestId\n    ? objKey + `;pmtProcessRequestId=${item.paymentProcessRequestId}`\n    : objKey;\n  return objKey;\n};\n\nlet finalResult;\nif ( $context.$nodes.FIN_AP_BO_FUNCTION_EXTRACT_BQL_FOR_EXECUTION.$status == 'failure')\nreturn null;\nelse if (!Array.isArray(data) || data.length === 0) {\n  finalResult = {\n    agentResponse: [\n      {\n        type: \"text\",\n        content: [\"This insight has been resolved. There’s nothing to review at the moment.\"],\n        sequence: 1\n      }\n    ]\n  };\n} else {\n  const observationsSet = [];\n  for (let i = 0; i < data.length; i++) {\n    const obs = data[i][\"Observations\"];\n    if (obs && !observationsSet.includes(obs)) {\n      observationsSet.push(obs);\n    }\n  }\n\n  const rawTables = [];\n  for (let oidx = 0; oidx < observationsSet.length; oidx++) {\n    const observation = observationsSet[oidx];\n    const columns = observationColumnMap[observation];\n    if (!columns) continue;\n\n    const rows = [];\n    for (let j = 0; j < data.length; j++) {\n      const item = data[j];\n      if (item[\"Observations\"] !== observation) continue;\n\n      const row = {};\n      let pprValue = item[\"Payment Process Request\"];\n      let pprStatusValue = item[\"Payment Process Request Status\"];\n      let fileRefValue = item[\"Payment File Reference\"];\n      let fileStatusValue = item[\"Payment File Status\"];\n\n      if (fileBasedObservations.includes(observation) || requestBasedObservations.includes(observation)) {\n        pprValue = `{deeplink:{objType:AP_VIEWPPR,action:VIEW,objKey:${buildPprObjKey(item)},text:${item[\"Payment Process Request\"]}}}`;\n      }\n\n      if (pprStatusCodesForDeeplink.has(item[\"Payment Process Request Status Code\"])) {\n        pprStatusValue = `{deeplink:{objType:AP_PPRACTION,action:EDIT,objKey:${buildPprObjKey(item)},text:${item[\"Payment Process Request Status\"]}}}`;\n      }\n\n      if (fileBasedObservations.includes(observation)) {\n        fileRefValue = `{deeplink:{objType:AP_VIEWPAYMENTFILE,action:VIEW,objKey:paymentInstructionId=${item[\"Payment File Reference\"]},text:${item[\"Payment File Reference\"]}}}`;\n      }\n\n      if (paymentFileStatusCodesForDeeplink.has(item[\"Payment File Status Code\"])) {\n        fileStatusValue = `{deeplink:{objType:AP_PAYMENTFILEACTION,action:EDIT,objKey:paymentInstructionId=${item[\"Payment File Reference\"]},text:${item[\"Payment File Status\"]}}}`;\n      }\n\n      for (let k = 0; k < columns.length; k++) {\n        const col = columns[k];\n        if (col === \"Payment Process Request\") {\n          row[col] = pprValue;\n        } else if (col === \"Payment Process Request Status\") {\n          row[col] = pprStatusValue;\n        } else if (col === \"Payment File Reference\") {\n          row[col] = fileRefValue;\n        } else if (col === \"Payment File Status\") {\n          row[col] = fileStatusValue;\n        } else if (col === \"Payment Date\" || col === \"Pending Since\" || col === \"Termination Date\") {\n          row[col] = formatDate(item[col]);\n        } else {\n          row[col] = item[col];\n        }\n      }\n\n      rows.push(row);\n    }\n\n    rawTables.push({\n      type: \"table\",\n      heading: observation,\n      content: rows,\n      columnOrder: columns\n    });\n  }\n\n  const showTopFiveMessage = rawTables.some((table) => Array.isArray(table.content) && table.content.length >= 5);\n\n  const agentResponse = [];\n  let seq = 1;\n\n  agentResponse.push({\n    type: \"text\",\n    content: [summaryText],\n    sequence: seq++\n  });\n\n  if (showTopFiveMessage) {\n    agentResponse.push({\n      type: \"text\",\n      content: [\"Showing up to 5 items below to keep this view focused.\"],\n      sequence: seq++\n    });\n  }\n\n  rawTables.forEach((table) => {\n    agentResponse.push({\n      ...table,\n      sequence: seq++\n    });\n  });\n\n  agentResponse.push({\n    type: \"actions\",\n    content: [\n      \"Use links in the table to review details and take appropriate actions.\"\n    ],\n    sequence: seq++\n  });\n\n  finalResult = {\n    agentResponse\n  };\n}\n\nreturn finalResult.agentResponse;"
+          },
+          "outcomes": {
+            "success": "1773726838943"
+          },
+          "code": "FIN_AP_CODE_PROCESS_EXECUTION_PAYMENT_RUNS_REQUIRING_ATTENTION",
+          "id": "1766035908676",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check for valid data"
+          },
+          "outcomes": {
+            "true": "1773726873676",
+            "false": "1773737296095"
+          },
+          "code": "FIN_AP_CONDITION_CHECK_FOR_VALID_DATA",
+          "convergenceTargetId": "end",
+          "id": "1773726838943",
+          "inputs": [
+            {
+              "id": "1773726838944_1",
+              "name": "condition",
+              "type": "string",
+              "value": "true"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Return Execution Payment Runs Requiring Attention"
+          },
+          "outcomes": {},
+          "code": "FIN_AP_RETURN_EXECUTION_PAYMENT_RUNS_REQUIRING_ATTENTION",
+          "convergenceTargetId": "end",
+          "id": "1773726873676",
+          "inputs": [
+            {
+              "id": "1773726873677_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_PROCESS_EXECUTION_PAYMENT_RUNS_REQUIRING_ATTENTION.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Error Handler",
+            "returnType": "object",
+            "sourceCode": "const summarizeData= [\n    {\n      type: 'text',\n      content: [\n        \"This insight isn’t supported by the current agent.Please return to the previous screen and select another insight.\"\n      ],\n      sequence: 1\n    }\n  ];\n\nreturn summarizeData;"
+          },
+          "outcomes": {
+            "success": "1773737380015"
+          },
+          "code": "FIN_AP_CODE_ERROR_HANDLER",
+          "id": "1773737296095",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check for error case"
+          },
+          "outcomes": {
+            "true": "1773737424048",
+            "false": "add_false_1773737380015"
+          },
+          "code": "FIN_AP_CONDITION_CHECK_FOR_ERROR_CASE",
+          "convergenceTargetId": "end",
+          "id": "1773737380015",
+          "inputs": [
+            {
+              "id": "1773737380017_1",
+              "name": "condition",
+              "type": "string",
+              "value": "true"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Return Error Handler"
+          },
+          "outcomes": {},
+          "code": "FIN_AP_RETURN_ERROR_HANDLER",
+          "convergenceTargetId": "end",
+          "id": "1773737424048",
+          "inputs": [
+            {
+              "id": "1773737424050_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_ERROR_HANDLER.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_false_1773737380015",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Process payments pending approval for more than 5 days",
+            "returnType": "object",
+            "sourceCode": "const data = $context.$nodes.FIN_AP_CODE_PRE_PROCESS_EXTRACTION_DATA_EXECUTION.$output.result || [];\nconst summaryText =($context.$variables.summary ?? \"\").toString().trim() || \"Here are the details:\";\n\nconst observationColumnMap = {\n  \"Payments pending approval for more than 5 days\": [\n    \"Payment Process Request\",\n    \"Payment Process Request Status\",\n    \"Payment Date\",\n    \"Payment Count\",\n    \"Installment Count\"\n  ]\n};\n\nconst requestBasedObservations = [\n  \"Payments pending approval for more than 5 days\"\n];\n\nconst formatDate = (val) => {\n  if (!val) {\n    return val;\n  }\n  if (typeof val === \"string\" && /^\\d{4}-\\d{2}-\\d{2}/.test(val)) {\n    return val.substring(0, 10);\n  }\n  const d = new Date(val);\n  if (!isNaN(d.valueOf())) {\n    const month = String(d.getMonth() + 1).padStart(2, \"0\");\n    const day = String(d.getDate()).padStart(2, \"0\");\n    return `${d.getFullYear()}-${month}-${day}`;\n  }\n  return val;\n};\n\nconst buildPprObjKey = (item) => {\n  let objKey = `checkrunId=${item.checkrunid}`;\n  objKey = item.paymentProcessRequestId\n    ? objKey + `;pmtProcessRequestId=${item.paymentProcessRequestId}`\n    : objKey;\n  return objKey;\n};\n\nlet finalResult;\n\nif ( $context.$nodes.FIN_AP_BO_FUNCTION_EXTRACT_BQL_FOR_EXECUTION.$status == 'failure')\nreturn null;\nelse if (!Array.isArray(data) || data.length === 0) {\n  finalResult = {\n    agentResponse: [{\n      type: \"text\",\n      content: [\"This insight has been resolved. There’s nothing to review at the moment.\"],\n      sequence: 1\n    }]\n  };\n} else {\n  const observationsSet = [];\n  for (let i = 0; i < data.length; i++) {\n    const obs = data[i][\"Observations\"];\n    if (obs && !observationsSet.includes(obs)) {\n      observationsSet.push(obs);\n    }\n  }\n\n  const rawTables = [];\n  for (let oidx = 0; oidx < observationsSet.length; oidx++) {\n    const observation = observationsSet[oidx];\n    const columns = observationColumnMap[observation];\n    if (!columns) continue;\n\n    const rows = [];\n    for (let j = 0; j < data.length; j++) {\n      const item = data[j];\n      if (item[\"Observations\"] !== observation) continue;\n\n      const row = {};\n      let pprValue = item[\"Payment Process Request\"];\n      let pprStatusValue = item[\"Payment Process Request Status\"];\n\n      if (requestBasedObservations.includes(observation)) {\n        pprValue = `{deeplink:{objType:AP_VIEWPPR,action:VIEW,objKey:${buildPprObjKey(item)},text:${item[\"Payment Process Request\"]}}}`;\n      }\n\n      pprStatusValue = `{deeplink:{objType:AP_PPRACTION,action:EDIT,objKey:${buildPprObjKey(item)},text:${item[\"Payment Process Request Status\"]}}}`;\n\n      for (let k = 0; k < columns.length; k++) {\n        const col = columns[k];\n        if (col === \"Payment Process Request\") {\n          row[col] = pprValue;\n        } else if (col === \"Payment Process Request Status\") {\n          row[col] = pprStatusValue;\n        } else if (col === \"Payment Date\") {\n          row[col] = formatDate(item[col]);\n        } else {\n          row[col] = item[col];\n        }\n      }\n\n      rows.push(row);\n    }\n\n    rawTables.push({\n      type: \"table\",\n      heading: observation,\n      content: rows,\n      columnOrder: columns\n    });\n  }\n\n  const showTopFiveMessage = rawTables.some((table) => Array.isArray(table.content) && table.content.length >= 5);\n\n  const agentResponse = [];\n  let seq = 1;\n\n  agentResponse.push({\n    type: \"text\",\n    content: [summaryText],\n    sequence: seq++\n  });\n\n  if (showTopFiveMessage) {\n    agentResponse.push({\n      type: \"text\",\n      content: [\"Showing up to 5 items below to keep this view focused.\"],\n      sequence: seq++\n    });\n  }\n\n  rawTables.forEach((table) => {\n    agentResponse.push({\n      ...table,\n      sequence: seq++\n    });\n  });\n\n  agentResponse.push({\n    type: \"actions\",\n    content: [\n      \"Use links in the table to review details and take appropriate actions.\"\n    ],\n    sequence: seq++\n  });\n\n  finalResult = { agentResponse };\n}\n\nreturn finalResult.agentResponse;"
+          },
+          "outcomes": {
+            "success": "1773727092424"
+          },
+          "code": "FIN_AP_CODE_PROCESS_PAYMENTS_PENDING_APPROVAL_FOR_MORE_THAN_5_DAYS",
+          "id": "1773727018313",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Return payments pending approval for more than 5 days"
+          },
+          "outcomes": {},
+          "code": "FIN_AP_RETURN_PAYMENTS_PENDING_APPROVAL_FOR_MORE_THAN_5_DAYS",
+          "convergenceTargetId": "1773726838943",
+          "id": "1773727092424",
+          "inputs": [
+            {
+              "id": "1773727092426_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_PROCESS_PAYMENTS_PENDING_APPROVAL_FOR_MORE_THAN_5_DAYS.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Process Execution Payments with unresolved acknowledgments, rejections, or validation errors",
+            "returnType": "object",
+            "sourceCode": "const data = $context.$nodes.FIN_AP_CODE_PRE_PROCESS_EXTRACTION_DATA_EXECUTION.$output.result || [];\nconst summaryText =($context.$variables.summary ?? \"\").toString().trim() || \"Here are the details:\";\n\nconst observationColumnMap = {\n  \"Payment files rejected in acknowledgment\": [\n    \"Payment File Reference\",\n    \"Payment File Status\",\n    \"Payment Process Request\",\n    \"Payment Date\",\n    \"Termination Date\",\n    \"Payments Recorded\",\n    \"Disbursement Bank\",\n    \"Funding Card Account\",\n    \"Payment Process Profile\",\n    \"Inbound File Name\",\n    \"Inbound File Status\"\n  ],\n  \"Payment files pending action due to acknowledgment failure\": [\n    \"Payment File Reference\",\n    \"Payment File Status\",\n    \"Payment Process Request\",\n    \"Payment Date\",\n    \"Payments Recorded\",\n    \"Disbursement Bank\",\n    \"Funding Card Account\",\n    \"Payment Process Profile\",\n    \"Inbound File Status\"\n  ],\n  \"Payment files partially acknowledged\": [\n    \"Payment File Reference\",\n    \"Payment File Status\",\n    \"Payment Process Request\",\n    \"Payment Date\",\n    \"Payments Recorded\",\n    \"Disbursement Bank\",\n    \"Funding Card Account\",\n    \"Payment Process Profile\",\n    \"Inbound File Name\",\n    \"Inbound File Status\"\n  ],\n  \"Payment files pending acknowledgment for more than 24 hours\": [\n    \"Payment File Reference\",\n    \"Payment File Status\",\n    \"Payment Process Request\",\n    \"Payment Date\",\n    \"Payments Recorded\",\n    \"Disbursement Bank\",\n    \"Funding Card Account\",\n    \"Payment Process Profile\"\n  ],\n  \"Payments rejected in acknowledgment\": [\n    \"Payment Business Unit\",\n    \"Payment Reference\",\n    \"Payment Process Request\",\n    \"Payment Date\",\n    \"Amount\",\n    \"Payee\",\n    \"Payment Method\",\n    \"Error Reason\",\n    \"Additional Information\"\n  ],\n  \"Payments failed validation\": [\n    \"Payment Business Unit\",\n    \"Payment Process Request\",\n    \"Payment Date\",\n    \"Amount\",\n    \"Payee\",\n    \"Payment Method\",\n    \"Error Reason\"\n  ]\n};\n\nconst bankColumns = [\"Disbursement Bank\", \"Funding Card Account\"];\n\nconst columnAliases = {\n  \"Funding Card Account\": [\"Funding Card Account\", \"Funding Card Issuing Bank\"]\n};\n\nconst isBlankValue = (val) =>\n  val === null ||\n  val === undefined ||\n  (typeof val === \"string\" && (val.trim() === \"\" || val.trim() === \"-\"));\n\nconst getColumnValue = (row, col) => {\n  const aliases = columnAliases[col] || [col];\n\n  for (const alias of aliases) {\n    const val = row[alias];\n    if (!isBlankValue(val)) {\n      return val;\n    }\n  }\n\n  return row[col];\n};\n\nconst formatDate = (val) => {\n  if (!val) {\n    return val;\n  }\n  if (typeof val === \"string\" && /^\\d{4}-\\d{2}-\\d{2}/.test(val)) {\n    return val.substring(0, 10);\n  }\n  const d = new Date(val);\n  if (!isNaN(d.valueOf())) {\n    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, \"0\")}-${String(d.getDate()).padStart(2, \"0\")}`;\n  }\n  return val;\n};\n\nconst getVisibleColumns = (cols, rows) => {\n  return cols.filter((col) => {\n    if (!bankColumns.includes(col)) {\n      return true;\n    }\n\n    return rows.some((row) => !isBlankValue(getColumnValue(row, col)));\n  });\n};\n\nlet finalResult;\n\nif ( $context.$nodes.FIN_AP_BO_FUNCTION_EXTRACT_BQL_FOR_EXECUTION.$status == 'failure')\nreturn null;\nelse if (!Array.isArray(data) || data.length === 0) {\n  finalResult = {\n    agentResponse: [{\n      type: \"text\",\n      content: [\"This insight has been resolved. There’s nothing to review at the moment.\"],\n      sequence: 1\n    }]\n  };\n} else {\n  const uniqueObs = [...new Set(data.map((row) => row.Observations))];\n\n  const rawTables = uniqueObs.map((obs) => {\n    const baseCols = observationColumnMap[obs];\n    if (!baseCols) return null;\n\n    const group = data.filter((row) => row.Observations === obs);\n    const cols = getVisibleColumns(baseCols, group);\n\n    const formattedRows = group.map((item) => {\n      const entry = {};\n\n      cols.forEach((col) => {\n        let val = getColumnValue(item, col);\n\n        if (col.includes(\"Date\")) {\n          val = formatDate(val);\n        }\n\n        if (bankColumns.includes(col) && isBlankValue(val)) {\n          val = \"-\";\n        }\n\n        if (col === \"Payment File Reference\" && val) {\n          entry[col] = `{deeplink:{objType:AP_VIEWPAYMENTFILE,action:VIEW,objKey:paymentInstructionId=${item[\"Payment File Reference\"]},text:${item[\"Payment File Reference\"]}}}`;\n        } else {\n          entry[col] = val;\n        }\n      });\n\n      return entry;\n    });\n\n    return {\n      type: \"table\",\n      heading: obs,\n      content: formattedRows,\n      columnOrder: cols\n    };\n  }).filter(Boolean);\n\n  const showTopFiveMessage = rawTables.some((table) => Array.isArray(table.content) && table.content.length >= 5);\n\n  const agentResponse = [];\n  let seq = 1;\n\n  agentResponse.push({\n    type: \"text\",\n    content: [summaryText],\n    sequence: seq++\n  });\n\n  if (showTopFiveMessage) {\n    agentResponse.push({\n      type: \"text\",\n      content: [\"Showing up to 5 items below to keep this view focused.\"],\n      sequence: seq++\n    });\n  }\n\n  rawTables.forEach((table) => {\n    agentResponse.push({\n      ...table,\n      sequence: seq++\n    });\n  });\n\n  agentResponse.push({\n    type: \"actions\",\n    content: [\n      \"Use links in the table to review details and take appropriate actions.\"\n    ],\n    sequence: seq++\n  });\n\n  finalResult = { agentResponse };\n}\n\nreturn finalResult.agentResponse;"
+          },
+          "outcomes": {
+            "success": "1769750436213"
+          },
+          "code": "FIN_AP_CODE_PROCESS_EXECUTION_PAYMENTS_WITH_UNRESOLVED_ACKNOWLEDGMENTS_REJECTIONS_OR_VALIDATION_ERRORS",
+          "id": "1768889362422",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Return Execution Payment documents spoiled in the last 30 days"
+          },
+          "outcomes": {},
+          "code": "FIN_AP_RETURN_EXECUTION_PAYMENT_DOCUMENTS_SPOILED_IN_THE_LAST_30_DAYS",
+          "convergenceTargetId": "1773726838943",
+          "id": "1769750436213",
+          "inputs": [
+            {
+              "id": "1769750436214_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_PROCESS_EXECUTION_PAYMENTS_WITH_UNRESOLVED_ACKNOWLEDGMENTS_REJECTIONS_OR_VALIDATION_ERRORS.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Process Execution Most frequent payment rejection errors in the last 30 days",
+            "returnType": "object",
+            "sourceCode": "const data = $context.$nodes.FIN_AP_CODE_PRE_PROCESS_EXTRACTION_DATA_EXECUTION.$output.result || [];\nconst summaryText =($context.$variables.summary ?? \"\").toString().trim() || \"Here are the details:\";\nconst columns = [\n  \"Rejection Reason\",\n  \"Payment File Count\",\n  \"Payment Count\"\n];\n\nlet finalResult;\n\nif ( $context.$nodes.FIN_AP_BO_FUNCTION_EXTRACT_BQL_FOR_EXECUTION.$status == 'failure')\nreturn null;\nelse if (!Array.isArray(data) || data.length === 0) {\n  finalResult = {\n    agentResponse: [{\n      type: \"text\",\n      content: [\"This insight has been resolved. There’s nothing to review at the moment.\"],\n      sequence: 1\n    }]\n  };\n} else {\n  const summarizedData = data.map((item) => {\n    const rec = {};\n    columns.forEach((col) => {\n      rec[col] = item[col];\n    });\n    return rec;\n  });\n\n  const showTopFiveMessage = summarizedData.length >= 5;\n\n  const agentResponse = [];\n  let seq = 1;\n\n  agentResponse.push({\n    type: \"text\",\n    content: [summaryText],\n    sequence: seq++\n  });\n\n  if (showTopFiveMessage) {\n    agentResponse.push({\n      type: \"text\",\n      content: [\"Showing up to 5 items below to keep this view focused.\"],\n      sequence: seq++\n    });\n  }\n\n  agentResponse.push({\n    type: \"table\",\n    heading: \"Recurring payment rejection errors in last 30 days\",\n    content: summarizedData,\n    sequence: seq++,\n    columnOrder: columns\n  });\n\n  agentResponse.push({\n    type: \"actions\",\n    content: [\n      \"Collaborate offline or verify setups to reduce repeated rejections.\"\n    ],\n    sequence: seq++\n  });\n\n  finalResult = { agentResponse };\n}\n\nreturn finalResult.agentResponse;"
+          },
+          "outcomes": {
+            "success": "1769750707948"
+          },
+          "code": "FIN_AP_CODE_PROCESS_EXECUTION_MOST_FREQUENT_PAYMENT_REJECTION_ERRORS_IN_THE_LAST_30_DAYS",
+          "id": "1768899905716",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Return Execution Most frequent payment rejection errors in the last 30 days"
+          },
+          "outcomes": {},
+          "code": "FIN_AP_RETURN_EXECUTION_MOST_FREQUENT_PAYMENT_REJECTION_ERRORS_IN_THE_LAST_30_DAYS",
+          "convergenceTargetId": "1773726838943",
+          "id": "1769750707948",
+          "inputs": [
+            {
+              "id": "1769750707949_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_PROCESS_EXECUTION_MOST_FREQUENT_PAYMENT_REJECTION_ERRORS_IN_THE_LAST_30_DAYS.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Process Execution Payments rejected or failed",
+            "returnType": "array",
+            "sourceCode": "const data = $context.$nodes.FIN_AP_CODE_PRE_PROCESS_EXTRACTION_DATA_EXECUTION.$output.result || [];\nconst summaryText =($context.$variables.summary ?? \"\").toString().trim() || \"Here are the details:\";\nconst observationColumnMap = {\n  \"Recurring card settlement errors in last 30 days\": [\n    \"Error Reason\",\n    \"Payment File Count\",\n    \"Payment Count\"\n  ]\n};\n\nconst formatDate = (val) => {\n  if (!val) {\n    return val;\n  }\n  if (typeof val === \"string\" && /^\\d{4}-\\d{2}-\\d{2}/.test(val)) {\n    return val.substring(0, 10);\n  }\n  const dt = new Date(val);\n  if (!isNaN(dt.valueOf())) {\n    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, \"0\")}-${String(dt.getDate()).padStart(2, \"0\")}`;\n  }\n  return val;\n};\n\nlet finalResult;\n\nif ( $context.$nodes.FIN_AP_BO_FUNCTION_EXTRACT_BQL_FOR_EXECUTION.$status == 'failure')\nreturn null;\nelse if (!Array.isArray(data) || data.length === 0) {\n  finalResult = {\n    agentResponse: [{\n      type: \"text\",\n      content: [\"This insight has been resolved. There’s nothing to review at the moment.\"],\n      sequence: 1\n    }]\n  };\n} else {\n  const obsSet = Array.from(new Set(data.map((row) => row.Observations)));\n\n  const rawTables = obsSet.map((obs) => {\n    const columns = observationColumnMap[obs];\n    if (!columns) return null;\n\n    const rowsForObs = data.filter((row) => row.Observations === obs);\n\n    const formattedRows = rowsForObs.map((row) => {\n      const entry = {};\n      columns.forEach((col) => {\n        let val = row[col];\n        if (col.includes(\"Date\")) {\n          val = formatDate(val);\n        }\n        entry[col] = val;\n      });\n      return entry;\n    });\n\n    return {\n      type: \"table\",\n      heading: obs,\n      content: formattedRows,\n      columnOrder: columns\n    };\n  }).filter(Boolean);\n\n  const showTopFiveMessage = rawTables.some((table) => Array.isArray(table.content) && table.content.length >= 5);\n\n  const agentResponse = [];\n  let seq = 1;\n\n  agentResponse.push({\n    type: \"text\",\n    content: [summaryText],\n    sequence: seq++\n  });\n\n  if (showTopFiveMessage) {\n    agentResponse.push({\n      type: \"text\",\n      content: [\"Showing up to 5 items below to keep this view focused.\"],\n      sequence: seq++\n    });\n  }\n\n  rawTables.forEach((table) => {\n    agentResponse.push({\n      ...table,\n      sequence: seq++\n    });\n  });\n\n  agentResponse.push({\n    type: \"actions\",\n    content: [\n      \"Collaborate offline or verify setups to reduce repeated errors\"\n    ],\n    sequence: seq++\n  });\n\n  finalResult = { agentResponse };\n}\n\nreturn finalResult.agentResponse;"
+          },
+          "outcomes": {
+            "success": "1769748878417"
+          },
+          "code": "FIN_AP_CODE_PROCESS_EXECUTION_PAYMENTS_REJECTED_OR_FAILED",
+          "id": "1768892872158",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Return Execution Payments rejected or failed"
+          },
+          "outcomes": {},
+          "code": "FIN_AP_RETURN_EXECUTION_PAYMENTS_REJECTED_OR_FAILED",
+          "convergenceTargetId": "1773726838943",
+          "id": "1769748878417",
+          "inputs": [
+            {
+              "id": "1769748878418_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_PROCESS_EXECUTION_PAYMENTS_REJECTED_OR_FAILED.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Process Execution Payments Remain Unsettled or Unreconciled",
+            "returnType": "object",
+            "sourceCode": "const data = $context.$nodes.FIN_AP_CODE_PRE_PROCESS_EXTRACTION_DATA_EXECUTION.$output.result || [];\nconst summaryText =($context.$variables.summary ?? \"\").toString().trim() || \"Here are the details:\";\nconst allObservations = [\n  \"Payments not yet cleared and reconciled\",\n  \"Virtual card payments not cleared after more than 5 days\",\n  \"Virtual card authorization or settlement failed\",\n  \"Virtual cards that will expire in next 15 days\",\n  \"Virtual card payments that are cleared but not yet billed\",\n  \"Virtual card settlement amount differs from payment amount\",\n  \"Virtual card payment amount differs from card statement line\",\n  \"Payments with stop requested in past 7 days\",\n  \"Card statement lines that couldn't be matched to any payment\"\n].filter((obs) => data.some((row) => row.Observations === obs));\n\nconst observationColumnMap = {\n  \"Payments not yet cleared and reconciled\": [\n    \"Disbursement Bank\",\n    \"Payment Method\",\n    \"Payment Count\",\n    \"Payee Count\",\n    \"Total Payment Amount\"\n  ],\n  \"Virtual card payments not cleared after more than 5 days\": [\n    \"Supplier\",\n    \"Funding Card Account\",\n    \"Payment Count\",\n    \"Total Payment Amount\"\n  ],\n  \"Virtual card authorization or settlement failed\": [\n    \"Supplier\",\n    \"Funding Card Issuing Bank\",\n    \"Funding Card Account\",\n    \"Payment Count\",\n    \"Total Payment Amount\",\n    \"Decline Reason\"\n  ],\n  \"Virtual cards that will expire in next 15 days\": [\n     \"Supplier\",\n     \"Funding Card Account\",\n     \"Payment Count\",\n     \"Total Payment Amount\"\n  ],\n  \"Virtual card payments that are cleared but not yet billed\": [\n    \"Funding Card Issuing Bank\",\n    \"Funding Card Account\",\n    \"Payment Count\",\n    \"Payee Count\",\n    \"Total Payment Amount\",\n    \"Total Settlement Amount\"\n  ],\n  \"Virtual card settlement amount differs from payment amount\": [\n    \"Supplier\",\n    \"Funding Card Issuing Bank\",\n    \"Funding Card Account\",\n    \"Payment Count\",\n    \"Total Payment Amount\",\n    \"Total Settlement Amount\"\n  ],\n  \"Virtual card payment amount differs from card statement line\": [\n    \"Supplier\",\n    \"Funding Card Issuing Bank\",\n    \"Funding Card Account\",\n    \"Payment Count\",\n    \"Total Payment Amount\",\n    \"Total Settlement Amount\",\n    \"Total Billed Amount\"\n  ],\n  \"Payments with stop requested in past 7 days\": [\n    \"Supplier\",\n    \"Disbursement Bank\",\n    \"Funding Card Issuing Bank\",\n    \"Payment Method\",\n    \"Payment Count\",\n    \"Total Payment Amount\"\n  ],\n  \"Card statement lines that couldn't be matched to any payment\": [\n    \"Statement Date\",\n    \"Line Number\",\n    \"Line Amount\",\n    \"Funding Card Account\",\n    \"Funding Card Issuing Bank\",\n    \"Payment Reference\"\n  ]\n};\n\nconst formatDate = (val) => {\n  if (val === null || val === undefined || val === \"\") {\n    return \"\";\n  }\n  if (typeof val === \"string\" && /^\\d{4}-\\d{2}-\\d{2}$/.test(val)) {\n    return val;\n  }\n  const d = new Date(val);\n  if (!isNaN(d.valueOf())) {\n    const month = String(d.getMonth() + 1).padStart(2, \"0\");\n    const day = String(d.getDate()).padStart(2, \"0\");\n    return `${d.getFullYear()}-${month}-${day}`;\n  }\n  return val;\n};\n\nlet finalResult;\n\nif ( $context.$nodes.FIN_AP_BO_FUNCTION_EXTRACT_BQL_FOR_EXECUTION.$status == 'failure')\nreturn null;\nelse if (!Array.isArray(data) || data.length === 0) {\n  finalResult = {\n    agentResponse: [\n      {\n        type: \"text\",\n        content: [\n          \"This insight has been resolved. There’s nothing to review at the moment.\"\n        ],\n        sequence: 1\n      }\n    ]\n  };\n} else {\n  const rawTables = allObservations.map((obs) => {\n    const columns = observationColumnMap[obs];\n    if (!columns) return null;\n\n    const rowsForObs = data.filter((row) => row.Observations === obs);\n\n    const formattedRows = rowsForObs.map((item) => {\n      const entry = {};\n\n      columns.forEach((col) => {\n        let val = item[col];\n\n        if (col === \"Payment Number\" && val) {\n          const paymentId = item.PAYMENTID;\n          entry[col] = paymentId\n            ? `{deeplink:{objType:AP_VIEWPAYMENT,action:VIEW,objKey:CheckId=${paymentId},text:${val}}}`\n            : val;\n        } else if (\n          col === \"Payment Date\" ||\n          col === \"Cleared Date\" ||\n          col === \"Stop Date\" ||\n          col === \"Statement Date\"\n        ) {\n          entry[col] = formatDate(val);\n        } else if (val === null || val === undefined || val === \"\") {\n          entry[col] = \"\";\n        } else {\n          entry[col] = val;\n        }\n      });\n\n      return entry;\n    });\n\n    return {\n      type: \"table\",\n      heading: obs,\n      content: formattedRows,\n      columnOrder: columns\n    };\n  }).filter(Boolean);\n\n  const showTopFiveMessage = rawTables.some((table) => Array.isArray(table.content) && table.content.length >= 5);\n\n  const agentResponse = [];\n  let seq = 1;\n\n  agentResponse.push({\n    type: \"text\",\n    content: [summaryText],\n    sequence: seq++\n  });\n\n  if (showTopFiveMessage) {\n    agentResponse.push({\n      type: \"text\",\n      content: [\"Showing up to 5 items below to keep this view focused.\"],\n      sequence: seq++\n    });\n  }\n\n  rawTables.forEach((table) => {\n    agentResponse.push({\n      ...table,\n      sequence: seq++\n    });\n  });\n\n  agentResponse.push({\n    type: \"actions\",\n    content: [\n      \"Collaborate offline to understand settlement issues or reconciliation delays.\"\n    ],\n    sequence: seq++\n  });\n\n  finalResult = {\n    agentResponse\n  };\n}\n\nreturn finalResult.agentResponse;"
+          },
+          "outcomes": {
+            "success": "1776085824717"
+          },
+          "code": "FIN_AP_PROCESS_EXECUTION_PAYMENTS_REMAIN_UNSETTLED_OR_UNRECONCILED",
+          "id": "1776083815491",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Return Execution Payments remaining unsettled or unreconciled"
+          },
+          "outcomes": {},
+          "code": "FIN_AP_RETURN_EXECUTION_PAYMENTS_REMAINING_UNSETTLED_OR_UNRECONCILED",
+          "convergenceTargetId": "1773726838943",
+          "id": "1776085824717",
+          "inputs": [
+            {
+              "id": "1776085824718_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_PROCESS_EXECUTION_PAYMENTS_REMAIN_UNSETTLED_OR_UNRECONCILED.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Generate short summary"
+          },
+          "outcomes": {
+            "success": "1777013540636"
+          },
+          "code": "FIN_AP_LLM_GENERATE_SHORT_SUMMARY",
+          "id": "1777013486253",
+          "inputs": [
+            {
+              "id": "1777013486254_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a financial data summarizer.\n\nYou will receive a JSON payload with:\n- \"insightName\"\n- \"data\"\n\nThe \"data\" array is already preprocessed and aggregated. Do not infer or invent fields beyond what is present in the preprocessed payload. Generate a concise HTML summary.\n\nINPUT STRUCTURE:\n{\n  \"insightName\": \"<supported insight name>\",\n  \"data\": [<preprocessed aggregated JSON>]\n}\n\nSUPPORTED INSIGHTS:\n1. Payment runs requiring attention\n2. Payments pending approval for more than 5 days\n3. Payments with unresolved acknowledgments, rejections, or validation errors\n4. Recurring payment rejection errors in last 30 days\n5. Payments remaining unsettled or unreconciled\n6. Recurring card settlement errors in last 30 days\n7. Supplier financial profile requiring attention\n\nGLOBAL OUTPUT RULES:\n- Return only HTML\n- Title must be wrapped in <b> tags\n- Each observation must be a bullet starting with \"•\"\n- Separate bullets using <br><br>\n- Wrap key counts and dates in <b> tags\n- Wrap only the status phrase in <i> tags\n- Use plain business English\n- Use singular/plural correctly\n- Do not use markdown\n- Do not use code blocks\n- Do not use raw API labels\n- Do not mention any field that is not present in the preprocessed object for that condition\n- Do not infer missing clauses from other conditions in the same insight\n\nBALANCE CLAUSE RULES:\n- First, inspect the preprocessed `currencies` array after removing invalid entries\n- A valid currency entry must have:\n  - a valid `currency`\n  - and either:\n    - a valid numeric `totalPaymentAmount`, or\n    - a valid numeric `totalOutstandingBalance`\n- For ranking, use:\n  - `totalPaymentAmount` when present\n  - otherwise `totalOutstandingBalance`\n- Sort valid currencies by that numeric value descending\n- Use only the top 2 valid currencies\n\n- If there are 0 valid currencies:\n  - do not include any balance clause\n\n- If there is exactly 1 valid currency:\n  - use only:\n    {balanceClause} = \" with a balance of {amount1} {currency1}\"\n\n- If there are 2 or more valid currencies:\n  - use only:\n    {balanceClause} = \" with balances of {amount1} {currency1} and {amount2} {currency2}\"\n\n- Never output both phrases in the same sentence\n- Never repeat the top currency in both singular and plural balance clauses\n\nLIMITING RULES:\n- If more than 3 condition objects are present, show only the top 3 conditions\n- Rank by the first available metric in this order:\n  totalPaymentCount, totalPaymentFileCount, totalPaymentProcessRequestCount, totalInstallmentCount, totalSupplierCount\n- Then add:\n  • <b>{remainingCount}</b> additional conditions are observed with lower volumes and require review\n\nPREPROCESSED SHAPE CONTRACT\n\n1. Insight: \"Payment runs requiring attention\"\nEach object in data has this shape:\n{\n  \"businessCondition\": string,\n  \"totalPaymentProcessRequestCount\": number,\n  \"totalPaymentFileCount\": number,\n  \"earliestPendingSince\": string | null,\n  \"businessUnits\": [{ \"name\": string, \"count\": number }]\n}\n\nUse only these properties.\n\nCondition patterns:\n- Payment process requests need more information\n  \"<b>{totalPaymentProcessRequestCount}</b> payment process requests are <i>awaiting more information</i>{sinceClause}\"\n\n- Payment process requests pending installments review\n  \"<b>{totalPaymentProcessRequestCount}</b> payment process requests are <i>pending installments review</i>{sinceClause}\"\n\n- Payment files that failed transmission\n  \"<b>{totalPaymentFileCount}</b> payment files have <i>failed transmission</i>{sinceClause}\"\n\n- Payment process requests failed document validation\n  \"<b>{totalPaymentProcessRequestCount}</b> payment process requests have <i>document validation failures</i>{sinceClause}\"\n\n- Payment files failed formatting and pending action\n  \"<b>{totalPaymentFileCount}</b> payment files have <i>formatting failures pending action</i>{sinceClause}\"\n\n- Payment process requests failed payment validation\n  \"<b>{totalPaymentProcessRequestCount}</b> payment process requests have <i>payment validation failures</i>{sinceClause}\"\n\n- Payment process requests missing cross-currency rates\n  \"<b>{totalPaymentProcessRequestCount}</b> payment process requests are <i>missing cross-currency rates</i>{sinceClause}\"\n\n- Payment process requests pending proposed payment review\n  \"<b>{totalPaymentProcessRequestCount}</b> payment process requests are <i>pending proposed payment review</i>{sinceClause}\"\n\n- Payment process requests pending to resolve document errors\n  \"<b>{totalPaymentProcessRequestCount}</b> payment process requests are <i>pending document error resolution</i>{sinceClause}\"\n\n- Payment process requests missing payment conversion rates\n  \"<b>{totalPaymentProcessRequestCount}</b> payment process requests are <i>missing payment conversion rates</i>{sinceClause}\"\n\n- Payment process requests pending to resolve payment errors\n  \"<b>{totalPaymentProcessRequestCount}</b> payment process requests are <i>pending payment error resolution</i>{sinceClause}\"\n\n- Payment files formatted and ready for printing\n  \"<b>{totalPaymentFileCount}</b> payment files are <i>ready for printing</i>{sinceClause}\"\n\n- Payment files submitted for printing awaiting confirmation\n  \"<b>{totalPaymentFileCount}</b> payment files are <i>awaiting print confirmation</i>{sinceClause}\"\n\n- Payment process requests waiting for payment file creation\n  \"<b>{totalPaymentProcessRequestCount}</b> payment process requests are <i>waiting for payment file creation</i>{sinceClause}\"\n\n- Payment files formatted and ready for transmission\n  \"<b>{totalPaymentFileCount}</b> payment files are <i>ready for transmission</i>{sinceClause}\"\n\n- Payment files created and pending action\n  \"<b>{totalPaymentFileCount}</b> payment files are <i>created and pending action</i>{sinceClause}\"\n\n- Payment files with validation failures and pending action\n  \"<b>{totalPaymentFileCount}</b> payment files have <i>validation failures pending action</i>{sinceClause}\"\n\n- Payment files ready for recording check print status\n  \"<b>{totalPaymentFileCount}</b> payment files are <i>ready for recording check print status</i>{sinceClause}\"\n\n- Payments pending confirmation\n  \"<b>{totalPaymentFileCount}</b> payment files require <i>payment confirmation follow-up</i>{sinceClause}\"\n  Only use this if the preprocess object for this condition does not provide payment counts or currencies.\n\n2. Insight: \"Payments pending approval for more than 5 days\"\nEach object in data has this shape:\n{\n  \"businessCondition\": string,\n  \"totalPaymentProcessRequestCount\": number,\n  \"totalPaymentCount\": number,\n  \"totalInstallmentCount\": number,\n  \"currencies\": [\n    {\n      \"currency\": string,\n      \"paymentCount\": number,\n      \"installmentCount\": number,\n      \"totalPaymentAmount\": number\n    }\n  ]\n}\n\nUse only these properties.\n\nCondition pattern:\n- Payments pending approval for more than 5 days\n  \"<b>{totalPaymentCount}</b> payments covering <b>{totalInstallmentCount}</b> installments are <i>pending approval for more than 5 days</i>{balanceClause}\"\n\n3. Insight: \"Payments with unresolved acknowledgments, rejections, or validation errors\"\nThere are two valid preprocessed shapes for this insight.\n\nFile-level conditions shape:\n{\n  \"businessCondition\": string,\n  \"totalPaymentFileCount\": number,\n  \"earliestPendingSince\": string | null,\n  \"banks\": [\n    {\n      \"bank\": string,\n      \"paymentFileCount\": number\n    }\n  ]\n}\n\nPayment-level conditions shape:\n{\n  \"businessCondition\": string,\n  \"totalPaymentCount\": number,\n  \"earliestPendingSince\": string | null,\n  \"currencies\": [\n    {\n      \"currency\": string,\n      \"paymentCount\": number,\n      \"totalPaymentAmount\": number\n    }\n  ]\n}\n\nFile-level condition patterns:\n- Payment files rejected in acknowledgment\n  \"<b>{totalPaymentFileCount}</b> payment files are <i>rejected in acknowledgment</i>{sinceClause}{bankClause}\"\n\n- Payment files pending action due to acknowledgment failure\n  \"<b>{totalPaymentFileCount}</b> payment files are <i>pending action due to acknowledgment failure</i>{sinceClause}{bankClause}\"\n\n- Payment files partially acknowledged\n  \"<b>{totalPaymentFileCount}</b> payment files are <i>partially acknowledged</i>{sinceClause}{bankClause}\"\n\n- Payment files pending acknowledgment for more than 24 hours\n  \"<b>{totalPaymentFileCount}</b> payment files are <i>pending acknowledgment for more than 24 hours</i>{sinceClause}{bankClause}\"\n\nPayment-level condition patterns:\n- Payments rejected in acknowledgment\n  \"<b>{totalPaymentCount}</b> payments are <i>rejected in acknowledgment</i>{balanceClause}{sinceClause}\"\n\n- Payments failed validation\n  \"<b>{totalPaymentCount}</b> payments have <i>validation failures</i>{balanceClause}{sinceClause}\"\n\nImportant:\n- For \"Payments failed validation\", never mention file counts\n- If currencies[0].totalPaymentAmount and currencies[0].currency exist, the balance clause is mandatory\n\n4. Insight: \"Recurring payment rejection errors in last 30 days\"\nEach object in data has this shape:\n{\n  \"businessCondition\": string,\n  \"totalPaymentFileCount\": number,\n  \"totalPaymentCount\": number,\n  \"rejectionReasons\": [\n    {\n      \"reason\": string,\n      \"paymentFileCount\": number,\n      \"paymentCount\": number\n    }\n  ]\n}\n\nCondition pattern:\n- Recurring payment rejection errors in last 30 days\n  \"<b>{totalPaymentCount}</b> payments across <b>{totalPaymentFileCount}</b> files have encountered <i>recurring rejection errors in the last 30 days</i>{reasonClause}\"\n\n5. Insight: \"Payments remaining unsettled or unreconciled\"\nEach object in data has this shape:\n{\n  \"businessCondition\": string,\n  \"totalPaymentCount\": number,\n  \"totalPayeeCount\": number,\n  \"currencies\": [\n    {\n      \"currency\": string,\n      \"paymentCount\": number,\n      \"payeeCount\": number,\n      \"totalPaymentAmount\": number\n    }\n  ]\n}\n\nUse only these properties.\n\nCondition patterns:\n- Payments not yet cleared and reconciled\n  \"<b>{totalPaymentCount}</b> payments across <b>{totalPayeeCount}</b> payees are <i>not yet cleared and reconciled</i>{balanceClause}\"\n\n- Virtual card payments not cleared after more than 5 days\n  \"<b>{totalPaymentCount}</b> virtual card payments are <i>not cleared after more than 5 days</i>{balanceClause}\"\n\n- Virtual card authorization or settlement failed\n  \"<b>{totalPaymentCount}</b> virtual card payments are <i>facing authorization or settlement failures</i>{balanceClause}\"\n\n- Virtual cards that will expire in next 15 days\n  \"<b>{totalPaymentCount}</b> virtual card payments involve cards <i>expiring in the next 15 days</i>{balanceClause}\"\n\n- Virtual card payments that are cleared but not yet billed\n  \"<b>{totalPaymentCount}</b> virtual card payments are <i>cleared but not yet billed</i>{balanceClause}\"\n\n- Virtual card settlement amount differs from payment amount\n  \"<b>{totalPaymentCount}</b> virtual card payments are <i>showing settlement amounts different from payment amounts</i>{balanceClause}\"\n\n- Virtual card payment amount differs from card statement line\n  \"<b>{totalPaymentCount}</b> virtual card payments are <i>showing amount differences against card statement lines</i>{balanceClause}\"\n\n- Payments with stop requested in past 7 days\n  \"<b>{totalPaymentCount}</b> payments have <i>stop requests raised in the past 7 days</i>{balanceClause}\"\n\n- Card statement lines that couldn't be matched to any payment\n  \"<b>{totalPaymentCount}</b> items are <i>not matched to any payment</i>{balanceClause}\"\n  Use this only if the preprocess object does not provide a separate statement-line count.\n\n6. Insight: \"Recurring card settlement errors in last 30 days\"\nEach object in data has this shape:\n{\n  \"businessCondition\": string,\n  \"totalPaymentFileCount\": number,\n  \"totalPaymentCount\": number,\n  \"errorReasons\": [\n    {\n      \"reason\": string,\n      \"paymentFileCount\": number,\n      \"paymentCount\": number\n    }\n  ]\n}\n\nCondition pattern:\n- Recurring card settlement errors in last 30 days\n  \"<b>{totalPaymentCount}</b> payments across <b>{totalPaymentFileCount}</b> files have encountered <i>recurring card settlement errors in the last 30 days</i>{reasonClause}\"\n\n7. Insight: \"Supplier financial profile requiring attention\"\nEach object in data has this shape:\n{\n  \"businessCondition\": string,\n  \"totalSupplierCount\": number,\n  \"totalInstallmentCount\": number,\n  \"currencies\": [\n    {\n      \"currency\": string,\n      \"supplierCount\": number,\n      \"installmentCount\": number,\n      \"totalOutstandingBalance\": number\n    }\n  ]\n}\n\nUse only these properties.\n\nCondition patterns:\n- Recipient emails missing for supplier offer communication\n  \"<b>{totalSupplierCount}</b> suppliers across <b>{totalInstallmentCount}</b> installments are <i>missing recipient emails for supplier offer communication</i>{balanceClause}\"\n\n- Supplier sites on payment hold with due or overdue invoices\n  \"<b>{totalSupplierCount}</b> suppliers across <b>{totalInstallmentCount}</b> installments are <i>on payment hold with due or overdue invoices</i>{balanceClause}\"\n\nCLAUSE GENERATION RULES:\n- {sinceClause}:\n  Use only if earliestPendingSince exists\n  Format: \" since <b>{earliestPendingSince}</b>\"\n\n- {bankClause}:\n  Use top 2 banks from banks array by paymentFileCount\n  Format:\n  \", involving <b>{bank1}</b>\"\n  or\n  \", involving <b>{bank1}</b> and <b>{bank2}</b>\"\n\n- {balanceClause}:\n  Use only when currencies array exists and has at least 1 valid entry\n  For insights 2, 3, and 5, source amounts from `totalPaymentAmount`\n  For insight 7, source amounts from `totalOutstandingBalance`\n  If exactly 1 valid currency exists:\n  \" with a balance of {amount1} {currency1}\"\n  If 2 or more valid currencies exist:\n  \" with balances of {amount1} {currency1} and {amount2} {currency2}\"\n\n- {reasonClause}:\n  For rejectionReasons or errorReasons arrays, use top 3 by paymentCount\n  Format:\n  \", with top reason(s): <b>{reason1}</b> (<b>{count1}</b>), <b>{reason2}</b> (<b>{count2}</b>), <b>{reason3}</b> (<b>{count3}</b>)\"\n\nPROCESSING INSTRUCTIONS:\n1. Use insightName to select the correct schema and sentence patterns\n2. For each object in data, use only the fields defined for that insight schema\n3. Do not invent missing fields\n4. Do not reuse fields from a different insight schema\n5. If a currencies array is present and valid, include balance information\n6. If a banks array is present and valid, include top bank information where the pattern allows it\n7. If reasons are present, include top reasons where the pattern allows it\n8. For insight 7, use `totalOutstandingBalance` from the currencies array for the balance clause\n9. Return only the HTML summary string\n\nFALLBACK RULE:\n- If insightName is unsupported, return:\n  <b>{insightName}</b><br><br>• <i>No summary pattern is configured for this insight</i>\n\nINPUT:\n{\n  \"insightName\": \" {{$context.$triggers.REST.$input.insightContext.insightsName}} \",\n  \"data\": {{$context.$nodes.FIN_AP_CODE_PREPROCESS_SUMMARY_DATA.$output.result}}\n}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Set Summary"
+          },
+          "outcomes": {
+            "success": "1766035142630"
+          },
+          "code": "FIN_AP_VARIABLES_SET_SUMMARY",
+          "id": "1777013540636",
+          "inputs": [
+            {
+              "id": "1777013563237",
+              "name": "summary",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_LLM_GENERATE_SHORT_SUMMARY.$output}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1764692265204",
+            "1": "1777006442863",
+            "2": "add_1779795843964_2"
+          },
+          "code": "PARALLEL_1779795843965",
+          "convergenceTargetId": "1765978489189",
+          "id": "1779795843964",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "description": "Add node for branch 2",
+            "name": "Add 2"
+          },
+          "outcomes": {
+            "success": "1765978489189"
+          },
+          "id": "add_1779795843964_2",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_PAYABLES_BUSINESSOBJECTDATAEXTRACT",
+            "errorNodeId": null,
+            "functionName": "Extract",
+            "name": "Extract BQL For Execution"
+          },
+          "outcomes": {
+            "success": "1765978489189"
+          },
+          "code": "FIN_AP_BO_FUNCTION_EXTRACT_BQL_FOR_EXECUTION",
+          "convergenceTargetId": "1779795851766",
+          "id": "1764692265204",
+          "inputs": [
+            {
+              "id": "1768468884542_1",
+              "name": "extraction_query_json_object",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.insightContext.detailedBql}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_PAYABLES_BUSINESSOBJECTDATAEXTRACT",
+            "functionName": "Extract",
+            "name": "Extract Summary Data"
+          },
+          "outcomes": {
+            "success": "1765978489189"
+          },
+          "code": "FIN_AP_BO_FUNCTION_EXTRACT_SUMMARY_DATA",
+          "convergenceTargetId": "1779795863442",
+          "id": "1777006442863",
+          "inputs": [
+            {
+              "id": "1777006516314_1",
+              "name": "extraction_query_json_object",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.insightContext.summaryBql}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Process Financial Profile Requiring Attention",
+            "returnType": "object",
+            "sourceCode": "const data = $context.$nodes.FIN_AP_CODE_PRE_PROCESS_EXTRACTION_DATA_EXECUTION.$output.result || [];\nconst summaryText =($context.$variables.summary ?? \"\").toString().trim() || \"Here are the details:\";\n\n\nconst allObservations = [\n  \"Recipient emails missing for supplier offer communication\",\n  \"Supplier sites on payment hold with due or overdue invoices\",\n].filter((obs) => Array.isArray(data) && data.some((row) => row.Observations === obs));\n\nconst observationColumnMap = {\n  \"Recipient emails missing for supplier offer communication\": [\n    \"Supplier or Party\",\n    \"Installment Count\",\n    \"Outstanding Balance\",\n  ],\n  \"Supplier sites on payment hold with due or overdue invoices\": [\n    \"Supplier or Party\",\n    \"Supplier Site\",\n    \"Installment Count\",\n    \"Outstanding Balance\",\n    \"On Hold Since\",\n    \"Hold Reason\",\n  ],\n};\n\nconst formatDate = (val) => {\n  if (val === null || val === undefined || val === \"\") {\n    return val;\n  }\n\n  if (typeof val === \"string\" && /^\\d{4}-\\d{2}-\\d{2}$/.test(val)) {\n    return val;\n  }\n\n  const d = new Date(val);\n  if (!isNaN(d.valueOf())) {\n    const month = String(d.getMonth() + 1).padStart(2, \"0\");\n    const day = String(d.getDate()).padStart(2, \"0\");\n    return `${d.getFullYear()}-${month}-${day}`;\n  }\n\n  return val;\n};\n\nlet finalResult;\n\nif ( $context.$nodes.FIN_AP_BO_FUNCTION_EXTRACT_BQL_FOR_EXECUTION.$status == 'failure')\nreturn null;\nelse if (!Array.isArray(data) || data.length === 0) {\n  finalResult = {\n    agentResponse: [\n      {\n        type: \"text\",\n        content: [\n          \"This insight has been resolved. There’s nothing to review at the moment.\",\n        ],\n        sequence: 1,\n      },\n    ],\n  };\n} else {\n  const rawTables = allObservations\n    .map((obs) => {\n      const columns = observationColumnMap[obs];\n      if (!columns) return null;\n\n      const rowsForObs = data.filter((row) => row.Observations === obs);\n\n      const formattedRows = rowsForObs.map((item) => {\n        const entry = {};\n\n        columns.forEach((col) => {\n          let val = item[col];\n\n          if (\n            col === \"Due Date\" ||\n            col === \"Offer Acceptance Date\" ||\n            col === \"On Hold Since\"\n          ) {\n            val = formatDate(val);\n          }\n\n          entry[col] = val;\n        });\n\n        return entry;\n      });\n\n      return {\n        type: \"table\",\n        heading: obs,\n        content: formattedRows,\n        columnOrder: columns,\n      };\n    })\n    .filter(Boolean);\n\n  const showTopFiveMessage = rawTables.some((table) => Array.isArray(table.content) && table.content.length >= 5);\n\n  const agentResponse = [];\n  let seq = 1;\n\n  agentResponse.push({\n    type: \"text\",\n    content: [summaryText],\n    sequence: seq++\n  });\n\n  if (showTopFiveMessage) {\n    agentResponse.push({\n      type: \"text\",\n      content: [\"Showing up to 5 items below to keep this view focused.\"],\n      sequence: seq++\n    });\n  }\n\n  rawTables.forEach((table) => {\n    agentResponse.push({\n      ...table,\n      sequence: seq++\n    });\n  });\n\n  agentResponse.push({\n    type: \"actions\",\n    content: [\n      \"Collaborate offline to get the supplier financial profile updated.\"\n    ],\n    sequence: seq++,\n  });\n\n  finalResult = {\n    agentResponse,\n  };\n}\n\nreturn finalResult.agentResponse;"
+          },
+          "outcomes": {
+            "success": "1779901526280"
+          },
+          "code": "FIN_AP_CODE_PROCESS_FINANCIAL_PROFILE_REQUIRING_ATTENTION",
+          "id": "1779901461850",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Return financial profiles require attention"
+          },
+          "outcomes": {},
+          "code": "FIN_AP_RETURN_FINANCIAL_PROFILES_REQUIRE_ATTENTION",
+          "convergenceTargetId": "end",
+          "id": "1779901526280",
+          "inputs": [
+            {
+              "id": "1779901526282_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_PROCESS_FINANCIAL_PROFILE_REQUIRING_ATTENTION.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1777013274355",
+          "name": "summary",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1764694869113",
+          "name": "bqlParamater",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1764676847955",
+          "name": "outputResponse",
+          "scope": "JOB",
+          "type": "object"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.25
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "modelName": "GPT OSS 120B (Basic)",
+      "provider": "CERT_BASIC"
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1765186016118",
+            "name": "insightContext",
+            "type": "object"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "FIN",
+  "product": "PAYABLES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"8\""
+  }
+}

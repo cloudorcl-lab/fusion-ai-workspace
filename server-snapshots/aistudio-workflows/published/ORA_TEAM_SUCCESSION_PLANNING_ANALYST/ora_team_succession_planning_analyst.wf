@@ -1,0 +1,549 @@
+{
+  "workflowId": "100002355227220",
+  "workflowCode": "ORA_TEAM_SUCCESSION_PLANNING_ANALYST",
+  "name": "Team Succession Planning Analyst",
+  "description": "Provides managers with self-service access to their team's succession information, including the count and names of critical team members or direct reports who don't have succession plans, count and names of team members who don't have Ready-Now successors, succession plans that need attention because their incumbents or candidates have moved to new roles or are no longer working for the organization. It also recommends actions to the manager based on the succession summary that it generates for the manager's team.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1767092361507"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "name": "Set Assignment Id"
+          },
+          "outcomes": {
+            "success": "1771402689819"
+          },
+          "code": "SET_ASSIGNMENT_ID",
+          "id": "1767092361507",
+          "inputs": [
+            {
+              "id": "1767092761685",
+              "name": "managerAssignmentId",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.managerAssignmentId}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Set User Input Message"
+          },
+          "outcomes": {
+            "success": "1771402747757"
+          },
+          "code": "SET_USER_INPUT_MESSAGE",
+          "id": "1771402689819",
+          "inputs": [
+            {
+              "id": "1771402710465",
+              "name": "inputMessage",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.inputMessage}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "User Input Message Decoder"
+          },
+          "outcomes": {
+            "success": "1771403720389"
+          },
+          "code": "USER_INPUT_MESSAGE_DECODER",
+          "id": "1771402747757",
+          "inputs": [
+            {
+              "id": "1771402747758_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "- Task: Classify the user’s intent from inputMessage into two boolean flags:\n  - withoutSuccessionPlans: true if the message is about employees without / no / missing / lacking succession plans.\n  - withSuccessionPlans: true if the message is about employees with succession plans OR about ready-now candidates\n- If the message asks for a complete/overall/both summary, set both flags to true.\n- If the intent is unclear or unrelated, set both flags to true.\n\n- Be case-insensitive and handle common synonyms:\n  - \"ready now\", \"ready-now\", \"ready now candidates\", \"ready-now candidates\", \"ready now employees\" -> withSuccessionPlans = true\n  - \"without/no/missing/lack of succession plan(s)\" -> withoutSuccessionPlans = true\n  - \"with/have/has succession plan(s)/ready now candidates\" -> withSuccessionPlans = true\n  - \"complete/overall/full summary\", \"both\", \"all (with and without)\" -> both true\n\n- Output strictly a single JSON object with boolean values and exactly these keys:\n  {\"withoutSuccessionPlans\": <true|false>, \"withSuccessionPlans\": <true|false>}\n- Do not include any extra text.\n\nUser input\n{{$context.$variables.inputMessage}} \n\nOutput format\n{\"withoutSuccessionPlans\": true/false, \"withSuccessionPlans\": true/false}\n\nExamples\n\nInput: \"Show employees without succession plans.\"\nOutput: {\"withoutSuccessionPlans\": true, \"withSuccessionPlans\": false}\n\nInput: \"Show employees with succession plans.\"\nOutput: {\"withoutSuccessionPlans\": false, \"withSuccessionPlans\": true}\n\nInput: \"Show employees without ready now candidates.\"\nOutput: {\"withoutSuccessionPlans\": false, \"withSuccessionPlans\": true} (topic is ready-now → withSuccessionPlans true)\n\nInput: \"Give me a complete succession summary for my team.\"\nOutput: {\"withoutSuccessionPlans\": true, \"withSuccessionPlans\": true}\n\nInput: \"Show both with and without succession plans.\"\nOutput: {\"withoutSuccessionPlans\": true, \"withSuccessionPlans\": true}\n\nInput: \"Succession coverage overview (with and without).\"\nOutput: {\"withoutSuccessionPlans\": true, \"withSuccessionPlans\": true}\n\nInput: \"Who’s on vacation next week?\"\nOutput: {\"withoutSuccessionPlans\": false, \"withSuccessionPlans\": false}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Set variable withoutSuccessionPlans"
+          },
+          "outcomes": {
+            "success": "1771403846614"
+          },
+          "code": "SET_VARIABLE_WITHOUTSUCCESSIONPLANS",
+          "id": "1771403720389",
+          "inputs": [
+            {
+              "id": "1771403736319",
+              "name": "withoutSuccessionPlans",
+              "scope": "JOB",
+              "type": "boolean",
+              "value": "{{$context.$nodes.USER_INPUT_MESSAGE_DECODER.$output.withoutSuccessionPlans}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Set variable withSuccessionPlans"
+          },
+          "outcomes": {
+            "success": "1771403937725"
+          },
+          "code": "SET_VARIABLE_WITHSUCCESSIONPLANS",
+          "id": "1771403846614",
+          "inputs": [
+            {
+              "id": "1771403853309",
+              "name": "withSuccessionPlans",
+              "scope": "JOB",
+              "type": "boolean",
+              "value": "{{$context.$nodes.USER_INPUT_MESSAGE_DECODER.$output.withSuccessionPlans}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "DateFrom Decoder Node"
+          },
+          "outcomes": {
+            "success": "1767092443649"
+          },
+          "code": "DATEFROM_DECODER_NODE",
+          "id": "1771403937725",
+          "inputs": [
+            {
+              "id": "1771403937726_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "From {{$context.$system.$inputMessage}}, extract DateFrom, given today's date is {{$context.$system.$currentDate}}.\n\nIf user mentions last n days, set DateFrom to n days prior to today's date.\nIf user mentions last n months, set DateFrom to n months prior to today's date.\nIf user mentions recently, set DateFrom to 7 days prior to today's date.\nIf user didn't mention any date or month, set DateFrom to 3 months prior to today's date.\n\nOutput strictly a single JSON object having key, \"DateFrom\" which has the date extracted from the user input.\n{\"DateFrom\":<extracted date>}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1771404494579",
+            "1": "1771405141546"
+          },
+          "code": "PARALLEL_1767092443650",
+          "convergenceTargetId": "1767796615086",
+          "id": "1767092443649",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "name": "Summarization node"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SUMMARIZATION_NODE",
+          "id": "1767796615086",
+          "inputs": [
+            {
+              "id": "1767796615087_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "## ROLE ##\nYou are an assistant that summarizes succession datasets for a manager’s direct reports. Your output must be business-readable, concise, and based strictly on the provided data. Rewrite the provided succession insights into clear, grammatically correct paragraphs for business users.\n\n## INPUTS YOU WILL RECEIVE ##\n- inputMessage : {{$context.$variables.inputMessage}}\n- Four datasets (may be empty):\n    - DIRECT_REPORTS_WITHOUT_SUCCESSION_PLAN.items: {{$context.$nodes.DIRECT_REPORTS_WITHOUT_SUCCESSION_PLAN.$output.items}}\n    - RETRIEVE_PERSONS_WITH_SUCCESSION_PLANS.result: {{$context.$nodes.RETRIEVE_PERSONS_WITH_SUCCESSION_PLANS.$output.result}}\n    - RETRIEVE_PERSONS_WITHOUT_READYNOW_CANDIDATES.result.names: {{$context.$nodes.RETRIEVE_PERSONS_WITHOUT_READYNOW_CANDIDATES.$output.result.names}}\n    - GET_ALL_ROLE_CHANGED_CANDIDATES.result: {{$context.$nodes.GET_ALL_ROLE_CHANGED_CANDIDATES.$output.result}}\n\n## STEP 1 — Decide which dataset(s) are relevant (STRICT ROUTING)\n\nSelect the minimal dataset(s) required to answer the inputMessage. Use only the selected dataset(s). Do not mention dataset names, node names, or internal structures in the final response.\n\n# Routing rules:\n    - If the user asks about employees without succession plans → use only DIRECT_REPORTS_WITHOUT_SUCCESSION_PLAN.items\n    - If the user asks about employees without ready-now successors → use:\n        - RETRIEVE_PERSONS_WITH_SUCCESSION_PLANS.result AND\n        - RETRIEVE_PERSONS_WITHOUT_READYNOW_CANDIDATES.result.names\n        Then list only employees whose names appear in the “without ready-now” names list.\n    - If the user asks about role-changed / moved out of role / incumbents or candidates moved → use only GET_ALL_ROLE_CHANGED_CANDIDATES.result\n    - If the user asks about employees with succession plans → use only RETRIEVE_PERSONS_WITH_SUCCESSION_PLANS.result\n    - If the user asks for complete/overall/full/both succession summary OR clearly requests multiple categories → use the minimal combination of datasets needed to answer (can be multiple).\n\n   \n\n## STEP 2 — Definitions and guardrails (NO FABRICATION)\n\nA) “Critical employee” rule (only when applicable)\nAn employee is “critical” if any of these attributes is exactly High:\n    - RiskOfLoss\n    - ImpactOfLoss\n    - JobRisk (or Job Criticality equivalent if present)\n\nOnly apply this when using the “without succession plans” dataset.\nIf those attributes are missing/not present, treat “critical” identification as not available (do not guess).\n\nB) Names-only rule\nWhen listing people, include only employee names — no roles, no job titles, no risk values, no extra attributes.\n\nC) Missing/empty data\n    - If the relevant dataset(s) are empty OR do not contain the requested info → output: “No matching results.”\n    - Do not infer team filters or add employees not present.\n\n## STEP 3 — Output requirements (simple paragraph summary)\n\nYour response must be:\n  - a clear and concise paragraph-style summary that:\n  - Mentions only employee names (no roles, no risk values, no extra attributes).\n  - Clearly separates the information in a way that is easy for a business user to understand.\n  - Uses simple, professional language suitable for leadership review.\n\nDo not use bullets if you can keep it clean, but you may use hyphen lines if needed for readability.\n\n## STEP 4 — Business requirements to satisfy (when requested, or for “overall summary”)\n\nWhen the user asks for an overall summary OR explicitly asks for these items, include the following sections (only those relevant to the ask):\n\n1) Employees without succession plans (critical focus)\n    A paragraph about employees without succession plans. Mention the full list. Then mention which of them are critical (if any). Conclude with an action to prepare succession plans.\n    - If critical attributes exist:\n        - Explicitly mention which direct reports are critical \n    \n\n2) Employees without “Ready-Now” successors\n    - A paragraph about employees who do not have Ready‑Now successors. Mention the list. Conclude with an action to review/add Ready‑Now candidates.\n    - Compute using intersection logic:\n        - Start from employees with succession plans\n        - Restrict to those whose names appear in the “without ready-now” names list\n    - If the intersection yields none → “No matching results.”\n  \n\n3) Succession plans needing attention due to role changes\n    - Provide names of role-changed incumbents/candidates using only the role-changed dataset. Write in complete sentences as short paragraphs (no bullet points, no JSON).\n    - If none, say there are no such candidates who have moved out of role.\n    \n\n## FINAL CHECK (before responding)\n- Used ONLY the dataset(s) required by the ask\n- No dataset/node/internal structure names mentioned\n- No invented values\n- Counts included where required\n- Names-only lists\n"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Check if input message has without Succession Plans"
+          },
+          "outcomes": {
+            "true": "1767092457446",
+            "false": ""
+          },
+          "code": "CHECK_IF_INPUT_MESSAGE_HAS_WITHOUT_SUCCESSION_PLANS",
+          "convergenceTargetId": "end",
+          "id": "1771404494579",
+          "inputs": [
+            {
+              "id": "1771404494581_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.withoutSuccessionPlans}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Check if input message has with Succession Plans"
+          },
+          "outcomes": {
+            "true": "1767855382181",
+            "false": ""
+          },
+          "code": "CHECK_IF_INPUT_MESSAGE_HAS_WITH_SUCCESSION_PLANS",
+          "convergenceTargetId": "end",
+          "id": "1771405141546",
+          "inputs": [
+            {
+              "id": "1771405141547_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.withSuccessionPlans}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_SUCCESSION_DIRECTREPORTSSU",
+            "functionName": "get_directs_talentRatings_without_successionPlans",
+            "name": "Direct Reports Without Succession Plan"
+          },
+          "outcomes": {
+            "success": "1767796615086"
+          },
+          "code": "DIRECT_REPORTS_WITHOUT_SUCCESSION_PLAN",
+          "convergenceTargetId": "1771404993471",
+          "id": "1767092457446",
+          "inputs": [
+            {
+              "id": "1767855273144_1",
+              "name": "assignmentId",
+              "type": "string",
+              "value": "{{$context.$variables.managerAssignmentId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_SUCCESSION_DIRECTREPORTSSU",
+            "functionName": "get_directs_talentRatings_with_successionPlans",
+            "name": "Direct Reports With Succession Plan"
+          },
+          "outcomes": {
+            "success": "1767947945268"
+          },
+          "code": "DIRECT_REPORTS_WITH_SUCCESSION_PLAN",
+          "convergenceTargetId": "1767947945268",
+          "id": "1767855382181",
+          "inputs": [
+            {
+              "id": "1767855400113_1",
+              "name": "assignmentId",
+              "type": "string",
+              "value": "{{$context.$variables.managerAssignmentId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Retrieve persons with succession Plans",
+            "returnType": "array",
+            "sourceCode": "let items = $context.$nodes.DIRECT_REPORTS_WITH_SUCCESSION_PLAN.$output.items;\n\nlet names = [];\n\nfor (let i = 0; i < items.length; i++) {\n    let emp = items[i];\n\n    names.push(emp.DisplayName);\n}\n\n\nreturn names;"
+          },
+          "outcomes": {
+            "success": "1767863173368"
+          },
+          "code": "RETRIEVE_PERSONS_WITH_SUCCESSION_PLANS",
+          "convergenceTargetId": "1767863173368",
+          "id": "1767947945268",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Retrieve persons without ready-now candidates",
+            "returnType": "object",
+            "sourceCode": "let items = $context.$nodes.DIRECT_REPORTS_WITH_SUCCESSION_PLAN.$output.items;\n\nlet names = [];\nlet planIdsSet = new Set();\n\nfor (let i = 0; i < items.length; i++) {\n  let emp = items[i];\n  const plans = (emp.successionPlans && Array.isArray(emp.successionPlans.items))? emp.successionPlans.items : [];\n    \n  let hasReadyNow = false;\n      \n  for (let p = 0; p < plans.length; p++) {\n    const plan = plans[p];\n    const levels = (plan.readinessLevels && Array.isArray(plan.readinessLevels.items))? plan.readinessLevels.items : [];\n                  \n    planIdsSet.add(plan.PlanId);\n                      \n    for (let r = 0; r < levels.length; r++) {\n      const level = levels[r];\n      if (level.ReadinessCode === 'READY_NOW') {\n        const total = Number(level.TotalCandidates || 0);\n        const candidateItems = (level.readinessCandidates && Array.isArray(level.readinessCandidates.items)) ? level.readinessCandidates.items : [];\n        if (total > 0 || candidateItems.length > 0) {\n          hasReadyNow = true;\n          break;\n        }\n      }\n    }\n  }\n                                                    \n  if (!hasReadyNow) {\n    names.push(emp.DisplayName);\n  }\n}\n      \nlet planIdsArray = Array.from(planIdsSet);\n\nlet returnObject = {};\n\nreturnObject[\"names\"] = names;\n\nreturnObject[\"planIds\"] = planIdsArray;\n\nreturn returnObject;"
+          },
+          "outcomes": {
+            "success": "1771405358917"
+          },
+          "code": "RETRIEVE_PERSONS_WITHOUT_READYNOW_CANDIDATES",
+          "convergenceTargetId": "1771405358917",
+          "id": "1767863173368",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1771407909026"
+                  },
+                  "diagram": {
+                    "x": 5600,
+                    "y": 7797
+                  },
+                  "id": "start_1771405358917",
+                  "code": "START_1771405358917",
+                  "type": "START",
+                  "inputs": []
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_HCM_SUCCESSION_SUCCESSIONPLANREVISIONS",
+                    "functionName": "getall_candidateHistory",
+                    "processJson": true,
+                    "name": "Get plan candidate history"
+                  },
+                  "outcomes": {
+                    "success": "1771408102713"
+                  },
+                  "diagram": {
+                    "x": 5450.5,
+                    "y": 7948
+                  },
+                  "code": "GET_PLAN_CANDIDATE_HISTORY",
+                  "id": "1771407909026",
+                  "inputs": [
+                    {
+                      "id": "1771407956216_1",
+                      "name": "talentSuccessionPlanRevisions_Id",
+                      "type": "string",
+                      "value": "{{$context.$nodes.LOOP_OVER_PLANIDS.$currentItem}}"
+                    },
+                    {
+                      "id": "1771407956217_2",
+                      "name": "fromDate",
+                      "type": "string",
+                      "value": "{{$context.$nodes.DATEFROM_DECODER_NODE.$output.DateFrom}}"
+                    },
+                    {
+                      "id": "1771407956218_3",
+                      "name": "toDate",
+                      "type": "string",
+                      "value": "{{$context.$system.$currentDate}}"
+                    },
+                    {
+                      "id": "1771407956223_4",
+                      "name": "limit",
+                      "type": "string",
+                      "value": "100"
+                    },
+                    {
+                      "id": "1771407956225_5",
+                      "name": "offset",
+                      "type": "string",
+                      "value": "0"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "name": "Fetch candidate names",
+                    "returnType": "array",
+                    "sourceCode": "let items  = $context.$nodes.LOOP_OVER_PLANIDS.GET_PLAN_CANDIDATE_HISTORY.$output.items;\n\n// First, filter by ModifiedColumn\nconst filteredItems = items.filter(\n    item => item.ModifiedColumn === \"SUCCESSION_STATUS\"\n);\n\nconst uniqueCandidates = [];\nconst seenNames = new Set();\n\nfor (const item of filteredItems) {\n  const name = item.CandidateDisplayName;  \n  if (!seenNames.has(name)) {\n    uniqueCandidates.push({      \n      CandidateDisplayName: name,      \n      NewDisplayValue: item.NewDisplayValue    \n    });    \n    seenNames.add(name);  \n  }\n}\n\nreturn uniqueCandidates;"
+                  },
+                  "outcomes": {
+                    "success": "end_1771405358917"
+                  },
+                  "diagram": {
+                    "x": 5450.5,
+                    "y": 8170
+                  },
+                  "code": "FETCH_CANDIDATE_NAMES",
+                  "id": "1771408102713",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "id": "end_1771405358917",
+                  "code": "END_1771405358917",
+                  "type": "END",
+                  "inputs": []
+                }
+              ],
+              "rootNode": "start_1771405358917"
+            },
+            "loopType": "SEQUENTIAL",
+            "name": "Loop over PlanIds"
+          },
+          "outcomes": {
+            "success": "1771408380575"
+          },
+          "code": "LOOP_OVER_PLANIDS",
+          "convergenceTargetId": "1771408380575",
+          "id": "1771405358917",
+          "inputs": [
+            {
+              "id": "1771405358918_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$nodes.RETRIEVE_PERSONS_WITHOUT_READYNOW_CANDIDATES.$output.result.planIds}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "name": "Get all role changed candidates",
+            "returnType": "array",
+            "sourceCode": "let output = $context.$nodes.LOOP_OVER_PLANIDS.$output;\n\nconst jsonArray = output.map(item => JSON.parse(item));\n\nconst allResults = []; // This will hold the combined result items\n\nfor (let i = 0; i < jsonArray.length; i++) {  \n  const resultArray = jsonArray[i].result;  \n  for (let j = 0; j < resultArray.length; j++) {    \n    allResults.push(resultArray[j]);  \n  }\n}\n\nreturn allResults;"
+          },
+          "outcomes": {
+            "success": "1767796615086"
+          },
+          "code": "GET_ALL_ROLE_CHANGED_CANDIDATES",
+          "id": "1771408380575",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1771402554117",
+          "name": "withoutSuccessionPlans",
+          "scope": "JOB",
+          "type": "boolean"
+        },
+        {
+          "id": "1771402547546",
+          "name": "withSuccessionPlans",
+          "scope": "JOB",
+          "type": "boolean"
+        },
+        {
+          "id": "1771402528604",
+          "name": "inputMessage",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1767092336826",
+          "name": "managerAssignmentId",
+          "scope": "JOB",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1771402579920",
+            "name": "inputMessage",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1767875844129",
+            "name": "managerAssignmentId",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "SUCCESSION_MANAGEMENT",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"3\""
+  }
+}

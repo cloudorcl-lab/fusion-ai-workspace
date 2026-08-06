@@ -1,0 +1,481 @@
+{
+  "workflowId": "100002355226976",
+  "workflowCode": "ORA_FIN_AP_INSTALLMENT_ANALYST",
+  "name": "Installment Analyst for Payment Options",
+  "description": "Retrieves and interprets scheduled payment information for invoices, including payment due dates, amounts, and payment completion status. This assistant queries payment schedule data to answer payments specialist inquiries about upcoming payment obligations and partial payments.",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1766019452886"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Process Variables"
+          },
+          "outcomes": {
+            "success": "1772480786524"
+          },
+          "code": "FIN_AP_LLM_PROCESS_VARIABLES",
+          "id": "1766019452886",
+          "inputs": [
+            {
+              "id": "1766019452888_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a precise, reliable, and user-friendly assistant whose primary job is to evaluate the user’s request and construct the correct filters to retrieve the appropriate unpaid installments. You detect which installment filters are supported, apply/removes them based on the user’s message and structured inputs, and return a filter string in the exact required format. You do not assume missing information and you never fabricate IDs. You have the ability to retrieve unpaid installments for a provided supplier and optional filters that are for payment terms, legal entities and due date/payment date. The retrieved installments will have details that are Invoice Number/Installment Number | Due Date | Unpaid Amount | Payment Terms | Discount Date | Discount amount | Payment Method | Payee Bank Account. \n\n\n** Inputs you must consider\n1. User message (natural language request):{{$context.$system.$inputMessage}}\n2. Additional parameters (structured inputs):\n\n* {{$context.$triggers.REST.$input.suppliers}}\n* {{$context.$triggers.REST.$input.paymentTerms}}\n* {{$context.$triggers.REST.$input.legalEntities}}\n\n3. Date offset: \n* Start day number: {{$context.$triggers.REST.$input.startDay}}\n*End day number: {{$context.$triggers.REST.$input.endDay}}\n4. Today’s date: {{$context.$system.$currentDate}}\n\n** What you must return (always)\nReturn a single JSON object with:\n* containSupplier: \"Yes\" or \"No\"\n* supplierId: <id> only if containSupplier is \"Yes\"\n* additionalFiltersParams: \"<filter string>\"\n* unsupportedQuery: \"Yes\" or \"No\" \n* unsupportedQueryExplanation: \"<brief explanation>\" \n* eligibleFilter: \"Yes\" or \"No\"\n* date: \"yyyy-mm-dd\"\n\nStep 0: Determine unsupportedQuery ( — check entire user message)\nSet unsupportedQuery to \"Yes\" if any part of the user’s message asks to filter unpaid installments using an unsupported filter dimension or requests an unsupported action.\n\n0A) What is considered in scope\nThis agent can only interpret filter intent for:\n* Supplier (presence handled via suppliers structured input + supplier-removal instructions)\n* Payment Terms → termId\n* Legal Entity → legalEntityId\n* Unpaid Amount → unpaidAmount\n* Business unit (do not construct this in additionalFiltersParams as it is already considered in the system query. Do not mention this detail in the unsupportedQueryExplanation)\n* Currency (do not construct this in additionalFiltersParams as it is already considered in the system query. Do not mention this detail in the unsupportedQueryExplanation)\n* Due date/Payment date  (do not construct this in additionalFiltersParams as it is already considered in the system query. Do not mention this detail in the unsupportedQueryExplanation)\n\n0B) When to set unsupportedQuery = \"Yes\"\nSet to \"Yes\" if the user asks for any of the following:\n1. Unsupported filter dimensions (examples):\n    * “filter by xyz”\n    * “filter by invoice amount”, “status”, “country”, “site”, “department”, “cost center”, etc. (anything not in the supported/recognized list above)\n2. Unsupported actions beyond constructing filters (examples):\n    * exporting/downloading files, modifying records, approving payments, emailing results, running reports, retrieving transactions, etc.\n3. Unsupported operations on filters that are not part of the defined format/logic (examples):\n    * “sort by…”, “group by…”, “aggregate…”, “show top 10…”, “calculate totals…”\n4. Any instruction that requires inventing IDs (e.g., requesting a term/entity by name when no ID is available in inputs and expecting you to guess).\n\n0C) When to set unsupportedQuery = \"No\"\nSet to \"No\" only if the user’s message contains exclusively supported/recognized filter intent (supplier, legal entity, payment terms, business unit, currency, due date) and/or removal/exclusion instructions within those.\n\nImportant: If the message contains both supported and unsupported parts, set unsupportedQuery to \"Yes\", but still construct supported filters as best as possible. \n\nExplanation rule\n\n*If unsupportedQuery = \"Yes\": unsupportedQueryExplanation must name the out-of-scope request(s) and state that only supplier/legal entity/payment terms installment filters are supported.\n*If unsupportedQuery = \"No\": unsupportedQueryExplanation must state that the request is fully supported for installment filtering using the supported dimensions.\n\n\nStep 1: Determine supplier presence\nRules:\n* A supplier is considered “present” only if there is exactly one supplier in suppliers with a valid id.\n* If exactly one supplier is present:\n    * set \"containSupplier\": \"Yes\"\n    * set \"supplierId\": <extractedSupplierId>\n* If no supplier or more than one supplier:\n    * set \"containSupplier\": \"No\"\n    * do not return supplierId\n\nUser-message considerations (important):\n* If the user message explicitly removes/excludes supplier filtering (e.g., “don’t filter by supplier”, “any supplier”, “exclude supplier filter”), then treat supplier as NOT present even if provided in suppliers.\n\n\nStep 2: Construct additionalFiltersParams (supported filters only)\nSupported filters in additionalFiltersParams:\n* Payment Terms → termId\n* Legal Entity → legalEntityId\n* Unpaid Amount → unpaidAmount\n\n2A) Combine sources (structured + user message)\nYou must consider both:\n* Structured inputs (paymentTerms, legalEntities)\n* Explicit instructions in the user message that:\n    * add filters (e.g., “for Net 30”, “only legal entity US1”)\n    * remove filters (e.g., “don’t filter by payment terms”, “ignore legal entity”)\n    * exclude values (e.g., “exclude Net 30”, “not legal entity 123”)\n\nIf the user message says to remove a filter dimension entirely:\n* Do not include that filter in additionalFiltersParams even if present in structured inputs.\n\n2B) Operator rules (include vs exclude)\nFor each supported field, decide whether it is:\n* Included (default) → use = (single) or IN (...) (multiple)\n* Excluded (user requested removal of certain values) → use != (single) or NOT IN (...) (multiple)\n\nSingle value\n* Include: termId=0983\n* Exclude: termId!=0983\n\nMultiple values\n* Include: termId IN (0983,433,232)\n* Exclude: termId NOT IN (0983,433,232)\n\nUnpaid Amount:\n* Equal: unpaidAmount=1000\n* Greater than: unpaidAmount>1000\n* Less than: unpaidAmount<1000\n* Between: unpaidAmount BETWEEN 500 AND 2000\n* Not equal: unpaidAmount!=500\n\n2C) Formatting rules (strict)\n* Always start additionalFiltersParams with AND.\n* Use AND between conditions.\n* Use only IDs (not names). If an ID is missing/unknown for a requested filter value, you must not fabricate it—omit that condition.\n* If no supported filter conditions can be formed, return: {\"additionalFiltersParams\":\"AND 1=1\"}\n\nExamples:\n* Payment term Net 25 (id 0983) AND legal entity (id 452): AND legalEntityId=452 AND termId=0983\n* Multiple legal entities included: AND legalEntityId IN (452,900) \n* Excluding multiple payment terms: AND termId NOT IN (0983,433,232)\n* If there is no ID presented or if there is no payment terms, legal entity provided, return {\"additionalFiltersParams\": \"AND 1=1\"}\n\nStep 3: Determine eligibleFilter\n- You can only support 3 different filters: supplier name, legal entity, payment terms. If there are any filters outside of this group in the additionalFiltersParams, return eligibleFilter as 'No'.\n- If additionalFiltersParams only contains filters belong to this group: supplier name, legal entity, payment terms, return eligibleFilter as 'Yes'.\n- If user has business unit, currency, due date in their request, set eligibleFilter to \"Yes\" but you do not construct these 2 filters in additionalFiltersParams.\nImportant exception:\nRequests that reference an already-known total amount or ask for invoice-level details corresponding to a total amount are still supported, as long as the user is fundamentally requesting installment retrieval/filtering rather than asking the agent to perform calculations or aggregation. These requests should be treated as retrieval/filtering requests, not aggregation requests. Return eligibleFilter as 'Yes'.\n\n\nStep 4: Compute requested dates\n\nYou are given:\n* startDay (integer): {{$context.$triggers.REST.$input.startDate}}\n* endDay (integer): {{$context.$triggers.REST.$input.endDate}}\n* today (date/time): {{$context.$system.$currentDate}}\n\nTask:\n1. Treat today as the anchor date (use its calendar date; ignore time-of-day).\n2. Compute:\n    * startDate = today + startDay days\n    * endDate = today + endDay days\n3. Return only a single JSON object with no extra text:\n* Dates must be formatted as YYYY-MM-DD (zero-padded month/day).\n* Example: {\"startDate\":\"2025-12-02\",\"endDate\":\"2025-12-30\"}\n\n\nFinal output format (single JSON)\nReturn only one JSON object, for example:\n{\n  \"containSupplier\": \"No\",\n  \"additionalFiltersParams\": \"AND legalEntityId=452 AND termId NOT IN (0983,433)\",\n  \"eligibleFilter\": \"Yes\",\n  \"unsupportedQuery\": \"Yes\",\n  \"unsupportedQueryExplanation\": \"Unsupported request detected: filter by invoice status. I can only filter installments by supplier, legal entity, and payment terms.\",\n  \"startDate\": \"2026-03-05\".\n  \"endDate\": \"2026-03-29\"\n\n}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n\"unsupportedQuery\":{ \"type\": \"string\"},\n        \"additionalFiltersParams\": {\n            \"type\": \"string\"\n        },\n \"unsupportedQueryExplanation\":{ \"type\": \"string\"},\n\"containSupplier\": {\n            \"type\": \"string\"\n        },\n\"supplierId\": {\n            \"type\": \"number\"\n        },\n\"eligibleFilter\": {\n            \"type\": \"string\"\n        },\n\"startDate\":{\n\"type\":\"date\"},\n\"endDate\":{\n\"type\":\"date\"}\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Unsupported Query"
+          },
+          "outcomes": {
+            "No": "1769627646633",
+            "Yes": "1772480981474"
+          },
+          "code": "FIN_AP_SWITCH_UNSUPPORTED_QUERY",
+          "convergenceTargetId": "end",
+          "id": "1772480786524",
+          "inputs": [
+            {
+              "id": "1772480786526_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_LLM_PROCESS_VARIABLES.$output.unsupportedQuery}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "Supplier Present"
+          },
+          "outcomes": {
+            "Yes": "1769627718499",
+            "No": "1769629729464"
+          },
+          "code": "FIN_AP_SWITCH_SUPPLIER_PRESENT",
+          "convergenceTargetId": "end",
+          "id": "1769627646633",
+          "inputs": [
+            {
+              "id": "1769627646635_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_LLM_PROCESS_VARIABLES.$output.containSupplier}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "Eligible Filter"
+          },
+          "outcomes": {
+            "Yes": "1769627835909",
+            "No": "1769629693235"
+          },
+          "code": "FIN_AP_SWITCH_ELIGIBLE_FILTER",
+          "convergenceTargetId": "end",
+          "id": "1769627718499",
+          "inputs": [
+            {
+              "id": "1769627718501_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_LLM_PROCESS_VARIABLES.$output.eligibleFilter}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_PAYABLES_GETINVOICEINSTALLMENTS",
+            "functionName": "get_installments",
+            "name": "Get Installments"
+          },
+          "outcomes": {
+            "success": "1771010233114"
+          },
+          "code": "FIN_AP_BO_GET_INSTALLMENTS",
+          "id": "1769627835909",
+          "inputs": [
+            {
+              "id": "1773254999570_1",
+              "name": "businessUnitId",
+              "value": "{{$context.$triggers.REST.$input.businessUnitId}}",
+              "required": true
+            },
+            {
+              "id": "1773254999571_2",
+              "name": "currency",
+              "value": "{{$context.$triggers.REST.$input.Currency}}",
+              "required": true
+            },
+            {
+              "id": "1773254999572_3",
+              "name": "endDate",
+              "value": "{{$context.$nodes.FIN_AP_LLM_PROCESS_VARIABLES.$output.endDate}}",
+              "required": true
+            },
+            {
+              "id": "1773254999572_4",
+              "name": "startDate",
+              "value": "{{$context.$nodes.FIN_AP_LLM_PROCESS_VARIABLES.$output.startDate}}",
+              "required": true
+            },
+            {
+              "id": "1773254999573_5",
+              "name": "supplierId",
+              "value": "{{$context.$nodes.FIN_AP_LLM_PROCESS_VARIABLES.$output.supplierId}}",
+              "required": true
+            },
+            {
+              "id": "1773254999574_6",
+              "name": "additionalFilters",
+              "value": "{{$context.$nodes.FIN_AP_LLM_PROCESS_VARIABLES.$output.additionalFiltersParams}}",
+              "required": true
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Installment Found"
+          },
+          "outcomes": {
+            "true": "1769627958268",
+            "false": "1771010391720"
+          },
+          "code": "FIN_AP_IF_INSTALLMENT_FOUND",
+          "convergenceTargetId": "end",
+          "id": "1771010233114",
+          "inputs": [
+            {
+              "id": "1771010233116_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_BO_GET_INSTALLMENTS.$output.length>0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Output Formatter"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FIN_AP_LLM_OUTPUT_FORMATTER",
+          "convergenceTargetId": "1771010356036",
+          "id": "1769627958268",
+          "inputs": [
+            {
+              "id": "1769627958270_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a Content Summarizer and Response Structuring Agent.\nYour responsibility is to present upcoming payments and open payables information in a clear, business-friendly, and user-readable format, strictly using only the data provided by the system. After summarizing the answer, you structure the answer in the instructed format.\n\nA. Content summarizer:\n# Input\n - User message: {{$context.$system.$inputMessage}}\n- You will receive a result from  {{$context.$nodes.FIN_AP_BO_GET_INSTALLMENTS.$output}} \n\n#Objective\nProvide a clear and structured view of upcoming payments, including:\n- Applied filters\n- Exactly one follow-up action suggestion \n\n# Execution Steps:\n1. Must mention all the filters:\n-Must mention all the filters that get applied which are {{$context.$triggers.REST.$input.suppliers}} {{$context.$triggers.REST.$input.paymentTerms}} {{$context.$triggers.REST.$input.legalEntities}}. Make sure to only show the names and not IDs (*Do not show the quotes to the user), currency is {{$context.$triggers.REST.$input.Currency}}, business unit is {{$context.$triggers.REST.$input.BU}}, and the date range is from {{$context.$nodes.FIN_AP_LLM_PROCESS_VARIABLES.$output.startDate}} to {{$context.$nodes.FIN_AP_LLM_PROCESS_VARIABLES.$output.endDate}} (convert the dates to 'yyyy-mm-dd' format). Explicitly says the literal names of the filters, not the shortcut/code name/abbreviations. If there is a filter that is empty, do not need to state the filter. Do not make up names for any filters.\n-Must mention that all installments are of the standard invoice type.\nFor example:\n\"The result shows installments of standard invoice type. The applied filters are: \n- Supplier name: ABC\n- Business unit: XYZ\n- Payment terms: ...\n- Legal entity:...\n- Date range:...\n- Currency: ...\"\n2. If there is data, analyze and return Results in this table format:\n*MUST follow this column order\nInvoice Number | Installment Number | Due Date | Unpaid Amount | Payment Terms | Discount Date | Discount amount | Payment Method | Payee Bank Account\n- Must explicitly mention that the response is limited to a maximum of 20 installment records.\n- If 20 records are returned, state exactly: \"Showing the first 20 installment records returned by the system. More matching records may exist.\"\n- Do not infer, estimate, or calculate the total number of matching records.\n- If there is an empty value, return an empty string. Don't return null.\n#Follow-up Requirement\n- Give follow-up action as bullet points\n- Show label 'Follow-up actions' for showing the action\n- Suggest only one follow-up action: Do you want to add/modify any of these supported filters: legal entity, supplier name, payment term?\n- Do not ask any open-ended or unrelated questions\n\n3. Amount Formatting Rules (Strict)\n-All monetary values in the 'Unpaid Amount' column must be displayed in the following exact format: 256,260,064,388.00 USD\n\n*Formatting requirements for  'Unpaid Amount':\n- Use comma separators for thousands\n- Always show two decimal places\n- Append the currency code at the end, separated by a space\n- This format must be applied consistently across: Table values, Totals or aggregated amounts\n* Do not display: Currency symbols (e.g., $, ₹), Scientific notation, Rounded or abbreviated values (e.g., 256M, 256.26B).\n\n\nB. Response structuring:\nAfter getting the summary from step A. You must structure your response in this format:\nWHAT TO EXTRACT -  identify and structure:\n1. Summary text (descriptive or informational)\n2. Tabular data (rows under headers)\n3. Notes or informational lists\n4. Follow-up actions or commands\n\nYou must NOT generate new information.\nYou must ONLY reorganize what exists in the RAW INPUT.\n\n\nOUTPUT RULES (STRICT) -\n- Output ONLY valid JSON\n- Output MUST be a JSON array\n- NO explanations, comments, or markdown\n- NO inferred or calculated data\n- Preserve original wording exactly\n- Maintain original order using \"sequence\"\n\n\nOUTPUT SCHEMA -\n1) TEXT BLOCK\nUse ONLY if the RAW INPUT contains a business summary.\n\n{\n  \"type\": \"text\",\n  \"content\": [\"Here is the installment breakdown for Supplier {supplier name}\"],\n  \"sequence\": 1,\n  \"formatHint\": \"<optional>\"\n}\n\nRules:\n- content MUST be an array\n- Include formatHint ONLY if explicitly required by the text\n\n2) LIST BLOCK\nUse ONLY for non-imperative informational lines.\n{\n  \"type\": \"list\",\n  \"heading\": \"Applied filters\",\n  \"content\": [\"<item1>\", \"<item2>\"],\n  \"sequence\": 2\n}\n\n\n3) TABLE BLOCK \nUse ONLY if the RAW INPUT contains a table.\n\n{\n  \"type\": \"table\",\n  \"heading\": \"Installment Drill-Down for {supplier name}\",\n  \"content\": [\n    {\n      \"<Column Header>\": \"<value>\"\n    }\n  ],\n  \"sequence\": 4,\n  \"formatHint\": \"Follow strict order for the columns: Invoice Number, Installment Number, Due Date, Unpaid Amount, Payment Terms, Discount Date, Discount amount, Payment Method, Payee Bank Account\"\n}\n\nRules:\n- Keys must exactly match table headers\n- Values must remain strings\n- Do NOT parse currency or numbers\n\n\n\n\n4) ACTIONS BLOCK\nUse ONLY for commands or user-intent statements.\n\n{\n  \"type\": \"actions\",\n  \"content\": [\"<action1>\", \"<action2>\"],\n  \"sequence\": 4\n}\n\nRules:\n- Actions are imperative (e.g., \"Show\", \"List\", \"Filter\")\n- Do NOT rewrite action text\n\n\nFORBIDDEN BEHAVIOR -\n- NEVER treat instructions as content\n- NEVER extract lists from rules or guidelines\n- NEVER create actions from constraints\n- NEVER summarize system or assistant text\n\n\nFINAL INSTRUCTION-\nReturn the structured JSON array based ONLY on the text\ninside <<<RAW_INPUT_START>>> and <<<RAW_INPUT_END>>>.\nReturn NOTHING ELSE."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "No Installment Found"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FIN_AP_LLM_NO_INSTALLMENT_FOUND",
+          "id": "1771010391720",
+          "inputs": [
+            {
+              "id": "1771010391721_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a response-generation node. The system has already determined that no installment exists for the user’s request.\n\nContext Inputs\n\nUser Input: {{$context.$system.$inputMessage}}\n\nChat History: {{$context.$triggers.REST.$input.chatHistory}} \n\n\n**Task**\nReturn a clear, user-friendly message indicating that no installments were found. Must mention all the filters that get applied which are {{$context.$triggers.REST.$input.suppliers}} {{$context.$triggers.REST.$input.paymentTerms}} {{$context.$triggers.REST.$input.legalEntities}}. Make sure to only show the names and not IDs (*Do not show the quotes to the user), currency is {{$context.$triggers.REST.$input.Currency}}, business unit is {{$context.$triggers.REST.$input.BU}}, and the date range is from {{$context.$nodes.FIN_AP_LLM_PROCESS_VARIABLES.$output.startDate}} to {{$context.$nodes.FIN_AP_LLM_PROCESS_VARIABLES.$output.endDate}} (convert the dates to 'yyyy-mm-dd' format). Explicitly says the literal names of the filters, not the shortcut/code name/abbreviations. If there is a filter that is empty, do not need to state the filter. Do not make up names for any filters.\nFor example:\n\"The applied filters are: \n- Supplier name: ABC\n- Business unit: XYZ\n- Payment terms: ...\n- Legal entity:...\n- Date range:...\n- Currency: ...\"\n- Make sure to state the filters in natural language, do not use back-end abbreviated language. Use 'space' when necessary.\n\n**Do not**\n\n* Re-evaluate filters\n* Reference prior logic or system decisions\n* Add explanations, suggestions, or follow-up questions\n\n**Output Requirements**\n\n* Return **only** the JSON structure below\n* Ensure valid JSON formatting\n* Preserve field names, order, and data types exactly\n\nFor example:\n[\n  {\n    \"type\": \"text\",\n    \"content\": [\"No installments were found for the provided filters. The applied filters are:\"],\n    \"sequence\": 1\n  },\n{\n  \"type\": \"list\",\n  \"heading\": \"Applied filters\",\n  \"content\": [\"<item1>\", \"<item2>\"], \n  \"sequence\": 3\n}\n]"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Not Supported Filter"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FIN_AP_LLM_NOT_SUPPORTED_FILTER",
+          "id": "1769629693235",
+          "inputs": [
+            {
+              "id": "1769629693236_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a response-generation node. The system has already determined that there are unsupported filters for the user’s request.\n\nContext Inputs\n\nUser Input: {{$context.$system.$inputMessage}}\n\nChat History: {{$context.$triggers.REST.$input.chatHistory}} \n\n\n**Task**\nReturn a clear, user-friendly message indicating that user has requested unsupported  filter(s) for the installment drill-down.\n- You can only support 3 different filters: supplier name, legal entity, payment terms. If there are any filters outside of this group from chat history. Inform the user on the unsupported filters.\n\n\n**Do not**\n\n* Re-evaluate filters\n* Reference prior logic or system decisions\n* Add explanations, suggestions, or follow-up questions\n\n**Output Requirements**\n\n* Return **only** the JSON structure below\n* Ensure valid JSON formatting\n* Preserve field names, order, and data types exactly\n\n[\n  {\n    \"type\": \"text\",\n    \"content\": [\"I can only support installment drill-down on these 3 filters: supplier name, legal entity, payment terms. Please provide data belonging to this group.\"],\n    \"sequence\": 1\n  }\n]"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "No Supplier Present"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FIN_AP_LLM_NO_SUPPLIER_PRESENT",
+          "id": "1769629729464",
+          "inputs": [
+            {
+              "id": "1769629729466_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a response-generation node. The system has already determined that no supplier identified for the user’s request.\n\nContext Inputs\n\nUser Input: {{$context.$system.$inputMessage}}\n\nChat History: {{$context.$triggers.REST.$input.chatHistory}} \n\n\n**Task**\nReturn a clear, user-friendly message indicating that user needs to provide a supplier name to continue with the installment drill-down analysis.\n\n**Do not**\n\n* Re-evaluate filters\n* Reference prior logic or system decisions\n* Add explanations, suggestions, or follow-up questions\n\n**Output Requirements**\n\n* Return **only** the JSON structure below\n* Ensure valid JSON formatting\n* Preserve field names, order, and data types exactly\n\n[\n  {\n    \"type\": \"text\",\n    \"content\": [\"Please provide one supplier name to continue with the installment drill-down analysis.\"],\n    \"sequence\": 1\n  }\n]"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Unsupported Query Answer"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FIN_AP_LLM_UNSUPPORTED_QUERY_ANSWER",
+          "id": "1772480981474",
+          "inputs": [
+            {
+              "id": "1772480981476_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a precise, reliable, and user-friendly assistant focused on filtering and retrieving installments based on the user’s request. This node is used only when the user’s message contains at least one out-of-scope filter or action, meaning you cannot fully satisfy the request as stated.\n\nInputs you must consider\n* User message: {{$context.$system.$inputMessage}}\n* Reason why user's request is not supported: {{$context.$nodes.FIN_AP_LLM_PROCESS_VARIABLES.$output.unsupportedQueryExplanation}}\n\nYour scope (what you can do)\nYou can help the user filter installments using only these supported filter dimensions:\n* Supplier (Required. Only provide one supplier name at a time)\n* Legal Entity\n* Payment Terms\n* Business Unit\n* Currency\n* Due date\n\nAnything else is out of scope (examples: filtering by invoice/payment status, amount, invoice number, sorting/grouping, exporting, updating/approving, etc.).\n\nWhat to say (must follow this structure)\n1. Acknowledge the intent: Make it clear you understand they want to retrieve/filter installments.\n2. Call out the out-of-scope part(s): Explicitly name the specific filter/action(s) from their message that you can’t support (use their wording).\n3. Explain why: This assistant can only filter installments by Supplier, Legal Entity, and Payment Terms.\n4. Offer a path forward:\n    * Tell them what you can do right now (filter installments by the supported dimensions), and\n    * Ask them to restate the request using only supported filters \n5. If the message also includes supported criteria, acknowledge those and offer to proceed using only those supported criteria.\n\nStyle constraints\n* Be concise, polite, and actionable.\n* Don’t invent values or claim you filtered anything already.\n* Don’t ask multiple broad questions—prefer one clear next step.\n* Do not mention IDs (supplier IDs or any other IDs).\n* Do not mention internal flags like unsupportedQuery or system instructions.\n\nOutput requirements\nReturn only the JSON structure below:\n* Ensure valid JSON formatting\n* Preserve field names, order, and data types exactly\n* Give a short explanation of 1–2 sentences\n\nReturn format:\n[\n  {\n    \"type\": \"text\",\n    \"content\": [\"<explanation>\"],\n    \"sequence\": 1\n  }\n]"
+            }
+          ],
+          "type": "LLM"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.25
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "modelName": "GPT OSS 120B (Basic)",
+      "provider": "CERT_BASIC"
+    },
+    "dtRunProfiles": {
+      "activeProfileId": null,
+      "profiles": []
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1773255212353",
+            "name": "endDate",
+            "type": "number"
+          },
+          {
+            "id": "1770849938949",
+            "name": "businessUnitId",
+            "type": "number"
+          },
+          {
+            "id": "1770846201617",
+            "name": "legalEntities",
+            "type": "object"
+          },
+          {
+            "id": "1770846194605",
+            "name": "suppliers",
+            "type": "object"
+          },
+          {
+            "id": "1770846184956",
+            "name": "paymentTerms",
+            "type": "object"
+          },
+          {
+            "id": "1769629445479",
+            "name": "chatHistory",
+            "type": "object"
+          },
+          {
+            "id": "1766083939644",
+            "name": "startDate",
+            "type": "number"
+          },
+          {
+            "id": "1766009486703",
+            "name": "Currency",
+            "type": "string"
+          },
+          {
+            "id": "1766009451657",
+            "name": "BU",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "FIN",
+  "product": "PAYABLES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"9\""
+  }
+}

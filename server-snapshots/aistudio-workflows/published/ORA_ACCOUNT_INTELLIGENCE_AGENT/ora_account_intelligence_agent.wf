@@ -1,0 +1,1857 @@
+{
+  "workflowId": "300000331056483",
+  "workflowCode": "ORA_ACCOUNT_INTELLIGENCE_AGENT",
+  "name": "Account Intelligence Agent",
+  "description": "Optimized Account Intelligence Agent variant with explicit account-number and PartyId validation, accountId workflow-variable propagation, open opportunity retrieval, empty opportunity insight handling, combined opportunity summary and engagement/objective lookup, open opportunity summary generation, account product insights summary generation, and a direct engagement insights branch.",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1774979817506"
+          },
+          "diagram": {
+            "x": 7365,
+            "y": 5000
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "name": "Validate Account Input"
+          },
+          "outcomes": {
+            "true": "1775178775881",
+            "false": "fa_return_invalid_input"
+          },
+          "diagram": {
+            "x": 7243,
+            "y": 5206
+          },
+          "code": "VALIDATE_ACCOUNT_INPUT",
+          "convergenceTargetId": "end",
+          "id": "1774979817506",
+          "inputs": [
+            {
+              "id": "1774979817506_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.action.config.accountNumber != null && $context.$triggers.REST.$input.action.config.accountNumber.trim() !== \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "id": "1775178775881",
+          "code": "LOAD_ACCOUNT_DATA",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "processJson": true,
+            "name": "Load Account Data",
+            "functionName": "SEARCH_OBJECTS"
+          },
+          "diagram": {
+            "x": 7018,
+            "y": 5428
+          },
+          "outcomes": {
+            "success": "1778550436403"
+          },
+          "inputs": [
+            {
+              "id": "1774372423905_object",
+              "name": "object",
+              "type": "string",
+              "value": "Account"
+            },
+            {
+              "id": "1774372423905_q",
+              "name": "q",
+              "type": "string",
+              "value": "{{({\"op\":\"$eq\",\"attribute\":\"PartyNumber\",\"value\":$context.$triggers.REST.$input.action.config.accountNumber})}}"
+            },
+            {
+              "id": "1774372423905_sort",
+              "name": "sort",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "1774372423905_limit",
+              "name": "limit",
+              "type": "integer",
+              "value": "1"
+            },
+            {
+              "id": "1774372423905_fields",
+              "name": "fields",
+              "type": "string",
+              "value": "{{[\"PartyId\",\"PartyNumber\",\"PartyName\",\"SalesProfileType\",\"PrimaryIndustry.ClassCode\",\"PrimaryOrganizationType.ClassCode\",\"OrganizationType\",\"PrimaryContact.PartyName\",\"Description\",\"AccountRollup\"]}}"
+            }
+          ]
+        },
+        {
+          "id": "fa_return_invalid_input",
+          "code": "RETURN_INVALID_INPUT",
+          "type": "RETURN",
+          "metadata": {
+            "name": "Return Invalid Input"
+          },
+          "diagram": {
+            "x": 7468,
+            "y": 5428
+          },
+          "outcomes": {},
+          "inputs": [
+            {
+              "id": "fa_return_invalid_input_value",
+              "name": "returnValue",
+              "type": "string",
+              "value": "invalid_account_input"
+            }
+          ]
+        },
+        {
+          "id": "1778550436403",
+          "code": "HAS_ACCOUNT_PARTY_ID",
+          "type": "CONDITION",
+          "metadata": {
+            "name": "Has Account PartyId"
+          },
+          "outcomes": {
+            "true": "1778550436404",
+            "false": "1778550436405"
+          },
+          "inputs": [
+            {
+              "id": "1778550436403_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.LOAD_ACCOUNT_DATA.$output?.[0]?.PartyId!=null&&$context.$nodes.LOAD_ACCOUNT_DATA.$output?.[0]?.PartyId!==\"\"}}"
+            }
+          ],
+          "diagram": {
+            "x": 7243,
+            "y": 5650
+          },
+          "convergenceTargetId": "end"
+        },
+        {
+          "id": "1778550436404",
+          "code": "SET_ACCOUNT_ID",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set Account Id"
+          },
+          "outcomes": {
+            "success": "1774363003701"
+          },
+          "inputs": [
+            {
+              "id": "1778550436404_accountId",
+              "name": "accountId",
+              "type": "number",
+              "value": "{{$context.$nodes.LOAD_ACCOUNT_DATA.$output?.[0]?.PartyId}}"
+            }
+          ],
+          "diagram": {
+            "x": 7018,
+            "y": 5872
+          }
+        },
+        {
+          "id": "1778550436405",
+          "code": "RETURN_ACCOUNT_NOT_FOUND",
+          "type": "RETURN",
+          "metadata": {
+            "name": "Return Account Not Found"
+          },
+          "outcomes": {},
+          "inputs": [
+            {
+              "id": "1778550436405_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "Account not found for the provided account number."
+            }
+          ],
+          "diagram": {
+            "x": 7468,
+            "y": 5872
+          }
+        },
+        {
+          "metadata": {
+            "name": "Fetch Account Data in Parallel"
+          },
+          "outcomes": {
+            "0": "1774973584658",
+            "1": "1775421292735",
+            "2": "1775421335576",
+            "3": "1778120956017",
+            "4": "1778550436401",
+            "5": "1778550436406",
+            "6": "1778550436407",
+            "7": "1778550436408",
+            "8": "1778550436409",
+            "9": "1778550436410"
+          },
+          "diagram": {
+            "x": 5000,
+            "y": 6094,
+            "width": 4786,
+            "height": 1290
+          },
+          "code": "FETCH_ACCOUNT_DATA_IN_PARALLEL",
+          "convergenceTargetId": "1775408843348",
+          "id": "1774363003701",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "id": "1775408843348",
+          "code": "GENERATE_AND_PERSIST_SUMMARY",
+          "type": "PARALLEL",
+          "metadata": {
+            "name": "Generate and Persist Summary"
+          },
+          "diagram": {
+            "x": 6450.5,
+            "y": 7534,
+            "width": 1885,
+            "height": 792
+          },
+          "outcomes": {
+            "0": "1774539110756",
+            "1": "1775579713441",
+            "2": "1775579929851",
+            "3": "1775579999499"
+          },
+          "inputs": [],
+          "convergenceTargetId": "1775141738951"
+        },
+        {
+          "metadata": {
+            "name": "Generate and Persist Insights"
+          },
+          "diagram": {
+            "x": 6923,
+            "y": 8476,
+            "width": 940,
+            "height": 792
+          },
+          "outcomes": {
+            "0": "1776195889793",
+            "1": "1774540405799"
+          },
+          "id": "1775141738951",
+          "code": "GENERATE_AND_PERSIST_INSIGHTS",
+          "type": "PARALLEL",
+          "inputs": [],
+          "convergenceTargetId": "1775165248912"
+        },
+        {
+          "id": "1775165248912",
+          "code": "RETURN_SUCCESS",
+          "type": "RETURN",
+          "metadata": {
+            "name": "Return Success"
+          },
+          "diagram": {
+            "x": 7243,
+            "y": 9418
+          },
+          "outcomes": {},
+          "inputs": [
+            {
+              "id": "1775165248912_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "success"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "processJson": true,
+            "name": "Load Account Contacts",
+            "functionName": "SEARCH_OBJECTS"
+          },
+          "outcomes": {
+            "success": "1775408843348"
+          },
+          "diagram": {
+            "x": 5020,
+            "y": 6335
+          },
+          "code": "LOAD_ACCOUNT_CONTACTS",
+          "id": "1774973584658",
+          "inputs": [
+            {
+              "id": "1774973584658_object",
+              "name": "object",
+              "type": "string",
+              "value": "Contact"
+            },
+            {
+              "id": "1774973584658_q",
+              "name": "q",
+              "type": "string",
+              "value": "{{({\"op\":\"$eq\",\"attribute\":\"ListOfAccounts.SubjectId.PartyNumber\",\"value\":$context.$triggers.REST.$input.action.config.accountNumber})}}"
+            },
+            {
+              "id": "1774973584658_sort",
+              "name": "sort",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "1774973584658_limit",
+              "name": "limit",
+              "type": "integer",
+              "value": "1000"
+            },
+            {
+              "id": "1774973584658_fields",
+              "name": "fields",
+              "type": "string",
+              "value": "{{[\"PartyId\",\"PartyName\",\"PartyNumber\",\"SalesBuyingRoleCode\",\"ContactRole\",\"JobTitle\",\"JobTitleCode\",\"SalesAffinityCode\",\"LastContactDate\",\"SalesProfileStatus\",\"DepartmentCode\",\"ContactRollup\"]}}"
+            }
+          ],
+          "outputSpecification": "",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "id": "1775421292735",
+          "code": "GENERATE_ACCOUNT_NEWS",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Generate Account News",
+            "referenceableBlockId": "EXTERNAL_CONTENT_REFERENCE_BLOCK"
+          },
+          "diagram": {
+            "x": 5470,
+            "y": 6335
+          },
+          "outcomes": {
+            "success": "1775408843348"
+          },
+          "inputs": [
+            {
+              "id": "1775421292735_ContentType",
+              "name": "ContentType",
+              "type": "string",
+              "value": "ACCOUNT_NEWS"
+            },
+            {
+              "id": "1775421292735_ExternalSourcesEnabled",
+              "name": "ExternalSourcesEnabled",
+              "type": "boolean",
+              "value": "{{$context.$triggers.REST.$input.action.config.externalSourcesEnabled}}"
+            },
+            {
+              "id": "1775421292735_PartyId",
+              "name": "PartyId",
+              "type": "number",
+              "value": ""
+            },
+            {
+              "id": "1775421292735_accountNumber",
+              "name": "accountNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.action.config.accountNumber}}"
+            }
+          ]
+        },
+        {
+          "id": "1775421335576",
+          "code": "GENERATE_COMPANY_PROFILE",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Generate Company Profile",
+            "referenceableBlockId": "EXTERNAL_CONTENT_REFERENCE_BLOCK"
+          },
+          "diagram": {
+            "x": 5920,
+            "y": 6335
+          },
+          "outcomes": {
+            "success": "1775408843348"
+          },
+          "inputs": [
+            {
+              "id": "1775421292735_ContentType",
+              "name": "ContentType",
+              "type": "string",
+              "value": "COMPANY_PROFILE"
+            },
+            {
+              "id": "1775421292735_ExternalSourcesEnabled",
+              "name": "ExternalSourcesEnabled",
+              "type": "boolean",
+              "value": "{{$context.$triggers.REST.$input.action.config.externalSourcesEnabled}}"
+            },
+            {
+              "id": "1775421335576_PartyId",
+              "name": "PartyId",
+              "type": "number",
+              "value": ""
+            },
+            {
+              "id": "1775421335576_accountNumber",
+              "name": "accountNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.action.config.accountNumber}}"
+            }
+          ]
+        },
+        {
+          "id": "1778120956017",
+          "code": "LOAD_OPEN_OPPORTUNITIES",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Load Open Opportunities",
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS"
+          },
+          "outcomes": {
+            "success": "1778120956021"
+          },
+          "inputs": [
+            {
+              "id": "1778120956017_object",
+              "name": "object",
+              "type": "string",
+              "value": "Opportunity"
+            },
+            {
+              "id": "1778120956017_q",
+              "name": "q",
+              "type": "string",
+              "value": "{{({\"op\":\"$and\",\"criteria\":[{\"op\":\"$eq\",\"attribute\":\"CustomerAccount.PartyNumber\",\"value\":$context.$triggers.REST.$input.action.config.accountNumber},{\"op\":\"$in\",\"attribute\":\"StatusCode\",\"values\":[\"OPEN\"]}]})}}"
+            },
+            {
+              "id": "1778120956017_sort",
+              "name": "sort",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "1778120956017_limit",
+              "name": "limit",
+              "type": "string",
+              "value": "1000"
+            },
+            {
+              "id": "1778120956017_fields",
+              "name": "fields",
+              "type": "string",
+              "value": "{{[\"OptyId\",\"OptyNumber\"]}}"
+            }
+          ],
+          "diagram": {
+            "x": 6370,
+            "y": 6335
+          },
+          "outputSpecification": ""
+        },
+        {
+          "id": "1778550436401",
+          "code": "PREPARE_ACCOUNT_PRODUCT_INSIGHTS_PARAMETERS",
+          "type": "CODE",
+          "metadata": {
+            "name": "Prepare Account Product Insights Parameters",
+            "returnType": "object",
+            "sourceCode": "let result = {};\n\nconst accountId = $context.$variables?.accountId || null;\n\nresult = {\n  message: $context.$system?.$inputMessage || \"\",\n  action: {\n    name: \"GET_OWNED_PRODUCTS_BY_PRODUCT_HIERARCHY\",\n    config: {\n      accountIds: String(accountId)\n    }\n  },\n  commonConfiguration: $context.$triggers.REST.$input.commonConfiguration || {},\n  filterConfiguration: {\n    filterProductByTerritory: false\n  }\n};\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1778550436400"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 6820,
+            "y": 6335
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1778550436406",
+          "code": "PREPARE_ACCOUNT_SUMMARY_ACTION",
+          "type": "CODE",
+          "metadata": {
+            "name": "Prepare Account Summary Action",
+            "sourceCode": "const accountNumber = $context.$triggers.REST.$input.action.config.accountNumber;\nreturn {\n  name: \"COMPREHENSIVE\",\n  config: {\n    accountNumber\n  }\n};",
+            "returnType": "object"
+          },
+          "outcomes": {
+            "success": "1774363051196"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 7417,
+            "y": 6335
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1778550436407",
+          "code": "PREPARE_ACCOUNT_BRIEF_SUMMARY_ACTION",
+          "type": "CODE",
+          "metadata": {
+            "name": "Prepare Account Brief Summary Action",
+            "sourceCode": "const accountNumber = $context.$triggers.REST.$input.action.config.accountNumber;\nreturn {\n  name: \"BRIEF\",\n  config: {\n    accountNumber\n  }\n};",
+            "returnType": "object"
+          },
+          "outcomes": {
+            "success": "1774538461889"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 7897,
+            "y": 6335
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1778550436408",
+          "code": "PREPARE_CONTACT_SUMMARY_ACTION",
+          "type": "CODE",
+          "metadata": {
+            "name": "Prepare Contact Summary Action",
+            "sourceCode": "const accountNumber = $context.$triggers.REST.$input.action.config.accountNumber;\nreturn {\n  name: \"SUMMARY\",\n  config: {\n    accountNumber\n  }\n};",
+            "returnType": "object"
+          },
+          "outcomes": {
+            "success": "1774368348560"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 8431,
+            "y": 6335
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1778550436409",
+          "code": "PREPARE_CONTACT_RECOMMENDATIONS_ACTION",
+          "type": "CODE",
+          "metadata": {
+            "name": "Prepare Contact Recommendations Action",
+            "sourceCode": "const accountNumber = $context.$triggers.REST.$input.action.config.accountNumber;\nreturn {\n  name: \"RECOMMENDATION\",\n  config: {\n    accountNumber\n  }\n};",
+            "returnType": "object"
+          },
+          "outcomes": {
+            "success": "1774368474921"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 8911,
+            "y": 6335
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1778550436410",
+          "code": "PREPARE_TOP_CONTACTS_ACTION",
+          "type": "CODE",
+          "metadata": {
+            "name": "Prepare Top Contacts Action",
+            "sourceCode": "const accountNumber = $context.$triggers.REST.$input.action.config.accountNumber;\nreturn {\n  name: \"TOPCONTACT\",\n  config: {\n    accountNumber\n  }\n};",
+            "returnType": "object"
+          },
+          "outcomes": {
+            "success": "1774368586460"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 9463,
+            "y": 6335
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1778120956021",
+          "code": "FETCH_OPPORTUNITY_DATA_IN_PARALLEL",
+          "type": "PARALLEL",
+          "metadata": {
+            "name": "Fetch Opportunity Data in Parallel"
+          },
+          "outcomes": {
+            "0": "1778120956018",
+            "1": "1778120956020"
+          },
+          "convergenceTargetId": "1778120956025",
+          "inputs": [],
+          "diagram": {
+            "x": 5487.5,
+            "y": 6557,
+            "width": 976,
+            "height": 570
+          }
+        },
+        {
+          "id": "1778550436400",
+          "code": "GENERATE_ACCOUNT_PRODUCT_INSIGHTS",
+          "type": "WORKFLOW",
+          "metadata": {
+            "description": "",
+            "name": "Generate Account Product Insights",
+            "workflowCode": "ORA_ACCOUNT_PRODUCT_INSIGHTS_AGENT"
+          },
+          "diagram": {
+            "x": 6613.5,
+            "y": 6557
+          },
+          "outcomes": {
+            "success": "1778550436402"
+          },
+          "inputs": [
+            {
+              "id": "1778550436400_message",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ACCOUNT_PRODUCT_INSIGHTS_PARAMETERS.$output.result.message}}"
+            },
+            {
+              "id": "1778550436400_action",
+              "name": "action",
+              "type": "object",
+              "value": "{{$context.$nodes.PREPARE_ACCOUNT_PRODUCT_INSIGHTS_PARAMETERS.$output.result.action}}"
+            },
+            {
+              "id": "1778550436400_commonConfiguration",
+              "name": "commonConfiguration",
+              "type": "object",
+              "value": "{{$context.$nodes.PREPARE_ACCOUNT_PRODUCT_INSIGHTS_PARAMETERS.$output.result.commonConfiguration}}"
+            },
+            {
+              "id": "1778550436400_filterConfiguration",
+              "name": "filterConfiguration",
+              "type": "object",
+              "value": "{{$context.$nodes.PREPARE_ACCOUNT_PRODUCT_INSIGHTS_PARAMETERS.$output.result.filterConfiguration}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}"
+        },
+        {
+          "metadata": {
+            "name": "Generate Account Summary",
+            "workflowCode": "ORA_ACCOUNT_SUMMARY_AGENT_TEAM"
+          },
+          "outcomes": {
+            "success": "1775408843348"
+          },
+          "diagram": {
+            "x": 7120.5,
+            "y": 6557
+          },
+          "code": "GENERATE_ACCOUNT_SUMMARY",
+          "id": "1774363051196",
+          "inputs": [
+            {
+              "id": "1774363051196_message",
+              "name": "message",
+              "type": "string",
+              "value": "{{\"\"}}"
+            },
+            {
+              "id": "1774363051196_action",
+              "name": "action",
+              "type": "object",
+              "value": "{{$context.$nodes.PREPARE_ACCOUNT_SUMMARY_ACTION.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "Generate Account Brief Summary",
+            "workflowCode": "ORA_ACCOUNT_SUMMARY_AGENT_TEAM"
+          },
+          "outcomes": {
+            "success": "1775408843348"
+          },
+          "diagram": {
+            "x": 7570.5,
+            "y": 6557
+          },
+          "code": "GENERATE_ACCOUNT_BRIEF_SUMMARY",
+          "id": "1774538461889",
+          "inputs": [
+            {
+              "id": "1774363051196_message",
+              "name": "message",
+              "type": "string",
+              "value": "{{\"\"}}"
+            },
+            {
+              "id": "1774538461889_action",
+              "name": "action",
+              "type": "object",
+              "value": "{{$context.$nodes.PREPARE_ACCOUNT_BRIEF_SUMMARY_ACTION.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "Generate Contact Summary",
+            "workflowCode": "ORA_ACCOUNT_CONTACTS_SUMMARY_AGENT_TEAM"
+          },
+          "outcomes": {
+            "success": "1775408843348"
+          },
+          "diagram": {
+            "x": 8050.5,
+            "y": 6557
+          },
+          "code": "GENERATE_CONTACT_SUMMARY",
+          "id": "1774368348560",
+          "inputs": [
+            {
+              "id": "1774368348560_message",
+              "name": "message",
+              "type": "string",
+              "value": "{{\"\"}}"
+            },
+            {
+              "id": "1774368348560_action",
+              "name": "action",
+              "type": "object",
+              "value": "{{$context.$nodes.PREPARE_CONTACT_SUMMARY_ACTION.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "Generate Contact Recommendations",
+            "workflowCode": "ORA_ACCOUNT_CONTACTS_SUMMARY_AGENT_TEAM",
+            "description": ""
+          },
+          "outcomes": {
+            "success": "1775408843348"
+          },
+          "diagram": {
+            "x": 8500.5,
+            "y": 6557
+          },
+          "code": "GENERATE_CONTACT_RECOMMENDATIONS",
+          "id": "1774368474921",
+          "inputs": [
+            {
+              "id": "1774368474921_message",
+              "name": "message",
+              "type": "string",
+              "value": "{{\"\"}}"
+            },
+            {
+              "id": "1774368474921_action",
+              "name": "action",
+              "type": "object",
+              "value": "{{$context.$nodes.PREPARE_CONTACT_RECOMMENDATIONS_ACTION.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "Generate Top Contacts",
+            "workflowCode": "ORA_ACCOUNT_CONTACTS_SUMMARY_AGENT_TEAM"
+          },
+          "outcomes": {
+            "success": "1775408843348"
+          },
+          "diagram": {
+            "x": 8998.5,
+            "y": 6557
+          },
+          "code": "GENERATE_TOP_CONTACTS",
+          "id": "1774368586460",
+          "inputs": [
+            {
+              "id": "1774368586460_message",
+              "name": "message",
+              "type": "string",
+              "value": "{{\"\"}}"
+            },
+            {
+              "id": "1774368586460_action",
+              "name": "action",
+              "type": "object",
+              "value": "{{$context.$nodes.PREPARE_TOP_CONTACTS_ACTION.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "id": "1778120956025",
+          "code": "GENERATE_OPEN_OPPORTUNITY_SUMMARY",
+          "type": "LLM",
+          "metadata": {
+            "name": "Generate Open Opportunity Summary",
+            "description": "Generate a comprehensive summary of open opportunities for the current account.",
+            "modelConfiguration": {
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM",
+              "model": "OCI_GPT_5_MINI",
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              }
+            }
+          },
+          "outcomes": {
+            "success": "1775408843348"
+          },
+          "inputs": [
+            {
+              "id": "1778120956025_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "1778120956025_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "INPUT DATA SOURCES\n\nOpportunity summary data:\n{{$context.$nodes.FETCH_OPPORTUNITY_SUMMARY.$output}}\n\nOpportunity engagement insights, objectives, high-value activities, sales motion, and opportunity accessor data:\n{{$context.$nodes.FETCH_OPPORTUNITY_INSIGHTS.$output}}\n\nROLE\nYou are generating an executive-ready summary of the open opportunities for the current account for a sales manager. The workflow has already fetched the relevant opportunity data. Do not invoke tools, request more data, describe retrieval steps, or mention backend processing.\n\nTASK\nGenerate a comprehensive, business-readable summary of the account's open opportunities using only the input data above.\n\nDATA USAGE RULES\n- Treat the input data as authoritative. Do not infer, estimate, enrich, or add information that is not explicitly supported by the inputs.\n- Opportunity summary outcomes are the primary source for opportunity-level summaries and existing outcome payloads. If a field such as payload or additionalInsightData contains stringified JSON, interpret the JSON content and summarize the business meaning instead of exposing the raw string.\n- Use the Engagement Insights data to add stakeholder, engagement, objective, high-value activity, sales motion, and opportunity context when present.\n- Preserve meaningful opportunity identifiers that are user-facing, such as opportunity number or opportunity name when present. Do not display internal identifiers such as OptyId, opportunity.id, BO record id, or system-generated insight ids.\n- Do not claim that missing stakeholder, objective, activity, amount, stage, close-date, or sales-motion data means it does not exist. Treat it only as evidence not returned in the provided data.\n- If both input data sources are empty or contain no usable opportunity evidence, return exactly: <p>No open opportunity summary data was returned for this account.</p><ul></ul>\n\nSUMMARY CONTENT\nInclude only details that have supporting data:\n- Portfolio posture across open opportunities.\n- Key opportunity-level highlights.\n- Stakeholder and engagement context.\n- Objectives, high-value activities, and sales motion themes.\n- Risks, blockers, missing evidence, or seller follow-up gaps.\n- Practical next actions grounded in the provided opportunity data.\n\nHTML RESPONSE FORMAT\n- Output compact HTML only.\n- Do not use markdown.\n- Return exactly two HTML elements in this order:\n  1. One <p> element containing the opportunity summary as a single paragraph, with no heading at the beginning.\n  2. One <ul> element containing concise <li> items for supported risks, gaps, or next actions.\n- If there are no supported risks, gaps, or next actions, return an empty <ul></ul> as the second element.\n- Allowed tags: <b>, <i>, <p>, <ul>, <ol>, <li>.\n- Do not use <h1>, <h2>, <br>, markdown, <strong>, explicit newlines, extra line breaks, blank lines, tables, preambles, explanations, follow-up offers, or process commentary.\n- Use <b> tags only for important data values such as opportunity numbers, opportunity names, dates, statuses, amounts, or short risk labels. Do not bold full sentences or generic phrases.\n- Do not invent opportunity names, numbers, amounts, stages, contacts, activities, objectives, risks, or recommendations.\n- The final output must be valid HTML and contain no extra blank lines."
+            }
+          ],
+          "diagram": {
+            "x": 6961,
+            "y": 7277
+          }
+        },
+        {
+          "id": "1778550436402",
+          "code": "GENERATE_ACCOUNT_PRODUCTS_SUMMARY",
+          "type": "LLM",
+          "metadata": {
+            "name": "Generate Account Products Summary",
+            "description": "Generate a comprehensive summary of account products from the product insights workflow output.",
+            "modelConfiguration": {
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM",
+              "model": "OCI_GPT_5_MINI",
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              }
+            }
+          },
+          "outcomes": {
+            "success": "1775408843348"
+          },
+          "inputs": [
+            {
+              "id": "1778550436402_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "1778550436402_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "INPUT DATA SOURCES\n\nAccount products data:\n{{$context.$nodes.GENERATE_ACCOUNT_PRODUCT_INSIGHTS.$output.output}}\n\nROLE\nYou are generating an executive-ready summary of the products owned by the current account for a sales manager. The workflow has already generated the relevant account product insights. Do not invoke tools, request more data, describe retrieval steps, or mention backend processing.\n\nTASK\nGenerate a comprehensive, business-readable summary of the account's products using only the input data above.\n\nDATA USAGE RULES\n- Treat the input data as authoritative. Do not infer, estimate, enrich, or add information that is not explicitly supported by the inputs.\n- The Account product insights workflow output is the primary source for product hierarchy, owned products, product families, coverage, usage, whitespace, renewal, entitlement, and cross-sell or upsell context when present.\n- If the product insights output contains stringified JSON or nested product payloads, interpret the business meaning instead of exposing raw JSON or backend field names.\n- Preserve meaningful user-facing product names, product families, product groups, quantities, statuses, dates, or commercial signals when present. Do not display internal identifiers such as product ids, inventory item ids, account ids, BO record ids, workflow ids, trace ids, or system-generated insight ids.\n- Do not claim that missing usage, renewal, quantity, status, whitespace, or entitlement data means it does not exist. Treat it only as evidence not returned in the provided data.\n- If the product insights output is empty or contains no usable product evidence, return exactly: <p>No account product summary data was returned for this account.</p><ul></ul>\n\nSUMMARY CONTENT\nInclude only details that have supporting data:\n- Overall owned-product posture for the account.\n- Key product families, product lines, or notable owned products.\n- Product hierarchy, coverage, concentration, or mix patterns.\n- Renewal, usage, entitlement, adoption, whitespace, cross-sell, or upsell signals when present.\n- Risks, gaps, missing evidence, or seller follow-up actions grounded in the provided product data.\n\nHTML RESPONSE FORMAT\n- Output compact HTML only.\n- Do not use markdown.\n- Return exactly two HTML elements in this order:\n  1. One <p> element containing the account products summary as a single paragraph, with no heading at the beginning.\n  2. One <ul> element containing concise <li> items for supported risks, gaps, or next actions.\n- If there are no supported risks, gaps, or next actions, return an empty <ul></ul> as the second element.\n- Allowed tags: <b>, <i>, <p>, <ul>, <ol>, <li>.\n- Do not use <h1>, <h2>, <br>, markdown, <strong>, explicit newlines, extra line breaks, blank lines, tables, preambles, explanations, follow-up offers, or process commentary.\n- Use <b> tags only for important data values such as product names, product families, dates, statuses, quantities, amounts, or short risk labels. Do not bold full sentences or generic phrases.\n- Do not invent product names, families, quantities, statuses, dates, usage, entitlements, risks, whitespace, or recommendations.\n- The final output must be valid HTML and contain no extra blank lines."
+            }
+          ],
+          "diagram": {
+            "x": 7468,
+            "y": 7277
+          }
+        },
+        {
+          "metadata": {
+            "name": "Build Commercial Account Summary Outcome",
+            "returnType": "array",
+            "sourceCode": "let result = [];\ntry {\n  const accountData = $context.$nodes.LOAD_ACCOUNT_DATA?.$output?.[0];\n  if (!accountData) {\n    result = [];\n  } else {\n    const accountDetails = {\n      accountId: accountData.PartyId,\n      accountNumber: accountData.PartyNumber,\n      accountName: accountData.PartyName\n    };\n    const expiryTime = new Date(Date.now() + 2592000000).toISOString();\n\n    const payload = {\n      schemaVersion: \"1.0\",\n      what: {\n        title: accountDetails.accountName + \" - Account Overview\",\n        summary: $context.$nodes?.GENERATE_ACCOUNT_BRIEF_SUMMARY?.$output?.output || \"\",\n        facts: {\n          accountSummary: $context.$nodes?.GENERATE_ACCOUNT_SUMMARY?.$output?.output || \"\",\n          accountContactsSummary: $context.$nodes?.GENERATE_CONTACT_SUMMARY?.$output?.output || \"\",\n          accountContactRecommendations: $context.$nodes?.GENERATE_CONTACT_RECOMMENDATIONS?.$output?.output || \"\",\n          topContactsForThisAccount: $context.$nodes?.GENERATE_TOP_CONTACTS?.$output?.output || \"\",\n          accountNews: $context.$nodes?.GENERATE_ACCOUNT_NEWS?.$output || \"\",\n          companyProfile: $context.$nodes?.GENERATE_COMPANY_PROFILE?.$output || \"\",\n          accountOpportunitiesSummary: $context.$nodes?.GENERATE_OPEN_OPPORTUNITY_SUMMARY?.$output || \"\",\n          accountProductsSummary: $context.$nodes?.GENERATE_ACCOUNT_PRODUCTS_SUMMARY?.$output || \"\",\n          accountDetails\n        }\n      }\n    };\n\n    result = [\n      {\n        \"$operation\": \"MERGE\",\n        \"$lookupBy\": {\n          outcomeType: \"SUMMARY\",\n          outcomeSubtype: \"STATE_SUMMARY\",\n          category: \"COMMERCIAL\",\n          primaryObjectType: \"ACCOUNT\",\n          primaryObjectAltKey: accountDetails.accountNumber\n        },\n        outcomeType: \"SUMMARY\",\n        outcomeSubtype: \"STATE_SUMMARY\",\n        category: \"COMMERCIAL\",\n        primaryObjectType: \"ACCOUNT\",\n        primaryObjectKey: accountDetails.accountId,\n        primaryObjectAltKey: accountDetails.accountNumber,\n        status: \"ACTIVE\",\n        urgency: \"LOW\",\n        generatedBy: \"agent:AccountIntelligenceAgent/v1\",\n        agentJobKey: $context.$workflow.$conversationId || \"\",\n        effectiveDate: $context.$system?.$currentDateTime + \"Z\",\n        expiryTime,\n        payload: JSON.stringify(payload)\n      }\n    ];\n  }\n} catch (error) {\n  result = [];\n}\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1775408947857"
+          },
+          "diagram": {
+            "x": 6470.5,
+            "y": 7775
+          },
+          "code": "BUILD_COMMERCIAL_ACCOUNT_SUMMARY_OUTCOME",
+          "id": "1774539110756",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "id": "1775579713441",
+          "code": "PREPARE_ENGAGEMENT_AGENT_PARAMETERS",
+          "type": "CODE",
+          "metadata": {
+            "name": "Prepare Engagement Agent Parameters",
+            "returnType": "object",
+            "sourceCode": "let result = {};\ntry {\n  // Extract account number from trigger input safely\n  const accountNumber = $context.$triggers?.REST?.$input?.action?.config?.accountNumber || null;\n\n  // Compose result object with only config data as summaries are not required\n  result = {\n    config: {\n      accountNumber: accountNumber\n    }\n  };\n} catch (error) {\n  // On error, return empty structured object with nulls\n  result = {\n    config: {\n      accountNumber: null\n    }\n  };\n}\n\nreturn result;"
+          },
+          "diagram": {
+            "x": 7040.5,
+            "y": 7775
+          },
+          "outcomes": {
+            "success": "1775579468706"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1775579929851",
+          "code": "FETCH_ACCOUNTS_METADATA",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Fetch Accounts Metadata",
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "GET_OBJECT_METADATA"
+          },
+          "diagram": {
+            "x": 7565.5,
+            "y": 7775
+          },
+          "outcomes": {
+            "success": "1775141738951"
+          },
+          "inputs": [
+            {
+              "id": "1775579929851_object",
+              "name": "object",
+              "type": "string",
+              "value": "Account"
+            }
+          ],
+          "outputSpecification": ""
+        },
+        {
+          "id": "1775579999499",
+          "code": "FETCH_CONTACTS_METADATA",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Fetch Contacts Metadata",
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "GET_OBJECT_METADATA"
+          },
+          "diagram": {
+            "x": 8015.5,
+            "y": 7775
+          },
+          "outcomes": {
+            "success": "1775141738951"
+          },
+          "inputs": [
+            {
+              "id": "1775579999499_object",
+              "name": "object",
+              "type": "string",
+              "value": "Contact"
+            }
+          ]
+        },
+        {
+          "id": "1775408947857",
+          "code": "PERSIST_COMMERCIAL_ACCOUNT_SUMMARY_OUTCOME",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_AIOUTCOMESTORE",
+            "functionName": "createOutcome",
+            "name": "Persist Commercial Account Summary Outcome"
+          },
+          "diagram": {
+            "x": 6929.5,
+            "y": 7997
+          },
+          "outcomes": {
+            "success": "1775141738951"
+          },
+          "inputs": [
+            {
+              "id": "1774536542857_outcomes_payload",
+              "name": "outcomes_payload",
+              "type": "string",
+              "value": "{{$context.$nodes.BUILD_COMMERCIAL_ACCOUNT_SUMMARY_OUTCOME.$output.result}}"
+            }
+          ]
+        },
+        {
+          "id": "1775579468706",
+          "code": "INVOKE_ENGAGEMENT_SUMMARY_AGENT",
+          "type": "WORKFLOW",
+          "metadata": {
+            "name": "Invoke Engagement Summary Agent",
+            "workflowCode": "ORA_ACCOUNT_ENGAGEMENT_SUMMARY_AGENT"
+          },
+          "diagram": {
+            "x": 7517.5,
+            "y": 7997
+          },
+          "outcomes": {
+            "success": "1775408970395"
+          },
+          "inputs": [
+            {
+              "id": "1775579468706_message",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            },
+            {
+              "id": "1775579468706_action",
+              "name": "action",
+              "type": "object",
+              "value": "{{$context.$nodes.PREPARE_ENGAGEMENT_AGENT_PARAMETERS.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}"
+        },
+        {
+          "id": "1775408970395",
+          "code": "QUERY_ACCOUNT_SUMMARY_OUTCOME_ENGAGEMENT",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Query Account Summary Outcome - Engagement",
+            "businessObjectCode": "ORA_CX_SALESFORCE_AIOUTCOMESTORE",
+            "functionName": "getOutcomeBy_AltKey_Category"
+          },
+          "diagram": {
+            "x": 7174,
+            "y": 8219
+          },
+          "outcomes": {
+            "success": "1775141738951"
+          },
+          "inputs": [
+            {
+              "id": "1775408970395_ObjectType",
+              "name": "ObjectType",
+              "type": "string",
+              "value": "ACCOUNT"
+            },
+            {
+              "id": "1775408970395_ObjectAltKey",
+              "name": "ObjectAltKey",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.action.config.accountNumber}}"
+            },
+            {
+              "id": "1775408970395_OutcomeType",
+              "name": "OutcomeType",
+              "type": "string",
+              "value": "SUMMARY"
+            },
+            {
+              "id": "1775408970395_OutcomeSubType",
+              "name": "OutcomeSubType",
+              "type": "string",
+              "value": "STATE_SUMMARY"
+            },
+            {
+              "id": "1775408970395_Category",
+              "name": "Category",
+              "type": "string",
+              "value": "ENGAGEMENT"
+            }
+          ]
+        },
+        {
+          "id": "1776195889793",
+          "code": "HAS_ENGAGEMENT_SUMMARY_OUTCOME",
+          "type": "CONDITION",
+          "convergenceTargetId": "end",
+          "metadata": {
+            "name": "Has Engagement Summary Outcome?"
+          },
+          "diagram": {
+            "x": 6992.5,
+            "y": 8717
+          },
+          "outcomes": {
+            "true": "1775141997842",
+            "false": ""
+          },
+          "inputs": [
+            {
+              "id": "1776195889793_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_ACCOUNT_SUMMARY_OUTCOME_ENGAGEMENT.$output?.items?.length > 0}}"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "name": "Has Account Summary Outcome?"
+          },
+          "outcomes": {
+            "true": "1775141803312",
+            "false": ""
+          },
+          "diagram": {
+            "x": 7481.5,
+            "y": 8717
+          },
+          "code": "HAS_ACCOUNT_SUMMARY_OUTCOME",
+          "convergenceTargetId": "end",
+          "id": "1774540405799",
+          "inputs": [
+            {
+              "id": "1774540405799_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.BUILD_COMMERCIAL_ACCOUNT_SUMMARY_OUTCOME.$output.result?.length > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Compute Insights Based on Account and Contacts Rollups",
+            "name": "Generate Engagement Insights",
+            "modelConfiguration": {
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM",
+              "model": "OCI_GPT_5_MINI",
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              }
+            }
+          },
+          "diagram": {
+            "x": 7006,
+            "y": 8939
+          },
+          "outcomes": {
+            "success": "1775406653411"
+          },
+          "id": "1775141997842",
+          "code": "GENERATE_ENGAGEMENT_INSIGHTS",
+          "type": "LLM",
+          "inputs": [
+            {
+              "id": "1775141803312_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "1775141803312_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Your job is to analyze engagement signals for a single account and produce outcomes\nin JSON only. You may generate these engagement outcomes: - RISK - HEALTH - EXPANSION\n\n======================== DATA SOURCES ========================\n- DATASOURCE1: Summary outcomes payload {{$context.$nodes.QUERY_ACCOUNT_SUMMARY_OUTCOME_ENGAGEMENT.$output}}\n- DATASOURCE2: Account data and account rollup {{$context.$nodes.LOAD_ACCOUNT_DATA.$output}} and\n  it's attribute metadata {{$context.$nodes.FETCH_ACCOUNTS_METADATA.$output}}\n- DATASOURCE3: Contact data and contact rollup {{$context.$nodes.LOAD_ACCOUNT_CONTACTS.$output}} and\n  it's attribute metadata {{$context.$nodes.FETCH_CONTACTS_METADATA.$output}}\n- DATASOURCE4: Renewal Date from AccountRollup.NextSubsRenewalDate {{$context.$nodes.LOAD_ACCOUNT_DATA.$output?.[0]?.AccountRollup?.NextSubsRenewalDate}}\n\n======================== ENGAGEMENT DATA USAGE RULES ========================\nUse DATASOURCE1 as the primary source of truth for engagement interpretation, posture,\nmomentum, and insight generation. Use DATASOURCE2 and DATASOURCE3 only as reference\nrollup data for engagement-related context such as:\n- activity presence or absence\n- recent engagement volume\n- engagement continuity\n\nDo not use DATASOURCE2 or DATASOURCE3 for anything non-engagement related.\nDo not use DATASOURCE2 or DATASOURCE3 to infer product, industry, pipeline, commercial\nstrategy, or account context unless that information is explicitly part of engagement\nrollup data already present in those sources.\n\nUse DATASOURCE4 only to determine whether HEALTH is allowed based on the renewal window.\n\n======================== ENGAGEMENT DECISION LOGIC ========================\nAssess current engagement quality, stakeholder coverage, and momentum.\nGenerate RISK when evidence shows one or more of:\n- stale recent activity, or broadly missing engagement evidence only when the engagement-category coverage rule below is satisfied\n- low touches, calls, emails, meetings, or responses\n- weak stakeholder coverage\n- missing decision-makers or buying roles\n- activity that is too narrow for the current renewal or pipeline posture\n\nEngagement-category coverage rule for DATASOURCE1:\n- Treat DATASOURCE1 as a collection of engagement categories or sections, such as opportunity, contact or account engagement.\n- Do not generate RISK merely because one engagement category or section is missing, empty, unavailable, or not returned.\n- Missing engagement coverage can support RISK only when engagement evidence is broadly absent across the relevant DATASOURCE1 engagement categories, or when separate evidence shows low, stale, or unhealthy engagement.\n- If any engagement category has usable evidence, evaluate that evidence against the rest of the engagement rules and return [] unless another clear RISK condition is supported.\n\nGenerate HEALTH only when:\n- the renewal window is approaching within 6 months, based on DATASOURCE4 Renewal Date from AccountRollup.NextSubsRenewalDate,\n  and\n- evidence shows recent and repeated activity\n- multiple active contacts or healthy stakeholder coverage\n- engagement aligned to the current commercial motion\n\nIf DATASOURCE4 is missing or the renewal window is not within 6 months, do not generate HEALTH.\n\nGenerate EXPANSION only when engagement is especially strong and clearly supports growth:\n- strong recent activity\n- breadth across relevant contacts\n- decision-maker participation\n- engagement aligned to pipeline or whitespace opportunities\n\nRules:\n- Prefer one primary posture. Do not output both HEALTH and RISK unless the evidence clearly supports separate concurrent states.\n- Do not generate EXPANSION from engagement alone unless momentum is strong.\n- Use only the strongest 2-5 reasons.\n- If signals are weak or mixed, return [].\n- Return valid JSON only.\n\n======================== OUTPUT FORMAT ========================\nReturn an array containing zero or more outcome objects ordered as:\n1. RISK\n2. HEALTH\n3. EXPANSION\n\nEach outcome object must follow this schema:\n{\n  \"schemaVersion\": \"1.0\",\n  \"what\": {\n    \"title\": \"string\",\n    \"summary\": \"string\",\n    \"facts\": {\n      \"actionableSignal\": \"HEALTH | RISK | EXPANSION\"\n    }\n  },\n  \"why\": {\n    \"summary\": \"string (optional)\",\n    \"reasons\": [\n      {\n        \"type\": \"METRIC | SIGNAL | EVENT | DOCUMENT\",\n        \"label\": \"string\",\n        \"value\": \"string\"\n      }\n    ]\n  }\n}\n\nRules:\n- Do not invent fields outside this schema.\n- Keep what.facts limited to actionableSignal only.\n- Put all evidence in why.reasons.\n- Use concise business-readable summaries.\n- Do not output anything outside JSON.\n- Return strictly valid JSON only, with no extra text, formatting, or markdown.\n- Do not include any explanations, comments, or non-JSON output."
+            }
+          ],
+          "outputSpecification": ""
+        },
+        {
+          "metadata": {
+            "description": "Compute Insights Based on Account and Contacts Rollups",
+            "name": "Generate Commercial Insights",
+            "modelConfiguration": {
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM",
+              "model": "OCI_GPT_5_MINI",
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              }
+            }
+          },
+          "diagram": {
+            "x": 7468,
+            "y": 8939
+          },
+          "outcomes": {
+            "success": "1775406398900"
+          },
+          "id": "1775141803312",
+          "code": "GENERATE_COMMERCIAL_INSIGHTS",
+          "type": "LLM",
+          "inputs": [
+            {
+              "id": "1775141803312_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "1775141803312_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Your job is to analyze the provided data sources for a single account and produce outcomes in JSON only.\n\nYou must generate insight outcomes for these types:\n- RISK\n- RENEWAL\n- EXPANSION\n\n========================\nCORE BUSINESS RULES\n========================\n\n1. Evaluate all three types independently:\n   - RISK\n   - RENEWAL\n   - EXPANSION\n\n2. Do NOT suppress RENEWAL if RISK exists.\n   - RENEWAL should only be generated when renewal signals exist.\n\n3. Do NOT suppress EXPANSION if RISK exists.\n   - EXPANSION should only be generated when clearly supported by strong signals.\n\n4. Do NOT force generation of RISK.\n   - If no meaningful negative signals exist, do NOT generate a RISK outcome.\n\n========================\nDATA SOURCES\n========================\n\n- DATASOURCE1: Summary outcomes payload {{$context.$nodes.BUILD_COMMERCIAL_ACCOUNT_SUMMARY_OUTCOME.$output.result?.[0].payload}}\n  - Contains:\n    - Account summary and overview\n    - Contact summaries and recommendations\n    - Open opportunities summary, objectives and stakeholders information.\n    - Account product summary information when present.\n    - External signals such as news, company profile, leadership changes, etc.\n\n- DATASOURCE2: Account data and account rollup {{$context.$nodes.LOAD_ACCOUNT_DATA.$output}} and it's attribute metadata {{$context.$nodes.FETCH_ACCOUNTS_METADATA.$output}}\n  - Contains:\n    - Raw account attributes (identity, segmentation)\n    - Account-level rollup metrics (subscriptions, pipeline, engagement, service)\n\n- DATASOURCE3: Contact data and contact rollup {{$context.$nodes.LOAD_ACCOUNT_CONTACTS.$output}} and it's attribute metadata {{$context.$nodes.FETCH_CONTACTS_METADATA.$output}}\n  - Contains:\n    - Raw contact attributes (roles, titles, buying roles)\n    - Contact-level rollup metrics (engagement, opportunities, service interactions)\n\n- DATASOURCE4: Renewal Date from AccountRollup.NextSubsRenewalDate {{$context.$nodes.LOAD_ACCOUNT_DATA.$output?.[0]?.AccountRollup?.NextSubsRenewalDate}}\n\n- DATASOURCE5: Open opportunity engagement insights, objectives, high-value activities, sales motion, and opportunity accessor data {{$context.$nodes.FETCH_OPPORTUNITY_INSIGHTS.$output}}\n  - Contains opportunity-level engagement insight data, objectives, high-value activities, sales motion, and opportunity context.\n  - Use this as direct evidence for stakeholder coverage, engagement quality, objective progress, activity status, and sales-motion alignment when present.\n\n- DATASOURCE6: Account product insights output {{$context.$nodes.GENERATE_ACCOUNT_PRODUCT_INSIGHTS.$output.output}}\n  - Contains generated account product insights, owned-product context, product hierarchy, product-family coverage, product mix, whitespace, renewal, entitlement, adoption, cross-sell, and upsell signals when present.\n  - Use this as direct evidence for product footprint, commercial expansion potential, product concentration, renewal or adoption concerns, and seller follow-up needs when present.\n\n========================\nOPPORTUNITY AND PRODUCT DATA USAGE RULES\n========================\n\nUse DATASOURCE5 as the direct opportunity-level evidence source. Do not use open-opportunity summary outcomes as a separate datasource; DATASOURCE5 contains the underlying opportunity engagement, objective, high-value activity, sales-motion, and accessor data needed for opportunity-related insight generation.\n\nUse DATASOURCE6 as the direct account-product evidence source. Product insights should influence RISK, RENEWAL, and EXPANSION decisions when they provide supported product footprint, renewal, adoption, whitespace, cross-sell, upsell, concentration, or entitlement signals.\n\nUse DATASOURCE1 for already-generated account-level summaries and external context. Treat DATASOURCE1 as summary context, not as a substitute for the more detailed opportunity evidence in DATASOURCE5 or product evidence in DATASOURCE6.\n\nIf payload or additionalInsightData contains stringified JSON, interpret the JSON content and use the business meaning. Do not copy raw JSON strings into the output.\n\nDo not expose internal identifiers such as OptyId, opportunity.id, product id, inventory item id, BO record id, workflow id, job id, trace id, or engagementInsightNumber in titles, summaries, or reasons. Prefer user-facing opportunity names, opportunity numbers, product names, product families, account names, contact roles, or business labels when present.\n\nDo not claim that missing opportunity stakeholders, objectives, high-value activities, stages, amounts, close dates, product usage, product quantity, entitlement, renewal, adoption, or whitespace data mean they do not exist. Treat missing fields only as evidence not returned in the provided data.\n\n========================\nDECISION LOGIC (NO SCORING)\n========================\n\nMake decisions based on strength and combination of signals.\n\n------------------------\nRISK CONDITIONS\n------------------------\nGenerate RISK only if meaningful negative signals exist:\n\n- Weak stakeholder coverage:\n  - zero or very low decision-maker contacts\n  - missing buying roles\n  - DATASOURCE5 showing weak stakeholder coverage or missing engagement with key roles\n\n- Low engagement:\n  - stale or missing last touch, call, or email\n  - low touches, calls, emails, or responses\n  - DATASOURCE5 showing limited engagement, stalled objectives, blocked high-value activities, or weak activity progress\n\n- High service burden:\n  - open critical service requests\n  - open service requests\n  - critical SRs waiting on support\n\n- Weak commercial posture:\n  - limited or unbalanced pipeline\n  - opportunities without supporting engagement\n  - DATASOURCE5 showing blockers, stalled motion, inactive objectives, or unresolved follow-up gaps\n  - DATASOURCE6 showing product adoption gaps, renewal exposure, narrow product footprint, concentration risk, or product follow-up gaps\n\n- Negative external signals:\n  - layoffs, leadership changes, restructuring, incidents\n\nDo NOT generate RISK if:\n- engagement is healthy\n- stakeholder coverage is sufficient\n- opportunity objectives and high-value activities show healthy progress\n- DATASOURCE6 shows stable product footprint without supported adoption, renewal, entitlement, or concentration concerns\n- no service or external issues exist\n\n------------------------\nRENEWAL CONDITIONS\n------------------------\nGenerate RENEWAL if renewal signals exist, including:\n\n- renewal date explicitly present\n- renewal date approaching within 6 months\n- upcoming renewals MRR\n- subscriptions expiring\n- assets expiring\n- DATASOURCE6 showing product, entitlement, subscription, or adoption signals that materially affect renewal posture\n\nRENEWAL should:\n- Describe renewal posture\n- Indicate whether it is stable or at risk\n\nDo NOT generate RENEWAL if no renewal signals exist.\n\n------------------------\nEXPANSION CONDITIONS\n------------------------\nGenerate EXPANSION only when strong commercial momentum exists:\n\nStrong signals:\n- meaningful open opportunity revenue\n- multiple opportunities or strong pipeline\n- qualified or hot leads\n- strong engagement signals\n- sufficient stakeholder coverage\n- DATASOURCE5 showing active opportunity progress, aligned sales motion, healthy objectives, completed or progressing high-value activities, or strong stakeholder engagement\n- DATASOURCE6 showing clear whitespace, cross-sell, upsell, product-family expansion, complementary product fit, or broader product adoption opportunity\n\nModerate signals:\n- single opportunity with reasonable value\n- some engagement but limited coverage\n- DATASOURCE5 showing partial objective progress or limited sales-motion evidence\n- DATASOURCE6 showing possible product expansion or whitespace but limited supporting commercial momentum\n\nTone rules:\n- Strong signals -> \"Strong Expansion Potential\"\n- Moderate signals -> \"Moderate Expansion Potential\"\n- Weak signals -> DO NOT generate EXPANSION\n\nDo NOT generate EXPANSION if:\n- only a single weak signal exists\n- engagement is low or missing\n- stakeholder coverage is insufficient\n- DATASOURCE5 shows stalled motion without clear positive momentum\n- DATASOURCE6 does not provide supported whitespace, cross-sell, upsell, product adoption, or product-fit evidence\n\n========================\nSIGNAL GROUPING MODEL\n========================\n\nUse these dimensions implicitly:\n\nINVESTMENT:\n- subscriptions, renewals, pipeline, revenue\n\nENGAGEMENT:\n- touches, calls, emails, responses, opportunity engagement insights, stakeholder coverage\n\nSATISFACTION:\n- service requests, critical issues\n\nPRODUCT FOOTPRINT:\n- owned products, product hierarchy, product mix, adoption, entitlements, concentration, whitespace, cross-sell, upsell\n\nOPPORTUNITY EXECUTION:\n- objectives, high-value activities, sales motion, blockers, next actions\n\n========================\nATTRIBUTION RULES\n========================\n\nIn what.facts:\n\n- actionableSignal:\n  - RISK -> \"RISK\"\n  - RENEWAL ->\n      - \"HEALTH\" if stable\n      - \"RISK\" if renewal is at risk\n  - EXPANSION -> \"EXPANSION\"\n\nFacts must contain attribution only (no metrics).\n\n========================\nWHY SECTION RULES\n========================\n\nAll evidence must go into why.reasons.\n\nEach reason must include:\n- type\n- label\n- value\n\nAllowed types:\n- METRIC\n- SIGNAL\n- EVENT\n- DOCUMENT\n\nGuidelines:\n- METRIC -> numeric values from rollups\n- SIGNAL -> derived insights, including engagement quality, stakeholder coverage, opportunity objective progress, high-value activity status, sales-motion alignment, product footprint, product adoption, renewal exposure, whitespace, cross-sell, upsell, or weak coverage\n- EVENT -> external signals\n- DOCUMENT -> summary-based evidence from DATASOURCE1 or generated account product insight evidence from DATASOURCE6\n\nUse only the strongest 2-5 reasons.\n\n========================\nOUTPUT FORMAT\n========================\n\nReturn ONLY valid JSON.\n\nReturn an array containing outcome objects:\n- optional RISK object\n- optional RENEWAL object\n- optional EXPANSION object\n\nOnly include an outcome if there is sufficient evidence.\n\nOrder the array as:\n1. RISK\n2. RENEWAL\n3. EXPANSION\n\nEach outcome object must follow this schema:\n\n{\n  \"schemaVersion\": \"1.0\",\n  \"what\": {\n    \"title\": \"string\",\n    \"summary\": \"string\",\n    \"facts\": {\n      \"actionableSignal\": \"HEALTH | RISK | EXPANSION\"\n    }\n  },\n  \"why\": {\n    \"summary\": \"string (optional)\",\n    \"reasons\": [\n      {\n        \"type\": \"METRIC | SIGNAL | EVENT | DOCUMENT\",\n        \"label\": \"string\",\n        \"value\": \"string\"\n      }\n    ]\n  }\n}\n\nRules:\n- Do not invent fields outside this schema\n- what.facts = attribution only\n- all evidence goes in why.reasons\n- include only 2-5 strong reasons\n- if no outcomes apply, return []\n\n========================\nWRITING STYLE\n========================\n\n- Titles: short and action-oriented\n- Summaries: 1-3 sentences, clear and business-readable\n- Reasons: concise and evidence-based\n- Do not hallucinate\n- Do not output anything outside JSON\n\n========================\nFINAL INSTRUCTION\n========================\n\nBe deterministic, consistent, and grounded in signals.\n\nOutput JSON only."
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"schemaVersion\": {\n        \"type\": \"string\"\n      },\n      \"what\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"title\": {\n            \"type\": \"string\"\n          },\n          \"summary\": {\n            \"type\": \"string\"\n          },\n          \"facts\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"actionableSignal\": {\n                \"type\": \"string\"\n              }\n            },\n            \"required\": [\n              \"actionableSignal\"\n            ],\n            \"additionalProperties\": false\n          }\n        },\n        \"required\": [\n          \"title\",\n          \"summary\",\n          \"facts\"\n        ],\n        \"additionalProperties\": false\n      },\n      \"why\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"summary\": {\n            \"type\": \"string\"\n          },\n          \"reasons\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"type\": {\n                  \"type\": \"string\"\n                },\n                \"label\": {\n                  \"type\": \"string\"\n                },\n                \"value\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"type\",\n                \"label\",\n                \"value\"\n              ],\n              \"additionalProperties\": false\n            }\n          }\n        },\n        \"required\": [\n          \"summary\",\n          \"reasons\"\n        ],\n        \"additionalProperties\": false\n      }\n    },\n    \"required\": [\n      \"schemaVersion\",\n      \"what\",\n      \"why\"\n    ],\n    \"additionalProperties\": false\n  }\n}"
+        },
+        {
+          "id": "1775406653411",
+          "code": "PERSIST_ENGAGEMENT_INSIGHT_OUTCOMES",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Persist Engagement Insight Outcomes",
+            "referenceableBlockId": "PERSIST_INSIGHTS_REFERENCE_BLOCK"
+          },
+          "diagram": {
+            "x": 6943,
+            "y": 9161
+          },
+          "outcomes": {
+            "success": "1775165248912"
+          },
+          "inputs": [
+            {
+              "id": "1775406398900_InsightOutcomeFromLLM",
+              "name": "InsightOutcomeFromLLM",
+              "type": "object",
+              "value": "{{$context.$nodes.GENERATE_ENGAGEMENT_INSIGHTS.$output}}"
+            },
+            {
+              "id": "1775406653411_Category",
+              "name": "Category",
+              "type": "string",
+              "value": "ENGAGEMENT"
+            }
+          ]
+        },
+        {
+          "id": "1775406398900",
+          "code": "PERSIST_COMMERCIAL_INSIGHT_OUTCOMES",
+          "type": "REFERENCE",
+          "metadata": {
+            "name": "Persist Commercial Insight Outcomes",
+            "referenceableBlockId": "PERSIST_INSIGHTS_REFERENCE_BLOCK"
+          },
+          "diagram": {
+            "x": 7468,
+            "y": 9161
+          },
+          "outcomes": {
+            "success": "1775165248912"
+          },
+          "inputs": [
+            {
+              "id": "1775406398900_InsightOutcomeFromLLM",
+              "name": "InsightOutcomeFromLLM",
+              "type": "object",
+              "value": "{{$context.$nodes.GENERATE_COMMERCIAL_INSIGHTS.$output}}"
+            },
+            {
+              "id": "1775406398900_Category",
+              "name": "Category",
+              "type": "string",
+              "value": "COMMERCIAL"
+            }
+          ]
+        },
+        {
+          "id": "1775405855091",
+          "code": "PERSIST_INSIGHTS_REFERENCE_BLOCK",
+          "type": "REFERENCEABLEBLOCK",
+          "metadata": {
+            "name": "Persist Insights Reference Block",
+            "dataPipeline": {
+              "rootNode": "start_1775405855091",
+              "pipelineNodes": [
+                {
+                  "id": "start_1775405855091",
+                  "code": "START",
+                  "type": "START",
+                  "metadata": {
+                    "description": "Start of data pipeline",
+                    "name": "Start"
+                  },
+                  "diagram": {
+                    "x": 10185.5,
+                    "y": 5090
+                  },
+                  "outcomes": {
+                    "success": "1778120450138"
+                  },
+                  "inputs": []
+                },
+                {
+                  "id": "1778120450138",
+                  "code": "BUILD_INACTIVATE_PAYLOAD",
+                  "type": "CODE",
+                  "metadata": {
+                    "name": "Build Inactivate Payload",
+                    "returnType": "array",
+                    "sourceCode": "const items = [];\nconst outcomeType = 'INSIGHT';\nconst category = $context.$input.Category;\nconst primaryObjectType = 'ACCOUNT';\nconst primaryObjectAltKey = $context.$triggers.REST.$input.action.config.accountNumber;\nconst status = 'EXPIRED';\nconst expiryTime = new Date().toISOString();\n\n[ 'HEALTH_ASSESSMENT', 'RISK_ASSESSMENT', 'GROWTH_ASSESSMENT'].forEach( outcomeSubtype => {\n  items.push( {\n    '$operation': 'MERGE',\n    '$lookupBy': {\n      outcomeType,\n      outcomeSubtype,\n      category,\n      primaryObjectType,\n      primaryObjectAltKey\n    },\n    status,\n    expiryTime\n  });\n});\n\nreturn items;"
+                  },
+                  "diagram": {
+                    "x": 10036,
+                    "y": 5241
+                  },
+                  "outcomes": {
+                    "success": "1778120956016"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "id": "1778120956016",
+                  "code": "INACTIVATE_EXISTING_INSIGHTS",
+                  "type": "BO_FUNCTION",
+                  "metadata": {
+                    "name": "Inactivate Existing Insights",
+                    "businessObjectCode": "ORA_CX_SALESFORCE_AIOUTCOMESTORE",
+                    "functionName": "createOutcome"
+                  },
+                  "diagram": {
+                    "x": 10030,
+                    "y": 5463
+                  },
+                  "outcomes": {
+                    "success": "1775405860106"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1778120956016_outcomes_payload",
+                      "name": "outcomes_payload",
+                      "value": "{{$context.$nodes.BUILD_INACTIVATE_PAYLOAD.$output.result}}",
+                      "required": false,
+                      "type": "string"
+                    }
+                  ],
+                  "outputSpecification": ""
+                },
+                {
+                  "id": "1775405860106",
+                  "code": "BUILD_INSIGHT_OUTCOMES",
+                  "type": "CODE",
+                  "metadata": {
+                    "name": "Build Insight Outcomes",
+                    "sourceCode": "let result = [];\ntry {\n  const rawOutcomes = $context.$input?.InsightOutcomeFromLLM;\n  const llmOutcomes = Array.isArray(rawOutcomes)\n    ? rawOutcomes\n    : rawOutcomes && typeof rawOutcomes === \"object\" && Array.isArray(rawOutcomes.items)\n      ? rawOutcomes.items\n      : [];\n  const accountId = $context.$variables?.accountId;\n  const accountNumber = $context.$triggers?.REST?.$input?.action?.config?.accountNumber;\n  const agentJobKey = $context.$workflow?.$conversationId || null;\n  const expiryTime = new Date(Date.now() + 2592000000).toISOString();\n\n  result = llmOutcomes\n    .filter((outcome) => outcome && outcome.what && outcome.what.facts && outcome.what.facts.actionableSignal)\n    .map((outcome) => {\n      const actionableSignal = outcome.what.facts.actionableSignal;\n      const outcomeSubtype = actionableSignal === \"RISK\"\n        ? \"RISK_ASSESSMENT\"\n        : actionableSignal === \"HEALTH\"\n          ? \"HEALTH_ASSESSMENT\"\n          : actionableSignal === \"EXPANSION\"\n            ? \"GROWTH_ASSESSMENT\"\n            : null;\n\n      if (!outcomeSubtype || !accountId || !accountNumber) {\n        return null;\n      }\n\n      return {\n        \"$operation\": \"MERGE\",\n        \"$lookupBy\": {\n          outcomeType: \"INSIGHT\",\n          outcomeSubtype,\n          category: $context.$input?.Category,\n          primaryObjectType: \"ACCOUNT\",\n          primaryObjectAltKey: accountNumber\n        },\n        outcomeType: \"INSIGHT\",\n        outcomeSubtype,\n        category: $context.$input?.Category,\n        primaryObjectType: \"ACCOUNT\",\n        primaryObjectKey: accountId,\n        primaryObjectAltKey: accountNumber,\n        status: \"ACTIVE\",\n        urgency: outcomeSubtype === \"RISK_ASSESSMENT\" ? \"HIGH\" : outcomeSubtype === \"HEALTH_ASSESSMENT\" ? \"MEDIUM\" : \"LOW\",\n        generatedBy: \"agent:AccountIntelligenceAgent/v1\",\n        agentJobKey,\n        effectiveDate: new Date().toISOString(),\n        expiryTime,\n        payload: JSON.stringify(outcome)\n      };\n    })\n    .filter(Boolean);\n} catch (error) {\n  result = [];\n}\n\nreturn result;",
+                    "returnType": "array"
+                  },
+                  "diagram": {
+                    "x": 10036,
+                    "y": 5685
+                  },
+                  "outcomes": {
+                    "success": "1775406055452"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "id": "1775406055452",
+                  "code": "PERSIST_INSIGHTS",
+                  "type": "BO_FUNCTION",
+                  "metadata": {
+                    "name": "Persist  Insights",
+                    "businessObjectCode": "ORA_CX_SALESFORCE_AIOUTCOMESTORE",
+                    "functionName": "createOutcome"
+                  },
+                  "diagram": {
+                    "x": 10036,
+                    "y": 5907
+                  },
+                  "outcomes": {
+                    "success": "1775409576175"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1775141876016_outcomes_payload",
+                      "name": "outcomes_payload",
+                      "type": "string",
+                      "value": "{{$context.$nodes.BUILD_INSIGHT_OUTCOMES.$output.result}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "1775409576175",
+                  "code": "BUILD_INSIGHTS_REFERENCE_BLOCK_OUTPUT",
+                  "type": "CODE",
+                  "metadata": {
+                    "name": "Build Insights Reference Block Output",
+                    "sourceCode": "let result = {};\ntry {\n  // Safely access inputs and outputs from upstream nodes\n  const outcomesPayload = $context.$nodes?.PERSIST_INSIGHTS?.$input?.outcomes_payload || {};\n  const persistOutput = $context.$nodes?.PERSIST_INSIGHTS?.$output || {};\n\n  // Merge the two objects, later properties overwrite earlier ones if keys overlap\n  result = { ...outcomesPayload, ...persistOutput };\n} catch (error) {\n  // On error, return empty object to satisfy return type\n  result = {};\n}\n\nreturn result;",
+                    "returnType": "object"
+                  },
+                  "diagram": {
+                    "x": 9989.5,
+                    "y": 6129
+                  },
+                  "outcomes": {
+                    "success": "1775406094299"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "id": "1775406094299",
+                  "code": "RETURN_INSIGHT_REFERENCE_BLOCK_OUTPUT",
+                  "type": "RETURN",
+                  "metadata": {
+                    "name": "Return Insight Reference Block Output"
+                  },
+                  "diagram": {
+                    "x": 9989.5,
+                    "y": 6351
+                  },
+                  "outcomes": {},
+                  "inputs": [
+                    {
+                      "id": "1775406094299_returnValue",
+                      "name": "returnValue",
+                      "type": "string",
+                      "value": "{{$context.$nodes.BUILD_INSIGHTS_REFERENCE_BLOCK_OUTPUT.$output.result}} "
+                    }
+                  ]
+                },
+                {
+                  "id": "end_1775405855091",
+                  "code": "END",
+                  "type": "END",
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "inputs": []
+                }
+              ],
+              "variables": [
+                {
+                  "id": "1775406702396",
+                  "name": "Category",
+                  "type": "string"
+                },
+                {
+                  "id": "1775406191145",
+                  "name": "InsightOutcomeFromLLM",
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          "diagram": {
+            "x": 9886,
+            "y": 5000,
+            "width": 600,
+            "height": 1458
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": []
+        },
+        {
+          "id": "1775413858876",
+          "code": "EXTERNAL_CONTENT_REFERENCE_BLOCK",
+          "type": "REFERENCEABLEBLOCK",
+          "metadata": {
+            "name": "External Content Reference Block",
+            "dataPipeline": {
+              "rootNode": "start_1775413858876",
+              "pipelineNodes": [
+                {
+                  "id": "start_1775413858876",
+                  "code": "START",
+                  "type": "START",
+                  "metadata": {
+                    "description": "Start of data pipeline",
+                    "name": "Start"
+                  },
+                  "diagram": {
+                    "x": 10986.5,
+                    "y": 5090
+                  },
+                  "outcomes": {
+                    "success": "1775413975549"
+                  },
+                  "inputs": []
+                },
+                {
+                  "id": "1775413975549",
+                  "code": "ISEXTERNALCONTENTENABLED",
+                  "type": "CONDITION",
+                  "convergenceTargetId": "end",
+                  "metadata": {
+                    "name": "IsExternalContentEnabled"
+                  },
+                  "diagram": {
+                    "x": 10837,
+                    "y": 5241
+                  },
+                  "outcomes": {
+                    "true": "1775414028734",
+                    "false": "1775421563124"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1775176923786_condition",
+                      "name": "condition",
+                      "type": "string",
+                      "value": "{{$context.$input.ExternalSourcesEnabled  === true}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "1775414028734",
+                  "code": "BUILD_EXTERNAL_REQUEST",
+                  "type": "CODE",
+                  "metadata": {
+                    "name": "Build External Request",
+                    "returnType": "object",
+                    "sourceCode": "const contentType = $context.$input.ContentType;\nconst accountNumber = $context.$input.accountNumber;\n\nreturn {\n  name: contentType,\n  config: {\n    accountNumber\n  }\n};"
+                  },
+                  "diagram": {
+                    "x": 10606,
+                    "y": 5463
+                  },
+                  "outcomes": {
+                    "success": "1775414039587"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "id": "1775421563124",
+                  "code": "RETURN_EXTERNAL_OUTPUT_BLANK",
+                  "type": "RETURN",
+                  "metadata": {
+                    "name": "Return External Output Blank"
+                  },
+                  "diagram": {
+                    "x": 11056,
+                    "y": 5463
+                  },
+                  "outcomes": {},
+                  "inputs": [
+                    {
+                      "id": "1775414331244_returnValue",
+                      "name": "returnValue",
+                      "type": "string",
+                      "value": ""
+                    }
+                  ]
+                },
+                {
+                  "id": "1775414039587",
+                  "code": "RUN_EXTERNAL_REQUEST",
+                  "type": "WORKFLOW",
+                  "metadata": {
+                    "name": "Run External Request",
+                    "workflowCode": "ORA_ORGANIZATION_RESEARCH_AGENT_TEAM"
+                  },
+                  "diagram": {
+                    "x": 10837,
+                    "y": 5685
+                  },
+                  "outcomes": {
+                    "success": "1775414331244"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1775154619044_message",
+                      "name": "message",
+                      "type": "string",
+                      "value": "{{\"\"}}"
+                    },
+                    {
+                      "id": "1775414039587_action",
+                      "name": "action",
+                      "type": "object",
+                      "value": "{{$context.$nodes.BUILD_EXTERNAL_REQUEST.$output.result}}"
+                    }
+                  ],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}"
+                },
+                {
+                  "id": "1775414331244",
+                  "code": "RETURN_EXTERNAL_OUTPUT_SUCCESS",
+                  "type": "RETURN",
+                  "metadata": {
+                    "name": "Return External Output Success"
+                  },
+                  "diagram": {
+                    "x": 10822,
+                    "y": 5907
+                  },
+                  "outcomes": {},
+                  "inputs": [
+                    {
+                      "id": "1775414331244_returnValue",
+                      "name": "returnValue",
+                      "type": "string",
+                      "value": "{{$context.$nodes.RUN_EXTERNAL_REQUEST.$output.output}} "
+                    }
+                  ]
+                },
+                {
+                  "id": "end_1775413858876",
+                  "code": "END",
+                  "type": "END",
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "inputs": []
+                }
+              ],
+              "variables": [
+                {
+                  "id": "1778814428859",
+                  "name": "accountNumber",
+                  "type": "string"
+                },
+                {
+                  "id": "1775413952177",
+                  "name": "ContentType",
+                  "type": "string"
+                },
+                {
+                  "id": "1775413893886",
+                  "name": "ExternalSourcesEnabled",
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          "diagram": {
+            "x": 10586,
+            "y": 5000,
+            "width": 802,
+            "height": 1014
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": []
+        },
+        {
+          "id": "1778120956018",
+          "code": "PREPARE_OPPORTUNITY_SUMMARY_PARAMETERS",
+          "type": "CODE",
+          "metadata": {
+            "name": "Prepare Opportunity Summary Parameters",
+            "sourceCode": "const records = $context.$nodes.LOAD_OPEN_OPPORTUNITIES?.$output || [];\n\nconst objectAltKeys = records\n  .map((record) => record?.OptyNumber)\n  .filter((value) => value !== null && value !== undefined)\n  .map((value) => String(value).trim())\n  .filter((value) => value.length > 0);\n\nreturn {\n  objectType: \"OPPORTUNITY\",\n  objectAltKeys\n};",
+            "returnType": "object"
+          },
+          "outcomes": {
+            "success": "1778120956019"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 5507.5,
+            "y": 6798
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1778120956020",
+          "code": "PREPARE_OPPORTUNITY_INSIGHTS_PAYLOAD",
+          "type": "CODE",
+          "metadata": {
+            "name": "Prepare Opportunity Insights Payload",
+            "sourceCode": "const records = $context.$nodes.LOAD_OPEN_OPPORTUNITIES?.$output || [];\n\nconst opportunityIds = records\n  .map((record) => record?.OptyId)\n  .filter((value) => value !== null && value !== undefined)\n  .map((value) => String(value).trim())\n  .filter((value) => value.length > 0);\n\nconst filterValues = opportunityIds.length > 0 ? opportunityIds.join(\", \") : \"-1\";\n\nconst result = {\n  collection: {\n    filter: \"opportunity.id in (\" + filterValues + \")\"\n  },\n  fields: [\n    \"id\",\n    \"engagementInsightNumber\",\n    \"additionalInsightData\"\n  ],\n  accessors: {\n    objectives: {\n      collection: {\n        sortBy: [\n          { \"objectiveDesignTime.displaySequence\": \"asc\" }\n        ]\n      },\n      accessors: {\n        highValueActivities: {\n          collection: {\n            sortBy: [\n              { \"highValueActivityDesignTime.displaySequence\": \"asc\" }\n            ]\n          },\n          fields: [\n            \"highValueActivityNumber\",\n            \"highValueActivityStatus\",\n            \"justification\"\n          ],\n          accessors: {\n            highValueActivityDesignTime: {\n              fields: [\"name\"]\n            }\n          }\n        },\n        objectiveDesignTime: {\n          fields: [\"name\", \"description\"]\n        }\n      },\n      fields: [\"objectiveNumber\", \"objectiveStatus\", \"timeUpdated\"]\n    },\n    salesMotion: {\n      fields: [\"name\"]\n    },\n    opportunity: {}\n  }\n};\n\nreturn result;",
+            "returnType": "object"
+          },
+          "outcomes": {
+            "success": "1778120956022"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 6059.5,
+            "y": 6798
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1778120956019",
+          "code": "FETCH_OPPORTUNITY_SUMMARY",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Fetch Opportunity Summary",
+            "businessObjectCode": "ORA_CX_SALESFORCE_AIOUTCOMESTORE",
+            "functionName": "getOutcomes"
+          },
+          "outcomes": {
+            "success": "1778120956025"
+          },
+          "inputs": [
+            {
+              "id": "1778120956019_Outcome_Standard_Parameters",
+              "name": "Outcome_Standard_Parameters",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_OPPORTUNITY_SUMMARY_PARAMETERS.$output.result}}"
+            },
+            {
+              "id": "1778120956019_Outcome_Optional_Parameters",
+              "name": "Outcome_Optional_Parameters",
+              "type": "string",
+              "value": "outcomeType = 'SUMMARY'"
+            }
+          ],
+          "diagram": {
+            "x": 5600.5,
+            "y": 7020
+          },
+          "outputSpecification": ""
+        },
+        {
+          "id": "1778120956022",
+          "code": "FETCH_OPPORTUNITY_INSIGHTS",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Fetch Opportunity Insights",
+            "businessObjectCode": "ORA_CX_SALESFORCE_ENGAGEMENT_INSIGHTS",
+            "functionName": "filter_all_engagement_insights"
+          },
+          "outcomes": {
+            "success": "1778120956025"
+          },
+          "inputs": [
+            {
+              "id": "1778120956022_payload",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_OPPORTUNITY_INSIGHTS_PAYLOAD.$output.result}}"
+            }
+          ],
+          "diagram": {
+            "x": 6050.5,
+            "y": 7020
+          }
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "account_id_variable",
+          "name": "accountId",
+          "scope": "JOB",
+          "type": "number"
+        }
+      ],
+      "errorHandlers": []
+    },
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    },
+    "dtRunProfiles": {
+      "activeProfileId": null,
+      "profiles": []
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "modelConfiguration": {
+      "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+      "modelName": "GPT-5 Mini (Premium)",
+      "model": "OCI_GPT_5_MINI",
+      "provider": "CERT_PREMIUM",
+      "modelProperties": {
+        "k": 0,
+        "max_completion_tokens": 32000,
+        "reasoning_effort": "low"
+      }
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1778784544878",
+            "name": "commonConfiguration",
+            "type": "object"
+          },
+          {
+            "id": "1774979777735",
+            "name": "action",
+            "type": "object",
+            "typeSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"config\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"accountNumber\": {\n          \"type\": \"string\"\n        },\n        \"externalSourcesEnabled\": {\n          \"type\": \"boolean\"\n        }\n      },\n      \"required\": [\n        \"accountNumber\"\n      ],\n      \"additionalProperties\": false\n    }\n  },\n  \"required\": [\n    \"config\"\n  ],\n  \"additionalProperties\": false\n}"
+          }
+        ]
+      }
+    ],
+    "deletedTriggerTypes": [],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+    "policyIds": [
+      "2380296"
+    ]
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "SALES_FORCE_AUTOMATION",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "seededRoles": [
+    {
+      "role": "ORA_ZBS_SALES_ADMINISTRATOR_JOB",
+      "id": "300000331056484"
+    },
+    {
+      "role": "ORA_ZBS_SALES_MANAGER_JOB",
+      "id": "300000331056485"
+    },
+    {
+      "role": "ORA_ZBS_SALES_REPRESENTATIVE_JOB",
+      "id": "300000331056486"
+    },
+    {
+      "role": "ORA_ZBS_SALES_VP_JOB",
+      "id": "300000331056487"
+    }
+  ],
+  "header": {
+    "ETag": "\"1\""
+  }
+}

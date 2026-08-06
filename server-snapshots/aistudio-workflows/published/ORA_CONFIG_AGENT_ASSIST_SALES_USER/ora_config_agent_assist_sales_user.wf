@@ -1,0 +1,389 @@
+{
+  "workflowId": "300000331058264",
+  "workflowCode": "ORA_CONFIG_AGENT_ASSIST_SALES_USER",
+  "name": "Configuration Agent Assist Sales User",
+  "description": "This agent is used by the sales user to ask a question and get response based on the doc uploaded by the administrator.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1770821000149"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Read model level doc"
+          },
+          "outcomes": {
+            "success": "1770821176862"
+          },
+          "code": "READ_MODEL_LEVEL_DOC",
+          "id": "1770821000149",
+          "inputs": [
+            {
+              "id": "1770821000153_1",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{\"_allProductFamilies_\"+ $context.$triggers.REST.$input.productFamName+\"_\"+$context.$triggers.REST.$input.productLineName+\"_\"+$context.$triggers.REST.$input.modelName}}"
+            },
+            {
+              "id": "1770821000154_2",
+              "name": "query",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            },
+            {
+              "id": "1770821000155_3",
+              "name": "documentId",
+              "type": "string",
+              "value": "{{\"_allProductFamilies_\"+ $context.$triggers.REST.$input.productFamName+\"_\"+$context.$triggers.REST.$input.productLineName+\"_\"+$context.$triggers.REST.$input.modelName}}"
+            },
+            {
+              "id": "1770821000156_4",
+              "name": "fields",
+              "type": "array",
+              "value": ""
+            },
+            {
+              "id": "1770821000156_5",
+              "name": "filterCriteria",
+              "type": "object",
+              "value": ""
+            },
+            {
+              "id": "1770821000156_6",
+              "name": "maximumResults",
+              "type": "integer",
+              "value": "1"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"index\": {\n        \"type\": \"integer\"\n      },\n      \"text\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\n      \"index\",\n      \"text\"\n    ]\n  }\n}",
+          "type": "VECTOR_DB_READER"
+        },
+        {
+          "metadata": {
+            "name": "Filter Model Results With Threshold",
+            "returnType": "string",
+            "sourceCode": "const retrievedDocuments = $context.$nodes.READ_MODEL_LEVEL_DOC.$output;\n\nconst vectorScoreThreshold =\n  (typeof $context.$variables.vectorScoreThreshold === \"number\")\n    ? $context.$variables.vectorScoreThreshold\n    : null;\n\nconst textScoreThreshold =\n  (typeof $context.$variables.textScoreThreshold === \"number\")\n    ? $context.$variables.textScoreThreshold\n    : null;\n\nlet bestVectorDoc = null;\nlet bestVectorScore = -Infinity;\n\nlet bestTextDoc = null;\nlet bestTextScore = -Infinity;\n\nfor (let i = 0; i < retrievedDocuments.length; i++) {\n  const doc = retrievedDocuments[i];\n\n  if (\n    typeof doc.vectorSearchScore === \"number\" &&\n    doc.vectorSearchScore !== -1 &&\n    (vectorScoreThreshold === null || doc.vectorSearchScore >= vectorScoreThreshold)\n  ) {\n    if (doc.vectorSearchScore > bestVectorScore) {\n      bestVectorScore = doc.vectorSearchScore;\n      bestVectorDoc = doc;\n    }\n  }\n\n  if (\n    typeof doc.textSearchScore === \"number\" &&\n    doc.textSearchScore !== -1 &&\n    (textScoreThreshold === null || doc.textSearchScore >= textScoreThreshold)\n  ) {\n    if (doc.textSearchScore > bestTextScore) {\n      bestTextScore = doc.textSearchScore;\n      bestTextDoc = doc;\n    }\n  }\n}\n\n// Prefer vector best; otherwise fall back to text best\nconst bestDoc = bestVectorDoc !== null ? bestVectorDoc : bestTextDoc;\n\nconst output = {\n  bestResult: bestDoc,\n  text: bestDoc ? bestDoc.text : \"\",\n  chosenBy: bestVectorDoc !== null ? \"vector\" : (bestTextDoc !== null ? \"text\" : \"none\")\n};\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1770821293865"
+          },
+          "code": "FILTER_MODEL_RESULTS_WITH_THRESHOLD",
+          "id": "1770821176862",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Read product line doc"
+          },
+          "outcomes": {
+            "success": "1770821352158"
+          },
+          "code": "READ_PRODUCT_LINE_DOC",
+          "id": "1770821293865",
+          "inputs": [
+            {
+              "id": "1770821293867_1",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{\"_allProductFamilies_\"+ $context.$triggers.REST.$input.productFamName+\"_\"+$context.$triggers.REST.$input.productLineName}}"
+            },
+            {
+              "id": "1770821293867_2",
+              "name": "query",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            },
+            {
+              "id": "1770821293868_3",
+              "name": "documentId",
+              "type": "string",
+              "value": "{{\"_allProductFamilies_\"+ $context.$triggers.REST.$input.productFamName+\"_\"+$context.$triggers.REST.$input.productLineName}}"
+            },
+            {
+              "id": "1770821293868_4",
+              "name": "fields",
+              "type": "array"
+            },
+            {
+              "id": "1770821293868_5",
+              "name": "filterCriteria",
+              "type": "object"
+            },
+            {
+              "id": "1770821293869_6",
+              "name": "maximumResults",
+              "type": "integer"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"index\": {\n        \"type\": \"integer\"\n      },\n      \"text\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\n      \"index\",\n      \"text\"\n    ]\n  }\n}",
+          "type": "VECTOR_DB_READER"
+        },
+        {
+          "metadata": {
+            "name": "Filter line Results With Threshold",
+            "returnType": "string",
+            "sourceCode": "const retrievedDocuments = $context.$nodes.READ_PRODUCT_LINE_DOC.$output;\n\nconst vectorScoreThreshold =\n  (typeof $context.$variables.vectorScoreThreshold === \"number\")\n    ? $context.$variables.vectorScoreThreshold\n    : null;\n\nconst textScoreThreshold =\n  (typeof $context.$variables.textScoreThreshold === \"number\")\n    ? $context.$variables.textScoreThreshold\n    : null;\n\nlet bestVectorDoc = null;\nlet bestVectorScore = -Infinity;\n\nlet bestTextDoc = null;\nlet bestTextScore = -Infinity;\n\nfor (let i = 0; i < retrievedDocuments.length; i++) {\n  const doc = retrievedDocuments[i];\n\n  if (\n    typeof doc.vectorSearchScore === \"number\" &&\n    doc.vectorSearchScore !== -1 &&\n    (vectorScoreThreshold === null || doc.vectorSearchScore >= vectorScoreThreshold)\n  ) {\n    if (doc.vectorSearchScore > bestVectorScore) {\n      bestVectorScore = doc.vectorSearchScore;\n      bestVectorDoc = doc;\n    }\n  }\n\n  if (\n    typeof doc.textSearchScore === \"number\" &&\n    doc.textSearchScore !== -1 &&\n    (textScoreThreshold === null || doc.textSearchScore >= textScoreThreshold)\n  ) {\n    if (doc.textSearchScore > bestTextScore) {\n      bestTextScore = doc.textSearchScore;\n      bestTextDoc = doc;\n    }\n  }\n}\n\n// Prefer vector best; otherwise fall back to text best\nconst bestDoc = bestVectorDoc !== null ? bestVectorDoc : bestTextDoc;\n\nconst output = {\n  bestResult: bestDoc,\n  text: bestDoc ? bestDoc.text : \"\",\n  chosenBy: bestVectorDoc !== null ? \"vector\" : (bestTextDoc !== null ? \"text\" : \"none\")\n};\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1770821422651"
+          },
+          "code": "FILTER_LINE_RESULTS_WITH_THRESHOLD",
+          "id": "1770821352158",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Read Family Level Results"
+          },
+          "outcomes": {
+            "success": "1770821933468"
+          },
+          "code": "READ_FAMILY_LEVEL_RESULTS",
+          "id": "1770821422651",
+          "inputs": [
+            {
+              "id": "1770821422652_1",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{\"_allProductFamilies_\"+ $context.$triggers.REST.$input.productFamName}}"
+            },
+            {
+              "id": "1770821422653_2",
+              "name": "query",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            },
+            {
+              "id": "1770821422653_3",
+              "name": "documentId",
+              "type": "string",
+              "value": "{{\"_allProductFamilies_\"+ $context.$triggers.REST.$input.productFamName}}"
+            },
+            {
+              "id": "1770821422653_4",
+              "name": "fields",
+              "type": "array"
+            },
+            {
+              "id": "1770821422654_5",
+              "name": "filterCriteria",
+              "type": "object"
+            },
+            {
+              "id": "1770821422654_6",
+              "name": "maximumResults",
+              "type": "integer"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"index\": {\n        \"type\": \"integer\"\n      },\n      \"text\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\n      \"index\",\n      \"text\"\n    ]\n  }\n}",
+          "type": "VECTOR_DB_READER"
+        },
+        {
+          "metadata": {
+            "name": "Filter Fam level Results With Threshold",
+            "returnType": "string",
+            "sourceCode": "const retrievedDocuments = $context.$nodes.READ_FAMILY_LEVEL_RESULTS.$output;\n\nconst vectorScoreThreshold =\n  (typeof $context.$variables.vectorScoreThreshold === \"number\")\n    ? $context.$variables.vectorScoreThreshold\n    : null;\n\nconst textScoreThreshold =\n  (typeof $context.$variables.textScoreThreshold === \"number\")\n    ? $context.$variables.textScoreThreshold\n    : null;\n\nlet bestVectorDoc = null;\nlet bestVectorScore = -Infinity;\n\nlet bestTextDoc = null;\nlet bestTextScore = -Infinity;\n\nfor (let i = 0; i < retrievedDocuments.length; i++) {\n  const doc = retrievedDocuments[i];\n\n  if (\n    typeof doc.vectorSearchScore === \"number\" &&\n    doc.vectorSearchScore !== -1 &&\n    (vectorScoreThreshold === null || doc.vectorSearchScore >= vectorScoreThreshold)\n  ) {\n    if (doc.vectorSearchScore > bestVectorScore) {\n      bestVectorScore = doc.vectorSearchScore;\n      bestVectorDoc = doc;\n    }\n  }\n\n  if (\n    typeof doc.textSearchScore === \"number\" &&\n    doc.textSearchScore !== -1 &&\n    (textScoreThreshold === null || doc.textSearchScore >= textScoreThreshold)\n  ) {\n    if (doc.textSearchScore > bestTextScore) {\n      bestTextScore = doc.textSearchScore;\n      bestTextDoc = doc;\n    }\n  }\n}\n\n// Prefer vector best; otherwise fall back to text best\nconst bestDoc = bestVectorDoc !== null ? bestVectorDoc : bestTextDoc;\n\nconst output = {\n  bestResult: bestDoc,\n  text: bestDoc ? bestDoc.text : \"\",\n  chosenBy: bestVectorDoc !== null ? \"vector\" : (bestTextDoc !== null ? \"text\" : \"none\")\n};\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1770823074868"
+          },
+          "code": "FILTER_FAM_LEVEL_RESULTS_WITH_THRESHOLD",
+          "id": "1770821933468",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Answer"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ANSWER",
+          "id": "1770822231890",
+          "inputs": [
+            {
+              "id": "1770822231891_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a product assistant. Answer the user’s question using only the information in the provided CONTEXT. Do not invent specs or options that are not in the context. \nUser question: {{$context.$system.$inputMessage}} \n\nContext (best retrieved result) \nmodel_context: {{$context.$nodes.FILTER_MODEL_RESULTS_WITH_THRESHOLD.$output.result}} \n\nline_context: {{$context.$nodes.FILTER_LINE_RESULTS_WITH_THRESHOLD.$output.result}} \n\nfam_context: {{$context.$nodes.FILTER_FAM_LEVEL_RESULTS_WITH_THRESHOLD.$output.result}} \n\nall_PF_context: {{$context.$nodes.FILTER_ALL_PF_RESULTS_WITH_THRESHOLD.$output.result}} \n\nInstructions \n\n     Identify which option/model in the context best matches the user’s scenario. First find the answer in model_context, if not found then go to line_context, if not then got to fam_context and finally all_PF_context.\n     Respond with:\n        Output exactly 1–2 sentences total just mentioning the answer\n         \n     If the context indicates the answer depends on size/load and the user didn’t specify enough, ask one clarifying question instead of guessing.\n     Keep the tone direct and helpful. No bullet points and no extra explanation unless asked, no “based on the context\".\n\nOutput \n\nReturn only the final answer text (no references to “context” or “capsules”). "
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Read all PF level doc"
+          },
+          "outcomes": {
+            "success": "1770823124085"
+          },
+          "code": "READ_ALL_PF_LEVEL_DOC",
+          "id": "1770823074868",
+          "inputs": [
+            {
+              "id": "1770823074869_1",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{_allProductFamilies}}"
+            },
+            {
+              "id": "1770823074870_2",
+              "name": "query",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            },
+            {
+              "id": "1770823074871_3",
+              "name": "documentId",
+              "type": "string",
+              "value": "{{_allProductFamilies}}"
+            },
+            {
+              "id": "1770823074871_4",
+              "name": "fields",
+              "type": "array"
+            },
+            {
+              "id": "1770823074872_5",
+              "name": "filterCriteria",
+              "type": "object"
+            },
+            {
+              "id": "1770823074872_6",
+              "name": "maximumResults",
+              "type": "integer"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"index\": {\n        \"type\": \"integer\"\n      },\n      \"text\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\n      \"index\",\n      \"text\"\n    ]\n  }\n}",
+          "type": "VECTOR_DB_READER"
+        },
+        {
+          "metadata": {
+            "name": "Filter all PF Results With Threshold",
+            "returnType": "string",
+            "sourceCode": "const retrievedDocuments = $context.$nodes.READ_ALL_PF_LEVEL_DOC.$output;\n\nconst vectorScoreThreshold =\n  (typeof $context.$variables.vectorScoreThreshold === \"number\")\n    ? $context.$variables.vectorScoreThreshold\n    : null;\n\nconst textScoreThreshold =\n  (typeof $context.$variables.textScoreThreshold === \"number\")\n    ? $context.$variables.textScoreThreshold\n    : null;\n\nlet bestVectorDoc = null;\nlet bestVectorScore = -Infinity;\n\nlet bestTextDoc = null;\nlet bestTextScore = -Infinity;\n\nfor (let i = 0; i < retrievedDocuments.length; i++) {\n  const doc = retrievedDocuments[i];\n\n  if (\n    typeof doc.vectorSearchScore === \"number\" &&\n    doc.vectorSearchScore !== -1 &&\n    (vectorScoreThreshold === null || doc.vectorSearchScore >= vectorScoreThreshold)\n  ) {\n    if (doc.vectorSearchScore > bestVectorScore) {\n      bestVectorScore = doc.vectorSearchScore;\n      bestVectorDoc = doc;\n    }\n  }\n\n  if (\n    typeof doc.textSearchScore === \"number\" &&\n    doc.textSearchScore !== -1 &&\n    (textScoreThreshold === null || doc.textSearchScore >= textScoreThreshold)\n  ) {\n    if (doc.textSearchScore > bestTextScore) {\n      bestTextScore = doc.textSearchScore;\n      bestTextDoc = doc;\n    }\n  }\n}\n\n// Prefer vector best; otherwise fall back to text best\nconst bestDoc = bestVectorDoc !== null ? bestVectorDoc : bestTextDoc;\n\nconst output = {\n  bestResult: bestDoc,\n  text: bestDoc ? bestDoc.text : \"\",\n  chosenBy: bestVectorDoc !== null ? \"vector\" : (bestTextDoc !== null ? \"text\" : \"none\")\n};\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1770822231890"
+          },
+          "code": "FILTER_ALL_PF_RESULTS_WITH_THRESHOLD",
+          "convergenceTargetId": "1770822231890",
+          "id": "1770823124085",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1770820953747",
+            "name": "modelName",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1770820946507",
+            "name": "productLineName",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1770820937961",
+            "name": "productFamName",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "CPQ_COMMERCE",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

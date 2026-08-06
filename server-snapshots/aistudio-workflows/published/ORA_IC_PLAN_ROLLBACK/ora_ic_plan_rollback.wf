@@ -1,0 +1,652 @@
+{
+  "workflowId": "300000331067453",
+  "workflowCode": "ORA_IC_PLAN_ROLLBACK",
+  "name": "IC Plan Rollback",
+  "description": "Focused publish-failure rollback using the publisher create ledger only.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "id": "start",
+          "code": "START",
+          "type": "START",
+          "metadata": {
+            "name": "Start",
+            "description": "Start of data pipeline"
+          },
+          "outcomes": {
+            "success": "1"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 5000,
+            "y": 5000
+          }
+        },
+        {
+          "id": "1",
+          "code": "PREPARE_ROLLBACK_REQUEST",
+          "type": "CODE",
+          "metadata": {
+            "name": "Prepare Rollback Request",
+            "returnType": "object",
+            "sourceCode": "var trigger = ($context.$triggers && $context.$triggers.REST && $context.$triggers.REST.$input)\n  ? $context.$triggers.REST.$input\n  : new Object();\n\nvar parseMaybeJson = function(value) {\n  if (value === null || value === undefined) {\n    return null;\n  }\n  if (typeof value !== 'string') {\n    return value;\n  }\n  try {\n    return JSON.parse(value);\n  } catch (_err) {\n    return null;\n  }\n};\n\nvar toNumber = function(value) {\n  if (value === null || value === undefined || value === '') {\n    return null;\n  }\n  var n = Number(value);\n  return isNaN(n) ? null : n;\n};\n\nvar normalizeUrl = function(url) {\n  if (!url) {\n    return null;\n  }\n  var s = String(url);\n  var idx = s.indexOf('/fscmRestApi/');\n  return idx >= 0 ? s.substring(idx) : s;\n};\n\nvar normalizeType = function(value) {\n  var t = value ? String(value).toLowerCase() : '';\n  if (t === 'component') {\n    return 'component';\n  }\n  if (t === 'measure') {\n    return 'measure';\n  }\n  if (t === 'expression') {\n    return 'expression';\n  }\n  if (t === 'plan') {\n    return 'plan';\n  }\n  if (t === 'ratetable') {\n    return 'rateTable';\n  }\n  if (t === 'ratedimension') {\n    return 'rateDimension';\n  }\n  if (t === 'ratedimensiontier') {\n    return 'rateDimensionTier';\n  }\n  return null;\n};\n\nvar publisherResult = parseMaybeJson(trigger.publisherResult);\nif (publisherResult && publisherResult.result !== undefined) {\n  publisherResult = parseMaybeJson(publisherResult.result);\n}\nif (publisherResult && publisherResult.output !== undefined) {\n  publisherResult = parseMaybeJson(publisherResult.output);\n}\n\nvar rollbackPayload = parseMaybeJson(trigger.rollbackPayload);\nif (!rollbackPayload && publisherResult && publisherResult.rollbackPayload) {\n  rollbackPayload = parseMaybeJson(publisherResult.rollbackPayload);\n}\n\nvar errors = [];\nvar warnings = [];\n\nif (!rollbackPayload || typeof rollbackPayload !== 'object') {\n  errors.push('Missing rollbackPayload for publish-failure rollback.');\n}\n\nvar createdEntities = rollbackPayload && rollbackPayload.createdEntities && rollbackPayload.createdEntities.length\n  ? rollbackPayload.createdEntities\n  : [];\n\nvar rawType = function(value) {\n  return value ? String(value).toLowerCase() : '';\n};\n\nvar hasParentCreateForChild = function(raw) {\n  var type = rawType(raw && raw.type);\n  var i = 0;\n  if (type === 'ratedimensiontier') {\n    var parentDimensionId = toNumber(raw ? raw.dimensionId : null);\n    if (parentDimensionId === null) {\n      return false;\n    }\n    for (i = 0; i < createdEntities.length; i += 1) {\n      var candidateDim = createdEntities[i] ? createdEntities[i] : new Object();\n      if (rawType(candidateDim.type) === 'ratedimension' && toNumber(candidateDim.icId) === parentDimensionId) {\n        return true;\n      }\n    }\n    return false;\n  }\n  if (type === 'ratetablerate') {\n    var parentRateTableId = toNumber(raw ? raw.rateTableId : null);\n    if (parentRateTableId === null) {\n      return false;\n    }\n    for (i = 0; i < createdEntities.length; i += 1) {\n      var candidateTable = createdEntities[i] ? createdEntities[i] : new Object();\n      if (rawType(candidateTable.type) === 'ratetable' && toNumber(candidateTable.icId) === parentRateTableId) {\n        return true;\n      }\n    }\n    return false;\n  }\n  return false;\n};\n\nvar toAction = function(raw) {\n  var type = normalizeType(raw && raw.type);\n  if (!type) {\n    return null;\n  }\n  return {\n    sequence: toNumber(raw ? raw.sequence : null),\n    sourceIndex: toNumber(raw ? raw.sourceIndex : null),\n    type: type,\n    parserId: raw && raw.parserId ? String(raw.parserId) : null,\n    name: raw && raw.name ? String(raw.name) : null,\n    icId: toNumber(raw ? raw.icId : null),\n    dimensionId: toNumber(raw ? raw.dimensionId : null),\n    tierId: toNumber(raw ? raw.tierId : null),\n    orgId: toNumber(raw ? raw.orgId : null),\n    deleteId: raw && raw.deleteId ? String(raw.deleteId) : null,\n    canonicalUrl: raw && raw.canonicalUrl ? normalizeUrl(raw.canonicalUrl) : null\n  };\n};\n\nvar isActionSupported = function(action) {\n  if (!action) {\n    return false;\n  }\n  if (action.type === 'component') {\n    return !!action.canonicalUrl || !!action.deleteId || action.icId !== null;\n  }\n  if (action.type === 'measure' || action.type === 'plan') {\n    return action.icId !== null;\n  }\n  if (action.type === 'rateTable' || action.type === 'rateDimension') {\n    return action.icId !== null;\n  }\n  if (action.type === 'rateDimensionTier') {\n    return action.dimensionId !== null && action.tierId !== null;\n  }\n  if (action.type === 'expression') {\n    return !!action.deleteId || !!action.canonicalUrl || action.icId !== null;\n  }\n  return false;\n};\n\nvar accepted = [];\nvar dedup = new Object();\nvar i = 0;\nfor (i = 0; i < createdEntities.length; i += 1) {\n  var raw = createdEntities[i] ? createdEntities[i] : new Object();\n  var action = toAction(raw);\n  if (!action) {\n    if (hasParentCreateForChild(raw)) {\n      continue;\n    }\n    warnings.push('Skipping rollback ledger entry with unsupported type: ' + String(raw.type));\n    continue;\n  }\n  if (!isActionSupported(action)) {\n    warnings.push('Skipping rollback ledger entry with missing identifiers: ' + String(action.type) + (action.parserId ? (' [' + String(action.parserId) + ']') : ''));\n    continue;\n  }\n  var sig = action.type + '|';\n  if (action.parserId) {\n    sig += 'P|' + action.parserId;\n  } else if (action.deleteId) {\n    sig += 'D|' + action.deleteId;\n  } else if (action.icId !== null) {\n    sig += 'I|' + String(action.icId);\n  } else {\n    sig += 'X|' + String(i);\n  }\n  if (!dedup[sig]) {\n    dedup[sig] = true;\n    action.sourceIndex = i;\n    accepted.push(action);\n  }\n}\n\naccepted.sort(function(left, right) {\n  var leftType = left && left.type ? String(left.type) : '';\n  var rightType = right && right.type ? String(right.type) : '';\n  if (leftType === 'plan' && rightType !== 'plan') {\n    return 1;\n  }\n  if (rightType === 'plan' && leftType !== 'plan') {\n    return -1;\n  }\n  var leftSequence = left && left.sequence !== null ? Number(left.sequence) : null;\n  var rightSequence = right && right.sequence !== null ? Number(right.sequence) : null;\n  if (leftSequence !== null && rightSequence !== null && leftSequence !== rightSequence) {\n    return rightSequence - leftSequence;\n  }\n  var leftIndex = left && left.sourceIndex !== null ? Number(left.sourceIndex) : -1;\n  var rightIndex = right && right.sourceIndex !== null ? Number(right.sourceIndex) : -1;\n  return rightIndex - leftIndex;\n});\n\nvar result = new Object();\nresult.valid = errors.length === 0;\nresult.errors = errors;\nresult.warnings = warnings;\nresult.executionMode = 'publishFailureRollback';\nresult.orderedActions = accepted;\nresult.requestCounts = {\n  candidates: createdEntities.length,\n  accepted: accepted.length,\n  skippedDuringPreparation: createdEntities.length - accepted.length\n};\nreturn result;"
+          },
+          "outcomes": {
+            "success": "2"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 5000,
+            "y": 5440
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "2",
+          "code": "HAS_VALID_REQUEST",
+          "type": "CONDITION",
+          "metadata": {
+            "name": "Has Valid Request"
+          },
+          "outcomes": {
+            "true": "3",
+            "false": "5"
+          },
+          "inputs": [
+            {
+              "id": "2_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ROLLBACK_REQUEST.$output.result.valid === true}}"
+            }
+          ],
+          "diagram": {
+            "x": 5000,
+            "y": 5660
+          }
+        },
+        {
+          "id": "3",
+          "code": "INIT_ROLLBACK_STATE",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Init Rollback State"
+          },
+          "outcomes": {
+            "success": "4"
+          },
+          "inputs": [
+            {
+              "id": "3_rollbackActions",
+              "name": "rollbackActions",
+              "type": "array",
+              "value": "{{$context.$nodes.PREPARE_ROLLBACK_REQUEST.$output.result.orderedActions}}"
+            },
+            {
+              "id": "3_actionResults",
+              "name": "actionResults",
+              "type": "array",
+              "value": "[]"
+            }
+          ],
+          "diagram": {
+            "x": 5000,
+            "y": 5880
+          }
+        },
+        {
+          "id": "4",
+          "code": "ROLLBACK_LOOP",
+          "type": "LOOP",
+          "metadata": {
+            "name": "Rollback Loop",
+            "loopType": "SEQUENTIAL",
+            "dataPipeline": {
+              "rootNode": "start_ROLLBACK_LOOP",
+              "pipelineNodes": [
+                {
+                  "type": "START",
+                  "code": "START_ROLLBACK_LOOP",
+                  "id": "start_ROLLBACK_LOOP",
+                  "metadata": {
+                    "name": "Start",
+                    "position": {
+                      "x": 40,
+                      "y": 200
+                    }
+                  },
+                  "outcomes": {
+                    "success": "NORMALIZE_ROLLBACK_ACTION"
+                  },
+                  "inputs": []
+                },
+                {
+                  "type": "END",
+                  "code": "END_ROLLBACK_LOOP",
+                  "id": "end_ROLLBACK_LOOP",
+                  "metadata": {
+                    "name": "End",
+                    "position": {
+                      "x": 2440,
+                      "y": 200
+                    }
+                  },
+                  "outcomes": {},
+                  "inputs": []
+                },
+                {
+                  "type": "CODE",
+                  "code": "NORMALIZE_ROLLBACK_ACTION",
+                  "id": "NORMALIZE_ROLLBACK_ACTION",
+                  "metadata": {
+                    "name": "Normalize Rollback Action",
+                    "returnType": "object",
+                    "position": {
+                      "x": 220,
+                      "y": 200
+                    },
+                    "sourceCode": "var loopAction = ($context.$nodes && $context.$nodes.ROLLBACK_LOOP)\n  ? $context.$nodes.ROLLBACK_LOOP.$currentItem\n  : null;\nvar action = loopAction ? loopAction : null;\nvar rawActionResults = $context.$variables.actionResults;\nvar actionResults = rawActionResults === undefined || rawActionResults === null\n  ? []\n  : (Array.isArray(rawActionResults) ? rawActionResults : []);\n\nvar toNumber = function(value) {\n  if (value === null || value === undefined || value === '') {\n    return null;\n  }\n  var n = Number(value);\n  return isNaN(n) ? null : n;\n};\n\nvar resultIndex = actionResults.length;\nif (action) {\n  var sourceIndex = toNumber(action.sourceIndex);\n  var sequence = toNumber(action.sequence);\n  if (sourceIndex !== null) {\n    resultIndex = sourceIndex;\n  } else if (sequence !== null) {\n    resultIndex = sequence;\n  }\n}\n\nvar result = new Object();\nresult.hasAction = !!action;\nresult.action = action;\nresult.resultIndex = resultIndex;\nresult.stateErrors = Array.isArray(rawActionResults) || rawActionResults === undefined || rawActionResults === null\n  ? []\n  : ['Malformed rollback state: actionResults must be an array.'];\n\nreturn result;"
+                  },
+                  "outcomes": {
+                    "success": "ROLLBACK_ACTION_SWITCH"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "type": "SWITCH",
+                  "code": "ROLLBACK_ACTION_SWITCH",
+                  "id": "ROLLBACK_ACTION_SWITCH",
+                  "metadata": {
+                    "name": "Rollback Action Switch",
+                    "position": {
+                      "x": 420,
+                      "y": 200
+                    }
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_ROLLBACK_ACTION_SWITCH_0",
+                      "name": "caseExpression",
+                      "type": "string",
+                      "value": "{{$context.$nodes.NORMALIZE_ROLLBACK_ACTION.$output.result.action.type}}"
+                    }
+                  ],
+                  "outcomes": {
+                    "component": "PREPARE_COMPONENT_DELETE",
+                    "measure": "DELETE_MEASURE_ACTION",
+                    "rateTable": "DELETE_RATE_TABLE_ACTION",
+                    "rateDimension": "DELETE_RATE_DIM_ACTION",
+                    "expression": "PREPARE_EXPRESSION_DELETE",
+                    "plan": "DELETE_PLAN_ACTION",
+                    "default": "CACHE_ACTION_SKIPPED"
+                  },
+                  "convergenceTargetId": "CACHE_ACTION_SKIPPED"
+                },
+                {
+                  "type": "CODE",
+                  "code": "PREPARE_COMPONENT_DELETE",
+                  "id": "PREPARE_COMPONENT_DELETE",
+                  "metadata": {
+                    "name": "Prepare Component Delete",
+                    "returnType": "object",
+                    "position": {
+                      "x": 820,
+                      "y": 200
+                    },
+                    "sourceCode": "var normalized = ($context.$nodes && $context.$nodes.NORMALIZE_ROLLBACK_ACTION && $context.$nodes.NORMALIZE_ROLLBACK_ACTION.$output)\n  ? $context.$nodes.NORMALIZE_ROLLBACK_ACTION.$output.result\n  : null;\nvar action = normalized && normalized.action\n  ? normalized.action\n  : null;\n\nvar normalizeUrl = function(url) {\n  if (!url) {\n    return null;\n  }\n  var s = String(url);\n  var idx = s.indexOf('/fscmRestApi/');\n  return idx >= 0 ? s.substring(idx) : s;\n};\n\nvar pathTailAfterResource = function(value, resourceName) {\n  if (value === null || value === undefined) {\n    return null;\n  }\n  var text = String(value).trim();\n  if (!text) {\n    return null;\n  }\n  var resource = String(resourceName || '').replace(/^\\/|\\/$/g, '');\n  var escapedResource = resource.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n  var match = text.match(new RegExp('/fscmRestApi/resources/[^/]+/' + escapedResource + '/([^?]+)'));\n  if (match && match[1]) {\n    return match[1];\n  }\n\n  var marker = '/' + resource + '/';\n  var idx = text.indexOf(marker);\n  if (idx === 0) {\n    var tail = text.substring(marker.length);\n    var queryIdx = tail.indexOf('?');\n    if (queryIdx >= 0) {\n      tail = tail.substring(0, queryIdx);\n    }\n    return tail ? tail : null;\n  }\n  if (text.indexOf('/fscmRestApi/') >= 0 || /^https?:\\/\\//i.test(text) || text.charAt(0) === '/') {\n    return null;\n  }\n  return text;\n};\n\nvar componentPathTail = function(value) {\n  return pathTailAfterResource(value, 'planComponents');\n};\n\nvar result = new Object();\nresult.useCanonicalUrl = false;\nresult.componentUrl = null;\nresult.componentId = null;\nresult.stateErrors = [];\n\nif (action && action.type === 'component') {\n  if (action.canonicalUrl) {\n    result.useCanonicalUrl = true;\n    result.componentUrl = componentPathTail(normalizeUrl(action.canonicalUrl));\n    if (!result.componentUrl) {\n      result.useCanonicalUrl = false;\n      result.stateErrors.push('Component rollback requires a valid canonical URL under planComponents.');\n    }\n  } else {\n    result.stateErrors.push('Component rollback requires canonicalUrl; composite component keys are not valid for deletion.');\n  }\n}\n\nreturn result;"
+                  },
+                  "outcomes": {
+                    "success": "HAS_COMPONENT_URL"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "type": "CONDITION",
+                  "code": "HAS_COMPONENT_URL",
+                  "id": "HAS_COMPONENT_URL",
+                  "metadata": {
+                    "name": "Has Component Url",
+                    "position": {
+                      "x": 980,
+                      "y": 200
+                    }
+                  },
+                  "outcomes": {
+                    "true": "DELETE_COMPONENT_BY_URL_ACTION",
+                    "false": "CACHE_ACTION_SKIPPED"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_HAS_COMPONENT_URL_0",
+                      "name": "condition",
+                      "type": "string",
+                      "value": "{{$context.$nodes.PREPARE_COMPONENT_DELETE.$output.result.useCanonicalUrl === true}}"
+                    }
+                  ]
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "DELETE_COMPONENT_BY_URL_ACTION",
+                  "id": "DELETE_COMPONENT_BY_URL_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_COMPONENTS",
+                    "functionName": "deleteByUrl",
+                    "processJson": true,
+                    "name": "DELETE_COMPONENT_BY_URL_ACTION",
+                    "position": {
+                      "x": 1300,
+                      "y": 40
+                    },
+                    "errorNodeId": "CACHE_ACTION_SUCCESS"
+                  },
+                  "outcomes": {
+                    "success": "CACHE_ACTION_SUCCESS"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_DELETE_COMPONENT_BY_URL_ACTION_0",
+                      "name": "componentUrl",
+                      "type": "string",
+                      "value": "{{$context.$nodes.PREPARE_COMPONENT_DELETE.$output.result.componentUrl}}"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "DELETE_MEASURE_ACTION",
+                  "id": "DELETE_MEASURE_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_MEASURES",
+                    "functionName": "delete",
+                    "processJson": true,
+                    "name": "DELETE_MEASURE_ACTION",
+                    "position": {
+                      "x": 1300,
+                      "y": 200
+                    },
+                    "errorNodeId": "CACHE_ACTION_SUCCESS"
+                  },
+                  "outcomes": {
+                    "success": "CACHE_ACTION_SUCCESS"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_DELETE_MEASURE_ACTION_0",
+                      "name": "measureId",
+                      "type": "number",
+                      "value": "{{$context.$nodes.NORMALIZE_ROLLBACK_ACTION.$output.result.action.icId}}"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "DELETE_RATE_TABLE_ACTION",
+                  "id": "DELETE_RATE_TABLE_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_RATE_TABLES",
+                    "functionName": "delete",
+                    "processJson": true,
+                    "name": "DELETE_RATE_TABLE_ACTION",
+                    "position": {
+                      "x": 1300,
+                      "y": 280
+                    },
+                    "errorNodeId": "CACHE_ACTION_SUCCESS"
+                  },
+                  "outcomes": {
+                    "success": "CACHE_ACTION_SUCCESS"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_DELETE_RATE_TABLE_ACTION_0",
+                      "name": "rateTableId",
+                      "type": "number",
+                      "value": "{{$context.$nodes.NORMALIZE_ROLLBACK_ACTION.$output.result.action.icId}}"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "DELETE_RATE_DIM_ACTION",
+                  "id": "DELETE_RATE_DIM_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_RATE_DIMENSIONS",
+                    "functionName": "delete",
+                    "processJson": true,
+                    "name": "DELETE_RATE_DIM_ACTION",
+                    "position": {
+                      "x": 1300,
+                      "y": 360
+                    },
+                    "errorNodeId": "CACHE_ACTION_SUCCESS"
+                  },
+                  "outcomes": {
+                    "success": "CACHE_ACTION_SUCCESS"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_DELETE_RATE_DIM_ACTION_0",
+                      "name": "dimensionId",
+                      "type": "number",
+                      "value": "{{$context.$nodes.NORMALIZE_ROLLBACK_ACTION.$output.result.action.icId}}"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "CODE",
+                  "code": "PREPARE_EXPRESSION_DELETE",
+                  "id": "PREPARE_EXPRESSION_DELETE",
+                  "metadata": {
+                    "name": "Prepare Expression Delete",
+                    "returnType": "object",
+                    "position": {
+                      "x": 1520,
+                      "y": 200
+                    },
+                    "sourceCode": "var normalized = ($context.$nodes && $context.$nodes.NORMALIZE_ROLLBACK_ACTION && $context.$nodes.NORMALIZE_ROLLBACK_ACTION.$output)\n  ? $context.$nodes.NORMALIZE_ROLLBACK_ACTION.$output.result\n  : null;\nvar action = normalized && normalized.action\n  ? normalized.action\n  : null;\n\nvar normalizeUrl = function(url) {\n  if (!url) {\n    return null;\n  }\n  var s = String(url);\n  var idx = s.indexOf('/fscmRestApi/');\n  return idx >= 0 ? s.substring(idx) : s;\n};\n\nvar extractKeyFromCanonicalUrl = function(url) {\n  var normalized = normalizeUrl(url);\n  if (!normalized) {\n    return null;\n  }\n  var parts = normalized.split('/');\n  var last = parts.length ? parts[parts.length - 1] : null;\n  if (!last) {\n    return null;\n  }\n  try {\n    return decodeURIComponent(last);\n  } catch (_err) {\n    return last;\n  }\n};\n\nvar result = new Object();\nresult.expressionId = null;\n\nif (action && action.type === 'expression') {\n  if (action.deleteId) {\n    result.expressionId = String(action.deleteId);\n  } else {\n    var fromUrl = extractKeyFromCanonicalUrl(action.canonicalUrl);\n    if (fromUrl) {\n      result.expressionId = fromUrl;\n    } else if (action.icId !== null && action.orgId !== null) {\n      result.expressionId = String(action.orgId) + ',' + String(action.icId);\n    } else if (action.icId !== null) {\n      result.expressionId = String(action.icId);\n    }\n  }\n}\n\nreturn result;"
+                  },
+                  "outcomes": {
+                    "success": "HAS_EXPRESSION_ID"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "type": "CONDITION",
+                  "code": "HAS_EXPRESSION_ID",
+                  "id": "HAS_EXPRESSION_ID",
+                  "metadata": {
+                    "name": "Has Expression Id",
+                    "position": {
+                      "x": 1680,
+                      "y": 200
+                    }
+                  },
+                  "outcomes": {
+                    "true": "DELETE_EXPRESSION_ACTION",
+                    "false": "CACHE_ACTION_SKIPPED"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_HAS_EXPRESSION_ID_0",
+                      "name": "condition",
+                      "type": "string",
+                      "value": "{{$context.$nodes.PREPARE_EXPRESSION_DELETE.$output.result.expressionId !== null}}"
+                    }
+                  ]
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "DELETE_EXPRESSION_ACTION",
+                  "id": "DELETE_EXPRESSION_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_EXPRESSIONS",
+                    "functionName": "delete",
+                    "processJson": true,
+                    "name": "DELETE_EXPRESSION_ACTION",
+                    "position": {
+                      "x": 1840,
+                      "y": 40
+                    },
+                    "errorNodeId": "CACHE_ACTION_SUCCESS"
+                  },
+                  "outcomes": {
+                    "success": "CACHE_ACTION_SUCCESS"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_DELETE_EXPRESSION_ACTION_0",
+                      "name": "expressionId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.PREPARE_EXPRESSION_DELETE.$output.result.expressionId}}"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "BO_FUNCTION",
+                  "code": "DELETE_PLAN_ACTION",
+                  "id": "DELETE_PLAN_ACTION",
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_IC_COMPENSATION_PLANS",
+                    "functionName": "delete",
+                    "processJson": true,
+                    "name": "DELETE_PLAN_ACTION",
+                    "position": {
+                      "x": 1840,
+                      "y": 120
+                    },
+                    "errorNodeId": "CACHE_ACTION_SUCCESS"
+                  },
+                  "outcomes": {
+                    "success": "CACHE_ACTION_SUCCESS"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_DELETE_PLAN_ACTION_0",
+                      "name": "planId",
+                      "type": "number",
+                      "value": "{{$context.$nodes.NORMALIZE_ROLLBACK_ACTION.$output.result.action.icId}}"
+                    }
+                  ],
+                  "outputSpecification": "{}"
+                },
+                {
+                  "type": "CODE",
+                  "code": "CACHE_ACTION_SUCCESS",
+                  "id": "CACHE_ACTION_SUCCESS",
+                  "metadata": {
+                    "name": "Cache Action Result",
+                    "returnType": "object",
+                    "position": {
+                      "x": 2060,
+                      "y": 200
+                    },
+                    "sourceCode": "var rawActionResults = $context.$variables.actionResults;\nvar stateErrors = [];\nvar actionResults = [];\nif (rawActionResults === undefined || rawActionResults === null) {\n  actionResults = [];\n} else if (Array.isArray(rawActionResults)) {\n  actionResults = rawActionResults;\n} else {\n  stateErrors.push('Malformed rollback state: actionResults must be an array.');\n}\nvar normalized = ($context.$nodes && $context.$nodes.NORMALIZE_ROLLBACK_ACTION && $context.$nodes.NORMALIZE_ROLLBACK_ACTION.$output)\n  ? $context.$nodes.NORMALIZE_ROLLBACK_ACTION.$output.result\n  : null;\nvar action = normalized && normalized.action\n  ? normalized.action\n  : null;\nvar resultIndex = normalized && normalized.resultIndex !== undefined && normalized.resultIndex !== null\n  ? Number(normalized.resultIndex)\n  : Number(actionResults.length);\n\nif (normalized && normalized.stateErrors && normalized.stateErrors.length) {\n  var se = 0;\n  for (se = 0; se < normalized.stateErrors.length; se += 1) {\n    stateErrors.push(String(normalized.stateErrors[se]));\n  }\n}\n\nvar parseMaybeJson = function(value) {\n  if (value === null || value === undefined) {\n    return null;\n  }\n  if (typeof value !== 'string') {\n    return value;\n  }\n  try {\n    return JSON.parse(value);\n  } catch (_err) {\n    return null;\n  }\n};\n\nvar firstErrorDetail = function(payload) {\n  if (!payload || !payload['o:errorDetails'] || !payload['o:errorDetails'].length) {\n    return null;\n  }\n  return payload['o:errorDetails'][0];\n};\n\nvar pickFirstNode = function(codes) {\n  var i = 0;\n  for (i = 0; i < codes.length; i += 1) {\n    var code = codes[i];\n    if ($context.$nodes && $context.$nodes[code] && $context.$nodes[code].$output !== undefined) {\n      return code;\n    }\n  }\n  return null;\n};\n\nvar operationForAction = function(act) {\n  if (!act || !act.type) {\n    return null;\n  }\n  if (act.type === 'component') {\n    return 'DELETE_COMPONENT_BY_URL_ACTION';\n  }\n  if (act.type === 'measure') {\n    return 'DELETE_MEASURE_ACTION';\n  }\n  if (act.type === 'rateTable') {\n    return 'DELETE_RATE_TABLE_ACTION';\n  }\n  if (act.type === 'rateDimension') {\n    return 'DELETE_RATE_DIM_ACTION';\n  }\n  if (act.type === 'expression') {\n    return 'DELETE_EXPRESSION_ACTION';\n  }\n  if (act.type === 'plan') {\n    return 'DELETE_PLAN_ACTION';\n  }\n  return null;\n};\n\nvar targetForAction = function(act) {\n  return {\n    type: act && act.type ? String(act.type) : null,\n    parserId: act && act.parserId ? String(act.parserId) : null,\n    name: act && act.name ? String(act.name) : null,\n    icId: act && act.icId !== undefined && act.icId !== null ? Number(act.icId) : null,\n    dimensionId: act && act.dimensionId !== undefined && act.dimensionId !== null ? Number(act.dimensionId) : null,\n    tierId: act && act.tierId !== undefined && act.tierId !== null ? Number(act.tierId) : null,\n    orgId: act && act.orgId !== undefined && act.orgId !== null ? Number(act.orgId) : null,\n    deleteId: act && act.deleteId ? String(act.deleteId) : null,\n    canonicalUrl: act && act.canonicalUrl ? String(act.canonicalUrl) : null\n  };\n};\n\nvar readResponseStatus = function(nodeCode) {\n  if (!nodeCode || !$context.$nodes || !$context.$nodes[nodeCode]) {\n    return null;\n  }\n  var output = $context.$nodes[nodeCode].$output;\n  var parsedOutput = parseMaybeJson(output);\n  if (parsedOutput && parsedOutput.status !== undefined && parsedOutput.status !== null) {\n    return String(parsedOutput.status);\n  }\n  if (parsedOutput && parsedOutput.statusCode !== undefined && parsedOutput.statusCode !== null) {\n    return String(parsedOutput.statusCode);\n  }\n  if (parsedOutput && parsedOutput.httpStatus !== undefined && parsedOutput.httpStatus !== null) {\n    return String(parsedOutput.httpStatus);\n  }\n  return null;\n};\n\nvar pathForAction = function(act) {\n  if (!act) {\n    return null;\n  }\n  if (act.type === 'component') {\n    var componentPrep = ($context.$nodes && $context.$nodes.PREPARE_COMPONENT_DELETE && $context.$nodes.PREPARE_COMPONENT_DELETE.$output)\n      ? $context.$nodes.PREPARE_COMPONENT_DELETE.$output.result\n      : null;\n    if (componentPrep && componentPrep.componentUrl) {\n      return String(componentPrep.componentUrl);\n    }\n    return act.canonicalUrl ? String(act.canonicalUrl) : null;\n  }\n  if (act.canonicalUrl) {\n    return String(act.canonicalUrl);\n  }\n  if (act.type === 'expression') {\n    return act.deleteId ? String(act.deleteId) : (act.icId !== null && act.icId !== undefined ? String(act.icId) : null);\n  }\n  if (act.icId !== null && act.icId !== undefined) {\n    return String(act.icId);\n  }\n  return null;\n};\n\nvar entry = {\n  index: resultIndex,\n  actionId: action && action.parserId ? String(action.parserId) : (action && action.icId !== undefined && action.icId !== null ? String(action.icId) : null),\n  type: action && action.type ? String(action.type) : null,\n  parserId: action && action.parserId ? String(action.parserId) : null,\n  target: targetForAction(action),\n  operation: operationForAction(action),\n  method: 'DELETE',\n  url: pathForAction(action),\n  requestPayload: null\n};\n\nif ($context.$error && $context.$error.$nodeCode) {\n  var boNodeCode = String($context.$error.$nodeCode);\n  var boNodeName = ($context.$error && $context.$error.$nodeName) ? String($context.$error.$nodeName) : boNodeCode;\n  var rawErrorMessage = ($context.$error && $context.$error.$errorMessage) ? String($context.$error.$errorMessage) : null;\n\n  if (!rawErrorMessage && boNodeCode && $context.$nodes && $context.$nodes[boNodeCode] && $context.$nodes[boNodeCode].$error && $context.$nodes[boNodeCode].$error.$info) {\n    rawErrorMessage = String($context.$nodes[boNodeCode].$error.$info);\n  }\n\n  var parsedError = parseMaybeJson(rawErrorMessage);\n  var detail = firstErrorDetail(parsedError);\n  var conciseMessage = null;\n  if (detail && detail.detail) {\n    conciseMessage = String(detail.detail);\n  } else if (parsedError && parsedError.title) {\n    conciseMessage = String(parsedError.title);\n  } else if (rawErrorMessage) {\n    conciseMessage = rawErrorMessage;\n  }\n\n  var errorCode = detail && detail['o:errorCode'] ? String(detail['o:errorCode']) : null;\n  var statusCode = parsedError && parsedError.status ? String(parsedError.status) : null;\n  var lowerMessage = conciseMessage ? conciseMessage.toLowerCase() : '';\n  var rawLowerMessage = rawErrorMessage ? String(rawErrorMessage).toLowerCase() : '';\n  var alreadyMissing = statusCode === '404'\n    || lowerMessage.indexOf('not found') >= 0\n    || rawLowerMessage.indexOf('not found') >= 0\n    || /\\b404\\b/.test(lowerMessage)\n    || /\\b404\\b/.test(rawLowerMessage);\n\n  entry.status = alreadyMissing ? 'ALREADY_MISSING' : 'FAILED';\n  entry.outcome = alreadyMissing ? 'ALREADY_MISSING' : 'FAILED';\n  entry.nodeCode = boNodeCode;\n  entry.nodeName = boNodeName;\n  entry.operation = entry.operation ? entry.operation : boNodeCode;\n  entry.responseStatus = statusCode;\n  entry.message = conciseMessage ? conciseMessage : (boNodeName ? (boNodeName + ' failed') : 'Rollback action failed');\n  entry.errorCode = errorCode;\n  entry.backendError = conciseMessage;\n  entry.rawError = rawErrorMessage;\n} else {\n  var successNodeCode = pickFirstNode([\n    entry.operation,\n    'DELETE_COMPONENT_BY_URL_ACTION',\n    'DELETE_MEASURE_ACTION',\n    'DELETE_RATE_TABLE_ACTION',\n    'DELETE_RATE_DIM_ACTION',\n    'DELETE_EXPRESSION_ACTION',\n    'DELETE_PLAN_ACTION'\n  ]);\n  if (successNodeCode) {\n    entry.nodeCode = successNodeCode;\n    entry.nodeName = successNodeCode;\n    entry.operation = entry.operation ? entry.operation : successNodeCode;\n    entry.responseStatus = readResponseStatus(successNodeCode);\n  }\n  entry.status = 'ROLLED_BACK';\n  entry.outcome = 'ROLLED_BACK';\n  entry.message = 'Rollback action completed';\n}\n\nif (stateErrors.length) {\n  entry.status = 'FAILED';\n  entry.outcome = 'FAILED';\n  entry.internalFailure = true;\n  entry.message = stateErrors[0];\n  entry.stateErrors = stateErrors;\n}\n\nactionResults.push(entry);\n\nvar result = new Object();\nresult.actionResults = actionResults;\nresult.stateErrors = stateErrors;\nreturn result;"
+                  },
+                  "outcomes": {
+                    "success": "PERSIST_ACTION_RESULTS_SUCCESS"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "type": "CODE",
+                  "code": "CACHE_ACTION_SKIPPED",
+                  "id": "CACHE_ACTION_SKIPPED",
+                  "metadata": {
+                    "name": "Cache Action Skipped",
+                    "returnType": "object",
+                    "position": {
+                      "x": 2060,
+                      "y": 280
+                    },
+                    "sourceCode": "var rawActionResults = $context.$variables.actionResults;\nvar stateErrors = [];\nvar actionResults = [];\nif (rawActionResults === undefined || rawActionResults === null) {\n  actionResults = [];\n} else if (Array.isArray(rawActionResults)) {\n  actionResults = rawActionResults;\n} else {\n  stateErrors.push('Malformed rollback state: actionResults must be an array.');\n}\nvar normalized = ($context.$nodes && $context.$nodes.NORMALIZE_ROLLBACK_ACTION && $context.$nodes.NORMALIZE_ROLLBACK_ACTION.$output)\n  ? $context.$nodes.NORMALIZE_ROLLBACK_ACTION.$output.result\n  : null;\nvar action = normalized && normalized.action\n  ? normalized.action\n  : null;\nvar resultIndex = normalized && normalized.resultIndex !== undefined && normalized.resultIndex !== null\n  ? Number(normalized.resultIndex)\n  : Number(actionResults.length);\n\nif (normalized && normalized.stateErrors && normalized.stateErrors.length) {\n  var se = 0;\n  for (se = 0; se < normalized.stateErrors.length; se += 1) {\n    stateErrors.push(String(normalized.stateErrors[se]));\n  }\n}\n\nvar componentPrep = ($context.$nodes && $context.$nodes.PREPARE_COMPONENT_DELETE && $context.$nodes.PREPARE_COMPONENT_DELETE.$output)\n  ? $context.$nodes.PREPARE_COMPONENT_DELETE.$output.result\n  : null;\nif (componentPrep && componentPrep.stateErrors && componentPrep.stateErrors.length) {\n  var cse = 0;\n  for (cse = 0; cse < componentPrep.stateErrors.length; cse += 1) {\n    stateErrors.push(String(componentPrep.stateErrors[cse]));\n  }\n}\n\nvar target = {\n  type: action && action.type ? String(action.type) : null,\n  parserId: action && action.parserId ? String(action.parserId) : null,\n  name: action && action.name ? String(action.name) : null,\n  icId: action && action.icId !== undefined && action.icId !== null ? Number(action.icId) : null,\n  dimensionId: action && action.dimensionId !== undefined && action.dimensionId !== null ? Number(action.dimensionId) : null,\n  tierId: action && action.tierId !== undefined && action.tierId !== null ? Number(action.tierId) : null,\n  orgId: action && action.orgId !== undefined && action.orgId !== null ? Number(action.orgId) : null,\n  deleteId: action && action.deleteId ? String(action.deleteId) : null,\n  canonicalUrl: action && action.canonicalUrl ? String(action.canonicalUrl) : null\n};\n\nvar entry = {\n  index: resultIndex,\n  actionId: action && action.parserId ? String(action.parserId) : (action && action.icId !== undefined && action.icId !== null ? String(action.icId) : null),\n  type: target.type,\n  parserId: target.parserId,\n  target: target,\n  status: 'SKIPPED',\n  outcome: 'SKIPPED',\n  message: 'Rollback action did not have a usable target identifier.'\n};\n\nif (stateErrors.length) {\n  entry.status = 'FAILED';\n  entry.outcome = 'FAILED';\n  entry.internalFailure = true;\n  entry.message = stateErrors[0];\n  entry.stateErrors = stateErrors;\n}\n\nactionResults.push(entry);\n\nvar result = new Object();\nresult.actionResults = actionResults;\nresult.stateErrors = stateErrors;\nreturn result;"
+                  },
+                  "outcomes": {
+                    "success": "PERSIST_ACTION_RESULTS_SKIPPED"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "type": "SET_FIELDS",
+                  "code": "PERSIST_ACTION_RESULTS_SUCCESS",
+                  "id": "PERSIST_ACTION_RESULTS_SUCCESS",
+                  "metadata": {
+                    "name": "PERSIST_ACTION_RESULTS_SUCCESS",
+                    "position": {
+                      "x": 2280,
+                      "y": 200
+                    }
+                  },
+                  "outcomes": {
+                    "success": "end_ROLLBACK_LOOP"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_PERSIST_ACTION_RESULTS_SUCCESS_0",
+                      "name": "actionResults",
+                      "type": "array",
+                      "value": "{{$context.$nodes.CACHE_ACTION_SUCCESS.$output.result.actionResults}}"
+                    }
+                  ]
+                },
+                {
+                  "type": "SET_FIELDS",
+                  "code": "PERSIST_ACTION_RESULTS_SKIPPED",
+                  "id": "PERSIST_ACTION_RESULTS_SKIPPED",
+                  "metadata": {
+                    "name": "PERSIST_ACTION_RESULTS_SKIPPED",
+                    "position": {
+                      "x": 2280,
+                      "y": 200
+                    }
+                  },
+                  "outcomes": {
+                    "success": "end_ROLLBACK_LOOP"
+                  },
+                  "inputs": [
+                    {
+                      "id": "in_PERSIST_ACTION_RESULTS_SKIPPED_0",
+                      "name": "actionResults",
+                      "type": "array",
+                      "value": "{{$context.$nodes.CACHE_ACTION_SKIPPED.$output.result.actionResults}}"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "outcomes": {
+            "success": "5"
+          },
+          "inputs": [
+            {
+              "id": "4_collection",
+              "name": "collection",
+              "type": "array",
+              "value": "{{$context.$variables.rollbackActions}}"
+            }
+          ],
+          "diagram": {
+            "x": 5000,
+            "y": 6100
+          }
+        },
+        {
+          "id": "5",
+          "code": "ASSEMBLE_ROLLBACK_RESULT",
+          "type": "CODE",
+          "metadata": {
+            "name": "Assemble Rollback Result",
+            "returnType": "object",
+            "sourceCode": "var prepared = ($context.$nodes.PREPARE_ROLLBACK_REQUEST && $context.$nodes.PREPARE_ROLLBACK_REQUEST.$output)\n  ? $context.$nodes.PREPARE_ROLLBACK_REQUEST.$output.result\n  : new Object();\n\nvar errors = prepared.errors ? prepared.errors.slice ? prepared.errors.slice() : prepared.errors : [];\nif (!Array.isArray(errors)) {\n  errors = [];\n}\nvar rawActionResults = $context.$variables.actionResults;\nvar rawRollbackActions = $context.$variables.rollbackActions;\nvar stateErrors = [];\nvar actionResults = [];\nvar rollbackActions = [];\nif (rawActionResults === undefined || rawActionResults === null) {\n  actionResults = [];\n} else if (Array.isArray(rawActionResults)) {\n  actionResults = rawActionResults;\n} else {\n  stateErrors.push('Malformed rollback state: actionResults must be an array.');\n}\nif (rawRollbackActions === undefined || rawRollbackActions === null) {\n  rollbackActions = [];\n} else if (Array.isArray(rawRollbackActions)) {\n  rollbackActions = rawRollbackActions;\n} else {\n  stateErrors.push('Malformed rollback state: rollbackActions must be an array.');\n}\nvar rolledBackCount = 0;\nvar alreadyMissingCount = 0;\nvar failedCount = 0;\nvar skippedCount = 0;\nvar malformedCount = 0;\nvar rolledBackActions = [];\nvar alreadyMissingActions = [];\nvar failedActions = [];\nvar skippedActions = [];\nvar i = 0;\nfor (i = 0; i < actionResults.length; i += 1) {\n  var entry = actionResults[i] ? actionResults[i] : new Object();\n  if (entry.status === 'ROLLED_BACK') {\n    rolledBackCount += 1;\n    rolledBackActions.push(entry);\n  } else if (entry.status === 'ALREADY_MISSING') {\n    alreadyMissingCount += 1;\n    alreadyMissingActions.push(entry);\n  } else if (entry.status === 'FAILED') {\n    failedCount += 1;\n    failedActions.push(entry);\n  } else if (entry.status === 'SKIPPED') {\n    skippedCount += 1;\n    skippedActions.push(entry);\n  } else {\n    malformedCount += 1;\n    failedCount += 1;\n    failedActions.push(entry);\n  }\n  if (entry.internalFailure === true) {\n    malformedCount += 1;\n  }\n}\n\nvar result = new Object();\nresult.valid = prepared.valid === true;\nfor (i = 0; i < stateErrors.length; i += 1) {\n  errors.push(stateErrors[i]);\n}\nif (malformedCount > 0 && stateErrors.length === 0) {\n  errors.push('Malformed rollback audit state detected.');\n}\nresult.errors = errors;\nresult.warnings = prepared.warnings ? prepared.warnings : [];\nresult.executionMode = prepared.executionMode ? prepared.executionMode : 'publishFailureRollback';\nresult.requestCounts = prepared.requestCounts ? prepared.requestCounts : new Object();\nresult.actions = actionResults;\nresult.rollbackAudit = actionResults;\nresult.processedCount = actionResults.length;\nresult.totalActions = rollbackActions.length;\nvar candidates = result.requestCounts && result.requestCounts.candidates ? Number(result.requestCounts.candidates) : 0;\nvar accepted = result.requestCounts && result.requestCounts.accepted ? Number(result.requestCounts.accepted) : 0;\nvar remainingActions = [];\nvar processedByIndex = new Object();\nfor (i = 0; i < actionResults.length; i += 1) {\n  var processedIndex = actionResults[i] && actionResults[i].index !== undefined && actionResults[i].index !== null\n    ? String(actionResults[i].index)\n    : String(i);\n  processedByIndex[processedIndex] = true;\n}\nfor (i = 0; i < rollbackActions.length; i += 1) {\n  var planned = rollbackActions[i] ? rollbackActions[i] : new Object();\n  var plannedIndex = planned.sourceIndex !== undefined && planned.sourceIndex !== null\n    ? String(planned.sourceIndex)\n    : (planned.sequence !== undefined && planned.sequence !== null ? String(planned.sequence) : String(i));\n  if (!processedByIndex[plannedIndex]) {\n    remainingActions.push(planned);\n  }\n}\nvar fullyProcessed = stateErrors.length === 0 && malformedCount === 0 && result.processedCount === result.totalActions && remainingActions.length === 0;\nresult.executionSummary = {\n  candidates: candidates,\n  accepted: accepted,\n  skippedDuringPreparation: result.requestCounts && result.requestCounts.skippedDuringPreparation\n    ? Number(result.requestCounts.skippedDuringPreparation)\n    : (candidates - accepted),\n  rolledBackCount: rolledBackCount,\n  alreadyMissingCount: alreadyMissingCount,\n  failedCount: failedCount,\n  skippedCount: skippedCount,\n  malformedCount: malformedCount,\n  remainingActions: remainingActions.length,\n  fullyProcessed: fullyProcessed\n};\nresult.actionOutcomes = {\n  rolledBack: rolledBackActions,\n  alreadyMissing: alreadyMissingActions,\n  skipped: skippedActions,\n  failed: failedActions,\n  remaining: remainingActions\n};\nif (stateErrors.length > 0 || malformedCount > 0) {\n  result.status = 'INTERNAL_FAILURE';\n} else if (prepared.valid !== true) {\n  result.status = 'FAILED_VALIDATION';\n} else if (!fullyProcessed || failedCount > 0 || skippedCount > 0) {\n  result.status = 'PARTIAL_FAILURE';\n} else {\n  result.status = 'SUCCESS';\n}\nresult.message = prepared.valid !== true\n  ? 'Rollback request rejected by validation guardrails'\n  : (result.status === 'INTERNAL_FAILURE'\n      ? 'Rollback audit failed because workflow state was malformed'\n      : (result.status !== 'SUCCESS'\n      ? 'Rollback completed with manual cleanup required'\n      : 'Rollback completed'));\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 5000,
+            "y": 6320
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "end",
+          "code": "END",
+          "type": "END",
+          "metadata": {
+            "name": "End",
+            "description": "End of data pipeline"
+          },
+          "outcomes": {},
+          "inputs": [],
+          "diagram": {
+            "x": 5000,
+            "y": 5220
+          }
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "var_001",
+          "name": "rollbackActions",
+          "type": "array",
+          "value": [],
+          "scope": "JOB"
+        },
+        {
+          "id": "var_002",
+          "name": "actionResults",
+          "type": "array",
+          "value": [],
+          "scope": "JOB"
+        }
+      ],
+      "errorHandlers": []
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "trig_001",
+            "name": "rollbackPayload",
+            "type": "object"
+          },
+          {
+            "id": "trig_002",
+            "name": "publisherResult",
+            "type": "object"
+          }
+        ]
+      }
+    ],
+    "deletedTriggerTypes": [],
+    "answerInUserLanguage": false,
+    "userLanguagePrompt": "",
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    },
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI"
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "INCENTIVE_COMPENSATION",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": true,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"1\""
+  }
+}

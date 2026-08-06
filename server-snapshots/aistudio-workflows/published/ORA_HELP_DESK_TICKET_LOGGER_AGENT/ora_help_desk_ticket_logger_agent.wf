@@ -1,0 +1,1552 @@
+{
+  "workflowId": "100002355227272",
+  "workflowCode": "ORA_HELP_DESK_TICKET_LOGGER_AGENT",
+  "name": "Help Desk Request Creator Agent",
+  "description": "Ticket logging agent drafts a title and problemDescription from the user query and history and logs a ticket.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1765360306050"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START",
+          "diagram": {
+            "x": 6520.5,
+            "y": 5000
+          }
+        },
+        {
+          "metadata": {
+            "name": "Extract ticket details"
+          },
+          "outcomes": {
+            "success": "1762404693003"
+          },
+          "code": "EXTRACT_TICKET_DETAILS",
+          "id": "1762404357023",
+          "inputs": [
+            {
+              "id": "1762404357024_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "## Objective\n\nExtract a clear, context-aware title and problem description for logging a ticket based on user query and chat history. If chatHistory is unavailable, use the userQuery. If unclear, ask for clarifying questions.\n\n---\n\n## Input Source\n\n- `userQuery`: {{$context.$triggers.REST.$input.userQuery}}\n- `chatHistory`: {{$context.$triggers.REST.$input.chatHistory}}\n- `selectedChoices`: {{$context.$nodes.GET_OBJECTTYPE.$output.items[0].SelectedChoices}}\n- `additionalFields`: {{$context.$nodes.PARSEADDITIONALFIELDS.$output.result}}\n- `inputObjectType`: {{$context.$triggers.REST.$input.objectType}}\n\n---\n\n### **Steps**\n\n1. **Extract Relevant Information:**\n    - From `chatHistory`, pull only the turns **related** to `userQuery` (similar topic, issue, clarification, or resolution).\n    - Ignore unrelated or repeated text. Set this to `context`.\n    - If `chatHistory` is unavailable, use only `userQuery`.\n\n2. **Include Relevant Next or Troubleshooting Steps:**\n    - If the chat history contains **relevant next steps** or **troubleshooting steps** that the user has tried and reported, include those as part of the **problemDescription**.\n    - Ensure that only steps that were tried by the user and are directly related to the issue are included.\n    - Do not include steps that have not been tried or that are irrelevant.\n\n3. **Extract Title and Problem Description:**\n    - Extract a `title` (≤400 characters) and `problemDescription` (≤1000 characters) from the relevant `context` (either from `chatHistory` or `userQuery` or both):\n      - **DO NOT INCLUDE** any PII (emails, names, user IDs, phone numbers, etc.) in either the `title` or `problemDescription`.\n      - **DO NOT INCLUDE**  any `additionalFields` in either the `title` or `problemDescription`.\n      - Remove ticket or case identifiers and action request phrases (e.g., \"log a ticket,\" \"please raise a request\").\n      - Remove details like `srId`, `ticketId`, `personId`, etc.\n      - Do not include solutions, next steps, or irrelevant information unless the user has tried and reported them.\n      - **Only include** the reported issue and relevant factual observations; avoid assumptions, extra details, or any user requests for action, investigation, escalation, or issuance.\n      - Ensure both fields are clear, concise, grammatically correct, and safe to share.\n\n4. **Determine the Object Type:**\n    - If `inputObjectType` is \"hrHelpDeskRequests\" or \"internalServiceRequests\",\n      - **Do not determine** `objectType`.\n      - set `inputObjectType` to `objectType`.  \n    - Else,\n      - If the `selectedChoices` array is empty, set `title`, `problemDescription`, `questions` and `objectType` to an empty string.\n      - If the `selectedChoices` array contains \"ORA_SVC_INTERNAL_SERVICE_REQUESTS\" only, set `objectType` to `\"internalServiceRequests\"`.\n      - If the `selectedChoices` array contains \"ORA_SVC_HR_SERVICE_REQUESTS\" only, set `objectType` to `\"hrHelpDeskRequests\"`.\n      - If the `selectedChoices` array contains BOTH \"ORA_SVC_INTERNAL_SERVICE_REQUESTS\" and \"ORA_SVC_HR_SERVICE_REQUESTS\", decide by inspecting the `problemDescription`:\n        - If `problemDescription` (case-insensitive) contains any HR-related keywords or the intent relates to HR processes, workforce matters, or employee life-cycle tasks such as joining, onboarding, offboarding, employment changes, or internal mobility:\n          - HR-related keywords include: payroll, benefit, leave, legal, confidentiality, confidential, NDA, non-disclosure, privacy, GDPR, CCPA, etc.\n          - set `objectType` to `\"hrHelpDeskRequests\"`.\n        - For all other operational or IT-related queries (e.g., technical support, facilities, equipment, issues with laptops, etc.), set `objectType` to `\"internalServiceRequests\"`.\n        - Set `questions` to an empty string.\n    - If `additionalFields` contain \"ReferenceObjectId\" or \"IBAssetId\" or contains CategoryCode related to \"Incentives\", set `objectType` to `\"internalServiceRequests\"`. (Hard override)\n\n5. **Set productProfileOptionCode**\n    - If `objectType` is \"internalServiceRequests\", set `productProfileOptionCode` to `\"SVC_ISR_PROD_CATALOG_USAGE\"`.\n    - If `objectType` is \"hrHelpDeskRequests\", set `productProfileOptionCode` to `\"SVC_HCM_PROD_CATALOG_USAGE\"`.\n\n6. **If Insufficient Context:**\n    - If the `title`, `problemDescription` lack enough context to create a valid ticket, ask 1–2 short, clear clarification questions. set it as `questions`.\n    - Do not ask for PII (e.g., email, phone, IDs).\n    - Set `title`, `problemDescription`, and `objectType` to an empty string.\n\n---\n\n### **Example Output**\n\n- **If enough context is provided:**\n  ```json\n  {\n    \"title\": \"Issue with payroll deduction\",\n    \"problemDescription\": \"Incorrect payroll deductions for this month. User has already tried contacting payroll support and double-checking deductions.\",\n    \"objectType\": \"hrHelpDeskRequests\",\n    \"questions\": \"\", \n    \"productProfileOptionCode\": \"SVC_HCM_PROD_CATALOG_USAGE\"    \n  }\n  ```\n\n- **If clarification is needed:**\n  ```json\n   {\n    \"title\": \"\",\n    \"problemDescription\": \"\",\n    \"objectType\": \"\",\n    \"productProfileOptionCode\": \"\",\n    \"questions\": \"[\"Can you provide more details on the issue?\", \"When did the issue first occur?\"]\"\n   }\n    ```"
+            },
+            {
+              "id": "1762404357025_2",
+              "name": "temperature",
+              "type": "number",
+              "value": ""
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"productProfileOptionCode\": {\n            \"type\": \"string\"\n        },\n        \"objectType\": {\n            \"type\": \"string\"\n        },\n        \"problemDescription\": {\n            \"type\": \"string\"\n        },\n        \"title\": {\n            \"type\": \"string\"\n        },\n        \"questions\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM",
+          "diagram": {
+            "x": 6398.5,
+            "y": 5926
+          }
+        },
+        {
+          "metadata": {
+            "name": "can log ticket"
+          },
+          "outcomes": {
+            "true": "1762845486197",
+            "false": "1763614835656"
+          },
+          "code": "CAN_LOG_TICKET",
+          "convergenceTargetId": "end",
+          "id": "1762404693003",
+          "inputs": [
+            {
+              "id": "1762404693004_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_TICKET_DETAILS.$output.questions ==\"\" && $context.$nodes.EXTRACT_TICKET_DETAILS.$output.objectType != \"\"}}"
+            }
+          ],
+          "type": "CONDITION",
+          "diagram": {
+            "x": 6398.5,
+            "y": 6148
+          }
+        },
+        {
+          "metadata": {
+            "name": "Run In Parallel"
+          },
+          "outcomes": {
+            "0": "1762405477664",
+            "1": "1773205308631",
+            "2": "1773649302396",
+            "3": "1779245299918"
+          },
+          "code": "PARALLEL_1762405420049",
+          "convergenceTargetId": "1773640270470",
+          "id": "1762405420048",
+          "inputs": [],
+          "type": "PARALLEL",
+          "diagram": {
+            "x": 5133.25,
+            "y": 11530,
+            "width": 1611.1860000000015,
+            "height": 792
+          }
+        },
+        {
+          "metadata": {
+            "name": "check multi bu enabled"
+          },
+          "outcomes": {
+            "true": "1763532495800",
+            "false": "1763536487254"
+          },
+          "code": "CHECK_MULTI_ENABLED",
+          "convergenceTargetId": "1772690802017",
+          "id": "1762766422390",
+          "inputs": [
+            {
+              "id": "1762766422391_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PROFILE_OPTION_MULTIPLE_BU.$output.items[0].ProfileOptionValue == \"Y\"}}"
+            }
+          ],
+          "type": "CONDITION",
+          "diagram": {
+            "x": 5723.5,
+            "y": 7258
+          }
+        },
+        {
+          "metadata": {
+            "name": "set srBU and productUsage multi BU"
+          },
+          "outcomes": {
+            "success": "1772690802017"
+          },
+          "code": "SET_SRBU_AND_PRODUCTUSAGE_MULTI_N",
+          "id": "1762840679771",
+          "inputs": [
+            {
+              "id": "1763536615439",
+              "name": "productUsage",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_DEFAULT_PRODUCTUSAGE_MULTI_N.$output.items[0].ProfileOptionValue}}"
+            },
+            {
+              "id": "1762840688082",
+              "name": "srBU",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_DEFAULT_BU.$output.items[0].ProfileOptionValue}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 6140.5,
+            "y": 7978
+          }
+        },
+        {
+          "metadata": {
+            "name": "check if personId"
+          },
+          "outcomes": {
+            "true": "1762854169422",
+            "false": "1762853668153"
+          },
+          "code": "CHECK_IF_PERSONID",
+          "convergenceTargetId": "1762766422390",
+          "id": "1762845486197",
+          "inputs": [
+            {
+              "id": "1762845486198_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.personId !==\"\"}}"
+            }
+          ],
+          "type": "CONDITION",
+          "diagram": {
+            "x": 5723.5,
+            "y": 6370
+          }
+        },
+        {
+          "metadata": {
+            "name": "set personId and bu"
+          },
+          "outcomes": {
+            "success": "1762766422390"
+          },
+          "code": "SET_PERSONID_AND_BU",
+          "id": "1762845603837",
+          "inputs": [
+            {
+              "id": "1762854301954",
+              "name": "srBU",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_BUSINESSUNITID.$output.items[0].BusinessUnitId}}"
+            },
+            {
+              "id": "1762845608615",
+              "name": "personId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.personId}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 5968,
+            "y": 6814
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_GETPERSONDETAILS",
+            "functionName": "getall_helpdeskContactsLov",
+            "name": "get personId"
+          },
+          "outcomes": {
+            "success": "1762846030156"
+          },
+          "code": "GET_PERSONID",
+          "id": "1762845707879",
+          "inputs": [
+            {
+              "id": "1765550591124_1",
+              "name": "query",
+              "type": "string",
+              "value": "{{\"PersonNumber=\" + $context.$nodes.GET_PERSON_FROM_SESSION.$output.items[0].PersonNumber}}"
+            },
+            {
+              "id": "1765550591125_2",
+              "name": "fields",
+              "type": "string",
+              "value": "PersonId,BusinessUnitId"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 5498.5,
+            "y": 6814
+          }
+        },
+        {
+          "metadata": {
+            "name": "set personId and businessUnitId"
+          },
+          "outcomes": {
+            "success": "1762766422390"
+          },
+          "code": "SET_PERSONID_AND_BUSINESSUNITID",
+          "id": "1762846030156",
+          "inputs": [
+            {
+              "id": "1762854355732",
+              "name": "srBU",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PERSONID.$output.items[0].BusinessUnitId}}"
+            },
+            {
+              "id": "1762846041464",
+              "name": "personId",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PERSONID.$output.items[0].PersonId}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 5479,
+            "y": 7036
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_SELF_DETAIL_OBJECT",
+            "functionName": "getUserSession",
+            "name": "Get person from session"
+          },
+          "outcomes": {
+            "success": "1762845707879"
+          },
+          "code": "GET_PERSON_FROM_SESSION",
+          "id": "1762853668153",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 5498.5,
+            "y": 6592
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_GETPERSONDETAILS",
+            "functionName": "getall_helpdeskContactsLov",
+            "name": "get BusinessUnitId"
+          },
+          "outcomes": {
+            "success": "1762845603837"
+          },
+          "code": "GET_BUSINESSUNITID",
+          "id": "1762854169422",
+          "inputs": [
+            {
+              "id": "1765550484449_1",
+              "name": "query",
+              "type": "string",
+              "value": "{{\"PersonId=\" + $context.$triggers.REST.$input.personId}}"
+            },
+            {
+              "id": "1765550484450_2",
+              "name": "fields",
+              "type": "string",
+              "value": "BusinessUnitId"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 5968,
+            "y": 6592
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_GETPRODUCTUSAGE",
+            "errorNodeId": "1763534092326",
+            "functionName": "get_product_usage",
+            "name": "get productUsage for multi BU"
+          },
+          "outcomes": {
+            "success": "1763532517496"
+          },
+          "code": "GET_PRODUCTUSAGE_MULTI_Y",
+          "id": "1763532495800",
+          "inputs": [
+            {
+              "id": "1763726317610_1",
+              "name": "srBU",
+              "value": "{{$context.$variables.srBU}}",
+              "required": true
+            },
+            {
+              "id": "1763726317611_2",
+              "name": "profileOptionCode",
+              "value": "{{$context.$nodes.EXTRACT_TICKET_DETAILS.$output.productProfileOptionCode}}",
+              "required": true
+            },
+            {
+              "id": "1763726317612_3",
+              "name": "fields",
+              "value": "ProfileOptionValue",
+              "required": true
+            },
+            {
+              "id": "1763726317612_4",
+              "name": "onlyData",
+              "value": "true",
+              "required": true
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 5214.5,
+            "y": 7480
+          }
+        },
+        {
+          "metadata": {
+            "name": "check if ProfileOptionValue"
+          },
+          "outcomes": {
+            "true": "1763533950797",
+            "false": "1763534092326"
+          },
+          "code": "CHECK_IF_PROFILEOPTIONVALUE",
+          "convergenceTargetId": "1772690802017",
+          "id": "1763532517496",
+          "inputs": [
+            {
+              "id": "1763532517498_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PRODUCTUSAGE_MULTI_Y.$output.items[0].ProfileOptionValue != null}}"
+            }
+          ],
+          "type": "CONDITION",
+          "diagram": {
+            "x": 5223.5,
+            "y": 7978
+          }
+        },
+        {
+          "metadata": {
+            "name": "set productUsage"
+          },
+          "outcomes": {
+            "success": "1772690802017"
+          },
+          "code": "SET_PRODUCTUSAGE",
+          "id": "1763533950797",
+          "inputs": [
+            {
+              "id": "1763533961813",
+              "name": "productUsage",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PRODUCTUSAGE_MULTI_Y.$output.items[0].ProfileOptionValue}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 5450,
+            "y": 8200
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_GETPROFILEOPTIONVALUE",
+            "functionName": "getProfileOptionValue",
+            "name": "get default productUsage"
+          },
+          "outcomes": {
+            "success": "1763535409176"
+          },
+          "code": "GET_DEFAULT_PRODUCTUSAGE",
+          "id": "1763534092326",
+          "inputs": [
+            {
+              "id": "1765542935381_1",
+              "name": "pProfileCode",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_TICKET_DETAILS.$output.productProfileOptionCode}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 5000,
+            "y": 8200
+          }
+        },
+        {
+          "metadata": {
+            "name": "set default productUsage"
+          },
+          "outcomes": {
+            "success": "1772690802017"
+          },
+          "code": "SET_DEFAULT_PRODUCTUSAGE",
+          "id": "1763535409176",
+          "inputs": [
+            {
+              "id": "1763535419606",
+              "name": "productUsage",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_DEFAULT_PRODUCTUSAGE.$output.items[0].ProfileOptionValue}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 5000,
+            "y": 8422
+          }
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1762768648575",
+            "1": "1763536538528"
+          },
+          "code": "PARALLEL_1763536487256",
+          "convergenceTargetId": "1762840679771",
+          "id": "1763536487254",
+          "inputs": [],
+          "type": "PARALLEL",
+          "diagram": {
+            "x": 5900,
+            "y": 7480,
+            "width": 847,
+            "height": 348
+          }
+        },
+        {
+          "metadata": {
+            "name": "if selectedChoice empty"
+          },
+          "outcomes": {
+            "true": "1772537770832",
+            "false": "1762405621239"
+          },
+          "code": "IF_SELECTEDCHOICE_EMPTY",
+          "convergenceTargetId": "end",
+          "id": "1763614835656",
+          "inputs": [
+            {
+              "id": "1763614835658_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_TICKET_DETAILS.$output.questions == \"\"}}"
+            }
+          ],
+          "type": "CONDITION",
+          "diagram": {
+            "x": 6868,
+            "y": 6370
+          }
+        },
+        {
+          "metadata": {
+            "name": "vagueResponse"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "VAGUERESPONSE",
+          "convergenceTargetId": "1763614918362",
+          "id": "1762405621239",
+          "inputs": [
+            {
+              "id": "1762405621240_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Return `{{$context.$nodes.EXTRACT_TICKET_DETAILS.$output.questions}}` as output. If it is a list of questions, generate a bullet point list and return it as a string.\n\n## OUTPUT_FORMAT (STRICT)\n- Must return the output in {{$context.$triggers.REST.$input.userLanguage}} language, if provided. Else, do not translate."
+            },
+            {
+              "id": "1762405621241_2",
+              "name": "temperature",
+              "type": "number",
+              "value": ""
+            }
+          ],
+          "type": "LLM",
+          "diagram": {
+            "x": 7318,
+            "y": 6592
+          }
+        },
+        {
+          "metadata": {
+            "name": "cannot create ticket"
+          },
+          "outcomes": {},
+          "code": "CANNOT_CREATE_TICKET",
+          "convergenceTargetId": "end",
+          "id": "1763614943827",
+          "inputs": [
+            {
+              "id": "1763614943828_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "User does not have required permissions to create a Help Desk ticket."
+            }
+          ],
+          "type": "RETURN",
+          "diagram": {
+            "x": 6418,
+            "y": 6814
+          }
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1763613989444",
+            "1": "1762766350592"
+          },
+          "code": "PARALLEL_1765360306050",
+          "convergenceTargetId": "1773825912269",
+          "id": "1765360306050",
+          "inputs": [],
+          "type": "PARALLEL",
+          "diagram": {
+            "x": 6138.5,
+            "y": 5206,
+            "width": 820,
+            "height": 348
+          }
+        },
+        {
+          "metadata": {
+            "name": "if bad request"
+          },
+          "outcomes": {
+            "true": "1772541806005",
+            "false": "1763614943827"
+          },
+          "code": "IF_BAD_REQUEST",
+          "convergenceTargetId": "end",
+          "id": "1772537770832",
+          "inputs": [
+            {
+              "id": "1772537770833_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{JSON.parse($context.$nodes.LOGTICKET?.$error.$info).status == 400}}"
+            }
+          ],
+          "type": "CONDITION",
+          "diagram": {
+            "x": 6643,
+            "y": 6592
+          }
+        },
+        {
+          "metadata": {
+            "name": "bad request"
+          },
+          "outcomes": {},
+          "code": "BAD_REQUEST",
+          "convergenceTargetId": "1763614943827",
+          "id": "1772541806005",
+          "inputs": [
+            {
+              "id": "1772541806006_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "Ticket creation failed with error: {{JSON.parse($context.$nodes.LOGTICKET?.$error.$info)[\"o:errorDetails\"][0].detail}}"
+            }
+          ],
+          "type": "RETURN",
+          "diagram": {
+            "x": 6868,
+            "y": 6814
+          }
+        },
+        {
+          "metadata": {
+            "name": "ifCategoryProvided"
+          },
+          "outcomes": {
+            "true": "1772692722754",
+            "false": "1765426105341"
+          },
+          "code": "IFCATEGORYPROVIDED",
+          "convergenceTargetId": "1772692722754",
+          "id": "1772690802017",
+          "inputs": [
+            {
+              "id": "1772690802019_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{[\"CategoryCode\", \"CategoryId\"].some(k => Object.hasOwn($context.$nodes.PARSEADDITIONALFIELDS.$output.result, k))}}"
+            }
+          ],
+          "type": "CONDITION",
+          "diagram": {
+            "x": 5603.25,
+            "y": 8644
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_GETCATEGORYCODE",
+            "functionName": "get_category_code",
+            "name": "get category code"
+          },
+          "outcomes": {
+            "success": "1772692722754"
+          },
+          "code": "GET_CATEGORY_CODE",
+          "convergenceTargetId": "1772692557729",
+          "id": "1763537777362",
+          "inputs": [
+            {
+              "id": "1763628560882_1",
+              "name": "stripeCd",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_TICKET_DETAILS.$output.objectType === 'hrHelpDeskRequests' ? 'ORA_SVC_HCM' : 'ORA_SVC_ISR'}}"
+            },
+            {
+              "id": "1763628560883_2",
+              "name": "SrBU",
+              "type": "string",
+              "value": "{{$context.$variables.srBU}}"
+            },
+            {
+              "id": "1763628560884_3",
+              "name": "category",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_CATEGORY_OUTPUT.$output.result || -1}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 6053.25,
+            "y": 9310
+          }
+        },
+        {
+          "metadata": {
+            "name": "get category output",
+            "returnType": "string",
+            "sourceCode": "const categoryInput = $context.$nodes.RETRIEVECATEGORY.$output.value || \"\";\nconst categoryMatch = categoryInput && categoryInput.match(/\"?(category)\"?\\s*:\\s*[\"']?([A-Za-z0-9_ -]+)[\"']?/i);\nconst category = categoryMatch && categoryMatch[2] ? categoryMatch[2].trim() : \"\";\nreturn category;"
+          },
+          "outcomes": {
+            "success": "1763537777362"
+          },
+          "code": "GET_CATEGORY_OUTPUT",
+          "convergenceTargetId": "1763537777362",
+          "id": "1765426856782",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 6053.25,
+            "y": 9088
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_GETCATEGORIESFORBU",
+            "functionName": "getcategoriesRag",
+            "name": "RetrieveCategory",
+            "errorNodeId": "1772692722754"
+          },
+          "outcomes": {
+            "success": "1765426856782"
+          },
+          "code": "RETRIEVECATEGORY",
+          "convergenceTargetId": "1765426856782",
+          "id": "1765426105341",
+          "inputs": [
+            {
+              "id": "1765426284818_2",
+              "name": "srBU",
+              "value": "{{$context.$variables.srBU}}",
+              "required": true
+            },
+            {
+              "id": "1765426284818_1",
+              "name": "question",
+              "value": "{{$context.$nodes.EXTRACT_TICKET_DETAILS.$output.title + \".\" + $context.$nodes.EXTRACT_TICKET_DETAILS.$output.problemDescription}}",
+              "required": true
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 6053.25,
+            "y": 8866
+          }
+        },
+        {
+          "metadata": {
+            "name": "ifProductGroupProvided"
+          },
+          "outcomes": {
+            "true": "1772703452908",
+            "false": "1765427290638"
+          },
+          "code": "IFPRODUCTGROUPPROVIDED",
+          "convergenceTargetId": "1772703452908",
+          "id": "1772692722754",
+          "inputs": [
+            {
+              "id": "1772692722755_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{[\"ProdGroupName\", \"ProdGroupId\",\"ProductItemDescription\", \"InventoryItemId\", \"ReferenceObjectId\"].some(k => Object.hasOwn($context.$nodes.PARSEADDITIONALFIELDS.$output.result, k))}}"
+            }
+          ],
+          "type": "CONDITION",
+          "diagram": {
+            "x": 5603.25,
+            "y": 9532
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_GETAPRODUCTGROU",
+            "functionName": "oraCxServicecenGetaproductgrou_catalogproductgroups",
+            "name": "check prodGroupName"
+          },
+          "outcomes": {
+            "success": "1764565150458"
+          },
+          "code": "CHECK_PRODGROUPNAME",
+          "convergenceTargetId": "1772695071655",
+          "id": "1763528547820",
+          "inputs": [
+            {
+              "id": "1763528568979_1",
+              "name": "pUsageCode",
+              "type": "string",
+              "value": "{{$context.$variables.productUsage}}"
+            },
+            {
+              "id": "1763528568980_2",
+              "name": "pProduct",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PRODUCT_OUTPUT.$output.result || -1}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 6053.25,
+            "y": 10198
+          }
+        },
+        {
+          "metadata": {
+            "name": "Get product output",
+            "returnType": "string",
+            "sourceCode": "const productInput = $context.$nodes.RETRIEVEPRODUCT.$output.value || \"\";\nconst productMatch = productInput.match(/\"?(product)\"?\\s*:\\s*[\"']?([A-Za-z0-9_ -]+)[\"']?/i);\nconst product = productMatch && productMatch[2] ? productMatch[2].trim() : \"\";\nreturn product;"
+          },
+          "outcomes": {
+            "success": "1763528547820"
+          },
+          "code": "GET_PRODUCT_OUTPUT",
+          "convergenceTargetId": "1763528547820",
+          "id": "1765427413394",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 6053.25,
+            "y": 9976
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_GETPRODUCTSFORUSAGE",
+            "functionName": "getproductsRag",
+            "name": "RetrieveProduct",
+            "errorNodeId": "1772703452908"
+          },
+          "outcomes": {
+            "success": "1765427413394"
+          },
+          "code": "RETRIEVEPRODUCT",
+          "convergenceTargetId": "1765427413394",
+          "id": "1765427290638",
+          "inputs": [
+            {
+              "id": "1765427362360_2",
+              "name": "productUsage",
+              "value": "{{$context.$variables.productUsage}}",
+              "required": true
+            },
+            {
+              "id": "1765427362359_1",
+              "name": "question",
+              "value": "{{$context.$nodes.EXTRACT_TICKET_DETAILS.$output.title + \".\" + $context.$nodes.EXTRACT_TICKET_DETAILS.$output.problemDescription}}",
+              "required": true
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 6053.25,
+            "y": 9754
+          }
+        },
+        {
+          "metadata": {
+            "name": "create payload",
+            "returnType": "string",
+            "sourceCode": "const ticketLoggerPayload = {\nTitle: $context?.$nodes?.EXTRACT_TICKET_DETAILS?.$output?.title ?? \"\",\nProblemDescription: $context?.$nodes?.EXTRACT_TICKET_DETAILS?.$output?.problemDescription ?? \"\",\nChannelTypeCd: \"ORA_SVC_CHAT\",\nPrimaryContactPersonId: $context?.$variables?.personId ?? null,\nCategoryCode: $context?.$nodes?.GET_CATEGORY_CODE?.$output?.items?.[0]?.CategoryCode ?? \"\",\nProdGroupId: $context?.$nodes?.CHECK_PRODGROUPNAME?.$output?.items?.[0]?.ProductGroupId ?? \"\",\nInventoryItemId:\n($context?.$nodes?.GETPRODUCTITEM?.$output?.items?.[0]?.InventoryItemId ?? \"\") !== \"\"\n? ($context.$nodes.GETPRODUCTITEM.$output.items[0].InventoryItemId)\n: \"\",\nBUOrgId: $context?.$variables?.srBU ?? null\n};\n\n\nconst additionalFields = $context.$nodes.PARSEADDITIONALFIELDS.$output.result;\n\nconst merged = { ...ticketLoggerPayload, ...additionalFields};\nreturn merged;"
+          },
+          "outcomes": {
+            "success": "1772703471953"
+          },
+          "code": "CREATE_PAYLOAD",
+          "id": "1772703452908",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 5603.25,
+            "y": 10864
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_LOGEMPLOYEEHELPDESKREQUEST",
+            "errorNodeId": "1772537770832",
+            "functionName": "CreateRequest",
+            "name": "LogTicket"
+          },
+          "outcomes": {
+            "success": "1772703519761"
+          },
+          "code": "LOGTICKET",
+          "id": "1772703471953",
+          "inputs": [
+            {
+              "id": "1772703485443_1",
+              "name": "payload",
+              "value": "{{$context.$nodes.CREATE_PAYLOAD.$output.result}}",
+              "required": true
+            },
+            {
+              "id": "1772703485443_2",
+              "name": "objectType",
+              "value": "{{$context.$nodes.EXTRACT_TICKET_DETAILS.$output.objectType}}",
+              "required": true
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 5603.25,
+            "y": 11086
+          }
+        },
+        {
+          "metadata": {
+            "name": "set srNumber"
+          },
+          "outcomes": {
+            "success": "1762405420048"
+          },
+          "code": "SET_SRNUMBER",
+          "id": "1772703519761",
+          "inputs": [
+            {
+              "id": "1772703527042",
+              "name": "srNumber",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.LOGTICKET.$output.SrNumber}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 5603.25,
+            "y": 11308
+          }
+        },
+        {
+          "metadata": {
+            "name": "generate ticket logging response"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "GENERATE_TICKET_LOGGING_RESPONSE",
+          "id": "1773640270470",
+          "inputs": [
+            {
+              "id": "1773640270471_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an assistant that must strictly translate text while keeping placeholders intact. \n\nTranslate the following statement to {{$context.$triggers.REST.$input.userLanguage}}. If {{$context.$triggers.REST.$input.userLanguage}} is empty, do not translate. Do not change any placeholders (like {{$context.$variables.srNumber}} or {{$context.$nodes.DEEPLINK.$output}}). Only translate the human-readable parts of the sentence.\n\nStatement:\nThe SR {{$context.$variables.srNumber}} is logged. {{$context.$nodes.DEEPLINK.$output}}"
+            }
+          ],
+          "type": "LLM",
+          "diagram": {
+            "x": 5579.25,
+            "y": 12472
+          }
+        },
+        {
+          "metadata": {
+            "name": "productItem"
+          },
+          "outcomes": {
+            "true": "1772703452908",
+            "false": "1764510781627"
+          },
+          "code": "PRODUCTITEM",
+          "convergenceTargetId": "1772703452908",
+          "id": "1764565150458",
+          "inputs": [
+            {
+              "id": "1764565150459_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PRODUCT_OUTPUT.$output.result == \"\"}}"
+            }
+          ],
+          "type": "CONDITION",
+          "diagram": {
+            "x": 6053.25,
+            "y": 10420
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_MATCHPRODUCTITEM",
+            "functionName": "oraCxServicecenGetaproductitem_catalogproductitems",
+            "name": "getProductItem"
+          },
+          "outcomes": {
+            "success": "1772703452908"
+          },
+          "code": "GETPRODUCTITEM",
+          "convergenceTargetId": "1764565219075",
+          "id": "1764510781627",
+          "inputs": [
+            {
+              "id": "1764566691456_1",
+              "name": "productUsage",
+              "type": "string",
+              "value": "{{$context.$variables.productUsage}}"
+            },
+            {
+              "id": "1764566691457_2",
+              "name": "product",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PRODUCT_OUTPUT.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 6503.25,
+            "y": 10642
+          }
+        },
+        {
+          "metadata": {
+            "name": "parseAdditionalFields",
+            "returnType": "object",
+            "sourceCode": "let additionalFields = {};\n\ntry {\n    if ($context.$triggers.REST.$input.additionalFields) {\n        additionalFields = JSON.parse($context.$triggers.REST.$input.additionalFields) || {};\n    }\n} catch (e) {\n    additionalFields = {};\n}\n\nreturn additionalFields;"
+          },
+          "outcomes": {
+            "success": "1762404357023"
+          },
+          "code": "PARSEADDITIONALFIELDS",
+          "id": "1773825912269",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 6398.5,
+            "y": 5704
+          }
+        },
+        {
+          "metadata": {
+            "name": "chatHistory exists"
+          },
+          "outcomes": {
+            "false": "1773650708165",
+            "true": ""
+          },
+          "code": "CHATHISTORY_EXISTS",
+          "convergenceTargetId": "end",
+          "id": "1762405477664",
+          "inputs": [
+            {
+              "id": "1762405477665_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.chatHistory == \"\"}}"
+            }
+          ],
+          "type": "CONDITION",
+          "diagram": {
+            "x": 5153.25,
+            "y": 11771
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_LOGEMPLOYEEHELPDESKREQUEST",
+            "functionName": "AddMessage",
+            "name": "Add chatHistory to ticket"
+          },
+          "outcomes": {
+            "success": "1773640270470"
+          },
+          "code": "ADD_CHATHISTORY_TO_TICKET",
+          "id": "1762405513315",
+          "inputs": [
+            {
+              "id": "1773650957749_1",
+              "name": "objectType",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_TICKET_DETAILS.$output.objectType}}"
+            },
+            {
+              "id": "1773650957750_2",
+              "name": "SrNumber",
+              "type": "string",
+              "value": "{{$context.$variables.srNumber}}"
+            },
+            {
+              "id": "1773650957750_3",
+              "name": "messageContent",
+              "type": "string",
+              "value": "{{$context.$nodes.FORMAT_CHAT_HISTORY.$output.result}}"
+            },
+            {
+              "id": "1773650957751_4",
+              "name": "messageTypeCd",
+              "type": "string",
+              "value": "ORA_SVC_INTERNAL_NOTE"
+            },
+            {
+              "id": "1773650957752_5",
+              "name": "statusCd",
+              "type": "string",
+              "value": "ORA_SVC_COMMITTED"
+            },
+            {
+              "id": "1773650957754_6",
+              "name": "Subject",
+              "type": "string",
+              "value": "Self Service Chat Notes"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 5153.25,
+            "y": 12215
+          }
+        },
+        {
+          "metadata": {
+            "name": "Deeplink",
+            "toolCode": "ORA_GET_SR_LINK"
+          },
+          "outcomes": {
+            "success": "1773640270470"
+          },
+          "code": "DEEPLINK",
+          "id": "1773205308631",
+          "inputs": [
+            {
+              "id": "1773205326114_1",
+              "name": "stripe",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_TICKET_DETAILS.$output.objectType === \"hrHelpDeskRequests\" ? \"hrhd\" : \"isr\"}}"
+            },
+            {
+              "id": "1773205326119_2",
+              "name": "SrNumber",
+              "type": "string",
+              "value": "{{$context.$variables.srNumber}}"
+            }
+          ],
+          "type": "TOOL",
+          "diagram": {
+            "x": 6053.25,
+            "y": 11771
+          }
+        },
+        {
+          "metadata": {
+            "name": "Format chat history",
+            "returnType": "string",
+            "sourceCode": "let formattedChatHistory = $context.$triggers.REST.$input.chatHistory.replace(/ ?USER:/g, '<br><br><b>USER:</b>').replace(/ ?AI:/g, '<br><br><b>AI:</b>').trim();\nformattedChatHistory = formattedChatHistory.replace(/^<br>/, '');\nreturn formattedChatHistory;"
+          },
+          "outcomes": {
+            "success": "1762405513315"
+          },
+          "code": "FORMAT_CHAT_HISTORY",
+          "id": "1773650708165",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 5153.25,
+            "y": 11993
+          }
+        },
+        {
+          "metadata": {
+            "name": "attachmentsExist"
+          },
+          "outcomes": {
+            "true": "1773812554384",
+            "false": ""
+          },
+          "code": "ATTACHMENTSEXIST",
+          "convergenceTargetId": "end",
+          "id": "1773649302396",
+          "inputs": [
+            {
+              "id": "1773649302397_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.attachmentIds.length !== 0}}"
+            }
+          ],
+          "type": "CONDITION",
+          "diagram": {
+            "x": 5603.25,
+            "y": 11771
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_LOGEMPLOYEEHELPDESKREQUEST",
+            "errorNodeId": "1773640270470",
+            "functionName": "AddAttachment",
+            "name": "addAttachmentToTicket"
+          },
+          "outcomes": {
+            "success": "1773640270470"
+          },
+          "code": "ADDATTACHMENTTOTICKET",
+          "id": "1773649337534",
+          "inputs": [
+            {
+              "id": "1773651162615_1",
+              "name": "objectType",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_TICKET_DETAILS.$output.objectType}}"
+            },
+            {
+              "id": "1773651162616_2",
+              "name": "srId",
+              "type": "string",
+              "value": "{{$context.$nodes.LOGTICKET.$output.SrId}}"
+            },
+            {
+              "id": "1773651162616_3",
+              "name": "attachmentIds",
+              "type": "string",
+              "value": "{{$context.$nodes.ATTACHMENTIDS.$output.result ? $context.$triggers.REST.$input.attachmentIds : \"[\" + $context.$triggers.REST.$input.attachmentIds + \"]\"}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 5603.25,
+            "y": 12215
+          }
+        },
+        {
+          "metadata": {
+            "name": "attachmentIds",
+            "returnType": "boolean",
+            "sourceCode": "const attachmentIds = $context.$triggers.REST.$input.attachmentIds;\nreturn attachmentIds && attachmentIds.startsWith('[') && attachmentIds.endsWith(']');"
+          },
+          "outcomes": {
+            "success": "1773649337534"
+          },
+          "code": "ATTACHMENTIDS",
+          "convergenceTargetId": "1773649337534",
+          "id": "1773812554384",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 5603.25,
+            "y": 11993
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_GETPROFILEOPTIONVALUE",
+            "functionName": "getProfileOptionValue",
+            "name": "Get default BU"
+          },
+          "outcomes": {
+            "success": "1762840679771"
+          },
+          "code": "GET_DEFAULT_BU",
+          "convergenceTargetId": "1763536506463",
+          "id": "1762768648575",
+          "inputs": [
+            {
+              "id": "1765542699518_1",
+              "name": "pProfileCode",
+              "value": "HZ_DEFAULT_BU_CRM",
+              "required": true
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 5920,
+            "y": 7721
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_GETPROFILEOPTIONVALUE",
+            "functionName": "getProfileOptionValue",
+            "name": "Get default productUsage multi BU"
+          },
+          "outcomes": {
+            "success": "1762840679771"
+          },
+          "code": "GET_DEFAULT_PRODUCTUSAGE_MULTI_N",
+          "id": "1763536538528",
+          "inputs": [
+            {
+              "id": "1765542760358_1",
+              "name": "pProfileCode",
+              "value": "{{$context.$nodes.EXTRACT_TICKET_DETAILS.$output.productProfileOptionCode}}",
+              "required": true
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 6370,
+            "y": 7721
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_FEATURECODECHECK",
+            "functionName": "GetFeatureStates",
+            "name": "get objectType"
+          },
+          "outcomes": {
+            "success": "1773825912269"
+          },
+          "code": "GET_OBJECTTYPE",
+          "convergenceTargetId": "1765360314529",
+          "id": "1763613989444",
+          "inputs": [
+            {
+              "id": "1763614013471_1",
+              "name": "onlyData",
+              "type": "string",
+              "value": "true"
+            },
+            {
+              "id": "1763614013473_2",
+              "name": "featurecode",
+              "type": "string",
+              "value": "'ORA_SVC_HELP_DESK_USAGE'"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 6158.5,
+            "y": 5447
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_GETPROFILEOPTIONVALUE",
+            "functionName": "getProfileOptionValue",
+            "name": "Get profile option multiple BU"
+          },
+          "outcomes": {
+            "success": "1773825912269"
+          },
+          "code": "GET_PROFILE_OPTION_MULTIPLE_BU",
+          "convergenceTargetId": "1765360347223",
+          "id": "1762766350592",
+          "inputs": [
+            {
+              "id": "1765542204982_1",
+              "name": "pProfileCode",
+              "value": "HZ_ENABLE_MULTIPLE_BU_CRM",
+              "required": true
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 6608.5,
+            "y": 5447
+          }
+        },
+        {
+          "id": "1779245299918",
+          "code": "CREATE_AGENT_METRICS",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Create agent metrics",
+            "businessObjectCode": "ORA_CX_SERVICECEN_CREATEAIAGENTME",
+            "functionName": "Create_Agent_AI_Metrics"
+          },
+          "diagram": {
+            "x": 6405.428000000001,
+            "y": 11770.06
+          },
+          "outcomes": {
+            "success": "1773640270470"
+          },
+          "inputs": [
+            {
+              "id": "1778474243522_agentTeamCode",
+              "name": "agentTeamCode",
+              "value": "{{$context.$workflow.$name}}",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "id": "1778474243522_jobId",
+              "name": "jobId",
+              "value": "{{$context.$workflow.$jobId}}",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1763540219156",
+          "name": "srNumber",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1763533572054",
+          "name": "productUsage",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1762845578721",
+          "name": "personId",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1762840436592",
+          "name": "srBU",
+          "scope": "JOB",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_completion_tokens": 32000,
+        "reasoning_effort": "low"
+      },
+      "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+      "model": "OCI_GPT_5_MINI",
+      "modelName": "Gpt-5 Mini",
+      "provider": "CERT_PREMIUM"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1775021403960",
+            "name": "objectType",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1773649273519",
+            "name": "attachmentIds",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1773641233471",
+            "name": "userLanguage",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1772603207275",
+            "name": "additionalFields",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1762844963360",
+            "name": "personId",
+            "type": "string"
+          },
+          {
+            "id": "1762404250942",
+            "name": "chatHistory",
+            "type": "string"
+          },
+          {
+            "id": "1762404242422",
+            "name": "userQuery",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": [],
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    }
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "SERVICE_CENTER",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"4\""
+  }
+}

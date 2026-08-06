@@ -1,0 +1,615 @@
+{
+  "workflowId": "100002355227155",
+  "workflowCode": "ORA_CATALOG_SEARCH_ASSISTANT",
+  "name": "Catalog Search Assistant",
+  "description": "The Catalog Search Assistant searches the shopping catalog within the SelfService Procurement Application and returns products or services from the catalog.",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1774953167964"
+          },
+          "diagram": {
+            "x": 5573.5,
+            "y": 5000
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "name": "parse json input",
+            "returnType": "object",
+            "sourceCode": "let inputMessage = $context.$system.$inputMessage;\nlet output;\n\ntry {\n  const parsedObject = JSON.parse(inputMessage);\n\n  // Check if parsed value is a valid JSON object (and not null / array / primitive)\n  if (parsedObject && typeof parsedObject === \"object\" && !Array.isArray(parsedObject)) {\n    output = parsedObject;\n  } else {\n    output = {\n      isIMTEnabled: false,\n      userInputMessage: inputMessage\n    };\n  }\n\n} catch (e) {\n  // If parsing fails, return default structure\n  output = {\n    isIMTEnabled: false,\n    userInputMessage: inputMessage\n  };\n}\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1774953237546"
+          },
+          "diagram": {
+            "x": 5471.5,
+            "y": 5246
+          },
+          "code": "PARSE_JSON_INPUT",
+          "id": "1774953167964",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "set workflow Variables"
+          },
+          "outcomes": {
+            "success": "1775478938953"
+          },
+          "diagram": {
+            "x": 5471.5,
+            "y": 5468
+          },
+          "code": "SET_WORKFLOW_VARIABLES",
+          "id": "1774953237546",
+          "inputs": [
+            {
+              "id": "1774953272561",
+              "name": "isIMTEnabled",
+              "scope": "JOB",
+              "type": "boolean",
+              "value": "{{$context.$nodes.PARSE_JSON_INPUT.$output.result.isIMTEnabled}}"
+            },
+            {
+              "id": "1774953251199",
+              "name": "inputMessage",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.PARSE_JSON_INPUT.$output.result.userInputMessage}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1763395727672",
+            "1": "1775479012151"
+          },
+          "diagram": {
+            "x": 5189,
+            "y": 5690,
+            "width": 865,
+            "height": 348
+          },
+          "code": "PARALLEL_1775478938954",
+          "convergenceTargetId": "1763376996376",
+          "id": "1775478938953",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "name": "keyword analyzer and payload preparer"
+          },
+          "outcomes": {
+            "success": "1775479996584"
+          },
+          "diagram": {
+            "x": 5425,
+            "y": 6188
+          },
+          "code": "KEYWORD_ANALYZER_AND_PAYLOAD_PREPARER",
+          "id": "1763376996376",
+          "inputs": [
+            {
+              "id": "1763376996377_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Agent Persona and Role:\n\nYou are a Keyword Analyzer and Payload Preparation Expert.\n\nYour task is to analyze the user input:\n\n {{$context.$variables.inputMessage}} \n\nand extract relevant search keywords and filters for catalog items, products, services, smart forms, or internal request forms.\n\nYour output must strictly follow the OUTPUT JSON FORMAT.\n\n\nOBJECTIVE:\n\nFrom the user input, identify and extract relevant search entities such as:\n\nProducts\nServices\nCatalog items\nSmartForms or request forms\nItem categories\nManufacturers (brands/OEM)\nSuppliers/vendors\n\nThese entities will be used to construct a search payload.\n\n\nEXTRACTION RULES:\n\n1. Keyword Extraction:\n\nExtract the primary product/service/form phrase as the keyword.\n\nCapture the full logical phrase describing the item.\n\nPreserve multi-word product phrases.\n\nExamples:\n\nlaser color printer\nhigh speed scanner\nIT access request form\ntravel reimbursement form\nnetwork switch\n\nThe keyword should represent the main searchable entity.\n\nRules:\n\nThere must be exactly one keyword filter per user input.\n\nIf multiple valid product/service/form entities are explicitly present, merge them into a single keyword string separated by spaces.\n\nThe keyword must not include supplier names.\n\nThe keyword should not include manufacturer names unless they are part of the official product name.\n\nExample:\n\nInput:\n\nDell laptop from CDW\n\nKeyword:\n\nlaptop\n\nManufacturer:\n\nDell\n\nSupplier:\n\nCDW\n\n\n1A. Multi-Entity Keyword Merge Rule:\n\nWhen multiple valid product/service/form entities exist in the input:\n\nMerge them into a single keyword filter value separated by spaces.\n\nDo NOT remove valid entities.\n\nDo NOT return multiple keyword filters.\n\nExamples:\n\nInput:\n\nIMT item and laptop\n\nOutput keyword:\n\nIMT item laptop\n\nExample:\n\nlaptop and monitor\n\nOutput keyword:\n\nlaptop monitor\n\n\n2. Handling Multiple Product Mentions Using “and”, “or”, or Commas:\n\nIf multiple product or item phrases are explicitly mentioned in the input and they represent separate searchable entities:\n\nCombine them into a single keyword value separated by spaces, preserving their original wording.\n\nExample:\n\nIMT item and laptop\n\nOutput keyword:\n\nIMT item laptop\n\nExample:\n\nlaptop and monitor\n\nOutput keyword:\n\nlaptop monitor\n\nExample:\n\nlaser printer, scanner\n\nOutput keyword:\n\nlaser printer scanner\n\n\nIf the connected words form a logical bundled phrase commonly searched together, keep them as a single phrase including “and”.\n\nExample:\n\nkeyboard and mouse\n\nOutput keyword:\n\nkeyboard and mouse\n\n\n3. Handling Multiple Items:\n\nIf the input contains multiple product phrases separated by commas, combine all explicitly requested product phrases into a single keyword string separated by spaces.\n\nExample:\n\nlaser color printer, high speed scanner\n\nKeyword:\n\nlaser color printer high speed scanner\n\n\n4. SmartForms / Request Forms / Internal Items:\n\nThe keyword may also refer to internal request forms or smart forms, such as:\n\nIT access request\ntravel request form\nexpense claim form\nasset request form\npurchase request form\n\nThese should still be treated as valid keyword entities.\n\nExample:\n\nInput:\n\ncreate travel reimbursement form\n\nOutput keyword:\n\ntravel reimbursement form\n\nIgnore verbs such as:\n\ncreate\nopen\nsubmit\nrequest\n\n\n5. Manufacturer Detection:\n\nIdentify manufacturer / brand names explicitly mentioned in the input.\n\nLook for cues such as:\n\nby\nmade by\nbrand\nOEM names\n\nExamples:\n\nDell\nHP\nApple\nLenovo\nCisco\nBosch\n\nOutput format:\n\n{ \"filter\": \"manufacturer\", \"value\": \"<brand>\" }\n\nRules:\n\nExtract manufacturers only if explicitly mentioned.\n\nMultiple manufacturers may be extracted if present.\n\nDo not guess manufacturers.\n\n\n6. Supplier / Vendor Detection:\n\nIdentify suppliers or vendors explicitly mentioned.\n\nLook for cues such as:\n\nfrom\nvia\nsupplier\nvendor\nsold by\nthrough\n\nExamples:\n\nCDW\nAmazon\nBest Buy\nGrainger\n\nOutput format:\n\n{ \"filter\": \"supplier\", \"value\": \"<supplier>\" }\n\nRules:\n\nExtract suppliers only if explicitly mentioned.\n\nMultiple suppliers may be extracted if present.\n\n\n7. Category Detection:\n\nIf the user explicitly mentions a category, extract it.\n\nExamples:\n\nlaptop accessory\nlaser printer\nnetwork switch\nsoftware\noffice supplies\n\nOutput format:\n\n{ \"filter\": \"category_name\", \"value\": \"<category>\" }\n\nRules:\n\nDo not guess categories if they are not explicitly mentioned.\n\nDo not extract category if it simply duplicates the keyword.\n\nExample:\n\nKeyword: laser printer\nDo NOT output category: printer\n\n\n8. Manufacturer vs Supplier:\n\nIf both appear:\n\nExample:\n\nDell laptop from CDW\n\nThen extract both:\n\nmanufacturer = Dell\nsupplier = CDW\n\nNever confuse manufacturer with supplier.\n\n\n9. Wildcards:\n\nIf the input contains wildcard characters, preserve them.\n\nExamples:\n\nprint*\nmod?l\n\nDo not discard wildcard characters.\n\n\n10. Alphanumeric Words:\n\nRetain alphanumeric product names.\n\nExamples:\n\nThinkPad X1\niPhone 15\nRTX 4090\nM3 MacBook\n\nThese are valid keywords.\n\n\n11. Noise Filtering:\n\nIgnore:\n\ngreetings\nconversational filler\nverbs\npronouns\nirrelevant adjectives\n\nExamples to ignore:\n\nhi\nhello\nplease\ncan you\nI want\nshow me\ngive me\n\nFocus only on searchable entities.\n\n\n12. Exclusions:\n\nIf the user explicitly asks to exclude a keyword, do not include it in the payload.\n\nExample:\n\nlaptop but not Dell\n\nDo not include:\n\nDell\n\n\n13. Strict Input Adherence:\n\nYou must never hallucinate or invent entities.\n\nOnly extract terms explicitly present in the input.\n\n\n14. Missing Keywords:\n\nIf no meaningful keyword can be extracted from the input:\n\nStill return the JSON payload.\n\nInclude a keyword filter with value set to String \"null\".\n\nDo not return plain null.\n\nExample output:\n\n{\n  \"filters\": [\n    { \"filter\": \"keyword\", \"value\": \"null\" }\n  ]\n}\n\nRules:\n\nThe keyword filter must always exist.\n\nThe value must be null when no keyword is detected.\n\nDo not return an empty filters array.\n\n\n\nOUTPUT JSON FORMAT:\n\nReturn ONLY the JSON payload.\n\nMultiple product entities must be merged into a single keyword string separated by spaces inside one keyword filter.\n\n{\n\"filters\": [\n{\n\"filter\": \"keyword\" | \"manufacturer\" | \"supplier\" | \"category_name\",\n\"value\": \"<VALUE FROM INPUT>\"\n}\n]\n}\n\n\nExample:\n\nInput:\n\nI want to order laptop from Dell via CDW\n\nOutput:\n\n{\n\"filters\": [\n{ \"filter\": \"keyword\", \"value\": \"laptop\" },\n{ \"filter\": \"manufacturer\", \"value\": \"Dell\" },\n{ \"filter\": \"supplier\", \"value\": \"CDW\" }\n]\n}\n\nReturn only the JSON payload."
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"filters\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"filter\": {\n            \"type\": \"string\",\n            \"enum\": [\"keyword\", \"manufacturer\", \"supplier\", \"category_name\"]\n          },\n          \"value\": {\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\"filter\", \"value\"],\n        \"additionalProperties\": false\n      }\n    }\n  },\n  \"required\": [\"filters\"],\n  \"additionalProperties\": false\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "derive smartSearchName and EnforceExactMatch",
+            "returnType": "object",
+            "sourceCode": "const disableShoppingSearchFuzzyMatching = $context.$nodes.FETCH_FUZZY_MATCHING_PROFILE_OPTION.$output?.ProfileOptionValue != 'N';\nconst smartSearchName = disableShoppingSearchFuzzyMatching ? \"SSPShoppingCatalogExactMatch\" : \"SSPShoppingCatalog\";\nconst enforceExactMatch = disableShoppingSearchFuzzyMatching ? \"Y\" : \"N\";\nlet result = {\"smartSearchName\" : smartSearchName, \"enforceExactMatch\" : enforceExactMatch};\n\nreturn result"
+          },
+          "outcomes": {
+            "success": "1775480293244"
+          },
+          "diagram": {
+            "x": 5393.5,
+            "y": 6410
+          },
+          "code": "DERIVE_SMARTSEARCHNAME_AND_ENFORCEEXACTMATCH",
+          "id": "1775479996584",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "set Smart Search Name and enforce Exact Match"
+          },
+          "outcomes": {
+            "success": "1765263361507"
+          },
+          "diagram": {
+            "x": 5389,
+            "y": 6632
+          },
+          "code": "SET_SMART_SEARCH_NAME_AND_ENFORCE_EXACT_MATCH",
+          "id": "1775480293244",
+          "inputs": [
+            {
+              "id": "1775480326262",
+              "name": "enforceExactMatch",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.DERIVE_SMARTSEARCHNAME_AND_ENFORCEEXACTMATCH.$output.result.enforceExactMatch}}"
+            },
+            {
+              "id": "1775480307547",
+              "name": "smartSearchName",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.DERIVE_SMARTSEARCHNAME_AND_ENFORCEEXACTMATCH.$output.result.smartSearchName}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "prepare Search payload",
+            "returnType": "object",
+            "sourceCode": "let data = $context.$nodes.KEYWORD_ANALYZER_AND_PAYLOAD_PREPARER.$output.filters;\n\nlet otherFilters = $context.$nodes.PARSE_JSON_INPUT.$output.result;\n\nconst result = data != null ? data.map(item => item.value).join(\" \") : \"\";\n\nlet conjuctionAndFilters = [{\"filter\":\"keyword\",\"value\":result}];\n\nlet orKeywordAccumulator = result ? [result] : [];\n\nif (otherFilters?.Categories?.length > 0) {\n  conjuctionAndFilters.push({\n    filter: \"keyword\",\n    value: otherFilters.Categories.join(\" \")\n  });\n\n  orKeywordAccumulator.push(otherFilters.Categories.join(\" \"));\n}\n\nif (otherFilters?.Suppliers?.length > 0) {\n  conjuctionAndFilters.push({\n    filter: \"keyword\",\n    value: otherFilters.Suppliers.join(\" \")\n  });\n\n  orKeywordAccumulator.push(otherFilters.Suppliers.join(\" \"));\n}\n\nif (otherFilters?.Manufacturers?.length > 0) {\n  conjuctionAndFilters.push({\n    filter: \"keyword\",\n    value: otherFilters.Manufacturers.join(\" \")\n  });\n\n  orKeywordAccumulator.push(otherFilters.Manufacturers.join(\" \"));\n}\n\nif (otherFilters?.OtherFilters?.length > 0) {\n  otherFilters.OtherFilters.forEach(item => {\n    conjuctionAndFilters.push({\n      filter: \"keyword\",\n      value: item\n    });\n\n    orKeywordAccumulator.push(item);\n  });\n}\n\nlet conjuctionOrFilters = [{\n  \"filter\": \"keyword\",\n  \"value\": orKeywordAccumulator.join(\" \").trim()\n}];\n\nlet finalResult = {\n  \"AndFilters\": {\"filters\" : conjuctionAndFilters},\n  \"OrFilters\": {\"filters\" : conjuctionOrFilters}\n};\n\nreturn finalResult;"
+          },
+          "outcomes": {
+            "success": "1765626545731"
+          },
+          "diagram": {
+            "x": 5471.5,
+            "y": 6854
+          },
+          "code": "PREPARE_SEARCH_PAYLOAD",
+          "id": "1765263361507",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "prepare suggested Category payload",
+            "returnType": "object",
+            "sourceCode": "let itemDescriptionsArray = [];\nlet itemData = {};\nitemData['lineNumber'] = \"1\";\nitemData['itemDescription'] = $context.$nodes.PREPARE_SEARCH_PAYLOAD.$output.result.AndFilters?.filters[0].value;\nitemDescriptionsArray.push(itemData);\nlet result = {\"itemDescriptions\" : itemDescriptionsArray};\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1765629063706"
+          },
+          "diagram": {
+            "x": 5438.5,
+            "y": 7076
+          },
+          "code": "PREPARE_SUGGESTED_CATEGORY_PAYLOAD",
+          "id": "1765626545731",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1765629157700",
+            "1": "1765630252901",
+            "2": "1775810504167"
+          },
+          "diagram": {
+            "x": 5000,
+            "y": 7298,
+            "width": 1243,
+            "height": 1236
+          },
+          "code": "PARALLEL_1765629063707",
+          "convergenceTargetId": "1765631155689",
+          "id": "1765629063706",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "name": "prepare response",
+            "returnType": "object",
+            "sourceCode": "let activePreferences = $context.$nodes.FETCH_ACTIVE_PREFERENCE.$output.items;\nlet derivedSearchResults = null;\nlet isfullMatchFlag = false;\n\nif($context.$nodes.SHOPPING_CATALOG_AND_SEARCH.$output?.items?.length > 0){\n   derivedSearchResults = $context.$nodes.SHOPPING_CATALOG_AND_SEARCH.$output;\n    isfullMatchFlag = true;\n}else{\n   derivedSearchResults =  $context.$nodes.SHOPPING_CATALOG_SEARCH.$output;\n}\n\nlet items= derivedSearchResults.items;\nlet {...rest} = derivedSearchResults;\n\n//allow only the master item and blanket type documents\nconst allowedDocTypes = [\"BLANKET\", \"MASTER_ITEM\",\"SMART_FORM\"];\nlet searchedItems = [];\n\nfor (let i = 0; i < items.length; i++) {\n    let item = items[i];\n    if (allowedDocTypes.includes(item['document_type'])) {\n        if (item['document_type'] === 'BLANKET') {\n            let lineTypeCode = 'Goods';\n            if (item.item_id === -2 && item.agreement_line != null) {\n                const {uom_code,price} = item.agreement_line;\n                if (uom_code == null && price == null) {\n                    lineTypeCode = 'Services';\n                }\n            }\n            searchedItems.push(item);\n        } else {\n            searchedItems.push(item);\n        }\n    }\n}\n\nitems = searchedItems;\n\n//remove https: from thumbail image field if exists.\nfor(let i=0 ; i<items.length ; i++){\n    let searchitem = items[i];\n    if(searchitem?.agreement_line?.thumbnail_image){\n       let originalString = searchitem['agreement_line']['thumbnail_image'];\n      // let substringToRemove = \"https://\";\n       let newString = originalString.replace(/https:\\/\\//g, \"HTPPS\").replace(/http:\\/\\//g, \"HTTP\");\n       searchitem['agreement_line']['thumbnail_image'] = newString;\n       items[i] = searchitem;\n    }\n}\n\nconst searchResults = {items};\n\n//remove urls from preferences\nfor(let i=0 ; i<activePreferences.length ; i++){\n    let activePreference = activePreferences[i];\n    let reqOptions = activePreference['requisitioningOptions'];\n    let {items,...rest} = reqOptions;\n    activePreference['requisitioningOptions'] = items;\n    delete activePreference['@context'];\n    activePreferences[i] = activePreference;\n}\n\nlet resultMap = {};\nresultMap['searchResults'] = searchResults;\nresultMap['activePreferences'] = {\"items\":activePreferences};\nresultMap['suggestedCategory'] = $context.$nodes.PROCESS_SUGGESTED_CATEGORY_RESPONSE.$output?.result != null ? $context.$nodes.PROCESS_CATEGORY_NAME_RESPONSE.$output?.result : null;\nresultMap['isfullMatchFlag'] = isfullMatchFlag;\n\nreturn resultMap;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "diagram": {
+            "x": 5467.5,
+            "y": 8705
+          },
+          "code": "PREPARE_RESPONSE",
+          "id": "1765631155689",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_REQUISITIONPREF",
+            "functionName": "get_current_user_active_requisition_preference",
+            "name": "fetch Active Preference"
+          },
+          "outcomes": {
+            "success": "1763376996376"
+          },
+          "diagram": {
+            "x": 5209,
+            "y": 5931
+          },
+          "code": "FETCH_ACTIVE_PREFERENCE",
+          "convergenceTargetId": "1775478945559",
+          "id": "1763395727672",
+          "inputs": [],
+          "outputSpecification": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"UserPreferenceId\": {\n            \"type\": \"string\"\n          },\n          \"RequisitioningBU\": {\n            \"type\": \"string\"\n          },\n          \"DeliverToLocationName\": {\n            \"type\": \"string\"\n          },\n          \"DestinationType\": {\n            \"type\": \"string\"\n          },\n           \"RequisitioningBUId\": {\n            \"type\": \"string\"\n          },\n\t \"DeliverToLocationId\": {\n            \"type\": \"string\"\n          },\n\t \"DeliverToLocationCode\": {\n            \"type\": \"string\"\n          },\n\t \"DestinationOrganizationId\": {\n            \"type\": \"string\"\n          },\n\t \"DeliverToCustomerLocationId\": {\n            \"type\": \"string\"\n          },\n\t \"DestinationSubinventory\": {\n            \"type\": \"string\"\n          },\n\t  \"DestinationTypeCode\": {\n            \"type\": \"string\"\n          }\n        }\n      }\n    }\n  }\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_FSCMRESTENDPOINT",
+            "functionName": "get_fuzzy_matching_profile_option",
+            "name": "fetch fuzzy matching profile option"
+          },
+          "outcomes": {
+            "success": "1763376996376"
+          },
+          "diagram": {
+            "x": 5659,
+            "y": 5931
+          },
+          "code": "FETCH_FUZZY_MATCHING_PROFILE_OPTION",
+          "id": "1775479012151",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_FSCMRESTENDPOINT",
+            "functionName": "get_suggested_item_categories",
+            "name": "fetch suggested category"
+          },
+          "outcomes": {
+            "success": "1765629246075"
+          },
+          "diagram": {
+            "x": 5020,
+            "y": 7539
+          },
+          "code": "FETCH_SUGGESTED_CATEGORY",
+          "id": "1765629157700",
+          "inputs": [
+            {
+              "id": "1765629180401_1",
+              "name": "payload_body",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_SUGGESTED_CATEGORY_PAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_CATALOGSEARCH",
+            "functionName": "get_shoppingCatalog_items",
+            "processJson": true,
+            "name": "shopping Catalog search"
+          },
+          "outcomes": {
+            "success": "1765631155689"
+          },
+          "diagram": {
+            "x": 5470,
+            "y": 7539
+          },
+          "code": "SHOPPING_CATALOG_SEARCH",
+          "id": "1765630252901",
+          "inputs": [
+            {
+              "id": "1775479896749_1",
+              "name": "smartSearchName",
+              "type": "string",
+              "value": "{{$context.$variables.smartSearchName}}"
+            },
+            {
+              "id": "1775479896750_2",
+              "name": "enforceExactMatchFlag",
+              "type": "string",
+              "value": "{{$context.$variables.enforceExactMatch}}"
+            },
+            {
+              "id": "1775479896750_3",
+              "name": "isIMTEnabled",
+              "type": "string",
+              "value": "{{!$context.$variables.isIMTEnabled}}"
+            },
+            {
+              "id": "1775479896751_4",
+              "name": "UserPreferenceId",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCH_ACTIVE_PREFERENCE.$output.items[0].UserPreferenceId}}"
+            },
+            {
+              "id": "1775479896752_5",
+              "name": "payload_body",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_SEARCH_PAYLOAD.$output.result.OrFilters}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_CATALOGSEARCH",
+            "functionName": "get_shoppingCatalog_items",
+            "processJson": true,
+            "name": "Shopping Catalog And Search"
+          },
+          "outcomes": {
+            "success": "1765631155689"
+          },
+          "diagram": {
+            "x": 5920,
+            "y": 7539
+          },
+          "code": "SHOPPING_CATALOG_AND_SEARCH",
+          "id": "1775810504167",
+          "inputs": [
+            {
+              "id": "1775810522678_1",
+              "name": "smartSearchName",
+              "type": "string",
+              "value": "{{$context.$variables.smartSearchName}}"
+            },
+            {
+              "id": "1775810522678_2",
+              "name": "enforceExactMatchFlag",
+              "type": "string",
+              "value": "{{$context.$variables.enforceExactMatch}}"
+            },
+            {
+              "id": "1775810522679_3",
+              "name": "isIMTEnabled",
+              "type": "string",
+              "value": "{{$context.$variables.isIMTEnabled}}"
+            },
+            {
+              "id": "1775810522680_4",
+              "name": "UserPreferenceId",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCH_ACTIVE_PREFERENCE.$output.items[0].UserPreferenceId}}"
+            },
+            {
+              "id": "1775810522681_5",
+              "name": "payload_body",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_SEARCH_PAYLOAD.$output.result.AndFilters}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "process suggested category response",
+            "returnType": "string",
+            "sourceCode": "const suggestedCategory = $context.$nodes.FETCH_SUGGESTED_CATEGORY.$output.result;\nlet categoryId = null;\nif(suggestedCategory['STATUS'] === 'SUCCESS'){\n  categoryId = suggestedCategory['CATEGORY_RECOMMENDATIONS'][0].categoryId; \n}\n\nreturn categoryId;"
+          },
+          "outcomes": {
+            "success": "1765629896293"
+          },
+          "diagram": {
+            "x": 5434,
+            "y": 7761
+          },
+          "code": "PROCESS_SUGGESTED_CATEGORY_RESPONSE",
+          "id": "1765629246075",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "check suggested category is not null"
+          },
+          "outcomes": {
+            "true": "1765629965508",
+            "false": ""
+          },
+          "diagram": {
+            "x": 5429.5,
+            "y": 7983
+          },
+          "code": "CHECK_SUGGESTEDCATEGORYID_IS_NOT_NULL",
+          "convergenceTargetId": "end",
+          "id": "1765629896293",
+          "inputs": [
+            {
+              "id": "1765629896294_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_SUGGESTED_CATEGORY_RESPONSE.$output.result != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_FSCMRESTENDPOINT",
+            "functionName": "get_category_names",
+            "name": "fetch Category name"
+          },
+          "outcomes": {
+            "success": "1765630017675"
+          },
+          "diagram": {
+            "x": 5471.5,
+            "y": 8205
+          },
+          "code": "FETCH_CATEGORY_NAME",
+          "id": "1765629965508",
+          "inputs": [
+            {
+              "id": "1765629981948_1",
+              "name": "categoryId",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_SUGGESTED_CATEGORY_RESPONSE.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "process Category name response",
+            "returnType": "string",
+            "sourceCode": "const categories = $context.$nodes.FETCH_CATEGORY_NAME.$output.items;\n\nlet categoryName = null;\nif(categories.length > 0){\n   categoryName = categories[0].CategoryName;\n}else{\ncategoryName = 'Miscellaneous_1';\n}\n\nreturn categoryName;"
+          },
+          "outcomes": {
+            "success": "1765631155689"
+          },
+          "diagram": {
+            "x": 5456.5,
+            "y": 8427
+          },
+          "code": "PROCESS_CATEGORY_NAME_RESPONSE",
+          "id": "1765630017675",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1775479814137",
+          "name": "enforceExactMatch",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1775479799258",
+          "name": "smartSearchName",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1774953214201",
+          "name": "inputMessage",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1774952742413",
+          "name": "isIMTEnabled",
+          "scope": "JOB",
+          "type": "boolean"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": "",
+    "agentsValueMappings": [],
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": [],
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+    "deletedTriggerTypes": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "PRC",
+  "product": "SSP",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"3\""
+  }
+}

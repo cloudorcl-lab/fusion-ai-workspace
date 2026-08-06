@@ -1,0 +1,2934 @@
+{
+  "workflowId": "300000331068152",
+  "workflowCode": "ORA_SERVICE_REQUEST_RESOLUTION_WORKFLOW_AGENT_TEAM_RA",
+  "name": "Service Request Resolution Workflow Advisor",
+  "description": "Service Request Resolution Workflow is responsible for triggering classification agent and resolution agent.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1765249736480"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "name": "Initialize Variable",
+            "returnType": "object",
+            "sourceCode": "let iteration = 0;\nlet lastStatus = \"\";\n\nlet text = $context.$system.$chatHistory;\nlet conversationContextStr = $context.$triggers.REST.$input.conversationContext;\n\nlet previousShortSummary = \"\";\nlet previousSummary = \"\";\nlet previousObjectKey = \"\";\nlet previousResponse = \"\";\n\nif (text) {\n\n  const iterationMatches = [...text.matchAll(/\"?iteration\"?:\\s*(\\d+)/g)];\n  const statusMatches = [...text.matchAll(/\"?status\"?:\\s*\\\\?\"([^\"\\\\]+)\\\\?\"/g)];\n\n  if (iterationMatches.length > 0) {\n    iteration = Number(iterationMatches.at(-1)[1]);\n    iteration++;\n  }\n\n  if (statusMatches.length > 0) {\n    lastStatus = statusMatches.at(-1)[1];\n  }\n  try {\n      let aiMatches = [...text.matchAll(/AI:\\s*(\\{[\\s\\S]*?\\})(?=\\s*(?:USER:|AI:|$))/g)];\n      if (aiMatches.length > 0) {\n        let lastAiJson = aiMatches[aiMatches.length - 1][1];\n        let lastAiOutput = JSON.parse(lastAiJson);\n\n        previousResponse = lastAiOutput.result?.output ?? \"\";\n        previousShortSummary = lastAiOutput?.result?.output?.shortSummary ?? \"\";\n        previousSummary = lastAiOutput?.result?.output?.Summary ?? \"\";\n        previousObjectKey = lastAiOutput?.result?.output?.ObjectKey ?? \"\";\n      }\n    } catch (e) {\n    }\n  \n}\n\ntry {\n    if (conversationContextStr!=\"\" && previousShortSummary===\"\") {\n        let conversationContext = JSON.parse(conversationContextStr);\n        previousResponse = conversationContext;\n        previousShortSummary = conversationContext?.shortSummary ?? \"\";\n        previousSummary = conversationContext?.Summary ?? \"\";\n        previousObjectKey = conversationContext?.ObjectKey ?? \"\";\n        }\n    } catch (e) {\n}\n\nvar output = {\n  iteration,\n  lastStatus,\n  previousShortSummary,\n  previousSummary,\n  previousObjectKey,\n  previousResponse\n};\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1765849428148"
+          },
+          "code": "INITIALIZE_VARIABLE",
+          "convergenceTargetId": "1765238460260",
+          "id": "1765249736480",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "If Need Decode Input"
+          },
+          "outcomes": {
+            "true": "1765238460260",
+            "false": "1775785625791"
+          },
+          "code": "IF_NEED_DECODE_INPUT",
+          "convergenceTargetId": "end",
+          "id": "1765749061503",
+          "inputs": [
+            {
+              "id": "1765749061503_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.lastStatus === 'resolve' && $context.$triggers.REST.$input.persona != 'CSR'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Is Resolution Approved"
+          },
+          "outcomes": {
+            "true": "1765315438109",
+            "false": "1772678984388"
+          },
+          "code": "IS_RESOLUTION_APPROVED",
+          "convergenceTargetId": "end",
+          "id": "1765749116105",
+          "inputs": [
+            {
+              "id": "1765749116105_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.DECIDEINTENTUSINGINPUT.$output.Intent === 'Accept'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Return Approved Resolution"
+          },
+          "outcomes": {},
+          "code": "RETURN_APPROVED_RESOLUTION",
+          "convergenceTargetId": "end",
+          "id": "1765749156755",
+          "inputs": [
+            {
+              "id": "1765749156757_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_APPROVED_RESOLUTION.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Decode Input Flow"
+          },
+          "outcomes": {
+            "success": "1765749116105"
+          },
+          "code": "DECIDEINTENTUSINGINPUT",
+          "convergenceTargetId": "1765749103456",
+          "id": "1765238460260",
+          "inputs": [
+            {
+              "id": "1765238460262_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an intent-classification agent. Your task is to analyze the user's input and classify it based on the following criteria:\n\n### Rules:\n- Return \"Accept\": The input clearly expresses acceptance, approval, agreement, confirmation, closure, or satisfaction with the solution.\n- Return \"Reject\": The input indicates rejection, dissatisfaction, failure with the solution, persistence of the issue, a request for escalation, a request to create a ticket for escalation, a request to move the issue to another team or support level, or is empty/missing.\n- Return \"Followup\": The input is asking a follow-up question or request without dissatisfaction with the solution, such as seeking further Explanation, clarification, or modification.\n\n### Additional Decision Guidance:\n- If the input asks for escalation or ticket creation for escalation, classify it as \"Reject\" even if dissatisfaction is not stated explicitly.\n- If the input contains both a follow-up request and dissatisfaction with the current solution, classify it as \"Reject\".\n- If the input is empty, null, missing, or has no meaningful content, classify it as \"Reject\".\n\n### Output\nReturn the result in the following JSON format:\n{ \"Intent\": \"<intent>\", \"Reason\": \"<reason for Intent>\" }\n\n### User Input:\n {{$context.$system.$inputMessage}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"Reason\": {\n            \"type\": \"string\"\n        },\n        \"Intent\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Extract Approved Resolution",
+            "returnType": "string",
+            "sourceCode": "let chatHistory = $context.$system.$chatHistory;\nlet finalResolution = null;\n\nif (chatHistory) {\n  try {\n    const aiMatches = [...chatHistory.matchAll(/AI:\\s*(\\{.*?\\})(?=(\\nUSER:|$))/gs)];\n\n    if (aiMatches && aiMatches[aiMatches.length - 1][1]) {\n      const parsed = JSON.parse(aiMatches[aiMatches.length - 1][1]);\n\n      finalResolution =\n        parsed?.result?.output?.Summary ||\n        parsed?.result?.output?.shortSummary ||\n        null;\n    }\n  } catch (e) {\n    finalResolution = null;\n  }\n}\n\nreturn finalResolution;"
+          },
+          "outcomes": {
+            "success": "1765749156755"
+          },
+          "code": "EXTRACT_APPROVED_RESOLUTION",
+          "convergenceTargetId": "1765749156755",
+          "id": "1765315438109",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1765753572435",
+            "1": "1765753484962",
+            "2": "add_1765753466596_2"
+          },
+          "code": "PARALLEL_1765753466597",
+          "convergenceTargetId": "1766388101857",
+          "id": "1765753466596",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_FETCHMESSAGES",
+            "functionName": "fetchMessages",
+            "name": "Get SR Messages"
+          },
+          "outcomes": {
+            "success": "1766388101857"
+          },
+          "code": "GET_SR_MESSAGES",
+          "id": "1765753572435",
+          "inputs": [
+            {
+              "id": "1765753583611_1",
+              "name": "entity",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectType === \"ServiceRequest\" ? \"serviceRequests\" : $context.$triggers.REST.$input.objectType === \"HRHelpDeskRequest\" ? \"hrHelpDeskRequests\" : $context.$triggers.REST.$input.objectType === \"InternalServiceRequest\" ? \"internalServiceRequests\" : null }}"
+            },
+            {
+              "id": "1765753583612_2",
+              "name": "objectNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            },
+            {
+              "id": "1765753583612_3",
+              "name": "msgPathParam",
+              "type": "string",
+              "value": "messages"
+            },
+            {
+              "id": "1765753583613_4",
+              "name": "expandParam",
+              "type": "string",
+              "value": "MessageContent"
+            },
+            {
+              "id": "1765753583613_5",
+              "name": "fieldsParam",
+              "type": "string",
+              "value": "MessageContent,CreationDate,MessageTypeCd"
+            },
+            {
+              "id": "1765753583614_6",
+              "name": "limit",
+              "type": "string",
+              "value": "10"
+            },
+            {
+              "id": "1765753583615_7",
+              "name": "offset",
+              "type": "string",
+              "value": "0"
+            },
+            {
+              "id": "1765753583616_8",
+              "name": "qParams",
+              "type": "string",
+              "value": "MessageTypeCd IN ('ORA_SVC_CUSTOMER_ENTRY', 'ORA_SVC_RESPONSE', 'ORA_SVC_INTERNAL_NOTE')"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_GENERICATTRI",
+            "functionName": "Get_entity_attributes",
+            "name": "Get SR Data"
+          },
+          "outcomes": {
+            "success": "1766388101857"
+          },
+          "code": "GET_SR_DATA",
+          "convergenceTargetId": "1765754467715",
+          "id": "1765753484962",
+          "inputs": [
+            {
+              "id": "1765753497087_1",
+              "name": "entity",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectType === \"ServiceRequest\" ? \"serviceRequests\" : $context.$triggers.REST.$input.objectType === \"HRHelpDeskRequest\" ? \"hrHelpDeskRequests\" : $context.$triggers.REST.$input.objectType === \"InternalServiceRequest\" ? \"internalServiceRequests\" : null }}"
+            },
+            {
+              "id": "1765753497088_2",
+              "name": "objectNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            },
+            {
+              "id": "1765753497088_3",
+              "name": "fieldsParams",
+              "type": "string",
+              "value": "Title,ProblemDescription,BUOrgId,StripeCd,ProdGroupName,ChannelTypeCd,CategoryId,SrId,PrimaryContactEmailAddress,ProductItemDescription"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"ProductItemDescription\": {\n            \"type\": \"string\"\n        },\n        \"PrimaryContactEmailAddress\": {\n            \"type\": \"string\"\n        },\n        \"SrId\": {\n            \"type\": \"string\"\n        },\n        \"CategoryId\": {\n            \"type\": \"string\"\n        },\n        \"ProblemDescription\": {\n            \"type\": \"string\"\n        },\n        \"Title\": {\n            \"type\": \"string\"\n        },\n        \"ChannelTypeCd\": {\n            \"type\": \"string\"\n        },\n        \"ProdGroupName\": {\n            \"type\": \"string\"\n        },\n        \"StripeCd\": {\n            \"type\": \"string\"\n        },\n        \"BUOrgId\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Set Variable"
+          },
+          "outcomes": {
+            "success": "1765749061503"
+          },
+          "code": "SET_VARIABLE",
+          "id": "1765849428148",
+          "inputs": [
+            {
+              "id": "1775721984885",
+              "name": "isRerun",
+              "scope": "JOB",
+              "type": "boolean",
+              "value": "{{$context.$triggers.REST.$input.conversationContext != \"\" || $context.$system.$chatHistory != \"\"}}"
+            },
+            {
+              "id": "1775648754492",
+              "name": "lastResponse",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.INITIALIZE_VARIABLE.$output.result.previousResponse}}"
+            },
+            {
+              "id": "1775472006822",
+              "name": "lastObjectKey",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.INITIALIZE_VARIABLE.$output.result.previousObjectKey}}"
+            },
+            {
+              "id": "1775471986646",
+              "name": "lastShortSummary",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.INITIALIZE_VARIABLE.$output.result.previousShortSummary}}"
+            },
+            {
+              "id": "1775471951587",
+              "name": "lastSummary",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.INITIALIZE_VARIABLE.$output.result.previousSummary}}"
+            },
+            {
+              "id": "1767840151137",
+              "name": "iteration",
+              "type": "number",
+              "value": "{{$context.$nodes.INITIALIZE_VARIABLE.$output.result.iteration}}"
+            },
+            {
+              "id": "1767840070563",
+              "name": "lastStatus",
+              "type": "string",
+              "value": "{{$context.$nodes.INITIALIZE_VARIABLE.$output.result.lastStatus}}"
+            },
+            {
+              "id": "1767677732939",
+              "name": "srTemplate",
+              "type": "string",
+              "value": "Title,ProblemDescription"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "If Need Validation"
+          },
+          "outcomes": {
+            "true": "1766386454668",
+            "false": "add_false_1766367932383"
+          },
+          "code": "IF_NEED_VALIDATION",
+          "convergenceTargetId": "end",
+          "id": "1766367932383",
+          "inputs": [
+            {
+              "id": "1766367932384_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{( !$context.$triggers.REST.$input.skipValidation && $context.$variables.iteration == 0 ) && ($context.$nodes.GET_SR_DATA.$output.ChannelTypeCd != 'ORA_SVC_WEB')}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1765426132152"
+          },
+          "id": "add_false_1766367932383",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Requires Classification"
+          },
+          "outcomes": {
+            "true": "1767124750682",
+            "false": "add_false_1765280097603"
+          },
+          "code": "REQUIRES_CLASSIFICATION",
+          "convergenceTargetId": "end",
+          "id": "1765280097603",
+          "inputs": [
+            {
+              "id": "1765280097603_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{!$context.$triggers.REST.$input.skipClassification  && $context.$nodes.GET_SR_DATA.$output.CategoryId == null && $context.$nodes.GET_SR_DATA.$output.ProdGroupName == null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Classification Requires Update"
+          },
+          "outcomes": {
+            "true": "1765285095818",
+            "false": "add_false_1765285037798"
+          },
+          "code": "CLASSIFICATION_COMPLETED",
+          "convergenceTargetId": "end",
+          "id": "1765285037798",
+          "inputs": [
+            {
+              "id": "1765285037799_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{JSON.parse($context.$nodes.CLASSIFICATION_WORKFLOW_AGENT.$output.output).product != \"\" || JSON.parse($context.$nodes.CLASSIFICATION_WORKFLOW_AGENT.$output.output).category != \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1765424137636",
+            "1": "1765424222472",
+            "2": "add_1765285095818_2"
+          },
+          "code": "PARALLEL_1765285095819",
+          "convergenceTargetId": "1765847642087",
+          "id": "1765285095818",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "name": "If Need Fetch Product"
+          },
+          "outcomes": {
+            "true": "1769712954969",
+            "false": "add_false_1765424137636"
+          },
+          "code": "IF_NEED_FETCH_PRODUCT",
+          "convergenceTargetId": "1765847642087",
+          "id": "1765424137636",
+          "inputs": [
+            {
+              "id": "1765424137639_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{JSON.parse($context.$nodes.CLASSIFICATION_WORKFLOW_AGENT.$output.output).product != \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "If Need Update SR"
+          },
+          "outcomes": {
+            "true": "1767662138417",
+            "false": "add_false_1765847642087"
+          },
+          "code": "IF_NEED_UPDATE_SR",
+          "convergenceTargetId": "end",
+          "id": "1765847642087",
+          "inputs": [
+            {
+              "id": "1765847642088_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{Object.values($context.$nodes.PRODUCT_RESPONSE?.$output?.result || {}).length !== 0 || $context.$nodes.FETCH_CATEGORY?.$output?.items?.[0]?.CategoryId != \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_UPDATEBUSINESSOBJECTATTRIBUTES",
+            "errorNodeId": "1765426132152",
+            "functionName": "UpdateBusinessObject",
+            "name": "Update Product Category"
+          },
+          "outcomes": {
+            "success": "1765426132152"
+          },
+          "code": "UPDATE_PRODUCT_CATEGORY",
+          "convergenceTargetId": "1765928709654",
+          "id": "1765285479582",
+          "inputs": [
+            {
+              "id": "1765933039483_1",
+              "name": "objectPayload",
+              "type": "string",
+              "value": "{{$context.$nodes.BUILD_PAYLOAD.$output.result}}"
+            },
+            {
+              "id": "1765933039484_2",
+              "name": "objectType",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectType === \"ServiceRequest\" ? \"serviceRequests\" : $context.$triggers.REST.$input.objectType === \"HRHelpDeskRequest\" ? \"hrHelpDeskRequests\" : $context.$triggers.REST.$input.objectType === \"InternalServiceRequest\" ? \"internalServiceRequests\" : null }}"
+            },
+            {
+              "id": "1765933039485_3",
+              "name": "objectNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1765426132152"
+          },
+          "id": "add_false_1765847642087",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1765847642087"
+          },
+          "id": "add_false_1765424137636",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "If Need Fetch Category"
+          },
+          "outcomes": {
+            "true": "1769713064519",
+            "false": "add_false_1765424222472"
+          },
+          "code": "IF_NEED_FETCH_CATEGORY",
+          "convergenceTargetId": "1765847642087",
+          "id": "1765424222472",
+          "inputs": [
+            {
+              "id": "1765424222474_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{JSON.parse($context.$nodes.CLASSIFICATION_WORKFLOW_AGENT.$output.output).category != \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_GETACATEGORYBYN",
+            "functionName": "oraCxServicecenGetacategorybyn_categories",
+            "name": "Fetch Category"
+          },
+          "outcomes": {
+            "success": "1765847642087"
+          },
+          "code": "FETCH_CATEGORY",
+          "convergenceTargetId": "1765424246000",
+          "id": "1765285262571",
+          "inputs": [
+            {
+              "id": "1765325593062_1",
+              "name": "cStripeCd",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_SR_DATA.$output.StripeCd}}"
+            },
+            {
+              "id": "1765325593063_2",
+              "name": "cBUOrgId",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_SR_DATA.$output.BUOrgId}}"
+            },
+            {
+              "id": "1765325593064_3",
+              "name": "cCategoryName",
+              "type": "string",
+              "value": "{{$context.$nodes.ENCODE_CATEGORY.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"items\": {\n            \"type\": \"array\",\n            \"items\": {\n                \"type\": \"object\",\n               \"properties\": {\n        \"CategoryId\": {\n            \"type\": \"string\"\n        }\n    }\n            }\n        }\n    }\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1765847642087"
+          },
+          "id": "add_false_1765424222472",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "description": "Add node for branch 2",
+            "name": "Add 2"
+          },
+          "outcomes": {
+            "success": "1765847642087"
+          },
+          "id": "add_1765285095818_2",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1765426132152"
+          },
+          "id": "add_false_1765285037798",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1765426132152"
+          },
+          "id": "add_false_1765280097603",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "If Search Product Agent"
+          },
+          "outcomes": {
+            "true": "1769713669167",
+            "false": "add_false_1765426132152"
+          },
+          "code": "IF_SEARCH_PRODUCT_AGENT",
+          "convergenceTargetId": "end",
+          "id": "1765426132152",
+          "inputs": [
+            {
+              "id": "1765426132154_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{($context.$nodes.CLASSIFICATION_WORKFLOW_AGENT.$output != null && $context.$nodes.CLASSIFICATION_WORKFLOW_AGENT.$output.output != null && JSON.parse($context.$nodes.CLASSIFICATION_WORKFLOW_AGENT.$output.output).product !== \"\") || ($context.$nodes.GET_SR_DATA.$output.ProdGroupName != null && $context.$nodes.GET_SR_DATA.$output.ProdGroupName !== \"\")}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_OTHER_STUDIOAGENTTEAM",
+            "errorNodeId": "1765794713051",
+            "functionName": "get_all_agent_team",
+            "name": "Search Product Agent"
+          },
+          "outcomes": {
+            "success": "1764889254906"
+          },
+          "code": "SEARCH_PRODUCT_AGENT",
+          "convergenceTargetId": "1765426158387",
+          "id": "1764888184622",
+          "inputs": [
+            {
+              "id": "1769565790711_1",
+              "name": "searchTerm",
+              "type": "string",
+              "value": "{{$context.$nodes.ENCODE_FINAL_PRODUCT.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Pick Product Agent"
+          },
+          "outcomes": {
+            "true": "1764889314963",
+            "false": "1765794713051"
+          },
+          "code": "PRODUCT_AGENT_FOUND",
+          "convergenceTargetId": "end",
+          "id": "1764889254906",
+          "inputs": [
+            {
+              "id": "1764889254908_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.SEARCH_PRODUCT_AGENT.$output.count > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_ESSINVOKEAIAGEN",
+            "errorNodeId": "1765794713051",
+            "functionName": "InvokeAgent",
+            "name": "Invoke Product Agent"
+          },
+          "outcomes": {
+            "success": "1765931157029"
+          },
+          "code": "INVOKE_PRODUCT_AGENT",
+          "id": "1764889314963",
+          "inputs": [
+            {
+              "id": "1764889327782_1",
+              "name": "convId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber + $context.$nodes.SEARCH_PRODUCT_AGENT.$output.items[0].WorkflowCode +  \" - \" + $context.$workflow.$conversationId }}"
+            },
+            {
+              "id": "1764889327783_2",
+              "name": "userQuery",
+              "type": "string",
+              "value": "{{String($context.$system.$inputMessage || \"\") + \" \" + JSON.stringify($context.$nodes.FORMAT_SR_DATA.$output.result || {})}}"
+            },
+            {
+              "id": "1764889327784_3",
+              "name": "version",
+              "type": "string",
+              "value": "{{$context.$nodes.SEARCH_PRODUCT_AGENT.$output.items[0].Version}}"
+            },
+            {
+              "id": "1764889327784_4",
+              "name": "workflowCode",
+              "type": "string",
+              "value": "{{$context.$nodes.SEARCH_PRODUCT_AGENT.$output.items[0].WorkflowCode}}"
+            },
+            {
+              "id": "1764889327785_5",
+              "name": "status",
+              "type": "string",
+              "value": "PUBLISHED"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"output\": {\n            \"type\": \"object\",\n            \"properties\": {}\n        }\n    }\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Use Product Agent"
+          },
+          "outcomes": {
+            "success": "1764898703737"
+          },
+          "code": "USE_PRODUCT_AGENT",
+          "id": "1765931157029",
+          "inputs": [
+            {
+              "id": "1765931181266",
+              "name": "useProductAgent",
+              "type": "boolean",
+              "value": "true"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Format Product Agent Result"
+          },
+          "outcomes": {
+            "success": "1765186011768"
+          },
+          "code": "FORMAT_PRODUCT_AGENT_RESULT",
+          "id": "1764898703737",
+          "inputs": [
+            {
+              "id": "1764898703740_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "## ROLE\nYou are an AI Resolution Output Formatter.\n\nYour job is to convert an AI Agent’s recommended solution into a structured JSON response.\n\n---\n\n## INPUT SOURCES\n\nYou will receive:\n\n#### RecommendedSolution:\n{{$context.$nodes.INVOKE_PRODUCT_AGENT.$output.output}}\n\n#### inputMessage:\n{{$context.$system.$inputMessage}}\n\nNote:\n`inputMessage` is the latest user input for the current turn.\nIt may contain:\n- a clarification question\n- new issue details\n- failure feedback\n- dissatisfaction with the previous solution\n- a rewrite / tone / formatting request\n- an irrelevant question\n- null, empty, or undefined\n\n#### lastSummary:\n{{$context.$variables.lastSummary}}\n\nNote:\n`lastSummary` is the latest previously returned full Summary, if available.\nIt may be null, empty, or undefined.\n\n---\n\n## STEP 1: VALIDATE RECOMMENDED SOLUTION\n\nTreat the RecommendedSolution as invalid and do not summarize it if:\n- it is empty, null, undefined, or generic\n- it indicates lack of authoritative grounding or certainty, such as:\n  - “couldn’t find”\n  - “not documented”\n  - “not confirmed”\n  - “unknown”\n  - “likely”\n  - “possibly”\n  - “may be”\n  - “appears to”\n  - “seems to”\n- it relies mainly on inferred, assumed, or speculative causes rather than a confirmed or actionable resolution\n\nIf invalid, return:\n- `\"Summary\": \"No relevant resolution found\"`\n- `\"shortSummary\": \"No relevant resolution found\"`\n\nand apply the Explanation rules below.\n\n---\n\n## STEP 2: CLASSIFY inputMessage\n\nClassify `inputMessage` into one of these types:\n\n- `clarification`\nA request for Explanation, navigation help, option selection help, or how to perform an existing step.\n\n- `resolution_change`\nAny new fact, correction, failed step, dissatisfaction with the current solution, new symptom, new error, or constraint that should revise the resolution.\n\n- `presentation_change`\nA request to rewrite, shorten, simplify, or change tone/style without changing the troubleshooting path.\n\n- `irrelevant`\nA question unrelated to the SR or troubleshooting context.\n\n- `none`\nIf `inputMessage` is null, empty, undefined, or has no actionable follow-up content.\n\n---\n\n## STEP 3: BUILD SUMMARY\n\n### Summary\n`Summary` is always the full resolution.\n\nRules:\n- Keep it under 800 characters\n- Use clear language\n- Describe recommended steps, not completed actions\n- Use present tense\n- Do not imply the issue is resolved\n- Be valid UTF-8 and JSON-safe\n\nBehavior by input type:\n\nIf type is `clarification`:\n- If `lastSummary` exists, preserve `lastSummary` in meaning and scope\n- Do NOT rewrite Summary to focus only on the clarification topic\n- Put the direct answer only in `Explanation`\n- If `lastSummary` is empty and RecommendedSolution is valid, generate Summary from RecommendedSolution\n\nIf type is `resolution_change`:\n- Generate an updated Summary from RecommendedSolution\n- Incorporate the new facts or failure feedback from `inputMessage`\n- Do not repeat ineffective or invalidated steps if the input indicates they did not work\n\nIf type is `presentation_change`:\n- If `lastSummary` exists, preserve the same troubleshooting path from `lastSummary`\n- Apply only the requested presentation change\n- If `lastSummary` is empty and RecommendedSolution is valid, generate Summary from RecommendedSolution and apply the requested presentation change\n\nIf type is `irrelevant`:\n- If `lastSummary` exists, preserve `lastSummary`\n- Otherwise, if RecommendedSolution is valid, generate Summary from RecommendedSolution\n- Otherwise return `\"No relevant resolution found\"`\n\nIf type is `none`:\n- Generate Summary from RecommendedSolution if it is valid\n- Do not use `lastSummary` to preserve or override in this case\n- Otherwise return `\"No relevant resolution found\"`\n\n### shortSummary\n`shortSummary` is always a 1–2 line summary of `Summary`.\n\nRules:\n- Only simplify `Summary`\n- Do not introduce new steps\n- Do not become the answer to `inputMessage`\n- If `Summary` is `\"No relevant resolution found\"`, `shortSummary` must also be `\"No relevant resolution found\"`\n\n---\n\n## STEP 4: BUILD Explanation\n\n`Explanation` is text for `inputMessage` only.\n\nRules:\n- If type is `clarification`, directly answer the current question here\n- If type is `resolution_change`, strictly return \"\" (empty string)\n- If type is `presentation_change`, explain what presentation change was made\n- If type is `irrelevant`, strictly return \"This question is not relevant to the current SR or troubleshooting context.\"\n- If type is `none`, strictly return \"\" (empty string)\n\nImportant:\nIf `inputMessage` is null, empty, or undefined, Explanation must be exactly \"\" and Summary / shortSummary must be generated from RecommendedSolution.\n\nDo NOT include internal reasoning, source evaluation, or prompt logic.\nDo NOT reuse or copy an older Explanation unless the current input is explicitly asking the same thing again.\n\n---\n\n## STEP 5: SET METADATA\n\nRules:\n- `ObjectKey` must always be `null`\n- `ObjectType` must be `\"ActionPlanTemplate\"` only if `Summary` is meaningful and not `\"No relevant resolution found\"`\n- Otherwise, `ObjectType` must be `\"\"` (empty string)\n- `listOfArticles` and `listOfSimilarSrs` should be taken from RecommendedSolution when available\n- If `listOfArticles` or `listOfSimilarSrs` is missing, return empty arrays\n- Do not invent metadata\n\n---\n\n## STEP 6: OUTPUT CONSISTENCY CHECK\n\nBefore returning JSON, verify:\n\n- `Summary` is the full resolution, not just the answer to `inputMessage`\n- `shortSummary` is a 1–2 line summary of `Summary`\n- if type is `clarification`, `Explanation` answers the question and does not replace `Summary`\n- if type is `resolution_change`, `Explanation` is exactly \"\" (empty string)\n- if type is `presentation_change`, `Explanation` only describes the presentation change\n- if type is `irrelevant`, `Explanation` is exactly:\n  \"This question is not relevant to the current SR or troubleshooting context.\"\n- if type is `none`, `Explanation` is exactly \"\" and `Summary` / `shortSummary` come from RecommendedSolution\n\nIf any field conflicts with these rules, correct it before returning.\n\n---\n\n## OUTPUT FORMAT\n\nAlways return structured JSON in exactly this format:\n\n{\n  \"Summary\": \"<full resolution or 'No relevant resolution found'>\",\n  \"shortSummary\": \"<1-2 line summary of Summary or 'No relevant resolution found'>\",\n  \"ObjectKey\": null,\n  \"ObjectType\": \"<'ActionPlanTemplate' if Summary is meaningful, else empty string>\",\n  \"listOfArticles\": [],\n  \"listOfSimilarSrs\": [],\n  \"Explanation\": \"<clarification answer, presentation-change note, irrelevant note, or empty string>\"\n}\n\n---\n\n## STRICT RULES\n\n- Use ONLY the provided inputs\n- Do NOT hallucinate\n- Do NOT invent metadata\n- If RecommendedSolution is invalid, return \"No relevant resolution found\" for Summary and shortSummary\n- Always return valid JSON\n- Summary must remain under 800 characters\n- For `resolution_change`, Explanation must be empty\n- For empty or missing `inputMessage`, Explanation must be empty and Summary / shortSummary must come from RecommendedSolution\n- For irrelevant input, Explanation must contain only the fixed irrelevant-response text\n- `ObjectKey` must always be null\n- `ObjectType` must be \"ActionPlanTemplate\" only when Summary is meaningful and not \"No relevant resolution found\"; otherwise it must be empty string"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"Summary\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Information Request Evaluation"
+          },
+          "outcomes": {
+            "success": "1770797402258"
+          },
+          "code": "REQUEST_INFO_EVAL",
+          "id": "1765186011768",
+          "inputs": [
+            {
+              "id": "1765186011769_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Role\nAI Agent to evaluate missing information to properly formulate a resolution plan from the given Service Request context.\n\nObjective\nDecide whether to propose a resolution now. Only if crucial information is missing and cannot be safely inferred, ask the customer for the minimum additional details needed to proceed.\n\nInputs\n- ServiceRequestSummary:\n  {{$context.$nodes.FORMAT_SR_DATA.$output.result}} \n- ResolutionDetails:\n {{$context.$variables.useProductAgent ? $context.$nodes.FORMAT_PRODUCT_AGENT_RESULT.$output.Summary : JSON.parse($context.$nodes.RESOLUTION_AGENT.$output.output).result.Summary}} \n- Explanation:\n {{$context.$variables.useProductAgent ? ($context.$nodes.FORMAT_PRODUCT_AGENT_RESULT.$output.Explanation || \"\") : (JSON.parse($context.$nodes.RESOLUTION_AGENT.$output.output).result.Explanation || \"\")}}\n - SrNumber:\n  {{$context.$triggers.REST.$input.objectNumber}}\n\nBehavior\nDecision policy (apply in order):\n1) Never set status to \"resolve\" when ResolutionDetails is No relevant resolution found. \n2) Prefer resolution without questions\n   - If ResolutionDetails contains a clear fix or a safe next diagnostic the customer can perform without additional inputs, return status=\"resolve\" with concise, step-by-step instructions and links to official docs. Do not infer or derive a resolution from ServiceRequestSummary.\n   - If some inputs are missing but reasonable, low-risk defaults or inference from ServiceRequestSummary suffice, proceed with status=\"resolve\" and state any assumptions transparently.\n   - If multiple candidate fixes exist, but the customer can self-triage with a short decision tree (if X then Y), provide that as a self-service path under status=\"resolve\" rather than asking questions.\n\n3) Ask only when truly required\n   - Ask only if at least one critical data point is required to choose or execute the next step AND it cannot be safely inferred or assumed.\n   - Consolidate into a single message; request at most the top 1–3 highest-impact items.\n   - For each item: state what, why it unblocks resolution, and an example/capture method.\n   - Do not ask for secrets, passwords, tokens, or PII. If logs are needed, request redacted snippets only via approved channels.\n   - Avoid back-and-forth; ask once. If uncertainty remains, request only the single most essential item.\n\n4) Clarity and safety\n   - Keep customer tone polite, concise, and action-oriented.\n   - Use official product documentation and approved internal links. Avoid third-party tools unless aligned with Oracle internal guidelines.\n\nResolution guidance (when status=\"resolve\"):\n- Provide a short summary of the likely cause.\n- Give actionable steps (numbered), preconditions, and expected outcomes.\n- Include brief verification steps (how the customer confirms success).\n- If offering a decision tree, keep it to <=5 lines with simple conditions the customer can check.\n\nAsk guidance (when status=\"ask\"):\n- Review the existing chat history {{$context.$system.$chatHistory}} and the latest user input {{$context.$system.$inputMessage}} Do not ask any questions that the user has already answered.\n- One consolidated message with 1–3 items max.\n- Include a redaction reminder.\n- If only one item is missing, use a minimal single-line ask.\n\nJSON Output format\n- status: \"resolve\" | \"ask\"\n- Summary: string\n  - When status=\"resolve\": provide the direct steps or decision tree and links to official docs if they present in ResolutionDetails. Use only the information from ResolutionDetails; do not generate or infer your own answers, do not add any additional details on your own. \n  - When status=\"ask\": use the customer-facing pattern below.\n- shortSummary: string\n  - When status=\"resolve\": resolution summary in less than 1000 characters.\n  - When status=\"ask\": return \"More information is needed for SR <SrNumber> to validate the issue and confirm the fix.\"\n- Explanation: string\n  - When Explanation exists, rewrite it into a concise, customer-friendly message.\n  - Use only the information already present in Explanation.\n  - Do not invent, expand, or add new technical details on your own.\n  - When Explanation does not exist or is empty, strictly return \"\".\n\nCustomer-facing message template (used when status=\"ask\")\nHello,\nThanks for the details on SR <SrNumber> about <short issue summary>. To proceed, could you share the following so we can confirm the fix?\n- <Missing item 1> — <why it’s needed>. Example: <example value or how to capture it>.\n- <Missing item 2> — <why>. Example: <example>.\n- <Missing item 3> — <why>. Example: <example>.\nNote: Please remove or redact any sensitive data (passwords, tokens, customer PII). If sending logs, share only the relevant excerpt via the approved channel.\n\nGuardrails checklist (must pass before asking any question)\n- Is there a safe, documented fix or diagnostic the customer can try now? If yes, resolve.\n- Can we reasonably infer or assume missing values with low risk? If yes, resolve and state assumptions.\n- Can we provide a short decision tree that lets the customer self-troubleshoot? If yes, resolve.\n- Are we about to ask for more than 3 items? If yes, reduce to the single highest-impact item or provide a self-service decision tree instead.\n\nExamples of “resolve” without asking\n- “Apply patch X for version v23.2; verify with command Y. If the service is v23.1 or earlier, follow doc Z instead.”\n- “Run diagnostic script A; if output contains ‘ORA-28040’, follow KB link B; otherwise proceed to step C.”\n\nSecurity and compliance\n- Never request secrets, passwords, tokens, or PII. Request redacted logs only.\n- Use only approved channels for file/log sharing. Verify any external tools align with Oracle internal guidelines."
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"shortSummary\": {\n            \"type\": \"string\"\n        },\n        \"status\": {\n            \"type\": \"string\"\n        },\n        \"Summary\": {\n            \"type\": \"string\"\n        },\n       \"Explanation\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "FormMessage",
+            "returnType": "string",
+            "sourceCode": "var useProductAgent = $context.$variables.useProductAgent \n/*var output = ($context.$nodes.REQUEST_INFO_EVAL.$output.status === 'ask' ||  useProductAgent ) ?  $context.$nodes.REQUEST_INFO_EVAL.$output : $context.$nodes.RESOLUTION_AGENT.$output.output */\n\nvar output = ($context.$nodes.REQUEST_INFO_EVAL.$output.status === 'ask' ) ?  $context.$nodes.REQUEST_INFO_EVAL.$output : $context.$nodes.SET_FINAL_RESOLUTION_CODE.$output.result \n\nif (typeof output === \"string\") {\n  output = JSON.parse(output);\n}\n\nif ($context.$triggers.REST.$input.publishResolution  && $context.$variables.isRerun) {\n  output = $context.$variables.lastResponse;\n}\n\n// Pick the first non-null output\nlet actionNumber = \"\";\n\nif($context.$nodes.REQUEST_INFO_EVAL.$output.status === 'ask'){\n  actionNumber =\n    $context.$triggers.REST.$input.objectType === \"ServiceRequest\"\n      ? \"ORA_SVC_TRIAGE_ACT_101\"\n      : $context.$triggers.REST.$input.objectType === \"HRHelpDeskRequest\"\n      ? \"ORA_SVC_TRIAGE_ACT_102\"\n      : $context.$triggers.REST.$input.objectType === \"InternalServiceRequest\"\n      ? \"ORA_SVC_TRIAGE_ACT_103\"\n      : \"\";\n  delete output.status;\n} else{\nif (\n  output.ObjectType === \"ActionPlanTemplate\" &&\n  output.ObjectKey != null &&\n  output.ObjectKey !== \"NA\" &&\n  output.ObjectKey !== \"\"\n) {\n  actionNumber =\n    $context.$triggers.REST.$input.objectType === \"ServiceRequest\"\n      ? \"ORA_SVC_ACT_RECOMM_101\"\n      : $context.$triggers.REST.$input.objectType === \"HRHelpDeskRequest\"\n      ? \"ORA_SVC_ACT_RECOMM_102\"\n      : $context.$triggers.REST.$input.objectType === \"InternalServiceRequest\"\n      ? \"ORA_SVC_ACT_RECOMM_103\"\n      : \"\";\n} else if (output.ObjectType === \"ActionPlanTemplate\" || useProductAgent) {\n  actionNumber =\n    $context.$triggers.REST.$input.objectType === \"ServiceRequest\"\n      ? \"ORA_SVC_ACT_101\"\n      : $context.$triggers.REST.$input.objectType === \"HRHelpDeskRequest\"\n      ? \"ORA_SVC_ACT_102\"\n      : $context.$triggers.REST.$input.objectType === \"InternalServiceRequest\"\n      ? \"ORA_SVC_ACT_103\"\n      : \"\";\n}\n}\n\n// Final output\nconst llmOutput = {\n  output,\n  workflowCode: $context.$workflow.$name,\n  jobId: $context.$workflow.$jobId,\n  conversationId: $context.$workflow.$conversationId,\n  actionNumber\n};\n\nreturn JSON.stringify(llmOutput, null, 2);"
+          },
+          "outcomes": {
+            "success": "1765201030845"
+          },
+          "code": "FORMMESSAGE",
+          "convergenceTargetId": "1765201030845",
+          "id": "1765343271837",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Need Information"
+          },
+          "outcomes": {
+            "true": "1766109905600",
+            "false": "1765242759779"
+          },
+          "code": "REQUEST_INFORMATION",
+          "convergenceTargetId": "end",
+          "id": "1765201030845",
+          "inputs": [
+            {
+              "id": "1765201030848_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.REQUEST_INFO_EVAL.$output.status === 'ask' && (!$context.$triggers.REST.$input.publishResolution || !$context.$variables.isRerun)}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "If Request Info"
+          },
+          "outcomes": {
+            "true": "1770676674986",
+            "false": "1880060000001"
+          },
+          "code": "IF_REQUEST_INFO",
+          "convergenceTargetId": "end",
+          "id": "1766109905600",
+          "inputs": [
+            {
+              "id": "1766109905602_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.iteration < 3 && $context.$triggers.REST.$input.persona!=\"CSR\" || ($context.$triggers.REST.$input.HIL && !$context.$variables.isRerun)}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "If Follow Up Ask CSR"
+          },
+          "outcomes": {
+            "true": "1880060000002",
+            "false": "1766195454147"
+          },
+          "code": "IF_FOLLOW_UP_ASK_CSR",
+          "convergenceTargetId": "end",
+          "id": "1880060000001",
+          "inputs": [
+            {
+              "id": "1880060000001_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.persona === 'CSR'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Return Follow Up Ask CSR",
+            "returnType": "object",
+            "sourceCode": "var resolutionV = $context.$nodes.SET_FINAL_RESOLUTION_CODE.$output.result \nvar iteration = $context.$variables.iteration \n\nvar output1 = {\n  \"output\": resolutionV,\n   \"iteration\": iteration,\n  \"status\": 'ask'\n};\n\nreturn output1"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURN_FOLLOW_UP_ASK_CSR",
+          "convergenceTargetId": "end",
+          "id": "1880060000002",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775785661624",
+            "name": "returnRequestMoreInfo",
+            "returnType": "object",
+            "sourceCode": "if (\n  $context.$nodes.CREATE_TRIAGE_PLAN.$status === \"failure\" ||\n  $context.$nodes.REQUEST_DETAILS_AP_ENGAGEMENT_METRICS.$status === \"failure\" ||\n   $context.$nodes.REQUEST_INPUT_DETAILS.$status === \"failure\"\n) {\n  throw new Error(\"CREATE_TRIAGE_PLAN OR REQUEST_DETAILS_AP_ENGAGEMENT_METRICS OR REQUEST_INPUT_DETAILS CALL FAILED\");\n}\n\n\nvar moreInfo = $context.$nodes.FORMMESSAGE.$output.result.output;\n\nvar iteration = $context.$variables.iteration \n\nvar output = {\n  \"output\": moreInfo,\n  \"iteration\": iteration,\n  \"status\": 'ask'\n};\n\nreturn output"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURNREQUESTMOREINFO",
+          "convergenceTargetId": "1766109940232",
+          "id": "1765813142753",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "No Resolution Message",
+            "returnType": "string",
+            "sourceCode": "var output = {Summary: \"No relevant resolution found.\"}\n\nconst llmOutput = {\n  output,\n  workflowCode: $context.$workflow.$name,\n  jobId: $context.$workflow.$jobId,\n  conversationId: $context.$workflow.$conversationId\n};\n\nreturn JSON.stringify(llmOutput, null, 2);"
+          },
+          "outcomes": {
+            "success": "1770676838173"
+          },
+          "code": "NO_RESOLUTION_MESSAGE",
+          "id": "1766195454147",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775785661624",
+            "name": "Return No Resolution",
+            "returnType": "object",
+            "sourceCode": "if (\n   $context.$nodes.REOPEN_SR_NO_RESOLUTION.$status === \"failure\" ||\n    $context.$nodes.CREATE_NO_RESOLUTION_MESSAGE.$status === \"failure\"\n) {\n  throw new Error(\"REOPEN_SR_NO_RESOLUTION OR CREATE_NO_RESOLUTION_MESSAGE CALL FAILED\");\n}\n\nvar moreInfo = {\"shortSummary\":\"No relevant resolution found.\",\"Summary\":\"No relevant resolution found.\",\"ObjectKey\":\"null\",\"ObjectType\":\"Note\",\"listOfArticles\":[],\"listOfSimilarSrs\":[]}\n\nvar iteration = $context.$variables.iteration \n\nvar output = {\n  \"output\": moreInfo,\n  \"iteration\": iteration,\n  \"status\": 'ask'\n};\n\nreturn output"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURN_NO_RESOLUTION",
+          "id": "1766188841334",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Delegate to Agent"
+          },
+          "outcomes": {
+            "true": "1880060000003",
+            "false": "1770677349623"
+          },
+          "code": "DELEGATE_TO_AGENT",
+          "convergenceTargetId": "end",
+          "id": "1765242759779",
+          "inputs": [
+            {
+              "id": "1765242759781_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.iteration >= 3 || $context.$triggers.REST.$input.HIL || $context.$triggers.REST.$input.persona === 'CSR'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "If Follow Up Resolve CSR"
+          },
+          "outcomes": {
+            "true": "1880060000004",
+            "false": "1770676936984"
+          },
+          "code": "IF_FOLLOW_UP_RESOLVE_CSR",
+          "convergenceTargetId": "end",
+          "id": "1880060000003",
+          "inputs": [
+            {
+              "id": "1880060000003_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.persona === 'CSR' && !$context.$triggers.REST.$input.publishResolution && $context.$variables.isRerun}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Return Follow Up Resolve CSR",
+            "returnType": "object",
+            "sourceCode": "var resolutionV = $context.$nodes.SET_FINAL_RESOLUTION_CODE.$output.result \nvar iteration = $context.$variables.iteration \n\nvar output1 = {\n  \"output\": resolutionV,\n   \"iteration\": iteration,\n  \"status\": 'resolve'\n};\n\nreturn output1"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURN_FOLLOW_UP_RESOLVE_CSR",
+          "convergenceTargetId": "end",
+          "id": "1880060000004",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775785661624",
+            "name": "Return Action Plan",
+            "returnType": "object",
+            "sourceCode": "if (\n  $context.$nodes.GET_ACTION_PLAN_BY_OBJECTD.$status === \"failure\" ||\n  $context.$nodes.REOPEN_SR.$status === \"failure\" ||\n  $context.$nodes.CANCEL_ACTION_PLAN.$status === \"failure\" ||\n  $context.$nodes.CREATE_MESSAGE.$status === \"failure\" ||\n  $context.$nodes.CREATE_ACTION_PLAN.$status === \"failure\"\n) {\n  throw new Error(\"GET_ACTION_PLAN_BY_OBJECTD OR CANCEL_ACTION_PLAN OR CREATE_MESSAGE OR CREATE_ACTION_PLAN CALL FAILED\");\n}\n\n\nvar resolutionV = $context.$nodes.SET_FINAL_RESOLUTION_CODE.$output.result \nvar iteration = $context.$variables.iteration \n\nvar output = {\n  \"output\": resolutionV,\n  \"iteration\": iteration,\n  \"status\": 'resolve'\n};\n\nreturn output"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURN_ACTION_PLAN",
+          "id": "1765256846702",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775785661624",
+            "name": "Return Resolution",
+            "returnType": "object",
+            "sourceCode": "if (\n  $context.$nodes.SEND_AGENT_RESPONSE.$status === \"failure\" ||\n  $context.$nodes.RESOLVE_SERVICE_REQUEST.$status === \"failure\"\n) {\n  throw new Error(\"SEND_AGENT_RESPONSE OR RESOLVE_SERVICE_REQUEST CALL FAILED\");\n}\n\n\n\nvar resolutionV = $context.$nodes.SET_FINAL_RESOLUTION_CODE.$output.result \nvar iteration = $context.$variables.iteration \n\nvar output1 = {\n  \"output\": resolutionV,\n   \"iteration\": iteration,\n  \"status\": 'resolve'\n};\n\nreturn output1"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURN_RESOLUTION",
+          "id": "1765247174878",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775785661624",
+            "name": "ResolutionAgentWorkflow",
+            "workflowCode": "ORA_SERVICE_REQUEST_RESOLUTION_ASSISTANT_WF_RA"
+          },
+          "outcomes": {
+            "success": "1765186011768"
+          },
+          "code": "RESOLUTION_AGENT",
+          "id": "1765794713051",
+          "inputs": [
+            {
+              "id": "1775623515678_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            },
+            {
+              "id": "1775623515679_2",
+              "name": "isVectorSearchEnabled",
+              "type": "boolean",
+              "value": "{{$context.$triggers.REST.$input.isVectorSearchEnabled}}"
+            },
+            {
+              "id": "1775623515680_3",
+              "name": "allowAgentAction",
+              "type": "string"
+            },
+            {
+              "id": "1775623515681_4",
+              "name": "conversationContext",
+              "type": "string",
+              "value": "{{$context.$system.$chatHistory + $context.$triggers.REST.$input.conversationContext}}"
+            },
+            {
+              "id": "1775623515681_5",
+              "name": "objectContext",
+              "type": "string",
+              "value": "{{$context.$nodes.FORMAT_SR_DATA.$output.result}}"
+            },
+            {
+              "id": "1775623515682_6",
+              "name": "objectNumber",
+              "type": "string"
+            },
+            {
+              "id": "1775623515683_7",
+              "name": "objectType",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectType}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1764889254906"
+          },
+          "id": "add_false_1765426132152",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Validate Data",
+            "returnType": "array",
+            "sourceCode": "let data = $context.$nodes.GET_SR_DATA.$output\nlet fields = $context.$variables.srTemplate \n\n// If srTemplate is missing, null, or empty → no invalid fields\nif (!fields || typeof fields !== 'string' || fields.trim() === '') {\n  return []\n}\n\nlet fieldArray = fields.split(',').map(f => f.trim())\nlet invalidFields = fieldArray.filter(\n  f => data[f] == null || data[f] === \"\"\n)\n\nreturn invalidFields"
+          },
+          "outcomes": {
+            "success": "1766386509229"
+          },
+          "code": "VALIDATE_DATA",
+          "id": "1766386454668",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "If Valid Data"
+          },
+          "outcomes": {
+            "true": "add_true_1766386509229",
+            "false": "1766386573034"
+          },
+          "code": "IF_VALID_DATA",
+          "convergenceTargetId": "1765280097603",
+          "id": "1766386509229",
+          "inputs": [
+            {
+              "id": "1766386509230_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.VALIDATE_DATA.$output.result.length == 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for true branch",
+            "name": "Add (True Branch)"
+          },
+          "outcomes": {
+            "success": "1765280097603"
+          },
+          "id": "add_true_1766386509229",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Invalid Data"
+          },
+          "outcomes": {},
+          "code": "INVALID_DATA",
+          "convergenceTargetId": "1765280097603",
+          "id": "1766386573034",
+          "inputs": [
+            {
+              "id": "1766386573035_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "Please provide value for {{$context.$nodes.VALIDATE_DATA.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775785661624",
+            "name": "Format SR Data",
+            "returnType": "string",
+            "sourceCode": "if (\n  $context.$nodes.GET_SR_DATA.$status === \"failure\" ||\n   $context.$nodes.GET_SR_MESSAGES.$status === \"failure\"\n) {\n  throw new Error(\"GET_SR_DATA OR GET_SR_MESSAGES CALL FAILED\");\n}\n\n\nconst objectContext = $context.$triggers.REST.$input.objectContext;\n\n//Inline null / empty check (Agent Studio–safe)\nif (\n  objectContext !== null &&\n  objectContext !== undefined &&\n  objectContext !== \"\"\n) {\n  return objectContext;\n}\n\n// ---------- Fallback logic ----------\nconst srAttributesRaw = $context.$nodes.GET_SR_DATA.$output;\n\nconst srAttributes =\n  srAttributesRaw && srAttributesRaw.content\n    ? srAttributesRaw.content\n    : (srAttributesRaw || {});\n\nconst messagesResponse = $context.$nodes.GET_SR_MESSAGES.$output;\n\nconst result = {};\n\n// Copy SR attributes except @context\nfor (const key in srAttributes) {\n  if (key !== \"@context\") {\n    result[key] = srAttributes[key];\n  }\n}\n\nconst items = messagesResponse?.items || [];\n\n// Flatten messages\nconst flattenedMessages = items.map(m => {\n  const sender = m?.MessageTypeCd\n    ? (m.MessageTypeCd.includes(\"CUSTOMER\") ? \"Customer\"\n      : m.MessageTypeCd.includes(\"RESPONSE\") ? \"Agent\"\n      : \"System\")\n    : \"Unknown\";\n\n  const timestamp = m?.CreationDate || \"\";\n\n  const text = m?.MessageContent\n    ? m.MessageContent.replace(/<[^>]+>/g, \"\").trim()\n    : \"\";\n\n  return `${sender}${timestamp ? \" (\" + timestamp + \")\" : \"\"}: ${text}`;\n});\n\nresult.Messages = flattenedMessages;\nresult.MessageCount = flattenedMessages.length;\n\nreturn \"\" + JSON.stringify(result, null, 2);"
+          },
+          "outcomes": {
+            "success": "1766367932383"
+          },
+          "code": "FORMAT_SR_DATA",
+          "id": "1766388101857",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "description": "Add node for branch 2",
+            "name": "Add 2"
+          },
+          "outcomes": {
+            "success": "1766388101857"
+          },
+          "id": "add_1765753466596_2",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1765426132152",
+            "name": "Classification Workflow Agent",
+            "workflowCode": "ORA_SERVICE_REQUEST_CLASSIFICATION_AGENT"
+          },
+          "outcomes": {
+            "success": "1765285037798"
+          },
+          "code": "CLASSIFICATION_WORKFLOW_AGENT",
+          "id": "1767124750682",
+          "inputs": [
+            {
+              "id": "1768267103924_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{'find only the exact match for the given issue: ' + $context.$nodes.GET_SR_DATA.$output.Title + \". \" + $context.$nodes.GET_SR_DATA.$output.ProblemDescription }}"
+            },
+            {
+              "id": "1768267103927_2",
+              "name": "srBU",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_SR_DATA.$output.BUOrgId}}"
+            },
+            {
+              "id": "1768267103928_3",
+              "name": "productUsage",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectType === \"InternalServiceRequest\" ? \"INTERNALSERVICE\" : \"SERVICE\"}}"
+            },
+            {
+              "id": "1768267103929_4",
+              "name": "objectType",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectType}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "Build Payload",
+            "returnType": "string",
+            "sourceCode": "const result = $context.$nodes.PRODUCT_RESPONSE?.$output?.result || {};\n\nconst categoryItem = $context?.$nodes?.FETCH_CATEGORY?.$output?.items?.[0];\nif (categoryItem?.CategoryId != null) {\n  result.CategoryId = categoryItem.CategoryId;\n}\n\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1765285479582"
+          },
+          "code": "BUILD_PAYLOAD",
+          "id": "1767662138417",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "EncodeProduct",
+            "returnType": "string",
+            "sourceCode": "const product = JSON.parse($context.$nodes.CLASSIFICATION_WORKFLOW_AGENT.$output.output).product\nconst encodedProd = encodeURIComponent(product);\nreturn encodedProd;"
+          },
+          "outcomes": {
+            "success": "1776075362439"
+          },
+          "code": "ENCODEPRODUCT",
+          "id": "1769712954969",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Encode Category",
+            "returnType": "string",
+            "sourceCode": "const category = JSON.parse($context.$nodes.CLASSIFICATION_WORKFLOW_AGENT.$output.output).category\nconst encodedCategory= encodeURIComponent(category);\nreturn encodedCategory;"
+          },
+          "outcomes": {
+            "success": "1765285262571"
+          },
+          "code": "ENCODE_CATEGORY",
+          "id": "1769713064519",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Encode Final Product",
+            "returnType": "string",
+            "sourceCode": "let product;\n\nif ($context.$nodes.CLASSIFICATION_WORKFLOW_AGENT.$output && $context.$nodes.CLASSIFICATION_WORKFLOW_AGENT.$output.output) {\n  const outputObj = JSON.parse($context.$nodes.CLASSIFICATION_WORKFLOW_AGENT.$output.output);\n  product = outputObj.product || $context.$nodes.GET_SR_DATA.$output.ProdGroupName;\n} else {\nproduct = $context.$nodes.GET_SR_DATA.$output.ProductItemDescription?.trim() ? $context.$nodes.GET_SR_DATA.$output.ProductItemDescription : $context.$nodes.GET_SR_DATA.$output.ProdGroupName;\n}\nconst encodedQuery = encodeURIComponent(product);\n\nreturn encodedQuery;"
+          },
+          "outcomes": {
+            "success": "1764888184622"
+          },
+          "code": "ENCODE_FINAL_PRODUCT",
+          "id": "1769713669167",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "If SR Number Present Request Info"
+          },
+          "outcomes": {
+            "true": "1772254263290",
+            "false": "add_false_1770676674986"
+          },
+          "code": "IF_SR_NUMBER_PRESENT_REQUEST_INFO",
+          "convergenceTargetId": "1765813142753",
+          "id": "1770676674986",
+          "inputs": [
+            {
+              "id": "1770676674987_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber != null && $context.$triggers.REST.$input.objectNumber != \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1765813142753"
+          },
+          "id": "add_false_1770676674986",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "If SR Number Present No Resolution"
+          },
+          "outcomes": {
+            "true": "1771974504422",
+            "false": "add_false_1770676838173"
+          },
+          "code": "IF_SR_NUMBER_PRESENT_NO_RESOLUTION",
+          "convergenceTargetId": "1766188841334",
+          "id": "1770676838173",
+          "inputs": [
+            {
+              "id": "1770676838174_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber != null && $context.$triggers.REST.$input.objectNumber != \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1766188841334"
+          },
+          "id": "add_false_1770676838173",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_CREATEAIAGENTME",
+            "errorNodeId": "1766188841334",
+            "functionName": "Create_Agent_AI_Metrics_OutcomeType",
+            "name": "No Resolution Engagement Record"
+          },
+          "outcomes": {
+            "success": "1766188841334"
+          },
+          "code": "NO_RESOLUTION_ENGAGEMENT_RECORD",
+          "convergenceTargetId": "1770676864801",
+          "id": "1768246369875",
+          "inputs": [
+            {
+              "id": "1768246392252_1",
+              "name": "agentTeamCode",
+              "type": "string",
+              "value": "{{$context.$workflow.$name}}"
+            },
+            {
+              "id": "1768246392253_2",
+              "name": "jobId",
+              "type": "string",
+              "value": "{{$context.$workflow.$jobId}}"
+            },
+            {
+              "id": "1768246392253_3",
+              "name": "objectReferenceNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            },
+            {
+              "id": "1768246392254_4",
+              "name": "outcomeObjectIdentifier",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_NO_RESOLUTION_MESSAGE.$output.MessageId}}"
+            },
+            {
+              "id": "1768246392254_5",
+              "name": "outcomeType",
+              "type": "string",
+              "value": "ORA_SVC_SR_MESSAGE"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_FETCHMESSAGES",
+            "functionName": "CreateMessages",
+            "name": "Create No Resolution Message"
+          },
+          "outcomes": {
+            "success": "1768246369875"
+          },
+          "code": "CREATE_NO_RESOLUTION_MESSAGE",
+          "convergenceTargetId": "1768246369875",
+          "id": "1766110012912",
+          "inputs": [
+            {
+              "id": "1767359736659_1",
+              "name": "entity",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectType === \"ServiceRequest\" ? \"serviceRequests\" : $context.$triggers.REST.$input.objectType === \"HRHelpDeskRequest\" ? \"hrHelpDeskRequests\" : $context.$triggers.REST.$input.objectType === \"InternalServiceRequest\" ? \"internalServiceRequests\" : null }}"
+            },
+            {
+              "id": "1767359736660_2",
+              "name": "objectNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            },
+            {
+              "id": "1767359736661_3",
+              "name": "msgPathParam",
+              "type": "string",
+              "value": "messages"
+            },
+            {
+              "id": "1767359736663_4",
+              "name": "agent Summary",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_HTML_FORMAT_MESSAGES_FOR_NO_RESOLUTION.$output.result}}"
+            },
+            {
+              "id": "1767359736664_5",
+              "name": "agentOutcome",
+              "type": "string",
+              "value": "Resolution Outcome"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "If SR Number Present Action Plan"
+          },
+          "outcomes": {
+            "true": "1773717469876",
+            "false": "add_false_1770676936984"
+          },
+          "code": "IF_SR_NUMBER_PRESENT_ACTION_PLAN",
+          "convergenceTargetId": "1765256846702",
+          "id": "1770676936984",
+          "inputs": [
+            {
+              "id": "1770676936987_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber != null && $context.$triggers.REST.$input.objectNumber != \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1765256846702"
+          },
+          "id": "add_false_1770676936984",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "If SR Number Present Resolve SR"
+          },
+          "outcomes": {
+            "true": "1768958525382",
+            "false": "add_false_1770677349623"
+          },
+          "code": "IF_SR_NUMBER_PRESENT_RESOLVE_SR",
+          "convergenceTargetId": "1765247174878",
+          "id": "1770677349623",
+          "inputs": [
+            {
+              "id": "1770677349624_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber != null && $context.$triggers.REST.$input.objectNumber != \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1765247174878"
+          },
+          "id": "add_false_1770677349623",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Payload",
+            "returnType": "string",
+            "sourceCode": "const objectType = $context.$triggers.REST.$input.objectType;\n\nlet statusCd;\n\nif (objectType === \"ServiceRequest\") {\n  statusCd = \"ORA_SVC_RESOLVED\";\n} else if (objectType === \"HRHelpDeskRequest\") {\n  statusCd = \"ORA_SVC_HRHD_RESOLVED\";\n} else if (objectType === \"InternalServiceRequest\") {\n  statusCd = \"ORA_SVC_ISR_RESOLVED\";\n} else {\n  statusCd = null;\n}\n\nconst payload = {\n  StatusCd: statusCd,\n  ResolveDescription: $context.$nodes.SET_FINAL_RESOLUTION_CODE.$output.result.Summary\n};\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "1765201194556"
+          },
+          "code": "PREPARE_PAYLOAD",
+          "convergenceTargetId": "1770677369661",
+          "id": "1768958525382",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_UPDATEBUSINESSOBJECTATTRIBUTES",
+            "functionName": "UpdateBusinessObject",
+            "name": "Resolve Service Request"
+          },
+          "outcomes": {
+            "success": "1765201829238"
+          },
+          "code": "RESOLVE_SERVICE_REQUEST",
+          "convergenceTargetId": "1770677369661",
+          "id": "1765201194556",
+          "inputs": [
+            {
+              "id": "1765201367422_1",
+              "name": "objectPayload",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_PAYLOAD.$output.result}}"
+            },
+            {
+              "id": "1765201367423_2",
+              "name": "objectType",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectType === \"ServiceRequest\" ? \"serviceRequests\" : $context.$triggers.REST.$input.objectType === \"HRHelpDeskRequest\" ? \"hrHelpDeskRequests\" : $context.$triggers.REST.$input.objectType === \"InternalServiceRequest\" ? \"internalServiceRequests\" : null }}"
+            },
+            {
+              "id": "1765201367424_3",
+              "name": "objectNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_FETCHMESSAGES",
+            "functionName": "Create_SR_Message",
+            "name": "Send Agent Response"
+          },
+          "outcomes": {
+            "success": "1768245578484"
+          },
+          "code": "SEND_AGENT_RESPONSE",
+          "convergenceTargetId": "1770677369661",
+          "id": "1765201829238",
+          "inputs": [
+            {
+              "id": "1767681548957_1",
+              "name": "entity",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectType === \"ServiceRequest\" ? \"serviceRequests\" : $context.$triggers.REST.$input.objectType === \"HRHelpDeskRequest\" ? \"hrHelpDeskRequests\" : $context.$triggers.REST.$input.objectType === \"InternalServiceRequest\" ? \"internalServiceRequests\" : null }}"
+            },
+            {
+              "id": "1767681548958_2",
+              "name": "objectNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            },
+            {
+              "id": "1767681548958_3",
+              "name": "msgPathParam",
+              "type": "string",
+              "value": "messages"
+            },
+            {
+              "id": "1767681548959_4",
+              "name": "msgTypeCd",
+              "type": "string",
+              "value": "ORA_SVC_RESPONSE"
+            },
+            {
+              "id": "1767681548960_5",
+              "name": "msgContent",
+              "type": "string",
+              "value": "{{ !$context.$nodes.REQUEST_INFO_EVAL.$output?.Explanation ? $context.$nodes.REQUEST_INFO_EVAL.$output?.Summary : $context.$nodes.REQUEST_INFO_EVAL.$output?.Explanation }}"
+            },
+            {
+              "id": "1767681548960_6",
+              "name": "subject",
+              "type": "string",
+              "value": "AI generated response"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_CREATEAIAGENTME",
+            "errorNodeId": "1765247174878",
+            "functionName": "Create_Agent_AI_Metrics_OutcomeType",
+            "name": "Send Response Engagement Record"
+          },
+          "outcomes": {
+            "success": "1765247174878"
+          },
+          "code": "SEND_RESPONSE_ENGAGEMENT_RECORD",
+          "convergenceTargetId": "1770677369661",
+          "id": "1768245578484",
+          "inputs": [
+            {
+              "id": "1768245590204_1",
+              "name": "agentTeamCode",
+              "type": "string",
+              "value": "{{$context.$workflow.$name}}"
+            },
+            {
+              "id": "1768245590205_2",
+              "name": "jobId",
+              "type": "string",
+              "value": "{{$context.$workflow.$jobId}}"
+            },
+            {
+              "id": "1768245590209_3",
+              "name": "objectReferenceNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            },
+            {
+              "id": "1768245590210_4",
+              "name": "outcomeObjectIdentifier",
+              "type": "string",
+              "value": "{{$context.$nodes.SEND_AGENT_RESPONSE.$output.MessageId}}"
+            },
+            {
+              "id": "1768245590211_5",
+              "name": "outcomeType",
+              "type": "string",
+              "value": "ORA_SVC_SR_MESSAGE"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Set Final Resolution Code",
+            "returnType": "object",
+            "sourceCode": "let result;\n\nif ($context.$triggers.REST.$input.publishResolution && $context.$variables.isRerun) {\n\n return $context.$variables.lastResponse;\n}\n\nif ($context.$variables.useProductAgent) {\n  result = $context.$nodes.FORMAT_PRODUCT_AGENT_RESULT.$output;\n  if ($context.$variables.lastShortSummary != \"\" && result.Explanation != \"\") {\n      result.shortSummary = $context.$variables.lastShortSummary;\n      result.Summary = $context.$variables.lastSummary;\n      result.ObjectKey = $context.$variables.lastObjectKey;\n  }\n} else {\n  result = JSON.parse($context.$nodes.RESOLUTION_AGENT.$output.output).result;\n  if ($context.$variables.lastShortSummary != \"\" && result.Explanation != \"\") {\n      result.shortSummary = $context.$variables.lastShortSummary;\n      result.Summary = $context.$variables.lastSummary;\n      result.ObjectKey = $context.$variables.lastObjectKey;\n  }\n}\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1765343271837"
+          },
+          "code": "SET_FINAL_RESOLUTION_CODE",
+          "id": "1770797402258",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_UPDATEBUSINESSOBJECTATTRIBUTES",
+            "functionName": "UpdateBusinessObject",
+            "name": "Reopen SR No Resolution"
+          },
+          "outcomes": {
+            "success": "1775797420021"
+          },
+          "code": "REOPEN_SR_NO_RESOLUTION",
+          "id": "1771974504422",
+          "inputs": [
+            {
+              "id": "1771974520641_1",
+              "name": "objectPayload",
+              "type": "string",
+              "value": "{{ {\"StatusCd\": $context.$triggers.REST.$input.objectType === \"ServiceRequest\" ? \"ORA_SVC_INPROGRESS\" : $context.$triggers.REST.$input.objectType === \"HRHelpDeskRequest\" ? \"ORA_SVC_HRHD_INPROGRESS\" : $context.$triggers.REST.$input.objectType === \"InternalServiceRequest\" ? \"ORA_SVC_ISR_INPROGRESS\" : null} }}"
+            },
+            {
+              "id": "1771974520641_2",
+              "name": "objectType",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectType === \"ServiceRequest\" ? \"serviceRequests\" : $context.$triggers.REST.$input.objectType === \"HRHelpDeskRequest\" ? \"hrHelpDeskRequests\" : $context.$triggers.REST.$input.objectType === \"InternalServiceRequest\" ? \"internalServiceRequests\" : null }}"
+            },
+            {
+              "id": "1771974520642_3",
+              "name": "objectNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "if Triage Action Plan"
+          },
+          "outcomes": {
+            "true": "1775713501078",
+            "false": "1765201624574"
+          },
+          "code": "IF_TRIAGE_ACTION_PLAN",
+          "convergenceTargetId": "1765813142753",
+          "id": "1772254263290",
+          "inputs": [
+            {
+              "id": "1772254263291_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.HIL}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_CREATEAIAGENTME",
+            "errorNodeId": "1765813142753",
+            "functionName": "Create_Agent_AI_Metrics_OutcomeType",
+            "name": "Request Details Engagement Metrics"
+          },
+          "outcomes": {
+            "success": "1765813142753"
+          },
+          "code": "REQUEST_DETAILS_ENGAGEMENT_METRICS",
+          "convergenceTargetId": "1772254295702",
+          "id": "1768246254308",
+          "inputs": [
+            {
+              "id": "1768246275832_1",
+              "name": "agentTeamCode",
+              "type": "string",
+              "value": "{{$context.$workflow.$name}}"
+            },
+            {
+              "id": "1768246275833_2",
+              "name": "jobId",
+              "type": "string",
+              "value": "{{$context.$workflow.$jobId}}"
+            },
+            {
+              "id": "1768246275834_3",
+              "name": "objectReferenceNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            },
+            {
+              "id": "1768246275836_4",
+              "name": "outcomeObjectIdentifier",
+              "type": "string",
+              "value": "{{$context.$nodes.REQUEST_INPUT_DETAILS.$output.MessageId}}"
+            },
+            {
+              "id": "1768246275837_5",
+              "name": "outcomeType",
+              "type": "string",
+              "value": "ORA_SVC_SR_MESSAGE"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_FETCHMESSAGES",
+            "functionName": "Create_SR_Message",
+            "name": "Request Input Details"
+          },
+          "outcomes": {
+            "success": "1768246254308"
+          },
+          "code": "REQUEST_INPUT_DETAILS",
+          "convergenceTargetId": "1768246254308",
+          "id": "1765201624574",
+          "inputs": [
+            {
+              "id": "1767681667947_1",
+              "name": "entity",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectType === \"ServiceRequest\" ? \"serviceRequests\" : $context.$triggers.REST.$input.objectType === \"HRHelpDeskRequest\" ? \"hrHelpDeskRequests\" : $context.$triggers.REST.$input.objectType === \"InternalServiceRequest\" ? \"internalServiceRequests\" : null }}"
+            },
+            {
+              "id": "1767681667947_2",
+              "name": "objectNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            },
+            {
+              "id": "1767681667948_3",
+              "name": "msgPathParam",
+              "type": "string",
+              "value": "messages"
+            },
+            {
+              "id": "1767681667948_4",
+              "name": "msgTypeCd",
+              "type": "string",
+              "value": "ORA_SVC_RESPONSE"
+            },
+            {
+              "id": "1767681667949_5",
+              "name": "msgContent",
+              "type": "string",
+              "value": "{{$context.$nodes.REQUEST_INFO_EVAL.$output.Summary}}"
+            },
+            {
+              "id": "1767681667950_6",
+              "name": "subject",
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SIMILARSERVICEA",
+            "functionName": "addActionToObject",
+            "name": "Create Triage Plan"
+          },
+          "outcomes": {
+            "success": "1775797266309"
+          },
+          "code": "CREATE_TRIAGE_PLAN",
+          "id": "1772254448259",
+          "inputs": [
+            {
+              "id": "1772254475810_1",
+              "name": "actionNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.FORMMESSAGE.$output.result.actionNumber}}"
+            },
+            {
+              "id": "1772254475811_2",
+              "name": "objectNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            },
+            {
+              "id": "1772254475812_3",
+              "name": "objectEntityName",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectType}}"
+            },
+            {
+              "id": "1772254475813_4",
+              "name": "output",
+              "type": "string",
+              "value": "{{$context.$nodes.FORMMESSAGE.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_CREATEAIAGENTME",
+            "functionName": "Create_Agent_AI_Metrics_OutcomeType",
+            "name": "Request Details AP Engagement Metrics"
+          },
+          "outcomes": {
+            "success": "1765813142753"
+          },
+          "code": "REQUEST_DETAILS_AP_ENGAGEMENT_METRICS",
+          "id": "1772254536080",
+          "inputs": [
+            {
+              "id": "1772254554572_1",
+              "name": "agentTeamCode",
+              "type": "string",
+              "value": "{{$context.$workflow.$name}}"
+            },
+            {
+              "id": "1772254554573_2",
+              "name": "jobId",
+              "type": "string",
+              "value": "{{$context.$workflow.$jobId}}"
+            },
+            {
+              "id": "1772254554574_3",
+              "name": "objectReferenceNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            },
+            {
+              "id": "1772254554575_4",
+              "name": "outcomeObjectIdentifier",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_TRIAGE_PLAN.$output.result}}"
+            },
+            {
+              "id": "1772254554576_5",
+              "name": "outcomeType",
+              "type": "string",
+              "value": "ORA_SVC_ACTION_PLAN_ACTION"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "IsFollowup"
+          },
+          "outcomes": {
+            "true": "1772679069114",
+            "false": "add_false_1772678984388"
+          },
+          "code": "ISFOLLOWUP",
+          "convergenceTargetId": "1765753466596",
+          "id": "1772678984388",
+          "inputs": [
+            {
+              "id": "1772678984389_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.DECIDEINTENTUSINGINPUT.$output.Intent === 'Followup'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1765753466596"
+          },
+          "id": "add_false_1772678984388",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Update Iteration"
+          },
+          "outcomes": {
+            "success": "1765753466596"
+          },
+          "code": "UPDATE_ITERATION",
+          "id": "1772679069114",
+          "inputs": [
+            {
+              "id": "1772679077180",
+              "name": "iteration",
+              "scope": "JOB",
+              "type": "number",
+              "value": "{{$context.$variables.iteration - 1}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "If Action Plan Required"
+          },
+          "outcomes": {
+            "true": "1772682096978",
+            "false": "add_false_1772680561257"
+          },
+          "code": "IF_ACTION_PLAN_REQUIRED",
+          "convergenceTargetId": "1765256846702",
+          "id": "1772680561257",
+          "inputs": [
+            {
+              "id": "1772680561258_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_ACTION_PLAN_TO_BE_CANCELLED.$output.result == \"\" || $context.$triggers.REST.$input.publishResolution}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1765256846702"
+          },
+          "id": "add_false_1772680561257",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "If Cancel Action Plan"
+          },
+          "outcomes": {
+            "true": "1772681139635",
+            "false": "add_false_1772682096978"
+          },
+          "code": "IF_CANCEL_ACTION_PLAN",
+          "convergenceTargetId": "1765256846702",
+          "id": "1772682096978",
+          "inputs": [
+            {
+              "id": "1772682096979_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_ACTION_PLAN_TO_BE_CANCELLED.$output.result != \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1770936733818"
+          },
+          "id": "add_false_1772682096978",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SIMILARSERVICEA",
+            "functionName": "cancel_ActionPlan",
+            "name": "Cancel Action Plan"
+          },
+          "outcomes": {
+            "success": "1770936733818"
+          },
+          "code": "CANCEL_ACTION_PLAN",
+          "convergenceTargetId": "1772682118288",
+          "id": "1772681139635",
+          "inputs": [
+            {
+              "id": "1772681161527_1",
+              "name": "actionPlanNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_ACTION_PLAN_TO_BE_CANCELLED.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Update Retry Action Plan"
+          },
+          "outcomes": {
+            "success": "1770936826082"
+          },
+          "code": "UPDATE_RETRY_ACTION_PLAN",
+          "convergenceTargetId": "1772681102669",
+          "id": "1770936733818",
+          "inputs": [
+            {
+              "id": "1770936752136",
+              "name": "retryActionPlan",
+              "scope": "JOB",
+              "type": "integer",
+              "value": "{{$context.$variables.retryActionPlan + 1}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Get Action Plan To Be Cancelled",
+            "returnType": "string",
+            "sourceCode": "const actionPlans = $context.$nodes.GET_ACTION_PLAN_BY_OBJECTD.$output \nconst items = actionPlans?.items || [];\nconst workflowCode = $context.$workflow.$name;\nconst canceledActionPlanStatusCd = \"ORA_SVC_CANCELED\";\nconst completedActionPlanStatusCd = \"ORA_SVC_COMPLETED\";\n\nconst actionPlanToBeCanceled = items\n  .filter(item =>  item.StatusCd && !item.StatusCd.includes(canceledActionPlanStatusCd) && !item.StatusCd.includes(completedActionPlanStatusCd)  && item.Message && item.Message.includes(workflowCode))\n  .sort((a, b) => new Date(b.CreationDate) - new Date(a.CreationDate))\n  .map(item => item.ActionPlanNumber)[0] || \"\";\n\nreturn actionPlanToBeCanceled;"
+          },
+          "outcomes": {
+            "success": "1772680561257"
+          },
+          "code": "GET_ACTION_PLAN_TO_BE_CANCELLED",
+          "convergenceTargetId": "1772680561257",
+          "id": "1772681004190",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SIMILARSERVICEA",
+            "functionName": "get_ActionPlansByObjectId",
+            "name": "Get Action Plan By Objectd"
+          },
+          "outcomes": {
+            "success": "1772681004190"
+          },
+          "code": "GET_ACTION_PLAN_BY_OBJECTD",
+          "convergenceTargetId": "1772681004190",
+          "id": "1772680685233",
+          "inputs": [
+            {
+              "id": "1772680718989_1",
+              "name": "fieldsParams",
+              "type": "string",
+              "value": "ActionPlanId,ActionPlanNumber,CreationDate,Name,Message,StatusCd"
+            },
+            {
+              "id": "1772680718990_2",
+              "name": "ObjectId",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_SR_DATA.$output.SrId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Need Update SR Status"
+          },
+          "outcomes": {
+            "true": "1771962002544",
+            "false": "add_false_1773717469876"
+          },
+          "code": "NEED_UPDATE_SR_STATUS",
+          "convergenceTargetId": "1772680685233",
+          "id": "1773717469876",
+          "inputs": [
+            {
+              "id": "1773717469879_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{!$context.$triggers.REST.$input.HIL && $context.$triggers.REST.$input.persona != 'CSR'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1772680685233"
+          },
+          "id": "add_false_1773717469876",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_UPDATEBUSINESSOBJECTATTRIBUTES",
+            "functionName": "UpdateBusinessObject",
+            "name": "Reopen SR"
+          },
+          "outcomes": {
+            "success": "1772680685233"
+          },
+          "code": "REOPEN_SR",
+          "convergenceTargetId": "1773717539388",
+          "id": "1771962002544",
+          "inputs": [
+            {
+              "id": "1771962019402_1",
+              "name": "objectPayload",
+              "type": "string",
+              "value": "{{ {\"StatusCd\": $context.$triggers.REST.$input.objectType === \"ServiceRequest\" ? \"ORA_SVC_INPROGRESS\" : $context.$triggers.REST.$input.objectType === \"HRHelpDeskRequest\" ? \"ORA_SVC_HRHD_INPROGRESS\" : $context.$triggers.REST.$input.objectType === \"InternalServiceRequest\" ? \"ORA_SVC_ISR_INPROGRESS\" : null} }}"
+            },
+            {
+              "id": "1771962019402_2",
+              "name": "objectType",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectType === \"ServiceRequest\" ? \"serviceRequests\" : $context.$triggers.REST.$input.objectType === \"HRHelpDeskRequest\" ? \"hrHelpDeskRequests\" : $context.$triggers.REST.$input.objectType === \"InternalServiceRequest\" ? \"internalServiceRequests\" : null }}"
+            },
+            {
+              "id": "1771962019403_3",
+              "name": "objectNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "If Need Action Plan Retry"
+          },
+          "outcomes": {
+            "true": "1765243879797",
+            "false": "add_false_1770936826082"
+          },
+          "code": "IF_NEED_ACTION_PLAN_RETRY",
+          "convergenceTargetId": "1765256846702",
+          "id": "1770936826082",
+          "inputs": [
+            {
+              "id": "1770936826083_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.retryActionPlan <= 3 && $context.$nodes.FORMMESSAGE.$output.result.actionNumber != \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SIMILARSERVICEA",
+            "functionName": "addActionToObject",
+            "name": "Create Action Plan"
+          },
+          "outcomes": {
+            "success": "1770937033298"
+          },
+          "code": "CREATE_ACTION_PLAN",
+          "convergenceTargetId": "1770936868179",
+          "id": "1765243879797",
+          "inputs": [
+            {
+              "id": "1765243994114_1",
+              "name": "actionNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.FORMMESSAGE.$output.result.actionNumber}}"
+            },
+            {
+              "id": "1765243994115_2",
+              "name": "objectNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            },
+            {
+              "id": "1765243994117_3",
+              "name": "objectEntityName",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectType}}"
+            },
+            {
+              "id": "1765243994118_4",
+              "name": "output",
+              "type": "string",
+              "value": "{{$context.$nodes.FORMMESSAGE.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770936733818",
+            "name": "Extract Output",
+            "returnType": "string",
+            "sourceCode": "let result = $context.$nodes.CREATE_ACTION_PLAN.$output.result\nif( result.includes(\"JBO-26092\") || result.includes(\"JBO-SVC:::SVC_SR_CHANGE_NOT_SAVED\") ){\n    throw new Error(result);\n}\n return \"\""
+          },
+          "outcomes": {
+            "success": "1768245220913"
+          },
+          "code": "EXTRACT_OUTPUT",
+          "id": "1770937033298",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_CREATEAIAGENTME",
+            "errorNodeId": "1765826263739",
+            "functionName": "Create_Agent_AI_Metrics_OutcomeType",
+            "name": "Create AP Engagement Record"
+          },
+          "outcomes": {
+            "success": "1775713639696"
+          },
+          "code": "CREATE_AP_ENGAGEMENT_RECORD",
+          "convergenceTargetId": "1772680085349",
+          "id": "1768245220913",
+          "inputs": [
+            {
+              "id": "1768245249403_1",
+              "name": "agentTeamCode",
+              "type": "string",
+              "value": "{{$context.$workflow.$name}}"
+            },
+            {
+              "id": "1768245249406_2",
+              "name": "jobId",
+              "type": "string",
+              "value": "{{$context.$workflow.$jobId}}"
+            },
+            {
+              "id": "1768245249407_3",
+              "name": "objectReferenceNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            },
+            {
+              "id": "1768245249407_4",
+              "name": "outcomeObjectIdentifier",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_ACTION_PLAN.$output.result}}"
+            },
+            {
+              "id": "1768245249408_5",
+              "name": "outcomeType",
+              "type": "string",
+              "value": "ORA_SVC_ACTION_PLAN_ACTION"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1775713639696"
+          },
+          "id": "add_false_1770936826082",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_CREATEAIAGENTME",
+            "errorNodeId": "1765256846702",
+            "functionName": "Create_Agent_AI_Metrics_OutcomeType",
+            "name": "create Message Engagement Record"
+          },
+          "outcomes": {
+            "success": "1765256846702"
+          },
+          "code": "CREATE_MESSAGE_ENGAGEMENT_RECORD",
+          "convergenceTargetId": "1773809765085",
+          "id": "1768245404635",
+          "inputs": [
+            {
+              "id": "1768245438369_1",
+              "name": "agentTeamCode",
+              "type": "string",
+              "value": "{{$context.$workflow.$name}}"
+            },
+            {
+              "id": "1768245438370_2",
+              "name": "jobId",
+              "type": "string",
+              "value": "{{$context.$workflow.$jobId}}"
+            },
+            {
+              "id": "1768245438370_3",
+              "name": "objectReferenceNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            },
+            {
+              "id": "1768245438371_4",
+              "name": "outcomeObjectIdentifier",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_MESSAGE.$output.MessageId}}"
+            },
+            {
+              "id": "1768245438372_5",
+              "name": "outcomeType",
+              "type": "string",
+              "value": "ORA_SVC_SR_MESSAGE"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_FETCHMESSAGES",
+            "functionName": "CreateMessages",
+            "name": "create Message"
+          },
+          "outcomes": {
+            "success": "1768245404635"
+          },
+          "code": "CREATE_MESSAGE",
+          "convergenceTargetId": "1768245404635",
+          "id": "1765826263739",
+          "inputs": [
+            {
+              "id": "1767359886556_1",
+              "name": "entity",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectType === \"ServiceRequest\" ? \"serviceRequests\" : $context.$triggers.REST.$input.objectType === \"HRHelpDeskRequest\" ? \"hrHelpDeskRequests\" : $context.$triggers.REST.$input.objectType === \"InternalServiceRequest\" ? \"internalServiceRequests\" : null }}"
+            },
+            {
+              "id": "1767359886557_2",
+              "name": "objectNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            },
+            {
+              "id": "1767359886558_3",
+              "name": "msgPathParam",
+              "type": "string",
+              "value": "messages"
+            },
+            {
+              "id": "1767359886560_4",
+              "name": "agent Summary",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_HTML_FORMAT_MESSAGES_FOR_RESOLUTION.$output.result}}"
+            },
+            {
+              "id": "1767359886561_5",
+              "name": "agentOutcome",
+              "type": "string",
+              "value": "AI Agent Outcome"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Create HTML format messages for triage",
+            "returnType": "string",
+            "sourceCode": "const output = $context?.$nodes?.FORMMESSAGE?.$output?.result?.output || {};\n\n\n\nconst summary = output.Summary || \"No summary available\";\nlet referenceInfo = output.listOfArticles || \"\";\nlet similarSR = output.listOfSimilarSrs || \"\";\n\n\nlet rawSuggestions = $context?.$nodes?.CLASSIFICATION_WORKFLOW_AGENT?.$output;\n\nif (typeof rawSuggestions !== \"string\") {\n  rawSuggestions = JSON.stringify(rawSuggestions || \"\");\n}\n\nconst safeSummary = String(summary)\n  .replace(/&/g, \"&amp;\")\n  .replace(/</g, \"&lt;\")\n  .replace(/>/g, \"&gt;\");\n\n\nif (referenceInfo && similarSR) {\n  referenceInfo = referenceInfo + \",\" + similarSR;\n} else if (similarSR) {\n  referenceInfo = similarSR;\n}\n\n\nlet formattedReferences = \"\";\n\nif (referenceInfo) {\n  referenceInfo = String(referenceInfo);\n  const parts = referenceInfo.split(\",\");\n\n  let links = [];\n\n  for (let i = 0; i < parts.length; i++) {\n    const id = parts[i].trim();\n\n    if (id) {\n      const safeId = id\n        .replace(/&/g, \"&amp;\")\n        .replace(/</g, \"&lt;\")\n        .replace(/>/g, \"&gt;\");\n\n      links.push(`<span class=\"internal_dynlink\" external-doc-id=\"${safeId}\" lang=\"en\">${safeId}</span>`);\n    }\n  }\n\n  if (links.length > 0) {\n    formattedReferences = links.join(\", \");\n  }\n}\n\n\nlet suggestionsText = \"\";\n\nif (rawSuggestions) {\n  try {\n    \n    const level1 = JSON.parse(rawSuggestions);\n\n    \n    const level2 = level1.output ? JSON.parse(level1.output) : {};\n\n    let parts = [];\n\n    if (level2.severity) {\n      parts.push(\"Severity: \" + level2.severity);\n    }\n\n    if (level2.sentiment) {\n      parts.push(\"Sentiment: \" + level2.sentiment);\n    }\n\n    if (level2.category) {\n      parts.push(\"Category: \" + level2.category);\n    }\n\n    if (level2.product) {\n      parts.push(\"Product: \" + level2.product);\n    }\n\n    if (parts.length > 0) {\n      suggestionsText = parts.join(\"<br>\");\n    }\n\n  } catch (e) {\n    // silent fail\n  }\n}\n\n\nlet htmlMessage = `\n\n<b>Summary</b>\n<p>${safeSummary}</p>\n\n<b>What Actions Were Taken</b>\n<p>An action plan \"Triage plan\"  has been created for review.</p>\n`;\n\n\nif (formattedReferences) {\n  htmlMessage += `\n<b>Reference Information</b>\n<p>${formattedReferences}</p>\n`;\n}\n\n\nif (suggestionsText) {\n  htmlMessage += `\n<b>Suggestions</b>\n<p>${suggestionsText}</p>\n`;\n}\n\nreturn htmlMessage;"
+          },
+          "outcomes": {
+            "success": "1772254448259"
+          },
+          "code": "CREATE_HTML_FORMAT_MESSAGES_FOR_TRIAGE",
+          "id": "1775713501078",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Create HTML format messages for resolution",
+            "returnType": "string",
+            "sourceCode": "const output = $context?.$nodes?.FORMMESSAGE?.$output?.result?.output || {};\n\nconst summary = output.Summary || \"Summary Could not be fetched\";\nlet referenceInfo = output.listOfArticles || \"\";\nlet similarSR = output.listOfSimilarSrs || \"\"; \n\nconst safeSummary = String(summary)\n  .replace(/&/g, \"&amp;\")\n  .replace(/</g, \"&lt;\")\n  .replace(/>/g, \"&gt;\");\n\n\nif (referenceInfo && similarSR) {\n  referenceInfo = referenceInfo + \",\" + similarSR;\n} else if (similarSR) {\n  referenceInfo = similarSR;\n}\n\nlet formattedReferences = \"\";\n\nif (referenceInfo) {\n\n  referenceInfo = String(referenceInfo);\n\n  const parts = referenceInfo.split(\",\");\n\n  let links = [];\n\n  for (let i = 0; i < parts.length; i++) {\n    const id = parts[i].trim();\n\n    if (id) {\n      const safeId = id\n        .replace(/&/g, \"&amp;\")\n        .replace(/</g, \"&lt;\")\n        .replace(/>/g, \"&gt;\");\n\n      links.push(`<span class=\"internal_dynlink\" external-doc-id=\"${safeId}\" lang=\"en\">${safeId}</span>`);\n    }\n  }\n\n  if (links.length > 0) {\n    formattedReferences = links.join(\", \");\n  }\n}\n\n\nlet htmlMessage;\n\nif (output.ObjectType === \"WorkOrder\" || output.Summary === \"No relevant resolution found\" || output.Summary === \"Summary Could not be fetched\") {\n  htmlMessage = `\n<b>Summary</b>\n<p>${safeSummary}</p>\n`;\n} \nelse if (output.ObjectType=== \"ActionPlanTemplate\" &&  output.ObjectKey!= null){\n htmlMessage = `\n<b>Summary</b>\n<p>${safeSummary}</p>\n\n<b>What Actions Were Taken</b>\n<p>An action plan \"Recommended Plan\" has been created for review.</p>\n\n`;\n}\nelse {\n  htmlMessage = `\n<b>Summary</b>\n<p>${safeSummary}</p>\n\n<b>What Actions Were Taken</b>\n<p>An action plan \"Resolution Plan\" has been created for review.</p>\n`;\n}\n\nif (formattedReferences) {\n  htmlMessage += `\n<b>Reference Information</b>\n<p>${formattedReferences}</p>\n`;\n}\n\nreturn htmlMessage;"
+          },
+          "outcomes": {
+            "success": "1765826263739"
+          },
+          "code": "CREATE_HTML_FORMAT_MESSAGES_FOR_RESOLUTION",
+          "convergenceTargetId": "1765826263739",
+          "id": "1775713639696",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "hasEncouteredError"
+          },
+          "outcomes": {
+            "true": "1775785661624",
+            "false": "add_false_1775785625791"
+          },
+          "code": "HASENCOUTEREDERROR",
+          "convergenceTargetId": "1765753466596",
+          "id": "1775785625791",
+          "inputs": [
+            {
+              "id": "1775785625793_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.lastStatus === 'resolve' && $context.$triggers.REST.$input.persona != 'CSR'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1765753466596"
+          },
+          "id": "add_false_1775785625791",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "create html  message for error",
+            "returnType": "string",
+            "sourceCode": "let node;\n\nif ( $context.$nodes.GET_SR_DATA.$status === \"failure\") {\n    node = $context.$nodes.GET_SR_DATA;\n}\nelse if ( $context.$nodes.GET_SR_MESSAGES.$status === \"failure\") {\n    node = $context.$nodes.GET_SR_MESSAGES;\n}\nelse if ( $context.$nodes.CREATE_TRIAGE_PLAN.$status === \"failure\") {\n    node = $context.$nodes.CREATE_TRIAGE_PLAN;\n}\nelse if ( $context.$nodes.REQUEST_DETAILS_AP_ENGAGEMENT_METRICS.$status === \"failure\") {\n    node = $context.$nodes.REQUEST_DETAILS_AP_ENGAGEMENT_METRICS;\n}\nelse if ( $context.$nodes.REQUEST_INPUT_DETAILS.$status === \"failure\") {\n    node = $context.$nodes.REQUEST_INPUT_DETAILS;\n}\nelse if ( $context.$nodes.REOPEN_SR_NO_RESOLUTION.$status === \"failure\") {\n    node = $context.$nodes.REOPEN_SR_NO_RESOLUTION;\n}\nelse if ( $context.$nodes.CREATE_NO_RESOLUTION_MESSAGE.$status === \"failure\") {\n    node = $context.$nodes.CREATE_NO_RESOLUTION_MESSAGE;\n}\nelse if ( $context.$nodes.GET_ACTION_PLAN_BY_OBJECTD.$status === \"failure\") {\n    node = $context.$nodes.GET_ACTION_PLAN_BY_OBJECTD;\n}\nelse if ( $context.$nodes.REOPEN_SR.$status === \"failure\") {\n    node = $context.$nodes.REOPEN_SR;\n}\nelse if ( $context.$nodes.CANCEL_ACTION_PLAN.$status === \"failure\") {\n    node = $context.$nodes.CANCEL_ACTION_PLAN;\n}\nelse if ( $context.$nodes.CREATE_MESSAGE.$status === \"failure\") {\n    node = $context.$nodes.CREATE_MESSAGE;\n}\nelse if ( $context.$nodes.CREATE_ACTION_PLAN.$status === \"failure\") {\n    node = $context.$nodes.CREATE_ACTION_PLAN;\n}\nelse if ( $context.$nodes.SEND_AGENT_RESPONSE.$status === \"failure\") {\n    node = $context.$nodes.SEND_AGENT_RESPONSE;\n}\nelse if ( $context.$nodes.RESOLVE_SERVICE_REQUEST.$status === \"failure\") {\n    node = $context.$nodes.RESOLVE_SERVICE_REQUEST;\n}\n\n\nconst summary = node?.$error?.$info || \"\";\nconst status = node?.$status || \"\";\n\n\nconst summaryText = `${summary}`;\n\nlet htmlMessage = `\n<b>Summary</b>\n<p>We couldn’t complete the request because a required detail could not be retrieved. Please contact your administrator.</p>\n\n<b>Error Details: </b>\n<p>\n-info: ${summaryText}<br>\n-status: ${status}<br>\n</p>\n\n<b>What actions were taken: </b>\n<p>No action was taken.</p>\n`;\n\nreturn htmlMessage;"
+          },
+          "outcomes": {
+            "success": "1775785686950"
+          },
+          "code": "CREATE_HTML_MESSAGE_FOR_ERROR",
+          "id": "1775785661624",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_FETCHMESSAGES",
+            "errorNodeId": "1775785849889",
+            "functionName": "CreateMessages",
+            "name": "create error message"
+          },
+          "outcomes": {
+            "success": "1775785849889"
+          },
+          "code": "CREATE_ERROR_MESSAGE",
+          "id": "1775785686950",
+          "inputs": [
+            {
+              "id": "1775785714939_1",
+              "name": "entity",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectType === \"ServiceRequest\" ? \"serviceRequests\" : $context.$triggers.REST.$input.objectType === \"HRHelpDeskRequest\" ? \"hrHelpDeskRequests\" : $context.$triggers.REST.$input.objectType === \"InternalServiceRequest\" ? \"internalServiceRequests\" : null }}"
+            },
+            {
+              "id": "1775785714939_2",
+              "name": "objectNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            },
+            {
+              "id": "1775785714940_3",
+              "name": "msgPathParam",
+              "type": "string",
+              "value": "messages"
+            },
+            {
+              "id": "1775785714941_4",
+              "name": "agent Summary",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_HTML_MESSAGE_FOR_ERROR.$output.result}}"
+            },
+            {
+              "id": "1775785714943_5",
+              "name": "agentOutcome",
+              "type": "string",
+              "value": "AI Agent Outcome"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "return error details output"
+          },
+          "outcomes": {},
+          "code": "RETURN_ERROR_DETAILS_OUTPUT",
+          "convergenceTargetId": "1765753466596",
+          "id": "1775785849889",
+          "inputs": [
+            {
+              "id": "1775785849890_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{\"result\":{\"Summary\":{{$context.$nodes.CREATE_HTML_MESSAGE_FOR_ERROR.$output.result}} }}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_FETCHMESSAGES",
+            "functionName": "CreateMessages",
+            "name": "create message for triage"
+          },
+          "outcomes": {
+            "success": "1772254536080"
+          },
+          "code": "CREATE_MESSAGE_FOR_TRIAGE",
+          "id": "1775797266309",
+          "inputs": [
+            {
+              "id": "1775797299349_1",
+              "name": "entity",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectType === \"ServiceRequest\" ? \"serviceRequests\" : $context.$triggers.REST.$input.objectType === \"HRHelpDeskRequest\" ? \"hrHelpDeskRequests\" : $context.$triggers.REST.$input.objectType === \"InternalServiceRequest\" ? \"internalServiceRequests\" : null }}"
+            },
+            {
+              "id": "1775797299349_2",
+              "name": "objectNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectNumber}}"
+            },
+            {
+              "id": "1775797299350_3",
+              "name": "msgPathParam",
+              "type": "string",
+              "value": "messages"
+            },
+            {
+              "id": "1775797299350_4",
+              "name": "agent Summary",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_HTML_FORMAT_MESSAGES_FOR_TRIAGE.$output.result}}"
+            },
+            {
+              "id": "1775797299351_5",
+              "name": "agentOutcome",
+              "type": "string",
+              "value": "AI Agent Outcome"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Create HTML format messages for no resolution",
+            "returnType": "string",
+            "sourceCode": "const output = $context?.$nodes?.FORMMESSAGE?.$output?.result?.output || {};\n\nconst summary = \"No relevant resolution found.\" ;\nlet referenceInfo = output.listOfArticles || \"\";\nlet similarSR = output.listOfSimilarSrs || \"\"; \n\nconst safeSummary = String(summary)\n  .replace(/&/g, \"&amp;\")\n  .replace(/</g, \"&lt;\")\n  .replace(/>/g, \"&gt;\");\n\n\nif (referenceInfo && similarSR) {\n  referenceInfo = referenceInfo + \",\" + similarSR;\n} else if (similarSR) {\n  referenceInfo = similarSR;\n}\n\nlet formattedReferences = \"\";\n\nif (referenceInfo) {\n\n  referenceInfo = String(referenceInfo);\n\n  const parts = referenceInfo.split(\",\");\n\n  let links = [];\n\n  for (let i = 0; i < parts.length; i++) {\n    const id = parts[i].trim();\n\n    if (id) {\n      const safeId = id\n        .replace(/&/g, \"&amp;\")\n        .replace(/</g, \"&lt;\")\n        .replace(/>/g, \"&gt;\");\n\n      links.push(`<span class=\"internal_dynlink\" external-doc-id=\"${safeId}\" lang=\"en\">${safeId}</span>`);\n    }\n  }\n\n  if (links.length > 0) {\n    formattedReferences = links.join(\", \");\n  }\n}\n\n\nlet htmlMessage = `\n<b>Summary</b>\n<p>${safeSummary}</p>\n`;\n\n\nif (formattedReferences) {\n  htmlMessage += `\n<b>Reference Information</b>\n<p>${formattedReferences}</p>\n`;\n}\n\nreturn htmlMessage;"
+          },
+          "outcomes": {
+            "success": "1766110012912"
+          },
+          "code": "CREATE_HTML_FORMAT_MESSAGES_FOR_NO_RESOLUTION",
+          "id": "1775797420021",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Product Response",
+            "returnType": "object",
+            "sourceCode": "const result = {};\n\n\nconst productItem = $context?.$nodes?.FETCH_PRODUCT?.$output?.items?.[0];\nif (productItem?.ProductGroupId != null) {\n  result.ProdGroupId = productItem.ProductGroupId;\n}\n\nconst inventoryItemId = $context.$nodes.FETCH_INVENTORY_ITEM?.$output?.items?.[0];\nif (inventoryItemId?.InventoryItemId != null){\n    result.InventoryItemId = inventoryItemId.InventoryItemId;\n}\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1765847642087"
+          },
+          "code": "PRODUCT_RESPONSE",
+          "id": "1776075323182",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1765285143703",
+            "1": "1776075409433",
+            "2": "add_1776075362439_2"
+          },
+          "code": "PARALLEL_1776075362442",
+          "convergenceTargetId": "1776075323182",
+          "id": "1776075362439",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_GETAPRODUCTGROU",
+            "functionName": "oraCxServicecenGetaproductgrou_catalogproductgroups",
+            "name": "Fetch Product"
+          },
+          "outcomes": {
+            "success": "1776075323182"
+          },
+          "code": "FETCH_PRODUCT",
+          "convergenceTargetId": "1776075367590",
+          "id": "1765285143703",
+          "inputs": [
+            {
+              "id": "1765928682803_1",
+              "name": "pUsageCode",
+              "type": "string"
+            },
+            {
+              "id": "1765928682804_2",
+              "name": "pProduct",
+              "type": "string",
+              "value": "{{$context.$nodes.ENCODEPRODUCT.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"items\": {\n            \"type\": \"array\",\n            \"items\": {\n                \"type\": \"object\",\n               \"properties\": {\n        \"ProductGroupId\": {\n            \"type\": \"string\"\n        }\n    }\n            }\n        }\n    }\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_GETAPRODUCTITEM",
+            "functionName": "getInventoryItemByName",
+            "name": "Fetch Inventory Item"
+          },
+          "outcomes": {
+            "success": "1776075323182"
+          },
+          "code": "FETCH_INVENTORY_ITEM",
+          "id": "1776075409433",
+          "inputs": [
+            {
+              "id": "1776075432868_1",
+              "name": "pUsageCode",
+              "type": "string"
+            },
+            {
+              "id": "1776075432869_2",
+              "name": "pInventoryItem",
+              "type": "string",
+              "value": "{{$context.$nodes.ENCODEPRODUCT.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for branch 2",
+            "name": "Add 2"
+          },
+          "outcomes": {
+            "success": "1776075323182"
+          },
+          "id": "add_1776075362439_2",
+          "inputs": [],
+          "type": "ADD"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1775721964235",
+          "name": "isRerun",
+          "scope": "JOB",
+          "type": "boolean"
+        },
+        {
+          "id": "1775648742152",
+          "name": "lastResponse",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1775471939114",
+          "name": "lastObjectKey",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1775471929566",
+          "name": "lastShortSummary",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1775471905174",
+          "name": "lastSummary",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1770936651323",
+          "name": "retryActionPlan",
+          "scope": "JOB",
+          "type": "integer"
+        },
+        {
+          "id": "1767840038628",
+          "name": "lastStatus",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1767840027171",
+          "name": "iteration",
+          "scope": "JOB",
+          "type": "number"
+        },
+        {
+          "id": "1767677704610",
+          "name": "srTemplate",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1765931124002",
+          "name": "useProductAgent",
+          "scope": "JOB",
+          "type": "boolean"
+        },
+        {
+          "id": "1764892236540",
+          "name": "resolution",
+          "scope": "JOB",
+          "type": "object"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.75
+      },
+      "code": "ORA_LLM_PREMIUM",
+      "provider": "CERT_PREMIUM",
+      "model": "OPEN_AI_GPT_4_1_MINI",
+      "modelName": "GPT-4.1 mini"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1775623404804",
+            "name": "isVectorSearchEnabled",
+            "scope": "JOB",
+            "type": "boolean"
+          },
+          {
+            "id": "1775483610842",
+            "name": "publishResolution",
+            "scope": "JOB",
+            "type": "boolean"
+          },
+          {
+            "id": "1775483134488",
+            "name": "persona",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1772245728946",
+            "name": "HIL",
+            "scope": "JOB",
+            "type": "boolean"
+          },
+          {
+            "id": "1767164410913",
+            "name": "objectContext",
+            "type": "string"
+          },
+          {
+            "id": "1767125767759",
+            "name": "skipValidation",
+            "type": "boolean"
+          },
+          {
+            "id": "1767125458390",
+            "name": "conversationContext",
+            "type": "string"
+          },
+          {
+            "id": "1765928777809",
+            "name": "skipClassification",
+            "type": "boolean"
+          },
+          {
+            "id": "1765753396153",
+            "name": "objectNumber",
+            "type": "string"
+          },
+          {
+            "id": "1765753387828",
+            "name": "objectType",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "SERVICE_CENTER",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

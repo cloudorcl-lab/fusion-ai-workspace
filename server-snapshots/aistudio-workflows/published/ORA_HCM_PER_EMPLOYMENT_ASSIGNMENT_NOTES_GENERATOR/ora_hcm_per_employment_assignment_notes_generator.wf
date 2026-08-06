@@ -1,0 +1,1317 @@
+{
+  "workflowId": "300000331058308",
+  "workflowCode": "ORA_HCM_PER_EMPLOYMENT_ASSIGNMENT_NOTES_GENERATOR",
+  "name": "Employment Assignment Notes Generator",
+  "description": "Generates assignment notes for employment processes based on available attributes such as action, action reason, and additional input text provided by the user. The workflow evaluates the provided parameters and produces a structured description summarizing the employment change and relevant context. The generated assignment notes support consistent documentation of employment processes and are created with a maximum length of up to 4,000 characters.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1771476950273"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Flow Resolver 1"
+          },
+          "outcomes": {
+            "ChangeAssignment": "1771477530007",
+            "Promotions": "1771482706052",
+            "Transfers": "1771483014032",
+            "RequestMyAssignmentChange": "1771483064507",
+            "Change Location": "1771483490444",
+            "Change Work Hours": "1771483926216",
+            "PromoteAndChangePosition": "1771484328207",
+            "LocalAndGlobalTransfer": "1771484470848",
+            "ChangeWorkerType": "1771495383440",
+            "Default": "add_Default_1771476950273"
+          },
+          "code": "FLOW_RESOLVER_1",
+          "convergenceTargetId": "1771477089911",
+          "id": "1771476950273",
+          "inputs": [
+            {
+              "id": "1771476950274_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.ModuleIdentifier}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "Change Assignment Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772629588184"
+          },
+          "code": "CHANGE_ASSIGNMENT_NOTES_GENERATION",
+          "id": "1771477530007",
+          "inputs": [
+            {
+              "id": "1771477530011_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager or HR representative. Provide a justification to update the assignment of the employee named : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents:\nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed (e.g., \"Assignment Change\", \"End Assignment\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the change (e.g., \"Business requirement\", \"Department transfer\").\nCURRENT_JOB : {{$context.$triggers.REST.$input.CurrentJob}}, explanation : The name of the current job of the employee.\nPROPOSED_JOB : {{$context.$triggers.REST.$input.ProposedJob}} (optional), explanation : The name of the proposed job of the employee (use the word \"job\" only for this exact input).\nCURRENT_DEPARTMENT : {{$context.$triggers.REST.$input.CurrentDepartment}}, explanation : The name of the current department of the employee.\nPROPOSED_DEPARTMENT : {{$context.$triggers.REST.$input.ProposedDepartment}} (optional), explanation : The name of the proposed department of the employee.\nCURRENT_LOCATION : {{$context.$triggers.REST.$input.CurrentLocation}}, explanation : The name of the current location of the employee.\nPROPOSED_LOCATION : {{$context.$triggers.REST.$input.ProposedLocation}} (optional), explanation : The name of the proposed location of the employee.\nCURRENT_POSITION : {{$context.$triggers.REST.$input.CurrentPosition}}, explanation : The name of the current position of the employee.\nPROPOSED_POSITION : {{$context.$triggers.REST.$input.ProposedPosition}} (optional), explanation : The name of the proposed position of the employee (use the word \"position\" only for this exact input).\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional), explanation : Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}}, explanation : Defines the writing tone of the output.\nCONTENT_MODE : {{$context.$triggers.REST.$input.ContentMode}}, explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for the Change Assignment process.\n\n### RULES ###\n1. Generate a single, continuous justification.\n2. DO NOT include headers such as \"Part 1\", \"Action\", \"Part 2\", \"Notes\", \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification. e.g. JOB-CEO, POSITION-CEO, ACTION-Assignment Change etc.\n6. TERMINOLOGY: \"Job\", \"Position\", and \"Role\" are three distinct concepts in HCM. Never interchange them. Use \"job\" ONLY when referring to PROPOSED_JOB/CURRENT_JOB. Use \"position\" ONLY when referring to PROPOSED_POSITION/CURRENT_POSITION. Use \"role\" ONLY for general responsibilities.\n7. SPECIAL CASE - END ASSIGNMENT: If ACTION is \"End Assignment\", \"Suspend Assignment\", \"Termination\", \"Resignation\", or \"End Temporary Assignment\" (or equivalent phrasing):\n   - PART 1 must ONLY use ACTION and ACTION_REASON. Do NOT include or assume PROPOSED_JOB, PROPOSED_DEPARTMENT, PROPOSED_POSITION, or PROPOSED_LOCATION.\n   - The TONE must be forced to Formal regardless of what is provided. Avoid generating content with an overly enthusiastic or exciting tone.\n8. Only mention current vs proposed attributes when they differ. If current and proposed values are the same, do not mention the change.\n9. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n    - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n    - **Formal**: The tone should be polite, professional, respectful, and clear.\n10. The combined output must not exceed 4000 characters.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION, ACTION_REASON, and Proposed Attributes.\n    - If current attributes are not the same as proposed attributes, only then add the information regarding them.\n    - If ACTION = 'End Assignment' (or similar such as Suspend, Termination, Resignation, End Temporary Assignment), restrict Part 1 to ACTION and ACTION_REASON only.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Strip any parameter-like values (action, job, department, position, location) from INPUT_TEXT. Keep only unique free-text insights.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement.\n    - If ACTION = 'End Assignment' (or similar), conclusion must reflect only ACTION, ACTION_REASON, and INPUT_TEXT without assuming new job, department, or position.\n    - Summarise the key points from Part 1 and Part 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Flow Resolver 2"
+          },
+          "outcomes": {
+            "CorrectEmploymentDetails": "1771477721399",
+            "EditPendingWorker": "1771495920950",
+            "CorrectTermination": "1771497066537",
+            "AssignmentTermination": "1771477561468",
+            "AssignmentResignation": "1771499639167",
+            "ReverseTermination": "1771499975954",
+            "WithdrawResignation": "1771500265118",
+            "CancelWorkRelationship": "1771477686971",
+            "Change Manager": "1771495022006",
+            "Default": "add_Default_1771477089911"
+          },
+          "code": "FLOW_RESOLVER_2",
+          "convergenceTargetId": "1771477193839",
+          "id": "1771477089911",
+          "inputs": [
+            {
+              "id": "1771477089912_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.ModuleIdentifier}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "Correct Employment Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634215587"
+          },
+          "code": "CORRECT_EMPLOYMENT_NOTES_GENERATION",
+          "id": "1771477721399",
+          "inputs": [
+            {
+              "id": "1771477721400_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager or HR representative. Provide a justification for correcting employment details for the employee named : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents:\nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed (e.g., \"Correct Employment Details\"). NOTE: This is the original action being corrected, NOT a new action. The output must frame this as a correction of records.\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the correction (e.g., \"Data entry error\", \"Organizational update\").\nCURRENT_JOB : {{$context.$triggers.REST.$input.CurrentJob}}, explanation : The name of the current (incorrect) job of the employee.\nPROPOSED_JOB : {{$context.$triggers.REST.$input.ProposedJob}} (optional), explanation : The corrected job (use the word \"job\" only for this exact input).\nCURRENT_DEPARTMENT : {{$context.$triggers.REST.$input.CurrentDepartment}}, explanation : The name of the current (incorrect) department.\nPROPOSED_DEPARTMENT : {{$context.$triggers.REST.$input.ProposedDepartment}} (optional), explanation : The corrected department.\nCURRENT_LOCATION : {{$context.$triggers.REST.$input.CurrentLocation}}, explanation : The name of the current (incorrect) location.\nPROPOSED_LOCATION : {{$context.$triggers.REST.$input.ProposedLocation}} (optional), explanation : The corrected location.\nCURRENT_POSITION : {{$context.$triggers.REST.$input.CurrentPosition}}, explanation : The name of the current (incorrect) position.\nPROPOSED_POSITION : {{$context.$triggers.REST.$input.ProposedPosition}} (optional), explanation : The corrected position (use the word \"position\" only for this exact input).\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional), explanation : Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}}, explanation : Defines the writing tone of the output.\nCONTENT_MODE : {{$context.$triggers.REST.$input.ContentMode}}, explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for the Correct Employment Details process.\n\n### RULES ###\n1. Generate a single, continuous justification.\n2. DO NOT include headers such as \"Part 1\", \"Action\", \"Part 2\", \"Notes\", \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification.\n6. TERMINOLOGY: \"Job\", \"Position\", and \"Role\" are three distinct concepts in HCM. Never interchange them.\n7. CRITICAL: This is a CORRECTION of existing records, NOT a new change or action. The language must clearly frame all details as corrections to previously recorded data. Do NOT express enthusiasm, congratulations, or positive sentiment about the action — even if the ACTION value is something like \"Promote\". The focus is on fixing incorrect records.\n8. Only mention corrected attributes where current and proposed values differ.\n9. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n    - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n    - **Formal**: The tone should be polite, professional, respectful, and clear.\n10. The combined output must not exceed 4000 characters.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION, ACTION_REASON, and corrected attributes (only where current differs from proposed). Frame all changes as corrections.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Strip any parameter-like values from INPUT_TEXT. Keep only unique free-text insights.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement.\n    - The conclusion must clearly indicate these were corrections of employment details.\n    - Summarise the key points from Part 1 and Part 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Flow Resolver 3"
+          },
+          "outcomes": {
+            "Hire an Employee": "1771500447753",
+            "AddNonWorker": "1771500584151",
+            "AddPendingWorker": "1771500856612",
+            "AddCWK": "1771500962426",
+            "ConvertPendingWorker": "1771501116427",
+            "AddNewAssignment": "1771501394121",
+            "DeleteAssignment": "1771502129032",
+            "AddWorkRelationship": "1771502280489",
+            "Default": "add_Default_1771477193839"
+          },
+          "code": "FLOW_RESOLVER_3",
+          "convergenceTargetId": "end",
+          "id": "1771477193839",
+          "inputs": [
+            {
+              "id": "1771477193839_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.ModuleIdentifier}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "Terminate Employment Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634307204"
+          },
+          "code": "TERMINATE_EMPLOYMENT_NOTES_GENERATION",
+          "id": "1771477561468",
+          "inputs": [
+            {
+              "id": "1771477561469_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager or HR representative. Provide an explanation to terminate employment of the employee of name : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents: \nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed ( e.g., \"Terminate Employment\", \"End assignment\", \"Reduction in Force\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the change (e.g., \"Completion of client project\", \"End of contract\", \"Team restructuring\").\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional) explanation :  Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}} explanation : Defines the writing tone of the output.\nCONTENT_MODE  : {{$context.$triggers.REST.$input.ContentMode}} explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for Terminate employment process.\n\n### RULES ###\n1. Generate a single, continuous justification. \n2. DO NOT include headers such as \"Part 1\", Action, \"Part 2\", Notes, \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification. e.g. JOB-CEO, POSITION-CEO,ACTION-Assignment Change etc.\n6. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n   - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n   - **Formal**: The tone should be polite, professional, respectful, and clear.\n7. DO NOT make any comments on the Person or about their work on your own. The comments should be solely based on the parameter values mentioned in  ACTION, ACTION_REASON and INPUT_TEXT.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION and ACTION REASON. \n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement\n    - Summarise the key points from part 1 & 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 3 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Cancel Work Relationship Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634412626"
+          },
+          "code": "CANCEL_WORK_RELATIONSHIP_NOTES_GENERATION",
+          "id": "1771477686971",
+          "inputs": [
+            {
+              "id": "1771477686973_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager or HR representative. Provide a justification for cancelling the work relationship for the employee named : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents:\nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed (e.g., \"Cancel Work Relationship\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the cancellation.\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional), explanation : Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}}, explanation : Defines the writing tone of the output.\nCONTENT_MODE : {{$context.$triggers.REST.$input.ContentMode}}, explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for the Cancel Work Relationship process.\n\n### RULES ###\n1. Generate a single, continuous justification.\n2. DO NOT include headers such as \"Part 1\", \"Action\", \"Part 2\", \"Notes\", \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification.\n6. VOCABULARY RESTRICTION: You must NOT use any of the following words or their equivalents: \"terminate\", \"termination\", \"end\", \"ending\", \"fire\", \"fired\", \"dismiss\", \"dismissal\", \"sever\", \"let go\". Always use the term \"cancel work relationship\" or \"cancellation\" instead.\n7. Maintain a neutral, factual tone suitable for internal HR documentation. Avoid emotional or letter-like tone.\n8. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n    - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n    - **Formal**: The tone should be polite, professional, respectful, and clear.\n9. The combined output must not exceed 4000 characters.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION and ACTION_REASON. Frame the content as a cancellation of the work relationship.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Strip any parameter-like values (action, reason) from INPUT_TEXT. Keep only unique free-text insights.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement.\n    - The conclusion must clearly indicate that the request is for cancellation of the work relationship.\n    - Summarise the key points from Part 1 and Part 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Promotion Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772633933736"
+          },
+          "code": "PROMOTION_NOTES_GENERATION",
+          "id": "1771482706052",
+          "inputs": [
+            {
+              "id": "1771482706054_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager. Provide a justification for the promotion of the employee named : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents:\nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed (e.g., \"Promote\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the promotion (e.g., \"Exceptional performance\", \"Career progression\").\nCURRENT_JOB : {{$context.$triggers.REST.$input.CurrentJob}}, explanation : The name of the current job of the employee.\nPROPOSED_JOB : {{$context.$triggers.REST.$input.ProposedJob}} (optional), explanation : The name of the proposed job after promotion (use the word \"job\" only for this exact input).\nCURRENT_DEPARTMENT : {{$context.$triggers.REST.$input.CurrentDepartment}}, explanation : The name of the current department of the employee.\nPROPOSED_DEPARTMENT : {{$context.$triggers.REST.$input.ProposedDepartment}} (optional), explanation : The name of the proposed department of the employee.\nCURRENT_LOCATION : {{$context.$triggers.REST.$input.CurrentLocation}}, explanation : The name of the current location of the employee.\nPROPOSED_LOCATION : {{$context.$triggers.REST.$input.ProposedLocation}} (optional), explanation : The name of the proposed location of the employee.\nJOB_SENIORITY : {{$context.$triggers.REST.$input.JobSeniority}} (optional), explanation : The seniority of the employee in the current job.\nTOTAL_SENIORITY : {{$context.$triggers.REST.$input.TotalSeniority}} (optional), explanation : The total seniority of the employee in the organization.\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional), explanation : Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}}, explanation : Defines the writing tone of the output.\nCONTENT_MODE : {{$context.$triggers.REST.$input.ContentMode}}, explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for the Promote process.\n\n### RULES ###\n1. Generate a single, continuous justification.\n2. DO NOT include headers such as \"Part 1\", \"Action\", \"Part 2\", \"Notes\", \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification.\n6. TERMINOLOGY: \"Job\", \"Position\", and \"Role\" are three distinct concepts in HCM. Never interchange them. Use \"job\" ONLY when referring to PROPOSED_JOB/CURRENT_JOB.\n7. Only mention current vs proposed job when they differ.\n8. Leverage JOB_SENIORITY and TOTAL_SENIORITY naturally in the justification to strengthen the promotion case, if provided.\n9. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n    - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n    - **Formal**: The tone should be polite, professional, respectful, and clear.\n10. The combined output must not exceed 4000 characters.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION, ACTION_REASON, PROPOSED_JOB (if different from CURRENT_JOB), JOB_SENIORITY, and TOTAL_SENIORITY.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Strip any parameter-like values (action, job, seniority) from INPUT_TEXT. Keep only unique free-text insights.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement.\n    - Summarise the key points from Part 1 and Part 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Transfer Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772633954366"
+          },
+          "code": "TRANSFER_NOTES_GENERATION",
+          "id": "1771483014032",
+          "inputs": [
+            {
+              "id": "1771483014033_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager. Provide a Transfer Recommendation for the employee named : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents:\nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed (e.g., \"Transfer\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the action.\nCURRENT_JOB : {{$context.$triggers.REST.$input.CurrentJob}}, explanation : The name of the current job of the employee.\nPROPOSED_JOB : {{$context.$triggers.REST.$input.ProposedJob}} (optional), explanation : The name of the proposed job after transfer (use the word \"job\" only for this exact input).\nCURRENT_DEPARTMENT : {{$context.$triggers.REST.$input.CurrentDepartment}}, explanation : The name of the current department of the employee.\nPROPOSED_DEPARTMENT : {{$context.$triggers.REST.$input.ProposedDepartment}} (optional), explanation : The name of the proposed department after transfer.\nCURRENT_LOCATION : {{$context.$triggers.REST.$input.CurrentLocation}}, explanation : The name of the current location of the employee.\nPROPOSED_LOCATION : {{$context.$triggers.REST.$input.ProposedLocation}} (optional), explanation : The name of the proposed location after transfer.\nCURRENT_POSITION : {{$context.$triggers.REST.$input.CurrentPosition}}, explanation : The name of the current position of the employee.\nPROPOSED_POSITION : {{$context.$triggers.REST.$input.ProposedPosition}} (optional), explanation : The name of the proposed position after transfer (use the word \"position\" only for this exact input).\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional), explanation : Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}}, explanation : Defines the writing tone of the output.\nCONTENT_MODE : {{$context.$triggers.REST.$input.ContentMode}}, explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for the Transfer process.\n\n### RULES ###\n1. Generate a single, continuous justification.\n2. DO NOT include headers such as \"Part 1\", \"Action\", \"Part 2\", \"Notes\", \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification.\n6. TERMINOLOGY: \"Job\", \"Position\", and \"Role\" are three distinct concepts in HCM. Never interchange them. Use \"job\" ONLY when referring to PROPOSED_JOB/CURRENT_JOB. Use \"position\" ONLY when referring to PROPOSED_POSITION/CURRENT_POSITION. Use \"role\" ONLY for general responsibilities.\n7. Do NOT hallucinate or assume values. Do not use terms like \"Location Change\", \"Career Progression\" unless those values are provided in ACTION or ACTION_REASON.\n8. Only mention current vs proposed attributes when they differ.\n9. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n    - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n    - **Formal**: The tone should be polite, professional, respectful, and clear.\n10. The combined output must not exceed 4000 characters.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION, ACTION_REASON, and Proposed Attributes. Only mention attributes that differ from current values.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Strip any parameter-like values (job, action, department, position, location) from INPUT_TEXT. Keep only unique free-text insights.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement.\n    - Summarise the key points from Part 1 and Part 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Request My Assignment Change Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772633974390"
+          },
+          "code": "REQUEST_MY_ASSIGNMENT_CHANGE_NOTES_GENERATION",
+          "id": "1771483064507",
+          "inputs": [
+            {
+              "id": "1771483064509_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an employee requesting a change to your own assignment using a first-person professional narrative.\n\nYou are provided with following information with an explanation of what the value represents:\nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed.\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the action.\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional), explanation : Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}}, explanation : Defines the writing tone of the output.\nCONTENT_MODE : {{$context.$triggers.REST.$input.ContentMode}}, explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for the Request My Assignment Change process from the employee's own perspective. This is employee self-service — do NOT write from a manager or HR perspective.\n\n### RULES ###\n1. Generate a single, continuous justification written in first person (\"I am requesting...\").\n2. DO NOT include headers such as \"Part 1\", \"Action\", \"Part 2\", \"Notes\", \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification.\n6. Do not assume anything. Generate content solely based on the actual values provided.\n7. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n    - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n    - **Formal**: The tone should be polite, professional, respectful, and clear.\n8. The combined output must not exceed 4000 characters.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION and ACTION_REASON in a first-person self-service request.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally in first person.\n    - Strip any parameter-like values (action, reason) from INPUT_TEXT. Keep only unique free-text insights.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement.\n    - Summarise the key points from Part 1 and Part 2 in concise professional style, maintaining the first-person perspective.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Change Location Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772633998173"
+          },
+          "code": "CHANGE_LOCATION_NOTES_GENERATION",
+          "id": "1771483490444",
+          "inputs": [
+            {
+              "id": "1771483490445_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager or HR representative. Provide a justification for a location change for the employee named : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents:\nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed (e.g., \"Location Change\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the action.\nCURRENT_LOCATION : {{$context.$triggers.REST.$input.CurrentLocation}}, explanation : The name of the current location of the employee.\nPROPOSED_LOCATION : {{$context.$triggers.REST.$input.ProposedLocation}} (optional), explanation : The name of the proposed location of the employee.\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional), explanation : Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}}, explanation : Defines the writing tone of the output.\nCONTENT_MODE : {{$context.$triggers.REST.$input.ContentMode}}, explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for the Change Location process.\n\n### RULES ###\n1. Generate a single, continuous justification.\n2. DO NOT include headers such as \"Part 1\", \"Action\", \"Part 2\", \"Notes\", \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification.\n6. Only mention current vs proposed location when they differ.\n7. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n    - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n    - **Formal**: The tone should be polite, professional, respectful, and clear.\n8. The combined output must not exceed 4000 characters.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION, ACTION_REASON, and PROPOSED_LOCATION. Only mention the location change if CURRENT_LOCATION and PROPOSED_LOCATION differ.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Strip any parameter-like values (action, location) from INPUT_TEXT. Keep only unique free-text insights.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement.\n    - Summarise the key points from Part 1 and Part 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Change Work Hours Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634022786"
+          },
+          "code": "CHANGE_WORK_HOURS_NOTES_GENERATION",
+          "id": "1771483926216",
+          "inputs": [
+            {
+              "id": "1771483926217_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager or HR representative. Provide a justification for a change in working hours for the employee named : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents:\nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed (e.g., \"Working Hours Change\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the action.\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional), explanation : Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}}, explanation : Defines the writing tone of the output.\nCONTENT_MODE : {{$context.$triggers.REST.$input.ContentMode}}, explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for the Change Working Hours process.\n\n### RULES ###\n1. Generate a single, continuous justification.\n2. DO NOT include headers such as \"Part 1\", \"Action\", \"Part 2\", \"Notes\", \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification.\n6. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n    - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n    - **Formal**: The tone should be polite, professional, respectful, and clear.\n7. The combined output must not exceed 4000 characters.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION and ACTION_REASON.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Strip any parameter-like values (action, reason) from INPUT_TEXT. Keep only unique free-text insights.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement.\n    - Summarise the key points from Part 1 and Part 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Promote And Change Position Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634038822"
+          },
+          "code": "PROMOTE_AND_CHANGE_POSITION_NOTES_GENERATION",
+          "id": "1771484328207",
+          "inputs": [
+            {
+              "id": "1771484328208_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager. Provide a justification for the promotion with position change for the employee named : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents:\nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed (e.g., \"Promote and Change Position\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the promotion and position change.\nCURRENT_JOB : {{$context.$triggers.REST.$input.CurrentJob}}, explanation : The name of the current job of the employee.\nPROPOSED_JOB : {{$context.$triggers.REST.$input.ProposedJob}} (optional), explanation : The name of the proposed job after promotion (use the word \"job\" only for this exact input).\nCURRENT_POSITION : {{$context.$triggers.REST.$input.CurrentPosition}}, explanation : The name of the current position of the employee.\nPROPOSED_POSITION : {{$context.$triggers.REST.$input.ProposedPosition}} (optional), explanation : The name of the proposed position after promotion (use the word \"position\" only for this exact input).\nJOB_SENIORITY : {{$context.$triggers.REST.$input.JobSeniority}} (optional), explanation : The seniority of the employee in the current job.\nTOTAL_SENIORITY : {{$context.$triggers.REST.$input.TotalSeniority}} (optional), explanation : The total seniority of the employee in the organization.\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional), explanation : Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}}, explanation : Defines the writing tone of the output.\nCONTENT_MODE : {{$context.$triggers.REST.$input.ContentMode}}, explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for the Promote and Change Position process.\n\n### RULES ###\n1. Generate a single, continuous justification.\n2. DO NOT include headers such as \"Part 1\", \"Action\", \"Part 2\", \"Notes\", \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification.\n6. TERMINOLOGY: \"Job\", \"Position\", and \"Role\" are three distinct concepts in HCM. Never interchange them. Use \"job\" ONLY when referring to PROPOSED_JOB/CURRENT_JOB. Use \"position\" ONLY when referring to PROPOSED_POSITION/CURRENT_POSITION. Use \"role\" ONLY for general responsibilities.\n7. Only mention current vs proposed attributes when they differ.\n8. Leverage JOB_SENIORITY and TOTAL_SENIORITY naturally in the justification to strengthen the case, if provided.\n9. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n    - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n    - **Formal**: The tone should be polite, professional, respectful, and clear.\n10. The combined output must not exceed 4000 characters.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION, ACTION_REASON, PROPOSED_JOB (if different from CURRENT_JOB), PROPOSED_POSITION (if different from CURRENT_POSITION), JOB_SENIORITY, and TOTAL_SENIORITY.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement.\n    - Summarise the key points from Part 1 and Part 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Local And Global Transfer Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634075634"
+          },
+          "code": "LOCAL_AND_GLOBAL_TRANSFER_NOTES_GENERATION",
+          "id": "1771484470848",
+          "inputs": [
+            {
+              "id": "1771484470849_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager or HR representative. Provide a justification for a local or global transfer for the employee named : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents:\nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed (e.g., \"Local Transfer\", \"Global Transfer\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the transfer (e.g., \"Business realignment\", \"Employee request\").\nPERM_OR_TEMP : {{$context.$triggers.REST.$input.PermOrTemp}}, explanation : Specifies whether the transfer is Permanent or Temporary.\nCURRENT_JOB : {{$context.$triggers.REST.$input.CurrentJob}}, explanation : The name of the current job of the employee.\nPROPOSED_JOB : {{$context.$triggers.REST.$input.ProposedJob}} (optional), explanation : The name of the proposed job after transfer (use the word \"job\" only for this exact input).\nCURRENT_DEPARTMENT : {{$context.$triggers.REST.$input.CurrentDepartment}}, explanation : The name of the current department of the employee.\nPROPOSED_DEPARTMENT : {{$context.$triggers.REST.$input.ProposedDepartment}} (optional), explanation : The name of the proposed department after transfer.\nCURRENT_LOCATION : {{$context.$triggers.REST.$input.CurrentLocation}}, explanation : The name of the current location of the employee.\nPROPOSED_LOCATION : {{$context.$triggers.REST.$input.ProposedLocation}} (optional), explanation : The name of the proposed location after transfer.\nCURRENT_POSITION : {{$context.$triggers.REST.$input.CurrentPosition}}, explanation : The name of the current position of the employee.\nPROPOSED_POSITION : {{$context.$triggers.REST.$input.ProposedPosition}} (optional), explanation : The name of the proposed position after transfer (use the word \"position\" only for this exact input).\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional), explanation : Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}}, explanation : Defines the writing tone of the output.\nCONTENT_MODE : {{$context.$triggers.REST.$input.ContentMode}}, explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for the Global Transfer process.\n\n### RULES ###\n1. Generate a single, continuous justification.\n2. DO NOT include headers such as \"Part 1\", \"Action\", \"Part 2\", \"Notes\", \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification. e.g. JOB-CEO, POSITION-CEO, ACTION-Global Transfer etc.\n6. TERMINOLOGY: \"Job\", \"Position\", and \"Role\" are three distinct concepts in HCM. Never interchange them. Use \"job\" ONLY when referring to PROPOSED_JOB/CURRENT_JOB. Use \"position\" ONLY when referring to PROPOSED_POSITION/CURRENT_POSITION. Use \"role\" ONLY for general responsibilities.\n7. Clearly state whether the recommendation is for a local transfer or a global transfer, based on ACTION.\n8. Use PERM_OR_TEMP to frame the permanence or temporary nature of the transfer. For Permanent, emphasize continuity and stability. For Temporary, emphasize the defined period or scope. Do not repeat \"Permanent\" or \"Temporary\" multiple times verbatim.\n9. Only mention current vs proposed attributes when they differ. If current and proposed values are the same, do not mention the change.\n10. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n    - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n    - **Formal**: The tone should be polite, professional, respectful, and clear.\n11. The combined output must not exceed 4000 characters.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION, ACTION_REASON, PERM_OR_TEMP, and Proposed Attributes. Only mention attributes that differ from current values.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Strip any parameter-like values (action, change type, job, department, position, location) from INPUT_TEXT. Keep only unique free-text insights.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement.\n    - Clearly restate whether the transfer is local or global, and whether it is permanent or temporary.\n    - Summarise the key points from Part 1 and Part 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Change Worker Type Generation"
+          },
+          "outcomes": {
+            "success": "1772634107225"
+          },
+          "code": "CHANGE_WORKER_TYPE_GENERATION",
+          "id": "1771495383440",
+          "inputs": [
+            {
+              "id": "1771495383443_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an HR representative. Provide a justification for changing the worker type for the employee named : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents:\nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed (e.g., \"Change Worker Type\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the action (e.g., \"Permanent Role\", \"Contract conversion\").\nWORKER_TYPE : {{$context.$triggers.REST.$input.WorkerType}}, explanation : The new type of worker (e.g., \"Employee\", \"Contingent Worker\").\nCURRENT_JOB : {{$context.$triggers.REST.$input.CurrentJob}}, explanation : The name of the current job of the employee.\nPROPOSED_JOB : {{$context.$triggers.REST.$input.ProposedJob}} (optional), explanation : The name of the proposed job (use the word \"job\" only for this exact input).\nCURRENT_DEPARTMENT : {{$context.$triggers.REST.$input.CurrentDepartment}}, explanation : The name of the current department of the employee.\nPROPOSED_DEPARTMENT : {{$context.$triggers.REST.$input.ProposedDepartment}} (optional), explanation : The name of the proposed department.\nCURRENT_POSITION : {{$context.$triggers.REST.$input.CurrentPosition}}, explanation : The name of the current position of the employee.\nPROPOSED_POSITION : {{$context.$triggers.REST.$input.ProposedPosition}} (optional), explanation : The name of the proposed position (use the word \"position\" only for this exact input).\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional), explanation : Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}}, explanation : Defines the writing tone of the output.\nCONTENT_MODE : {{$context.$triggers.REST.$input.ContentMode}}, explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for the Change Worker Type process.\n\n### RULES ###\n1. Generate a single, continuous justification.\n2. DO NOT include headers such as \"Part 1\", \"Action\", \"Part 2\", \"Notes\", \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification.\n6. TERMINOLOGY: \"Job\", \"Position\", and \"Role\" are three distinct concepts in HCM. Never interchange them.\n7. Explicitly state the recommendation to change the worker type to the specified WORKER_TYPE when provided.\n8. Only mention current vs proposed attributes when they differ.\n9. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n    - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n    - **Formal**: The tone should be polite, professional, respectful, and clear.\n10. The combined output must not exceed 4000 characters.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION, ACTION_REASON, WORKER_TYPE, and Proposed Attributes. Only mention attributes that differ from current values.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Strip any parameter-like values (action, worker type, job, department, position) from INPUT_TEXT. Keep only unique free-text insights.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement.\n    - Summarise the key points from Part 1 and Part 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Edit Pending Worker Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634244048"
+          },
+          "code": "EDIT_PENDING_WORKER_NOTES_GENERATION",
+          "id": "1771495920950",
+          "inputs": [
+            {
+              "id": "1771495920952_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager or HR representative. Provide an explanation to update pending worker of name : {{$context.$triggers.REST.$input.Name}} into an active worker.\n\nYou are provided with following information with an explanation of what the value represents: \nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed ( e.g., \"Add Pending Worker\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the change (e.g., \"Future hire to fill vacant position\").\nCURRENT_JOB : {{$context.$triggers.REST.$input.CurrentJob}}, explanation : The name of the current job of the employee. \nPROPOSED_JOB : {{$context.$triggers.REST.$input.ProposedJob}}(optional) explanation : The name of the proposed job of the employee (use the word “job” only for this exact input).\nCURRENT_DEPARTMENT : {{$context.$triggers.REST.$input.CurrentDepartment}} (optional) explanation : The name of the current department of the employee.\nPROPOSED_DEPARTMENT : {{$context.$triggers.REST.$input.ProposedDepartment}} (optional) explanation : The name of the proposed department of the employee. \nCURRENT_LOCATION : {{$context.$triggers.REST.$input.CurrentLocation}} (optional) explanation : The name of the current location of the employee.\nPROPOSED_LOCATION : {{$context.$triggers.REST.$input.ProposedLocation}} (optional) explanation : The name of the proposed location of the employee.\nCURRENT_POSITION : {{$context.$triggers.REST.$input.CurrentPosition}}(optional) explanation : The name of the current position of the employee (use the word “position” only for this exact input).\nPROPOSED_POSITION : {{$context.$triggers.REST.$input.ProposedPosition}}(optional) explanation : The name of the proposed position of the employee (use the word “position” only for this exact input).\nLEGAL_EMPLOYER : {{$context.$triggers.REST.$input.LegalEmployer}} (optional) explanation: The name of the current legal employer.\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional) explanation :  Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}} explanation : Defines the writing tone of the output.\nCONTENT_MODE  : {{$context.$triggers.REST.$input.ContentMode}} explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for Edit Pending Worker process.\n\n### RULES ###\n1. Generate a single, continuous justification. \n2. DO NOT include headers such as \"Part 1\", Action, \"Part 2\", Notes, \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification. e.g. JOB-CEO, POSITION-CEO,ACTION-Assignment Change etc.\n6. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n   - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n   - **Formal**: The tone should be polite, professional, respectful, and clear.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION, REASON, LEGAL_EMPLOYER and Proposed Attributes. \n    - If current attributes are not same as proposed attributes, only then, add the information regarding them in the generated part.\n    - The language indicate that these details are being corrected, not newly assigned.\n    - If ACTION = 'End Assignment' (or similar), restrict the generation of this part to ACTION and ACTION_REASON only.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement\n    - Summarise the key points from part 1 & 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Correct Termination Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634266385"
+          },
+          "code": "CORRECT_TERMINATION_NOTES_GENERATION",
+          "id": "1771497066537",
+          "inputs": [
+            {
+              "id": "1771497066538_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager or HR representative. Provide an explanation to correct termination details of the employee of name : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents: \nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed ( e.g., \"Correct Termination\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the change (e.g., \"Data entry error\", \"Reorganisation\").\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional) explanation :  Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}} explanation : Defines the writing tone of the output.\nCONTENT_MODE  : {{$context.$triggers.REST.$input.ContentMode}} explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for Correct Termination process.\n\n### RULES ###\n1. Generate a single, continuous justification without inventing any reasons why the employment is terminated unless provided in INPUT_TEXT.\n2. DO NOT include headers such as \"Part 1\", Action, \"Part 2\", Notes, \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification. e.g. JOB-CEO, POSITION-CEO,ACTION-Assignment Change etc.\n6. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n   - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n   - **Formal**: The tone should be polite, professional, respectful, and clear.\n7. DO NOT make any comments on the Person or about their work on your own. The comments should be solely based on the parameter values mentioned in  ACTION, ACTION_REASON and INPUT_TEXT.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION and ACTION_REASON. \n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement\n    - Summarise the key points from part 1 & 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Resign From Employment Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634336510"
+          },
+          "code": "RESIGN_FROM_EMPLOYMENT_NOTES_GENERATION",
+          "id": "1771499639167",
+          "inputs": [
+            {
+              "id": "1771499639168_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an employee. Provide an explanation to resign from employment in first person tone.\n\nYou are provided with following information with an explanation of what the value represents: \nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed ( e.g., \"Resignation\", \"Retirement\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the change (e.g., \"Personal reasons\", \"Health reasons\").\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional) explanation :  Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}} explanation : Defines the writing tone of the output.\nCONTENT_MODE  : {{$context.$triggers.REST.$input.ContentMode}} explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for Resign from employment process.\n\n### RULES ###\n1. Generate a single, continuous justification. \n2. DO NOT include headers such as \"Part 1\", Action, \"Part 2\", Notes, \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification. e.g. JOB-CEO, POSITION-CEO,ACTION-Assignment Change etc.\n6. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n   - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n   - **Formal**: The tone should be polite, professional, respectful, and clear.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION and ACTION REASON. \n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement\n    - Summarise the key points from part 1 & 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Reverse Termination Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634364517"
+          },
+          "code": "REVERSE_TERMINATION_NOTES_GENERATION",
+          "id": "1771499975954",
+          "inputs": [
+            {
+              "id": "1771499975955_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager or HR representative. Provide an explanation to reverse termination of the employee of name : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents: \nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed ( e.g., \"Reverse Termination\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the change (e.g., \"Team restructuring\").\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional) explanation :  Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}} explanation : Defines the writing tone of the output.\nCONTENT_MODE  : {{$context.$triggers.REST.$input.ContentMode}} explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for Reverse Termination process.\n\n### RULES ###\n1. Generate a single, continuous justification. \n2. DO NOT include headers such as \"Part 1\", Action, \"Part 2\", Notes, \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n   - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n   - **Formal**: The tone should be polite, professional, respectful, and clear.\n6. DO NOT make any comments on the Person or about their work on your own. The comments should be solely based on the parameter values mentioned in  ACTION, ACTION_REASON and INPUT_TEXT.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION and ACTION_REASON. \n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement\n    - Summarise the key points from part 1 & 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 3 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Withdraw Resignation Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634390273"
+          },
+          "code": "WITHDRAW_RESIGNATION_NOTES_GENERATION",
+          "id": "1771500265118",
+          "inputs": [
+            {
+              "id": "1771500265119_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an employee. Provide an explanation to withdraw resignation in first person style.\n\nYou are provided with following information with an explanation of what the value represents: \nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed ( e.g., \"Withdraw resignation\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the change (e.g., \"Promotion\").\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional) explanation :  Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}} explanation : Defines the writing tone of the output.\nCONTENT_MODE  : {{$context.$triggers.REST.$input.ContentMode}} explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for Withdraw resignation process.\n\n### RULES ###\n1. Generate a single, continuous justification. \n2. DO NOT include headers such as \"Part 1\", Action, \"Part 2\", Notes, \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification. e.g. JOB-CEO, POSITION-CEO,ACTION-Assignment Change etc.\n6. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n   - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n   - **Formal**: The tone should be polite, professional, respectful, and clear.\n7. DO NOT make any comments on the Person or about their work on your own. The comments should be solely based on the parameter values mentioned in  ACTION, ACTION_REASON and INPUT_TEXT.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION and ACTION_REASON. \n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement\n    - Summarise the key points from part 1 & 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 3 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Hire An Employee Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634471527"
+          },
+          "code": "HIRE_AN_EMPLOYEE_NOTES_GENERATION",
+          "id": "1771500447753",
+          "inputs": [
+            {
+              "id": "1771500447754_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager or HR representative. Provide an explanation to hire an employee of name : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents: \nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed ( e.g., \"Hire\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the change (e.g., \"To fill a position\").\nPROPOSED_JOB : {{$context.$triggers.REST.$input.ProposedJob}}(optional) explanation : The name of the proposed job of the employee (use the word “job” only for this exact input).\nPROPOSED_DEPARTMENT : {{$context.$triggers.REST.$input.ProposedDepartment}} (optional) explanation : The name of the proposed department of the employee. \nPROPOSED_LOCATION : {{$context.$triggers.REST.$input.ProposedLocation}} (optional) explanation : The name of the proposed location of the employee.\nPROPOSED_POSITION : {{$context.$triggers.REST.$input.ProposedPosition}}(optional) explanation : The name of the proposed position of the employee (use the word “position” only for this exact input).\nWORKER_TYPE : {{$context.$triggers.REST.$input.WorkerType}} explanation : Type of worker (e.g., “Employee”, “Contingent Worker”).\nLEGAL_EMPLOYER : {{$context.$triggers.REST.$input.LegalEmployer}} explanation: The name of the current legal employer.\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional) explanation :  Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}} explanation : Defines the writing tone of the output.\nCONTENT_MODE  : {{$context.$triggers.REST.$input.ContentMode}} explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for Hire an employee process.\n\n### RULES ###\n1. Generate a single, continuous justification. \n2. DO NOT include headers such as \"Part 1\", Action, \"Part 2\", Notes, \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification. e.g. JOB-CEO, POSITION-CEO,ACTION-Assignment Change etc.\n6. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n   - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n   - **Formal**: The tone should be polite, professional, respectful, and clear.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION, REASON, WORKER_TYPE, LEGAL_EMPLOYER and Proposed Attributes. \n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement\n    - Summarise the key points from part 1 & 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Add Non Worker Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634497100"
+          },
+          "code": "ADD_NON_WORKER_NOTES_GENERATION",
+          "id": "1771500584151",
+          "inputs": [
+            {
+              "id": "1771500584152_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager or HR representative. Provide an explanation to add non worker of name : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents: \nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed ( e.g., \"Add Nonworker\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the change (e.g., \"Temporary contract\").\nPROPOSED_JOB : {{$context.$triggers.REST.$input.ProposedJob}}(optional) explanation : The name of the proposed job of the employee (use the word “job” only for this exact input).\nPROPOSED_DEPARTMENT : {{$context.$triggers.REST.$input.ProposedDepartment}} (optional) explanation : The name of the proposed department of the employee. \nPROPOSED_LOCATION : {{$context.$triggers.REST.$input.ProposedLocation}} (optional) explanation : The name of the proposed location of the employee.\nPROPOSED_POSITION : {{$context.$triggers.REST.$input.ProposedPosition}}(optional) explanation : The name of the proposed position of the employee (use the word “position” only for this exact input).\nWORKER_TYPE : {{$context.$triggers.REST.$input.WorkerType}} explanation : Type of worker (e.g., “Employee”, “Contingent Worker”).\nLEGAL_EMPLOYER : {{$context.$triggers.REST.$input.LegalEmployer}} explanation: The name of the current legal employer.\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional) explanation :  Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}} explanation : Defines the writing tone of the output.\nCONTENT_MODE  : {{$context.$triggers.REST.$input.ContentMode}} explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for Add Nonworker process.\n\n### RULES ###\n1. Generate a single, continuous justification. \n2. DO NOT include headers such as \"Part 1\", Action, \"Part 2\", Notes, \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification. e.g. JOB-CEO, POSITION-CEO,ACTION-Assignment Change etc.\n6. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n   - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n   - **Formal**: The tone should be polite, professional, respectful, and clear.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION, REASON, WORKER_TYPE, LEGAL_EMPLOYER and Proposed Attributes. \n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement\n    - Summarise the key points from part 1 & 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Add Pending Worker Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634522556"
+          },
+          "code": "ADD_PENDING_WORKER_NOTES_GENERATION",
+          "id": "1771500856612",
+          "inputs": [
+            {
+              "id": "1771500856613_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager or HR representative. Provide an explanation to add pending worker of name : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents: \nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed ( e.g., \"Add pending worker\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the change (e.g., \"To fill vacancy\").\nPROPOSED_JOB : {{$context.$triggers.REST.$input.ProposedJob}}(optional) explanation : The name of the proposed job of the employee (use the word “job” only for this exact input).\nPROPOSED_DEPARTMENT : {{$context.$triggers.REST.$input.ProposedDepartment}} (optional) explanation : The name of the proposed department of the employee. \nPROPOSED_LOCATION : {{$context.$triggers.REST.$input.ProposedLocation}} (optional) explanation : The name of the proposed location of the employee.\nPROPOSED_POSITION : {{$context.$triggers.REST.$input.ProposedPosition}}(optional) explanation : The name of the proposed position of the employee (use the word “position” only for this exact input).\nWORKER_TYPE : {{$context.$triggers.REST.$input.WorkerType}} explanation : Type of worker (e.g., “Employee”, “Contingent Worker”).\nLEGAL_EMPLOYER : {{$context.$triggers.REST.$input.LegalEmployer}} explanation: The name of the current legal employer.\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional) explanation :  Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}} explanation : Defines the writing tone of the output.\nCONTENT_MODE  : {{$context.$triggers.REST.$input.ContentMode}} explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for Add pending worker process.\n\n### RULES ###\n1. Generate a single, continuous justification. \n2. DO NOT include headers such as \"Part 1\", Action, \"Part 2\", Notes, \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification. e.g. JOB-CEO, POSITION-CEO,ACTION-Assignment Change etc.\n6. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n   - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n   - **Formal**: The tone should be polite, professional, respectful, and clear.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION, REASON, WORKER_TYPE, LEGAL_EMPLOYER and Proposed Attributes. \n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement\n    - Summarise the key points from part 1 & 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Add Contingent Worker Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634544810"
+          },
+          "code": "ADD_CONTINGENT_WORKER_NOTES_GENERATION",
+          "id": "1771500962426",
+          "inputs": [
+            {
+              "id": "1771500962427_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager or HR representative. Provide an explanation to add contingent worker of name : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents: \nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed ( e.g., \"Add contingent worker\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the change (e.g., \"To fill a vacancy\").\nPROPOSED_JOB : {{$context.$triggers.REST.$input.ProposedJob}}(optional) explanation : The name of the proposed job of the employee (use the word “job” only for this exact input).\nPROPOSED_DEPARTMENT : {{$context.$triggers.REST.$input.ProposedDepartment}} (optional) explanation : The name of the proposed department of the employee. \nPROPOSED_LOCATION : {{$context.$triggers.REST.$input.ProposedLocation}} (optional) explanation : The name of the proposed location of the employee.\nPROPOSED_POSITION : {{$context.$triggers.REST.$input.ProposedPosition}}(optional) explanation : The name of the proposed position of the employee (use the word “position” only for this exact input).\nWORKER_TYPE : {{$context.$triggers.REST.$input.WorkerType}} explanation : Type of worker (e.g., “Employee”, “Contingent Worker”).\nLEGAL_EMPLOYER : {{$context.$triggers.REST.$input.LegalEmployer}} explanation: The name of the current legal employer.\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional) explanation :  Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}} explanation : Defines the writing tone of the output.\nCONTENT_MODE  : {{$context.$triggers.REST.$input.ContentMode}} explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for Add contingent worker process.\n\n### RULES ###\n1. Generate a single, continuous justification. \n2. DO NOT include headers such as \"Part 1\", Action, \"Part 2\", Notes, \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification. e.g. JOB-CEO, POSITION-CEO,ACTION-Assignment Change etc.\n6. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n   - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n   - **Formal**: The tone should be polite, professional, respectful, and clear.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION, REASON, WORKER_TYPE, LEGAL_EMPLOYER and Proposed Attributes. \n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement\n    - Summarise the key points from part 1 & 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Convert Pending Worker Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634567069"
+          },
+          "code": "CONVERT_PENDING_WORKER_NOTES_GENERATION",
+          "id": "1771501116427",
+          "inputs": [
+            {
+              "id": "1771501116427_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager or HR representative. Provide an explanation to convert pending worker of name : {{$context.$triggers.REST.$input.Name}} into an active worker.\n\nYou are provided with following information with an explanation of what the value represents: \nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed ( e.g., \"Convert pending worker\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the change (e.g., \"To fill a vacancy\").\nPROPOSED_JOB : {{$context.$triggers.REST.$input.ProposedJob}}(optional) explanation : The name of the proposed job of the employee (use the word “job” only for this exact input).\nPROPOSED_DEPARTMENT : {{$context.$triggers.REST.$input.ProposedDepartment}} (optional) explanation : The name of the proposed department of the employee. \nPROPOSED_LOCATION : {{$context.$triggers.REST.$input.ProposedLocation}} (optional) explanation : The name of the proposed location of the employee.\nPROPOSED_POSITION : {{$context.$triggers.REST.$input.ProposedPosition}}(optional) explanation : The name of the proposed position of the employee (use the word “position” only for this exact input).\nWORKER_TYPE : {{$context.$triggers.REST.$input.WorkerType}} explanation : Type of worker (e.g., “Employee”, “Contingent Worker”).\nLEGAL_EMPLOYER : {{$context.$triggers.REST.$input.LegalEmployer}} explanation: The name of the current legal employer.\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional) explanation :  Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}} explanation : Defines the writing tone of the output.\nCONTENT_MODE  : {{$context.$triggers.REST.$input.ContentMode}} explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for Convert pending worker process.\n\n### RULES ###\n1. Generate a single, continuous justification. \n2. DO NOT include headers such as \"Part 1\", Action, \"Part 2\", Notes, \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification. e.g. JOB-CEO, POSITION-CEO,ACTION-Assignment Change etc.\n6. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n   - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n   - **Formal**: The tone should be polite, professional, respectful, and clear.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION, REASON, WORKER_TYPE, LEGAL_EMPLOYER and Proposed Attributes. \n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement\n    - Summarise the key points from part 1 & 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE  : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Add Assignment Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634593980"
+          },
+          "code": "ADD_ASSIGNMENT_NOTES_GENERATION",
+          "id": "1771501394121",
+          "inputs": [
+            {
+              "id": "1771501394121_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager or HR representative. Provide a justification for adding an additional assignment for the employee named : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents:\nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed (e.g., \"Add Assignment\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the action (e.g., \"Project support\", \"Temporary coverage\").\nPERM_OR_TEMP : {{$context.$triggers.REST.$input.PermOrTemp}}, explanation : Specifies whether the additional assignment is Permanent or Temporary.\nCURRENT_JOB : {{$context.$triggers.REST.$input.CurrentJob}}, explanation : The name of the current job of the employee.\nPROPOSED_JOB : {{$context.$triggers.REST.$input.ProposedJob}} (optional), explanation : The name of the proposed job for the additional assignment (use the word \"job\" only for this exact input).\nCURRENT_DEPARTMENT : {{$context.$triggers.REST.$input.CurrentDepartment}}, explanation : The name of the current department of the employee.\nPROPOSED_DEPARTMENT : {{$context.$triggers.REST.$input.ProposedDepartment}} (optional), explanation : The name of the proposed department for the additional assignment.\nCURRENT_POSITION : {{$context.$triggers.REST.$input.CurrentPosition}}, explanation : The name of the current position of the employee.\nPROPOSED_POSITION : {{$context.$triggers.REST.$input.ProposedPosition}} (optional), explanation : The name of the proposed position for the additional assignment (use the word \"position\" only for this exact input).\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional), explanation : Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}}, explanation : Defines the writing tone of the output.\nCONTENT_MODE : {{$context.$triggers.REST.$input.ContentMode}}, explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for the Add Assignment process.\n\n### RULES ###\n1. Generate a single, continuous justification.\n2. DO NOT include headers such as \"Part 1\", \"Action\", \"Part 2\", \"Notes\", \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification. e.g. JOB-CEO, POSITION-CEO, ACTION-Add Assignment etc.\n6. TERMINOLOGY: \"Job\", \"Position\", and \"Role\" are three distinct concepts in HCM. Never interchange them. Use \"job\" ONLY when referring to PROPOSED_JOB/CURRENT_JOB. Use \"position\" ONLY when referring to PROPOSED_POSITION/CURRENT_POSITION. Use \"role\" ONLY for general responsibilities.\n7. Use PERM_OR_TEMP to frame the assignment. For Permanent, clearly state that the employee will continue their current assignment while taking on this new responsibility. For Temporary, emphasize the temporary nature or defined period without assuming whether the current assignment continues or is suspended. Do not repeat \"Permanent\" or \"Temporary\" multiple times verbatim.\n8. Only mention current vs proposed attributes when they differ.\n9. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n    - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n    - **Formal**: The tone should be polite, professional, respectful, and clear.\n10. The combined output must not exceed 4000 characters.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION, ACTION_REASON, PERM_OR_TEMP, and Proposed Attributes. Only mention attributes that differ from current values.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Strip any parameter-like values (action, change type, job, department, position) from INPUT_TEXT. Keep only unique free-text insights.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement.\n    - Summarise the key points from Part 1 and Part 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Delete Assignment Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634618902"
+          },
+          "code": "DELETE_ASSIGNMENT_NOTES_GENERATION",
+          "id": "1771502129032",
+          "inputs": [
+            {
+              "id": "1771502129033_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager or HR representative. Provide a justification for requesting the deletion of employment details for the employee named : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents:\nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed (e.g., \"Delete Employment Details\"). NOTE: Regardless of what the action value states, the purpose of this process is DELETION of employment records. The output must frame this as a deletion request.\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the deletion (e.g., \"Duplicate entry\", \"Incorrect data\").\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional), explanation : Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}}, explanation : Defines the writing tone of the output.\nCONTENT_MODE : {{$context.$triggers.REST.$input.ContentMode}}, explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for the Delete Employment Details process.\n\n### RULES ###\n1. Generate a single, continuous justification.\n2. DO NOT include headers such as \"Part 1\", \"Action\", \"Part 2\", \"Notes\", \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification.\n6. CRITICAL: This is a DELETION request. The language must clearly emphasize that employment details are being deleted. Do NOT express enthusiasm, congratulations, or positive sentiment about the action — even if the ACTION value is something like \"Promote\". The focus is entirely on justifying the deletion of records.\n7. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n    - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n    - **Formal**: The tone should be polite, professional, respectful, and clear.\n8. The combined output must not exceed 4000 characters.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION and ACTION_REASON. Frame the content as a deletion request.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Strip any parameter-like values (action, reason) from INPUT_TEXT. Keep only unique free-text insights.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement.\n    - The conclusion must clearly indicate that the request is for deletion of employment details.\n    - Summarise the key points from Part 1 and Part 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Create Work Relationship Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634655020"
+          },
+          "code": "CREATE_WORK_RELATIONSHIP_NOTES_GENERATION",
+          "id": "1771502280489",
+          "inputs": [
+            {
+              "id": "1771502280490_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager or HR representative. Provide a justification for creating a new work relationship for the employee named : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents:\nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed (e.g., \"Create Work Relationship\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the action (e.g., \"Additional responsibilities assigned\").\nWORKER_TYPE : {{$context.$triggers.REST.$input.WorkerType}}, explanation : Type of worker (e.g., \"Employee\", \"Contingent Worker\").\nLEGAL_EMPLOYER : {{$context.$triggers.REST.$input.LegalEmployer}}, explanation : The name of the current legal employer.\nPROPOSED_JOB : {{$context.$triggers.REST.$input.ProposedJob}} (optional), explanation : The name of the proposed job for this work relationship (use the word \"job\" only for this exact input).\nPROPOSED_DEPARTMENT : {{$context.$triggers.REST.$input.ProposedDepartment}} (optional), explanation : The name of the proposed department for this work relationship.\nPROPOSED_POSITION : {{$context.$triggers.REST.$input.ProposedPosition}} (optional), explanation : The name of the proposed position for this work relationship (use the word \"position\" only for this exact input).\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional), explanation : Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}}, explanation : Defines the writing tone of the output.\nCONTENT_MODE : {{$context.$triggers.REST.$input.ContentMode}}, explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for the Create Work Relationship process.\n\n### RULES ###\n1. Generate a single, continuous justification.\n2. DO NOT include headers such as \"Part 1\", \"Action\", \"Part 2\", \"Notes\", \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification. e.g. JOB-CEO, POSITION-CEO, ACTION-Create Work Relationship etc.\n6. TERMINOLOGY: \"Job\", \"Position\", and \"Role\" are three distinct concepts in HCM. Never interchange them. Use \"job\" ONLY when referring to PROPOSED_JOB. Use \"position\" ONLY when referring to PROPOSED_POSITION. Use \"role\" ONLY for general responsibilities.\n7. Explicitly state the recommendation to create a new work relationship with the specified WORKER_TYPE when provided.\n8. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n   - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n   - **Formal**: The tone should be polite, professional, respectful, and clear.\n9. The combined output must not exceed 4000 characters.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION, ACTION_REASON, WORKER_TYPE, LEGAL_EMPLOYER, and Proposed Attributes (PROPOSED_JOB, PROPOSED_DEPARTMENT, PROPOSED_POSITION).\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Strip any parameter-like values (action, employer, worker type, job, department, position) from INPUT_TEXT. Keep only unique free-text insights.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement.\n    - Summarise the key points from Part 1 and Part 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Return Change Assignment Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_CHANGE_ASSIGNMENT_NOTES",
+          "convergenceTargetId": "1771477089911",
+          "id": "1772629588184",
+          "inputs": [
+            {
+              "id": "1772629588185_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.CHANGE_ASSIGNMENT_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Promotion Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_PROMOTION_NOTES",
+          "convergenceTargetId": "1771477089911",
+          "id": "1772633933736",
+          "inputs": [
+            {
+              "id": "1772633933737_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.PROMOTION_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Transfer Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_TRANSFER_NOTES",
+          "convergenceTargetId": "1771477089911",
+          "id": "1772633954366",
+          "inputs": [
+            {
+              "id": "1772633954367_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.TRANSFER_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Request My Assignment Change Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_REQUEST_MY_ASSIGNMENT_CHANGE_NOTES",
+          "convergenceTargetId": "1771477089911",
+          "id": "1772633974390",
+          "inputs": [
+            {
+              "id": "1772633974392_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.REQUEST_MY_ASSIGNMENT_CHANGE_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Change Location Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_CHANGE_LOCATION_NOTES",
+          "convergenceTargetId": "1771477089911",
+          "id": "1772633998173",
+          "inputs": [
+            {
+              "id": "1772633998175_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.CHANGE_LOCATION_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Change Work Hours Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_CHANGE_WORK_HOURS_NOTES",
+          "convergenceTargetId": "1771477089911",
+          "id": "1772634022786",
+          "inputs": [
+            {
+              "id": "1772634022788_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.CHANGE_WORK_HOURS_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Promote And Change Position Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_PROMOTE_AND_CHANGE_POSITION_NOTES",
+          "convergenceTargetId": "1771477089911",
+          "id": "1772634038822",
+          "inputs": [
+            {
+              "id": "1772634038824_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.PROMOTE_AND_CHANGE_POSITION_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Local And Global Transfer Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_LOCAL_AND_GLOBAL_TRANSFER_NOTES",
+          "convergenceTargetId": "1771477089911",
+          "id": "1772634075634",
+          "inputs": [
+            {
+              "id": "1772634075635_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.LOCAL_AND_GLOBAL_TRANSFER_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Change Worker Type Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_CHANGE_WORKER_TYPE_NOTES",
+          "convergenceTargetId": "1771477089911",
+          "id": "1772634107225",
+          "inputs": [
+            {
+              "id": "1772634107226_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.CHANGE_WORKER_TYPE_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "description": "Add node for Default case branch",
+            "name": "Add (Default Case)"
+          },
+          "outcomes": {
+            "success": "1771477193839"
+          },
+          "id": "add_Default_1771477089911",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "description": "Add node for Default case branch",
+            "name": "Add (Default Case)"
+          },
+          "outcomes": {
+            "success": "1771477089911"
+          },
+          "id": "add_Default_1771476950273",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Change Manager Notes Generation"
+          },
+          "outcomes": {
+            "success": "1772634445647"
+          },
+          "code": "CHANGE_MANAGER_NOTES_GENERATION",
+          "convergenceTargetId": "1772634166258",
+          "id": "1771495022006",
+          "inputs": [
+            {
+              "id": "1771495022007_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a manager or HR representative. Provide a justification for a manager change for the employee named : {{$context.$triggers.REST.$input.Name}}\n\nYou are provided with following information with an explanation of what the value represents:\nACTION : {{$context.$triggers.REST.$input.Action}}, explanation : Exact action being performed (e.g., \"Change Manager\").\nACTION_REASON : {{$context.$triggers.REST.$input.ActionReason}}, explanation : Reason for the manager change (e.g., \"Organizational restructuring\", \"Manager relocation\").\nINPUT_TEXT : {{$context.$system.$inputMessage}} (optional), explanation : Free-text notes from the user. On regeneration it may contain the entire prior output.\nTONE : {{$context.$triggers.REST.$input.Tone}}, explanation : Defines the writing tone of the output.\nCONTENT_MODE : {{$context.$triggers.REST.$input.ContentMode}}, explanation : Defines how long or concise the generated response should be.\n\nYour job is to generate a justification for the Change Manager process.\n\n### RULES ###\n1. Generate a single, continuous justification.\n2. DO NOT include headers such as \"Part 1\", \"Action\", \"Part 2\", \"Notes\", \"Part 3\" or \"Conclusion\". These labels should NOT appear in the output.\n3. DO NOT include placeholders like \"NA\" or \"(No notes provided)\". If a section has no data, skip it silently.\n4. STRUCTURE: Must follow the sentence counts exactly for each part.\n5. Do not just directly add the PARAMETER NAMES to the justification.\n6. Please use the {{$context.$triggers.REST.$input.Tone}} tone to generate the content:\n    - **Engaging**: The tone should be warm, approachable, conversational, and motivating while maintaining professionalism.\n    - **Formal**: The tone should be polite, professional, respectful, and clear.\n7. The combined output must not exceed 4000 characters.\n\n### CONSTRUCTION LOGIC ###\n- PART 1 (Action): Combine ACTION and ACTION_REASON.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 4 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 2 concise, impactful sentences.\n\n- PART 2 (Notes): If INPUT_TEXT is empty or \"NA\", skip Part 2 entirely without generating any text.\n    - If INPUT_TEXT is non-empty (not \"NA\" or empty), rewrite the provided notes professionally.\n    - Strip any parameter-like values (action, reason) from INPUT_TEXT. Keep only unique free-text insights.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence.\n\n- PART 3 (Conclusion): Always synthesize a final closing statement.\n    - Summarise the key points from Part 1 and Part 2 in concise professional style.\n    - Expand or summarise the paragraph based on the CONTENT_MODE : '{{$context.$triggers.REST.$input.ContentMode}}'.\n    - If CONTENT_MODE = 'Expand', generate exactly 2 detailed, professional sentences.\n    - If CONTENT_MODE = 'Summarise', generate exactly 1 concise, impactful sentence."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Return Correct Employment Details Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_CORRECT_EMPLOYMENT_DETAILS_NOTES",
+          "convergenceTargetId": "1771477193839",
+          "id": "1772634215587",
+          "inputs": [
+            {
+              "id": "1772634215588_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.CORRECT_EMPLOYMENT_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Edit Pending Worker Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_EDIT_PENDING_WORKER_NOTES",
+          "convergenceTargetId": "1771477193839",
+          "id": "1772634244048",
+          "inputs": [
+            {
+              "id": "1772634244049_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.EDIT_PENDING_WORKER_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Correct Termination Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_CORRECT_TERMINATION_NOTES",
+          "convergenceTargetId": "1771477193839",
+          "id": "1772634266385",
+          "inputs": [
+            {
+              "id": "1772634266386_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.CORRECT_TERMINATION_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Terminate Employment Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_TERMINATE_EMPLOYMENT_NOTES",
+          "convergenceTargetId": "1771477193839",
+          "id": "1772634307204",
+          "inputs": [
+            {
+              "id": "1772634307205_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.TERMINATE_EMPLOYMENT_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Resign From Emplyoment Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_RESIGN_FROM_EMPLYOMENT_NOTES",
+          "convergenceTargetId": "1771477193839",
+          "id": "1772634336510",
+          "inputs": [
+            {
+              "id": "1772634336511_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.RESIGN_FROM_EMPLOYMENT_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Reverse Termination Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_REVERSE_TERMINATION_NOTES",
+          "convergenceTargetId": "1771477193839",
+          "id": "1772634364517",
+          "inputs": [
+            {
+              "id": "1772634364518_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.REVERSE_TERMINATION_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Withdraw Resignation Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_WITHDRAW_RESIGNATION_NOTES",
+          "convergenceTargetId": "1771477193839",
+          "id": "1772634390273",
+          "inputs": [
+            {
+              "id": "1772634390274_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.WITHDRAW_RESIGNATION_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Cancel Work Relationship Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_CANCEL_WORK_RELATIONSHIP_NOTES",
+          "convergenceTargetId": "1771477193839",
+          "id": "1772634412626",
+          "inputs": [
+            {
+              "id": "1772634412627_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.CANCEL_WORK_RELATIONSHIP_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Change Manager Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_CHANGE_MANAGER_NOTES",
+          "convergenceTargetId": "1771477193839",
+          "id": "1772634445647",
+          "inputs": [
+            {
+              "id": "1772634445648_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.CHANGE_MANAGER_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Hire An Employee Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_HIRE_AN_EMPLOYEE_NOTES",
+          "convergenceTargetId": "end",
+          "id": "1772634471527",
+          "inputs": [
+            {
+              "id": "1772634471528_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.HIRE_AN_EMPLOYEE_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Add Non Worker Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_ADD_NON_WORKER_NOTES",
+          "convergenceTargetId": "end",
+          "id": "1772634497100",
+          "inputs": [
+            {
+              "id": "1772634497101_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.ADD_NON_WORKER_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Add Pending Worker Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_ADD_PENDING_WORKER_NOTES",
+          "convergenceTargetId": "end",
+          "id": "1772634522556",
+          "inputs": [
+            {
+              "id": "1772634522557_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.ADD_PENDING_WORKER_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Add Contingent Worker Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_ADD_CONTINGENT_WORKER_NOTES",
+          "convergenceTargetId": "end",
+          "id": "1772634544810",
+          "inputs": [
+            {
+              "id": "1772634544811_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.ADD_CONTINGENT_WORKER_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Convert Pending Worker Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_CONVERT_PENDING_WORKER_NOTES",
+          "convergenceTargetId": "end",
+          "id": "1772634567069",
+          "inputs": [
+            {
+              "id": "1772634567070_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.CONVERT_PENDING_WORKER_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Add Assignment Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_ADD_ASSIGNMENT_NOTES",
+          "convergenceTargetId": "end",
+          "id": "1772634593980",
+          "inputs": [
+            {
+              "id": "1772634593981_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.ADD_ASSIGNMENT_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Delete Assignment Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_DELETE_ASSIGNMENT_NOTES",
+          "convergenceTargetId": "end",
+          "id": "1772634618902",
+          "inputs": [
+            {
+              "id": "1772634618903_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.DELETE_ASSIGNMENT_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "description": "Add node for Default case branch",
+            "name": "Add (Default Case)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_Default_1771477193839",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Return Create Work Relationship Notes"
+          },
+          "outcomes": {},
+          "code": "RETURN_CREATE_WORK_RELATIONSHIP_NOTES",
+          "convergenceTargetId": "end",
+          "id": "1772634655020",
+          "inputs": [
+            {
+              "id": "1772634655021_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_WORK_RELATIONSHIP_NOTES_GENERATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1771496870318",
+            "name": "LegalEmployer",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771495460106",
+            "name": "WorkerType",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771484674333",
+            "name": "PermOrTemp",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771476904244",
+            "name": "ContentMode",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771476896014",
+            "name": "Tone",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771476887229",
+            "name": "TotalSeniority",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771476880949",
+            "name": "JobSeniority",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771476870355",
+            "name": "ProposedLocation",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771476862366",
+            "name": "CurrentLocation",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771476852455",
+            "name": "ProposedPosition",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771476844031",
+            "name": "CurrentPosition",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771476834510",
+            "name": "ProposedDepartment",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771476826499",
+            "name": "CurrentDepartment",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771476810298",
+            "name": "ProposedJob",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771476806465",
+            "name": "CurrentJob",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771476792349",
+            "name": "ActionReason",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771476784314",
+            "name": "Action",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771476775898",
+            "name": "Name",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1771476754129",
+            "name": "ModuleIdentifier",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "GLOBAL_HUMAN_RESOURCES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "tags": [
+    {
+      "id": "300100649895628",
+      "code": "ORA_FAI_PROMPT",
+      "name": "ORA_FAI_PROMPT",
+      "workflowTagId": "300000331058309"
+    }
+  ],
+  "initialTags": [
+    {
+      "id": "300100649895628",
+      "code": "ORA_FAI_PROMPT",
+      "name": "ORA_FAI_PROMPT",
+      "workflowTagId": "300000331058309"
+    }
+  ],
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

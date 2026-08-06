@@ -1,0 +1,547 @@
+{
+  "workflowId": "300000331058005",
+  "workflowCode": "ORA_BUSINESS_OBJECT_SUGGESTIONS",
+  "name": "Business Object Suggestions",
+  "description": "Suggestion a business object to use given a description",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1769634434949"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "read_db"
+          },
+          "outcomes": {
+            "success": "1765924115704"
+          },
+          "code": "READDB",
+          "id": "1765924054143",
+          "inputs": [
+            {
+              "id": "1765924054147_1",
+              "name": "indexName",
+              "type": "string",
+              "value": "tools_index_02"
+            },
+            {
+              "id": "1765924054148_2",
+              "name": "query",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            },
+            {
+              "id": "1765924054149_3",
+              "name": "documentId",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "1765924054149_4",
+              "name": "fields",
+              "type": "array",
+              "value": ""
+            },
+            {
+              "id": "1765924054150_5",
+              "name": "filterCriteria",
+              "type": "object",
+              "value": ""
+            },
+            {
+              "id": "1765924054150_6",
+              "name": "maximumResults",
+              "type": "integer",
+              "value": "1"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"index\": {\n        \"type\": \"integer\"\n      },\n      \"text\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\n      \"index\",\n      \"text\"\n    ]\n  }\n}",
+          "type": "VECTOR_DB_READER"
+        },
+        {
+          "metadata": {
+            "name": "parse",
+            "returnType": "object",
+            "sourceCode": "if (!$context.$nodes.READDB.$output || !$context.$nodes.READDB.$output[0] ) {\n  return; \n}\nconst defaultRet = $context.$nodes.READDB.$output[0].text;\nlet bo_code = defaultRet.split(\"¿\")[0];\nlet bo_function_name = defaultRet.split(\"¿\")[1];\nlet bo_function_desc = defaultRet.split(\"¿\")[2];\n\nreturn [bo_code, bo_function_name, bo_function_desc]"
+          },
+          "outcomes": {
+            "success": "1766521164865"
+          },
+          "code": "PARSE",
+          "id": "1765924115704",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "IF BO"
+          },
+          "outcomes": {
+            "true": "1766520263017",
+            "false": "add_false_1766521164865"
+          },
+          "code": "IF_BO",
+          "convergenceTargetId": "end",
+          "id": "1766521164865",
+          "inputs": [
+            {
+              "id": "1766521164869_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PARSE.$output.result ? true : false}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_false_1766521164865",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "add BO",
+            "returnType": "object",
+            "sourceCode": "const item = $context.$nodes.GETINFO.$output.items ? $context.$nodes.GETINFO.$output.items[0] : null;\nitem.implementation = JSON.parse(item.ObjectProperties);\n//search for tool\nconst location = item.implementation.tools.find(u => u.name === $context.$nodes.PARSE.$output.result[1]);\nitem.implementation =location;\n\nconst result = {\nimplementation: {},\nbusinessObject: {}\n};\n\nresult.name = item.implementation.name;\nresult.description = item.implementation.description;\n\nresult.implementation.resourcePath = item.implementation.resourcePath;\nresult.implementation.resourceType = item.implementation.resourceType;\nresult.implementation.operationType = item.implementation.operationType;\nresult.implementation.parameters = item.implementation.parameterDefinitions;\n\nresult.businessObject.objectCode = item.ObjectCode;\nresult.businessObject.name = item.Name;\nresult.businessObject.description = item.Description;\n\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ADD_BO",
+          "id": "1766521187798",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOBUSINESSOBJECTSBYNAME",
+            "functionName": "getByName",
+            "name": "getInfo"
+          },
+          "outcomes": {
+            "success": "1766521187798"
+          },
+          "code": "GETINFO",
+          "convergenceTargetId": "1766521187798",
+          "id": "1766520263017",
+          "inputs": [
+            {
+              "id": "1766520933772_1",
+              "name": "names",
+              "type": "string",
+              "value": "{{\"'\" + $context.$nodes.PARSE.$output.result[0] + \"'\"}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "temp if"
+          },
+          "outcomes": {
+            "true": "1769634492987",
+            "false": "1769813985205"
+          },
+          "code": "TEMP_IF",
+          "convergenceTargetId": "1765924054143",
+          "id": "1769634434949",
+          "inputs": [
+            {
+              "id": "1769634434952_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{true}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "tempdata",
+            "returnType": "array",
+            "sourceCode": "const ret = [\n   {\n      \"implementation\":{\n         \"resourcePath\":\"/hcmRestApi/resources/11.13.18.05/recruitingJobRequisitions\",\n         \"resourceType\":\"ADF_BC_FIXED_QUERY\",\n         \"operationType\":\"POST\",\n         \"parameters\": [\n            {\n               \"dataType\":\"string\",\n               \"description\":\"Position Id\",\n               \"id\":97,\n               \"isToken\":true,\n               \"name\":\"PositionId\"\n            },\n            {\n               \"dataType\":\"string\",\n               \"description\":\"Legal Employer Id\",\n               \"id\":96,\n               \"isToken\":true,\n               \"name\":\"LegalEmployerId\"\n            },\n            {\n               \"dataType\":\"string\",\n               \"description\":\"Responsibilities for the requisition\",\n               \"id\":68,\n               \"isToken\":true,\n               \"name\":\"InternalRespHTML\"\n            },\n            {\n               \"dataType\":\"string\",\n               \"description\":\"Qualification for the requisition\",\n               \"id\":69,\n               \"isToken\":true,\n               \"name\":\"InternalQualHTML\"\n            },\n            {\n               \"dataType\":\"string\",\n               \"description\":\"Internal Short Description for the requisition\",\n               \"id\":70,\n               \"isToken\":true,\n               \"name\":\"InternalShortDescription\"\n            },\n            {\n               \"dataType\":\"string\",\n               \"description\":\"Business Justification of the requisition\",\n               \"id\":71,\n               \"isToken\":true,\n               \"name\":\"BusinessJustification\"\n            },\n            {\n               \"dataType\":\"number\",\n               \"description\":\"Sourcing Budget\",\n               \"id\":72,\n               \"isToken\":true,\n               \"name\":\"SourcingBudget\"\n            },\n            {\n               \"dataType\":\"string\",\n               \"description\":\"Budget Currency\",\n               \"id\":73,\n               \"isToken\":true,\n               \"name\":\"BudgetCurrency\"\n            },\n            {\n               \"dataType\":\"string\",\n               \"description\":\"Compensation Currency\",\n               \"id\":74,\n               \"isToken\":true,\n               \"name\":\"CompensationCurrency\"\n            },\n            {\n               \"dataType\":\"string\",\n               \"description\":\"Worker Type\",\n               \"id\":75,\n               \"isToken\":true,\n               \"name\":\"WorkerType\"\n            },\n            {\n               \"dataType\":\"string\",\n               \"description\":\"Regular Or Temporary\",\n               \"id\":76,\n               \"isToken\":true,\n               \"name\":\"RegularOrTemporary\"\n            },\n            {\n               \"dataType\":\"string\",\n               \"description\":\"FullTime Or PartTime\",\n               \"id\":77,\n               \"isToken\":true,\n               \"name\":\"FullTimeOrPartTime\"\n            },\n            {\n               \"dataType\":\"integer\",\n               \"description\":\"Business Unit of the role\",\n               \"id\":78,\n               \"isToken\":true,\n               \"name\":\"BusinessUnitId\"\n            },\n            {\n               \"dataType\":\"integer\",\n               \"description\":\"Department ID of the role\",\n               \"id\":79,\n               \"isToken\":true,\n               \"name\":\"DepartmentId\"\n            },\n            {\n               \"dataType\":\"integer\",\n               \"description\":\"Grade ID of the role\",\n               \"id\":80,\n               \"isToken\":true,\n               \"name\":\"GradeId\"\n            },\n            {\n               \"dataType\":\"integer\",\n               \"description\":\"Job Family ID of the Job\",\n               \"id\":81,\n               \"isToken\":true,\n               \"name\":\"JobFamilyId\"\n            },\n            {\n               \"dataType\":\"string\",\n               \"description\":\"Function Code of the Job\",\n               \"id\":82,\n               \"isToken\":true,\n               \"name\":\"JobFunction\"\n            },\n            {\n               \"dataType\":\"integer\",\n               \"description\":\"Job ID\",\n               \"id\":83,\n               \"isToken\":true,\n               \"name\":\"JobId\"\n            },\n            {\n               \"dataType\":\"integer\",\n               \"description\":\"Assignment ID of the hiring manager\",\n               \"id\":84,\n               \"isToken\":true,\n               \"name\":\"HiringManagerAssignmentId\"\n            },\n            {\n               \"dataType\":\"string\",\n               \"description\":\"Internal Description for the requisition\",\n               \"id\":85,\n               \"isToken\":true,\n               \"name\":\"InternalDescriptionHTML\"\n            },\n            {\n               \"dataType\":\"string\",\n               \"description\":\"Boolean to define if the requisition has an unlimited number of openings\",\n               \"id\":86,\n               \"isToken\":true,\n               \"name\":\"UnlimitedOpenings\"\n            },\n            {\n               \"dataType\":\"integer\",\n               \"description\":\"Number of openings within the requisition\",\n               \"id\":87,\n               \"isToken\":true,\n               \"name\":\"NumberOfOpenings\"\n            },\n            {\n               \"dataType\":\"string\",\n               \"description\":\"Type of the requisition\",\n               \"id\":88,\n               \"isToken\":true,\n               \"name\":\"RecruitingType\"\n            },\n            {\n               \"dataType\":\"integer\",\n               \"description\":\"ID of the current state of the requisition\",\n               \"id\":89,\n               \"isToken\":true,\n               \"name\":\"StateId\"\n            },\n            {\n               \"dataType\":\"integer\",\n               \"description\":\"Id of the current phase of the requisition\",\n               \"id\":90,\n               \"isToken\":true,\n               \"name\":\"PhaseId\"\n            },\n            {\n               \"dataType\":\"integer\",\n               \"description\":\"Id of the primary location for the role\",\n               \"id\":91,\n               \"isToken\":true,\n               \"name\":\"PrimaryLocationId\"\n            },\n            {\n               \"dataType\":\"integer\",\n               \"description\":\"Id of the recruiter for the requisition\",\n               \"id\":92,\n               \"isToken\":true,\n               \"name\":\"RecruiterId\"\n            },\n            {\n               \"dataType\":\"integer\",\n               \"description\":\"Id of the hiring manager\",\n               \"id\":93,\n               \"isToken\":true,\n               \"name\":\"HiringManagerId\"\n            },\n            {\n               \"dataType\":\"string\",\n               \"description\":\"Title of the role that is being filled under the requisition\",\n               \"id\":94,\n               \"isToken\":true,\n               \"name\":\"Title\"\n            },\n            {\n               \"dataType\":\"string\",\n               \"description\":\"Unique identifier for the requisition\",\n               \"id\":95,\n               \"isToken\":true,\n               \"name\":\"RequisitionNumber\"\n            }\n         ]\n      },\n      \"businessObject\":{\n         \"objectCode\":\"ORA_HCM_RECRUITING_CREATEJOBREQUIS\",\n         \"name\":\"Create Job Requisition\",\n         \"description\":\"Business object to create new job requisition\"\n      },\n      \"name\":\"create_recruitingJobRequisitions\",\n      \"description\":\"Submit all recruiting job requisitions\"\n   },\n   {\n      \"implementation\":{\n         \"resourcePath\":\"/hcmRestApi/resources/11.13.18.05/recruitingJobRequisitions/{recruitingJobRequisitions_Id}\",\n         \"resourceType\":\"ADF_BC_FIXED_QUERY\",\n         \"operationType\":\"GET\",\n         \"parameters\":[\n            {\n               \"dataType\":\"string\",\n               \"description\":\"The value of this parameter could be a hash of the key that is used to uniquely identify the resource item. The client should not generate the hash key value. Instead, the client should query on the collection resource with a filter to navigate to a specific resource item. For example: products?q=InventoryItemId=\",\n               \"id\":9,\n               \"isToken\":true,\n               \"name\":\"recruitingJobRequisitions_Id\"\n            }\n         ]\n      },\n      \"businessObject\":{\n         \"objectCode\":\"ORA_HCM_RECRUITING_GETJOBREQUISITIONDETAILS\",\n         \"name\":\"GetJobRequisitionDetails\",\n         \"description\":\"Rest service to get details of a Job Requisition details based on Requisition Id.\"\n      },\n      \"name\":\"get_recruitingJobRequisitions\",\n      \"description\":\"Get a recruiting job requisition\"\n   },\n   {\n      \"implementation\":{\n         \"resourcePath\":\"/hcmRestApi/resources/11.13.18.05/recruitingJobRequisitions/{recruitingJobRequisitions_Id}\",\n         \"resourceType\":\"ADF_BC_FIXED_QUERY\",\n         \"operationType\":\"GET\",\n         \"parameters\":[\n            {\n               \"dataType\":\"string\",\n               \"description\":\"limit\",\n               \"id\": 11,\n               \"isToken\":true,\n               \"name\":\"limit\"\n            },\n            {\n               \"dataType\":\"string\",\n               \"description\":\"offset\",\n               \"id\":12,\n               \"isToken\":true,\n               \"name\":\"offset\"\n            }\n         ]\n      },\n      \"businessObject\":{\n         \"objectCode\":\"ORA_HCM_OTHER_AISTUDIOAGENTTEAMSWITHSPEC\",\n         \"name\":\"AIStudioAgentTeamsWithSpec\",\n         \"description\":\"Business object representing AI Studio Agent Teams artifact.\"\n      },\n      \"name\":\"getall_hcmAgentWorkflowsV2\",\n      \"description\":\"Get all agent workflows\"\n   }\n];\n\nreturn ret;"
+          },
+          "outcomes": {
+            "success": "1769634542938"
+          },
+          "code": "TEMPDATA",
+          "id": "1769634492987",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "BO name"
+          },
+          "outcomes": {
+            "success": "1769634666105"
+          },
+          "code": "BO_NAME",
+          "id": "1769634542938",
+          "inputs": [
+            {
+              "id": "1769634542941_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You will be passed a description of a function and array of business functions. Pick the business object function that mostly closely matches the description and return the \"name\" property.  If no good matches, return \"\"\n\ndescription of function: {{$context.$system.$inputMessage}}\n\narray of business functions: {{$context.$nodes.TEMPDATA.$output.result}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "boFunction",
+            "returnType": "object",
+            "sourceCode": "const boFunctions =  $context.$nodes.TEMPDATA.$output.result;\nconst name = $context.$nodes.BO_NAME.$output;\nlet retboFunction;\nfor (const boFunction of boFunctions) {\n  if (boFunction.name ===  name) {\n    retboFunction = boFunction;\n  }\n}\nreturn retboFunction;"
+          },
+          "outcomes": {
+            "success": "1769634803394"
+          },
+          "code": "BOFUNCTION",
+          "id": "1769634666105",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "ret boFunction"
+          },
+          "outcomes": {},
+          "code": "RET_BOFUNCTION",
+          "convergenceTargetId": "1765924054143",
+          "id": "1769634803394",
+          "inputs": [
+            {
+              "id": "1769634803399_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.BOFUNCTION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_RECRUITING_CREATEJOBREQUIS",
+            "functionName": "create_recruitingJobRequisitions",
+            "processJson": true,
+            "name": "Create Job Requisition"
+          },
+          "outcomes": {
+            "success": "1769814026087"
+          },
+          "code": "CREATE_JOB_REQUISITION",
+          "id": "1769813985205",
+          "inputs": [
+            {
+              "id": "1769814001667_1",
+              "name": "PositionId",
+              "type": "string"
+            },
+            {
+              "id": "1769814001672_2",
+              "name": "LegalEmployerId",
+              "type": "string"
+            },
+            {
+              "id": "1769814001675_3",
+              "name": "InternalRespHTML",
+              "type": "string"
+            },
+            {
+              "id": "1769814001677_4",
+              "name": "InternalQualHTML",
+              "type": "string"
+            },
+            {
+              "id": "1769814001680_5",
+              "name": "InternalShortDescription",
+              "type": "string"
+            },
+            {
+              "id": "1769814001683_6",
+              "name": "BusinessJustification",
+              "type": "string"
+            },
+            {
+              "id": "1769814001686_7",
+              "name": "SourcingBudget",
+              "type": "number"
+            },
+            {
+              "id": "1769814001688_8",
+              "name": "BudgetCurrency",
+              "type": "string"
+            },
+            {
+              "id": "1769814001691_9",
+              "name": "CompensationCurrency",
+              "type": "string"
+            },
+            {
+              "id": "1769814001697_10",
+              "name": "WorkerType",
+              "type": "string"
+            },
+            {
+              "id": "1769814001700_11",
+              "name": "RegularOrTemporary",
+              "type": "string"
+            },
+            {
+              "id": "1769814001703_12",
+              "name": "FullTimeOrPartTime",
+              "type": "string"
+            },
+            {
+              "id": "1769814001706_13",
+              "name": "BusinessUnitId",
+              "type": "integer"
+            },
+            {
+              "id": "1769814001709_14",
+              "name": "DepartmentId",
+              "type": "integer"
+            },
+            {
+              "id": "1769814001713_15",
+              "name": "GradeId",
+              "type": "integer"
+            },
+            {
+              "id": "1769814001716_16",
+              "name": "JobFamilyId",
+              "type": "integer"
+            },
+            {
+              "id": "1769814001720_17",
+              "name": "JobFunction",
+              "type": "string"
+            },
+            {
+              "id": "1769814001723_18",
+              "name": "JobId",
+              "type": "integer"
+            },
+            {
+              "id": "1769814001727_19",
+              "name": "HiringManagerAssignmentId",
+              "type": "integer"
+            },
+            {
+              "id": "1769814001733_20",
+              "name": "InternalDescriptionHTML",
+              "type": "string"
+            },
+            {
+              "id": "1769814001737_21",
+              "name": "UnlimitedOpenings",
+              "type": "string"
+            },
+            {
+              "id": "1769814001741_22",
+              "name": "NumberOfOpenings",
+              "type": "integer"
+            },
+            {
+              "id": "1769814001746_23",
+              "name": "RecruitingType",
+              "type": "string"
+            },
+            {
+              "id": "1769814001750_24",
+              "name": "StateId",
+              "type": "integer"
+            },
+            {
+              "id": "1769814001754_25",
+              "name": "PhaseId",
+              "type": "integer"
+            },
+            {
+              "id": "1769814001761_26",
+              "name": "PrimaryLocationId",
+              "type": "integer"
+            },
+            {
+              "id": "1769814001765_27",
+              "name": "RecruiterId",
+              "type": "integer"
+            },
+            {
+              "id": "1769814001768_28",
+              "name": "HiringManagerId",
+              "type": "integer"
+            },
+            {
+              "id": "1769814001772_29",
+              "name": "Title",
+              "type": "string"
+            },
+            {
+              "id": "1769814001776_30",
+              "name": "RequisitionNumber",
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_RECRUITING_GETJOBREQUISITIONDETAILS",
+            "functionName": "get_recruitingJobRequisitions",
+            "processJson": true,
+            "name": "GetJobRequisitionDetails"
+          },
+          "outcomes": {
+            "success": "1769814063915"
+          },
+          "code": "GETJOBREQUISITIONDETAILS",
+          "id": "1769814026087",
+          "inputs": [
+            {
+              "id": "1769814042428_1",
+              "name": "recruitingJobRequisitions_Id",
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOAGENTTEAMS",
+            "functionName": "getall_hcmAgentWorkflowsV2",
+            "processJson": true,
+            "name": "AIStudioAgentTeamsWithSpec"
+          },
+          "outcomes": {
+            "success": "1765924054143"
+          },
+          "code": "AISTUDIOAGENTTEAMSWITHSPEC",
+          "id": "1769814063915",
+          "inputs": [
+            {
+              "id": "1769814075420_1",
+              "name": "limit",
+              "type": "string"
+            },
+            {
+              "id": "1769814075422_2",
+              "name": "offset",
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {},
+      "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+      "model": "OCI_GPT_5_MINI",
+      "provider": "CERT_PREMIUM"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "OTHER",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

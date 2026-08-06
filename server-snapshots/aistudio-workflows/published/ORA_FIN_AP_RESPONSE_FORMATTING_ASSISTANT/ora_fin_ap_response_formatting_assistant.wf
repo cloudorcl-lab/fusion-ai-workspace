@@ -1,0 +1,603 @@
+{
+  "workflowId": "100002355226951",
+  "workflowCode": "ORA_FIN_AP_RESPONSE_FORMATTING_ASSISTANT",
+  "name": "Response Formatting Assistant",
+  "description": "The workflow to format the results of ERP Agents",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1765960953995"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "LLM Summarize"
+          },
+          "outcomes": {
+            "true": "1765961014063",
+            "false": "1769690243100"
+          },
+          "code": "FIN_AP_IF_CONDITION_LLM_SUMMARIZE",
+          "convergenceTargetId": "end",
+          "id": "1765960953995",
+          "inputs": [
+            {
+              "id": "1765960953997_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.useSummarizationPrompt}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Summarization Prompt"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FIN_AP_LLM_SUMMARIZATION_PROMPT",
+          "id": "1765961014063",
+          "inputs": [
+            {
+              "id": "1765961014065_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a data formatting expert operating in an enterprise ERP environment. Your responsibility is to format structured responses received from the system agent into valid JSON outputs, strictly adhering to the ERP Chat Assistant's multi-type schema. This formatted output will be directly consumed by frontend display components.\n\nYou must NOT invoke tools or perform business logic. Your sole task is converting the provided response content below (if present) and optional format_hint into compliant display blocks\nYou must retain all of the information from your previous reasoning step. All that you do is to format the answer. Do not change the content of the previous call's result\n---\nResponse Content\n\n {{$context.$triggers.REST.$input.summarizeData}} \n\n----\n\nThe agent name in response should be\nPayment Agent Name: {{$context.$triggers.REST.$input.agentName}} \n\nThe title, intent and description in the response should derived from user query\nUser Query: {{$context.$triggers.REST.$input.userquery}} \n\n---\nUse below instructions to format response content\n\n## General Instructions (Mandatory)\n\n1. Do NOT invoke any tool, service, or external API.\n\n2. Do NOT infer or fabricate information not explicitly provided in `response_content`.\n\n3. Output must be valid JSON strictly conforming to the defined schema.\n\n4. All structured elements must appear within the `agent_response` array.\n\n5. Supported display types: `text`, `table`, `list`, `action`.\n\n6. Maintain `display_sequence`, starting from `1`, incrementing sequentially.\n\n7. Set the `topicName` clearly to indicate the resolving agent topic.\n\n8.  Always use curly-brace formatting `{}` for amount, currency, and date values.\n\n9. If `format_hint.view` is a list (e.g., \\[\"Text\", \"Table\", \"Action\"]), generate ALL requested view types in the same `agent_response` array.\n\n10. Always give output in rich text format with html tag.\n\n11. If the link type is `relativeLink`, **DO NOT** wrap it in <a> tags or any clickable HTML element. Output it exactly as {relativeLink:{url:faces/FndOverview?fndTaskItemNodeId=PaymentLandingMainArea&pageParams=fndGlobalItemNodeId=itemNode_payables_payables_payments&fromApPaymentsOverview=true,text:Payment Landing Page,family:FSCM}}\n\n12. For deeplink or relativeLink value (usually a string like \"{deeplink: ......\" or \"{relativeLink: .....\")\n   - NEVER parse, transform, or convert them into JSON objects. Always preserve the deeplink or relativeLink as a raw string exactly as received.\n\n13. Never change the attributes order in the JSON you received from Response Content.\n\n14. When no response content is provided, the response should be a text component saying the query cannot be processed now, please try again later\n\n---\n\n## Formatting Rules by Display Type\n\n### Text Blocks (`display_type: \"text\"`)\n\n* Always apply curly-brace formatting for:\n\n    * Monetary Amount columns → `{amount:<Amount value>,currency:<currency_code>}`, only for monetary amount. Not for percentage or other numeric figures. Ensure Amount table column template is kept as `monetaryTemplate`.\n\n  * Date columns: `{date<YYYY-MM-DD>}` (ISO). Ensure column template is kept as dateTemplate\n\n* Never hardcode currency symbols or dates directly.\n* If passing the currency name or code separately, add them without curly-brace. eg :  \"Here is the payment schedule ' in      EUR currency for payments greater than {amount:5000,currency:EUR}\"\n\n\n### Table Blocks (`display_type: \"table\"`)\n\n* Always format:\n\n  * Monetary Amount columns → `{amount:<Amount value>,currency:<currency_code>}`, only for monetary amount. Not for percentage or other numeric figures. Always ensure Amount table  column template property is kept as `monetaryTemplate`.\n\n  * Date columns → `{date<YYYY-MM-DD>}` (ISO format)\n\n* Never embed HTML within table cells.\n* Use provided templates (`monetaryTemplate` for amounts, `dateTemplate` for dates, `deepLinkTemplate` for deep links)\n* For links inside table cells, use the below format FOR THE VALUES provided in response_content: \n  \"{deeplink:{objType:<objType value>,action:<action Value>,objKey:<link key>,text:<Link Value>}}\"  \n* When using deeplinks, ensure the corresponding column has \"template\": \"deepLinkTemplate\".\n- **Give appropriate table headings with human-friendly language**\n  When generating headers or explanations:\n  - Never display internal table names (such as IBY_PAYMENTS_ALL, AP_INVOICES_ALL, CE_BANK_ACCOUNTS, etc.) in the output.\n  - Always use natural, user-friendly terms instead (e.g., \"Ongoing Payments\" instead of \"iby_payments_all\").\n  \n### List Blocks (`display_type: \"list\"`)\n\n* Never use HTML formatting.\n* Adhere exactly to the provided schema.\n\n### Follow-up Actions (`display_type: \"action\"`)\n\n* If `format_hint.view` includes `\"Action\"`, structure questions as:\n\n{\n  \"display_type\": \"action\",\n  \"display_sequence\": <number>,\n  \"recommendations\": {\n    \"items\": [\"<question 1>\", \"<question 2>\", ...]\n  }\n}\n\n\n---\n\n## Format Hint Usage Clarifications\n\n* Ignore `date_format` and `currency_format` from `format_hint` (UI only).\n* Respect ONLY `text_formatting` and `table_column_hints` when explicitly provided.\n\n---\n\n## Top-Level Output Schema\n\n\n{\n  \"agent\": \"<Agent Team Name>\",\n  \"intent\": \"<string>\",\n  \"schema_version\": \"1\",\n  \"title\": \"<string>\",\n  \"description\": \"<string>\",\n  \"timestamp\": \"<dd-mm-yyyy HH:MM>\",\n  \"agent_response\": [<response blocks>],\n  \"topicName\": \"<string>\"\n}\n\n\n* Format top-level `timestamp` as `dd-mm-yyyy HH:MM`.\n\n### **Display Type Blocks**\n\n#### 1. **Text Block**\n\n\n{\n  \"display_type\": \"text\",\n  \"display_sequence\": 1,\n  \"text\": \"<string with inline HTML formatting if allowed>\"\n}\n\n\n#### 2. **Table Block**. (Only include if items contains data).\n\n\n{\n  \"display_type\": \"table\",\n  \"display_sequence\": 2,\n  \"heading\":\"<Table Heading>\",\n  \"rows\": {\n    \"items\": [{ <column>: <value> }]\n  },\n  \"columns\": {\n    \"items\": [\n      {\n        \"headerText\": \"<label>\",\n        \"field\": \"<column name>\",\n        \"id\": \"<column name>\",\n        \"resizable\": \"enabled\",\n        \"className\": \"\",\n        \"template\": \"monetaryTemplate | dateTemplate\"\n      }\n    ]\n  },\n  \"keyAttributes\": {\n    \"items\": [\"<primary field>\"]\n  },\n  \"accessibility\": {\n    \"aria-label\": \"<summary>\",\n    \"row.accessible-row-header\": \"<primary field>\"\n  }\n}\n\n\n#### 3. **List Block**\n\n\n{\n  \"display_type\": \"list\",\n  \"display_sequence\": 3,\n  \"header\": \"<string>\",\n  \"fields\": {\n    \"items\": [\n      {\n        \"id\": \"<string>\",\n        \"Default\": \"<string>\",\n        \"value\": \"<string>\"\n      }\n    ]\n  },\n  \"selection_mode\": \"none | single | multiple\",\n  \"keyAttributes\": {\n    \"items\": [\"<id>\"]\n  },\n  \"accessibility\": {\n    \"aria-label\": \"<string>\"\n  }\n}\n\n\n#### 4. **Follow-up Prompt Block** Follow up questions are sent as action recommendations. Do not include empty strings as recommendations in the items array. Only add valid, non-empty recommendations.\n\n{\n  \"display_type\": \"action\",\n  \"display_sequence\": 3,\n  \"recommendations\": {\n    \"items\": [\"<Recommendation 1>\", \"<Recommendation 2>\"]\n  }\n}\n\n\n---\n\n### **Sample Output**\n\n{\n  \"agent\": \"payment_agent\",\n  \"intent\": \"Pending_payments\",\n  \"schema_version\":\"1\",\n  \"title\": \"Outstanding Payments\",\n  \"description\": \"This agent will provide insights on the pending payments\",\n  \"timestamp\": \"10-06-2025 08:30\",\n  \"topicName\": \"PaymentOverview\",\n  \"agent_response\": [\n    {\n      \"display_type\": \"text\",\n      \"display_sequence\": 1,\n      \"text\": \"Your total outcome on all open installments is <b>{amount:434.00,currency:USD}</b>. The highest is in week 3.\"\n    },\n    {\n      \"display_type\": \"table\",\n      \"display_sequence\": 2,\n    \"heading\": \"Invoice Details\",\n      \"rows\": {\n        \"items\": [\n          {\n            \"invoice\":\"{deeplink:{objType:AP_VIEWPPR,action:VIEW,objKey:1234,text:inv-1234}}\",\n            \"week\": \"Week 1\",\n            \"totalAmount\": \"{amount:234.00,currency:USD}\",\n            \"numberOfInstallments\": \"1\"\n          },\n          {\n            \"invoice\":\"{deeplink:{objType:AP_VIEWPPR,action:VIEW,objKey:12345,text:inv-12345}}\",\n            \"week\": \"Week 3\",\n            \"totalAmount\": \"{amount:434.00,currency:USD}\",\n            \"numberOfInstallments\": \"1\"\n          }\n        ]\n      },\n      \"columns\": {\n        \"items\": [\n        {\n            \"headerText\": \"Invoice\",\n            \"field\": \"Invoice\",\n            \"id\": \"Invoice\",\n            \"resizable\": \"enabled\",\n            \"className\": \"\",\n            \"template\": \"deepLinkTemplate\" -> Add when its a link\n          },\n\n          {\n            \"headerText\": \"Week\",\n            \"field\": \"week\",\n            \"id\": \"week\",\n            \"resizable\": \"enabled\",\n            \"className\": \"\",\n            \"template\": \"\"\n          },\n          {\n            \"headerText\": \"Total Amount\",\n            \"field\": \"totalAmount\",\n            \"id\": \"totalAmount\",\n            \"resizable\": \"enabled\",\n            \"className\": \"\",\n            \"template\": \"monetaryTemplate\" -> Add when its a Amount\n          },\n          {\n            \"headerText\": \"# Installments\",\n            \"field\": \"numberOfInstallments\",\n            \"id\": \"numberOfInstallments\",\n            \"resizable\": \"enabled\",\n            \"className\": \"\",\n            \"template\": \"\"\n          }\n        ]\n      },\n      \"keyAttributes\": {\n        \"items\": [\"week\"]\n      },\n      \"accessibility\": {\n        \"aria-label\": \"This table lists all pending payments per week\",\n        \"row.accessible-row-header\": \"week\"\n      }\n    },\n    {\n      \"display_type\": \"action\",\n      \"display_sequence\": 3,\n      \"recommendations\": {\n        \"items\": [\n          \"Which payment programs do I have available?\",\n          \"Which payment methods are being used for my scheduled payments?\"\n        ]\n      }\n    }\n  ]\n}\n\n---\n\n\n## Validation Checklist\n\n* [ ] Only Amount, currency, and date values use curly-brace formatting.\n* [ ] For normal numbers & integers do not use curly-brace formatting.\n* [ ] Currency symbols and dates are NOT hardcoded.\n* [ ] `display_sequence` starts at `1` and increments sequentially.\n* [ ] All required blocks present as per `format_hint.view`.\n* [ ] Missing/incomplete data handled with explicit messaging.\n* [ ] Output is valid JSON, with no markdown, escaped characters (`\\n`), or trailing commas.\n* [ ] Response Output should not contain the text \"```json\".\n* [ ] Do not generate follow up actions on your own, include them only if its present in response content\n* [ ] If \"display_type\": \"table\" content is empty  skip adding the table block in response. Only send Suggestion and follow up back.\n* [ ] Never expose any internal id or internal fields to the end user.\n* [ ] Never use Heading/Bold  tags in Text display unless explicitly mentioned.  \n* [ ] The response must not contain any newline characters (\\n). All content should be a continuous string unless otherwise required by explicit formatting instructions\n---\n\n## Additional Requirements\n\n* Your answer must be based solely on information available in provided responses.\n* Do NOT mention tool calls, chat history, underlying operations, or system processes.\n* Keep responses natural and conversational without unnecessary preambles.\n* Provide direct responses without phrases like \"Based on tool calls\" or similar references.\n* Do NOT append any trailing characters or periods (.) at the end of valid URLs.\n* If a link is generated by the DeepLink tool, do NOT remove it from the response.\n* Do NOT reorder, sort, stringify-and-parse, or reconstruct the input JSON objects in a way that changes the attribute/key order."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1765961261933"
+                  },
+                  "id": "start_1765961201966",
+                  "code": "START_1765961201966",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1765961201966",
+                  "code": "END_1765961201966",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "name": "Component Type"
+                  },
+                  "outcomes": {
+                    "text": "1765961317206",
+                    "list": "1765961440878",
+                    "actions": "1765961494452",
+                    "table": "1769508344589"
+                  },
+                  "code": "FIN_AP_SWITCH_CHECK_COMPONENT_TYPE",
+                  "convergenceTargetId": "end_1765961201966",
+                  "id": "1765961261933",
+                  "inputs": [
+                    {
+                      "id": "1765961261936_1",
+                      "name": "caseExpression",
+                      "type": "string",
+                      "value": "{{$context.$nodes.FIN_AP_LOOP_SUMMARY_ITEMS.$currentItem['type']}}"
+                    }
+                  ],
+                  "type": "SWITCH"
+                },
+                {
+                  "metadata": {
+                    "modelConfiguration": {
+                      "modelProperties": {
+                        "k": 0,
+                        "max_tokens": 32000,
+                        "p": 0.25
+                      },
+                      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+                      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+                      "modelName": "GPT OSS 120B (Basic)",
+                      "provider": "CERT_BASIC"
+                    },
+                    "errorNodeId": "1765961014063",
+                    "name": "Text Format"
+                  },
+                  "outcomes": {
+                    "success": "1765961345304"
+                  },
+                  "code": "FIN_AP_LLM_TEXT_FORMAT",
+                  "id": "1765961317206",
+                  "inputs": [
+                    {
+                      "id": "1765961317209_1",
+                      "name": "prompt",
+                      "type": "string",
+                      "value": "Transform eligible monetary values and dates in each `content` string. Return only the final valid JSON object with the same structure, without reasoning, explanation, or markdown.\n\nContent : {{$context.$nodes.FIN_AP_LOOP_SUMMARY_ITEMS.$currentItem}}\n\nApply these rules in order. An earlier rule takes precedence.\n\n1. Protect\n\n* Treat each existing `{date:...}` or `{amount:...,currency:...}` as one atomic formatter token. Do not parse, normalize, nest, or format it again.\n* Use surrounding language and token boundaries to identify each complete business entity name or identifier span, including request, file, integration, invoice, document, and reference names or codes.\n* Preserve each such span exactly, even when a component resembles a date, amount, or currency. Never format a substring within it or within a mixed alphanumeric token. Underscores and hyphens may be identifier characters; separators alone do not establish value meaning.\n* Protect only the entity or identifier span; independent values elsewhere remain eligible.\n* Preserve existing HTML tags and their attributes.\n\n2. Classify\n\n* Outside protected spans, format only a whole candidate that context and token boundaries unambiguously identify as an actual value. If uncertain, leave it unchanged.\n* A monetary value requires both a standalone amount and an explicit currency indicator: either a currency code or a standard currency symbol. Do not format an amount without a currency indicator or a currency indicator without an amount.\n* Never interpret a value with a `%` sign, including a decimal percentage, as monetary.\n* A date or date reference requires a complete, valid, unambiguous day, month, and year. Do not format a month alone, year alone, or month and year.\n\n3. Transform\n\n* Replace an eligible monetary value with the literal token `{amount:<value>,currency:<CODE>}`. Convert a currency symbol to its ISO currency code. In `<value>`, omit the currency symbol and digit-group separators while preserving the sign and decimal precision.\n* Replace an eligible date with the literal token `{date:<YYYY-MM-DD>}`.\n* Apply any supplied `formatHints` strictly.\n* If a hint requests bold formatting, wrap only the complete formatted amount or date token with `<B>...</B>`, at most once.\n\n4. Preserve and output\n\n* Apart from required token replacement and hint markup, preserve all text, punctuation, sentences, HTML, JSON properties, and structure. Do not add or remove sentences or introduce data. Keep `sequence` unchanged.\n* Silently verify these rules and valid JSON, then output only the JSON object.\n"
+                    }
+                  ],
+                  "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"sequence\": {\n            \"type\": \"number\"\n        },\n        \"content\": {\n            \"type\": \"array\",\n            \"items\": {\n                \"type\": \"string\"\n            }\n        },\n        \"type\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+                  "type": "LLM"
+                },
+                {
+                  "metadata": {
+                    "errorNodeId": "1765961014063",
+                    "name": "Text Format Code",
+                    "returnType": "object",
+                    "sourceCode": "const input = $context.$nodes.FIN_AP_LOOP_SUMMARY_ITEMS.FIN_AP_LLM_TEXT_FORMAT.$output\n\nlet inputText = input.content.join(\" \");\nif(inputText.startsWith('[') && inputText.endsWith(']')){\ninputText = inputText.slice(1,-1)\n}\n\n\nvar output = {\n  type: input.type,\n  sequence: input.sequence,\n  content: inputText\n};\n\nreturn output;"
+                  },
+                  "outcomes": {
+                    "success": "end_1765961201966"
+                  },
+                  "code": "FIN_AP_CODE_TEXT_FORMAT_CODE",
+                  "id": "1765961345304",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "errorNodeId": "1765961014063",
+                    "name": "List Generator",
+                    "returnType": "array",
+                    "sourceCode": "return $context.$nodes.FIN_AP_LOOP_SUMMARY_ITEMS.$currentItem"
+                  },
+                  "outcomes": {
+                    "success": "end_1765961201966"
+                  },
+                  "code": "FIN_AP_CODE_LIST_GENERATOR",
+                  "id": "1765961440878",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "errorNodeId": "1765961014063",
+                    "name": "Action Generator",
+                    "returnType": "object",
+                    "sourceCode": "return $context.$nodes.FIN_AP_LOOP_SUMMARY_ITEMS.$currentItem"
+                  },
+                  "outcomes": {
+                    "success": "end_1765961201966"
+                  },
+                  "code": "FIN_AP_CODE_ACTION_GENERATOR",
+                  "id": "1765961494452",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "errorNodeId": "1765961014063",
+                    "name": "Analyze Columns",
+                    "returnType": "object",
+                    "sourceCode": "let content = $context.$nodes.FIN_AP_LOOP_SUMMARY_ITEMS.$currentItem\nlet disableAmountIdentification = content?.disableAmountIdentification ?? false\n\nlet jsonArray = content['content'] \nlet columnMetadata = []\nlet enableAmountFieldIdentification = !disableAmountIdentification // response formatter to identify amount fields in table\nlet amountRelations = {}\nlet columnNames = []\nlet columnKeys = [...new Set(jsonArray.flatMap(obj => Object.keys(obj)))]\nif(!content['columnOrder'] || \n    (typeof(content['columnOrder']) === \"object\" && content['columnOrder'].length === 0 )){\n    // input does not have column order\n    columnNames = columnKeys;\n}else{\n    // input has columnOrder\n    let columnOrder = content['columnOrder'];\n    let columnKeyMap = new Map(columnKeys.map(key => [key.toLowerCase(),key]));\n    //preserves the column order mentioned, but gets the column keys from jsonArray.\n    //the agent specified column order could have different casing from jsonArray keys\n    columnNames = columnOrder.map(col => columnKeyMap.get(col.toLowerCase())).filter(Boolean);\n    \n}\ncolumnKeys.forEach(key => {\n  if (!columnNames.some(name => name.toLowerCase() === key.toLowerCase())) {\n    columnNames.push(key);\n  }\n});\nconst moneyRegex = /^\\s*([+-]?\\d+(?:\\.\\d+)?)\\s+([A-Z]{3})\\s*$/;\n\nlet amountFields = []\nlet currencyFields = []\n\nif(enableAmountFieldIdentification){\n    amountFields = columnNames.filter(col => col.toLowerCase().includes(\"amount\"));\n    currencyFields = columnNames.filter(col => col.toLowerCase().includes(\"currency\"));\n\n    if(currencyFields.length>0){\n        for(const i in amountFields){\n            amountRelations[amountFields[i]] = currencyFields[i];\n        }\n    }else{\n    for(const i in amountFields){\n            amountRelations[amountFields[i]] = amountFields[i];\n        }\n    }\n}\n\nfor(const column of columnNames){\n    let meta = {}\n    let fieldName = column;\n    meta[\"field\"] = fieldName;\n    //--------------Header Derivation-----------------------\n    \n    // Extract trailing parenthesis and acronym/percentage\n    let headerMainPart = fieldName.trim();\n    let headerParenPart = \"\";\n    let headerTrailingPart = \"\";\n\n    // Match (anything) at the end (preserved as-is), plus trailing acronym/percent\n    let headerParenMatch = headerMainPart.match(/^(.*?)(\\([^\\)]*\\))(\\s+[A-Z%]+)?$/);\n    if (headerParenMatch) {\n        headerMainPart    = headerParenMatch[1];\n        headerParenPart   = headerParenMatch[2];\n        headerTrailingPart= headerParenMatch[3] || \"\";\n    } else {\n        let headerTrailingMatch = headerMainPart.match(/^(.*?)(\\s+[A-Z%]+)?$/);\n        if (headerTrailingMatch) {\n            headerMainPart     = headerTrailingMatch[1];\n            headerTrailingPart = headerTrailingMatch[2] || \"\";\n        }\n    }\n\n    // Custom word splitting to avoid touching punctuation\n    let headerMain = headerMainPart\n        .replace(/([a-z])([A-Z])/g, \"$1 $2\") // camelCase to space\n        .replace(/_/g, \" \")\n        .trim()\n        // Split into words, but include punctuation as part of word for testing, then handle separately\n        .split(/(\\s+)/)\n        .map(word => {\n            // If the word is all whitespace, return as is\n            if (/^\\s+$/.test(word)) return word;\n            // Separate leading/trailing punctuation (except inside parenthesis which is handled elsewhere)\n            let match = word.match(/^([^\\w]*)(\\w+)([^\\w]*)$/);\n            if (!match) return word; // Just in case, return as is\n            let [, lead, core, trail] = match;\n            // If the core is all uppercase and more than one letter, preserve original\n            if (core.length > 1 && /^[A-Z0-9]+$/.test(core)) return lead + core + trail;\n            // Otherwise, capitalize\n            return lead + core.charAt(0).toUpperCase() + core.slice(1).toLowerCase() + trail;\n        })\n        .join(\"\");\n\n    let headerResult = (headerMain + (headerParenPart ? headerParenPart : \"\") + (headerTrailingPart ? headerTrailingPart : \"\")).trim();\n     \n    meta['headerText'] = headerResult.replace(/ {2,}/g, \" \");\n\n    //----------------Header Derivation End\n    let columnData = jsonArray.map(obj => obj[column])\n    columnData = columnData.filter(dat => dat !== null && dat !== undefined && dat !== \"\");\n    const isAmountField = Object.prototype.hasOwnProperty.call(amountRelations,column);\n    columnMetadata.push(meta);\n\n    if(isAmountField){\n        meta['valueType'] = 'amount'\n        meta['currencyField'] = amountRelations[column]\n        continue;\n    }\n    if(columnData.length===0){\n        meta['valueType'] = \"string\";\n        continue;\n    } \n    let allNumbers = columnData.every(dat => \n        (typeof dat === \"number\" && Number.isFinite(dat)) || (typeof dat === \"string\" && dat.trim() !== \"\" && !isNaN(dat))\n    )\n    if(allNumbers){\n        meta['valueType'] = \"number\";\n        continue;\n    }\n    let linkBoolean = columnData.some(dat => typeof dat === \"string\" && (dat.startsWith(\"{deeplink\") || dat.startsWith(\"{relativeLink\")))\n    if(linkBoolean){\n        meta['valueType'] = \"link\";\n        continue;\n    }\n\n    let allMonetary = columnData.every(element => {\n        const str = String(element).trim().toUpperCase();\n        const matches = str.match(moneyRegex);\n        if(!matches) return false;\n        return true\n    }\n    )\n    if(allMonetary && enableAmountFieldIdentification){\n        meta['valueType'] = \"amount\";\n        meta['currencyField'] = column\n        continue;\n    }\n    \n    let dateBoolean = columnData.every(dat => {\n        let dateRegex = /^(\\d{4}-\\d{2}-\\d{2}|\\d{2}-\\d{2}-\\d{4})$/;\n        if (typeof dat !== \"string\") return false;\n        if(!dateRegex.test(dat)) return false;\n        let d = new Date(dat);\n        return !isNaN(d.getTime());\n    })\n    if(dateBoolean){\n        meta['valueType'] = \"date\";\n        continue;\n    }\n    meta['valueType'] = \"string\";\n}\n\nlet tableMetadata = {\n    heading: content['heading'] ? content['heading']: '',\n    primaryKey: columnNames[0],\n    columns: columnMetadata\n}\n\nreturn tableMetadata"
+                  },
+                  "outcomes": {
+                    "success": "1769508373588"
+                  },
+                  "code": "FIN_AP_CODE_ANALYZE_COLUMNS",
+                  "id": "1769508344589",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "errorNodeId": "1765961014063",
+                    "name": "Calculate FormatHint",
+                    "returnType": "boolean",
+                    "sourceCode": "if ( $context.$nodes.FIN_AP_LOOP_SUMMARY_ITEMS.$currentItem['formatHint'] && $context.$nodes.FIN_AP_LOOP_SUMMARY_ITEMS.$currentItem['formatHint'].trim() ){\nreturn true;\n} \nreturn false;"
+                  },
+                  "outcomes": {
+                    "success": "1769508421686"
+                  },
+                  "code": "FIN_AP_CODE_CALCULATE_FORMATHINT",
+                  "id": "1769508373588",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "errorNodeId": "1765961014063",
+                    "name": "Table Code Formatter",
+                    "returnType": "array",
+                    "sourceCode": "var input = $context.$nodes.FIN_AP_LOOP_SUMMARY_ITEMS.$currentItem ; \nlet formatHintExists = $context.$nodes.FIN_AP_LOOP_SUMMARY_ITEMS.FIN_AP_CODE_CALCULATE_FORMATHINT.$output.result \nlet meta = $context.$nodes.FIN_AP_LOOP_SUMMARY_ITEMS.FIN_AP_CODE_GENERATE_TABLE_FORMAT.$output.result; \n\nvar rawRows = input.content;\nvar columnsMeta = meta.columns;\nvar primaryKey = meta.primaryKey;\n\nvar formattedRows = [];\nvar i = 0;\nvar currencyField = \"\";\nlet sameField = false;   // currency and amount in same field\nlet sameCurrencyFields = new Set(   //Fields that have both amount and currency\n  columnsMeta\n  .filter(\n    (column) => \n      column.valueType === \"amount\" &&\n    ( !column.currencyField || column.currencyField === \"\" || column.currencyField === column.field)\n  )\n  .map((column) => column.field)\n);\nlet currencyFields = new Set(\n  columnsMeta\n  .filter(\n    (column) => \n      column.valueType === \"amount\" &&\n    column.currencyField &&\n    column.currencyField !== column.field\n  )\n  .map((column) => column.currencyField)\n);\nconst moneyRegex = /^\\s*([+-]?\\d+(?:\\.\\d+)?)\\s+([A-Z]{3})\\s*$/;\n\nwhile (i < rawRows.length) {\n  var row = rawRows[i];\n  var outRow = {};\n  var j = 0;\n\n  while (j < columnsMeta.length) {\n    var column = columnsMeta[j];\n    var field = column.field;\n    var value = row[field];\n    if(currencyFields.has(field)){\n        j++;\n        continue;\n    }\n\n    if (column.valueType === \"amount\") {\n      var currency = row[column.currencyField];\n      \n      if(sameCurrencyFields.has(field)){\n        //when currency and amount are present in same field\n        value = (typeof value === \"number\") ? String(value) : value;\n        const cleanedValue = String(value ?? \"\").replace(/,/g, \"\").trim();\n        const matches = cleanedValue.match(moneyRegex);\n        if(!matches){\n          let amount = cleanedValue\n            outRow[field] = amount\n            if(currencyFields.size==1){\n                let currencyFieldName = [...currencyFields][0]\n                let currencyFieldValue = row[currencyFieldName]\n                outRow[field] =\n            \"{amount:\" + Number(amount).toFixed(2) + \",currency:\" + currencyFieldValue + \"}\";\n            }\n        }else{\n            let amount = Number(matches[1]).toFixed(2)\n            currency = matches[2];\n            if(currency===undefined){\n              outRow[field] = amount;\n            }else{\n              outRow[field] =\n            \"{amount:\" + amount + \",currency:\" + currency + \"}\";\n            }\n            \n        }\n\n      }else{\n        if(currency===undefined){\n          outRow[field] =Number(value).toFixed(2);\n        }else{\n          outRow[field] =\n        \"{amount:\" + Number(value).toFixed(2) + \",currency:\" + currency + \"}\";\n        }\n        \n      }\n      \n    } else if (column.valueType === \"date\") {\n        let dateValue;\n        if(!value || !value.toString().trim()){\n            dateValue = \"\";\n        }else{\n            dateValue = \"{date:\" + value + \"}\" \n        }\n      outRow[field] = dateValue;\n    } else {\n      let stringValue = typeof value === \"object\" ? '' : value;\n      outRow[field] = String(stringValue);\n    }\n\n    j++;\n  }\n  \n  for(currencyField of currencyFields){\n    delete outRow[currencyField]\n  }\n\n  formattedRows.push(outRow);\n  i++;\n}\n\nvar columns = [];\nvar k = 0;\n\n\nwhile (k < columnsMeta.length) {\n  var colMeta = columnsMeta[k];\n  var template = \"\";\n  if(currencyFields.has(colMeta.field)){\n    k++;\n    continue;\n  }\n\n  if (colMeta.valueType === \"amount\") {\n    template = \"monetaryTemplate\";\n    currencyField = colMeta.currencyField;\n  } else if (colMeta.valueType === \"date\") {\n    template = \"dateTemplate\";\n  } else if (colMeta.valueType === \"link\") {\n    template = \"deepLinkTemplate\";\n  }\n\n  columns.push({\n    headerText: colMeta.headerText,\n    field: colMeta.field,\n    id: colMeta.field,\n    resizable: \"enabled\",\n    className: \"\",\n    template: template\n  });\n\n  k++;\n}\n\n\n\nvar output = {\n  display_type: \"table\",\n  display_sequence: input.sequence,\n  heading: meta.heading,\n  rows: {\n    items: formattedRows\n  },\n  columns: {\n    items: columns\n  },\n  keyAttributes: {\n    items: [primaryKey]\n  },\n  accessibility: {\n    \"aria-label\": meta.ariaLabel,\n    \"row.accessible-row-header\": primaryKey\n  }\n};\n\nif( 'contextData' in input){\n output['contextData'] = input.contextData\n}\n\n\n\nreturn output;"
+                  },
+                  "outcomes": {
+                    "success": "end_1765961201966"
+                  },
+                  "code": "FIN_AP_CODE_TABLE_FORMATTER",
+                  "id": "1769508395005",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "errorNodeId": "1765961014063",
+                    "name": "Check FormatHint"
+                  },
+                  "outcomes": {
+                    "true": "1769508448899",
+                    "false": "add_false_1769508421686"
+                  },
+                  "code": "FIN_AP_IF_CONDITION_CHECK_FORMATHINT",
+                  "convergenceTargetId": "1769508395005",
+                  "id": "1769508421686",
+                  "inputs": [
+                    {
+                      "id": "1769508421688_1",
+                      "name": "condition",
+                      "type": "string",
+                      "value": "{{$context.$nodes.FIN_AP_LOOP_SUMMARY_ITEMS.FIN_AP_CODE_CALCULATE_FORMATHINT.$output.result}}"
+                    }
+                  ],
+                  "type": "CONDITION"
+                },
+                {
+                  "metadata": {
+                    "name": "Add (False Branch)",
+                    "description": "Add node for false branch"
+                  },
+                  "outcomes": {
+                    "success": "1770100002823"
+                  },
+                  "id": "add_false_1769508421686",
+                  "type": "ADD"
+                },
+                {
+                  "metadata": {
+                    "modelConfiguration": {
+                      "modelProperties": {
+                        "k": 0,
+                        "max_tokens": 32000,
+                        "p": 0.25
+                      },
+                      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+                      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+                      "modelName": "GPT OSS 120B (Basic)",
+                      "provider": "CERT_BASIC"
+                    },
+                    "errorNodeId": "1765961014063",
+                    "name": "Format Processor"
+                  },
+                  "outcomes": {
+                    "success": "1770100002823"
+                  },
+                  "code": "FIN_AP_LLM_TABLE_FORMAT_PROCESSOR",
+                  "id": "1769508448899",
+                  "inputs": [
+                    {
+                      "id": "1769508448901_1",
+                      "name": "prompt",
+                      "type": "string",
+                      "value": "You are tasked to modify the table metadata based on the hints provided\n\nmetadata: {{$context.$nodes.FIN_AP_LOOP_SUMMARY_ITEMS.FIN_AP_CODE_ANALYZE_COLUMNS.$output.result}} \nhints: {{$context.$nodes.FIN_AP_LOOP_SUMMARY_ITEMS.$currentItem['formatHint']}} \n\n*** Instructions to follow\n- For each column, the value of field in metadata should not be modified. Only headerText and valueType can be modified\n- If the hint mentions the type of a column, only change the valueType to one of the allowed values.\n- Possible values for valueType are 'string | number | amount | date | link'.\n\n\nModify the json as per the hints and give modified JSON as response\nDo not add any new attributes other than the ones in original metadata, only modify the content that already is available\n\nModify the metadata JSON according to the hints and return ONLY valid JSON.\n\nSTRICT JSON OUTPUT RULES:\n- Output must be a valid JSON object.\n- Use double quotes for all object keys and string values.\n- Use colons, not equals signs.\n- Use square brackets only for arrays.\n- Do not include markdown, code fences, comments, explanations, or escaped newline text.\n- Do not add any new attributes other than attributes already present in the original metadata.\n- Only modify existing headerText and valueType values.\n- Do not modify field values.\n- Before returning, verify that the output can be parsed by JSON.parse()."
+                    }
+                  ],
+                  "type": "LLM"
+                },
+                {
+                  "metadata": {
+                    "errorNodeId": "1765961014063",
+                    "name": "Generate Table Format",
+                    "returnType": "object",
+                    "sourceCode": "let formatHintExists = $context.$nodes.FIN_AP_LOOP_SUMMARY_ITEMS.FIN_AP_CODE_CALCULATE_FORMATHINT.$output.result \nlet meta;\nif(formatHintExists){\nmeta = $context.$nodes.FIN_AP_LOOP_SUMMARY_ITEMS.FIN_AP_LLM_TABLE_FORMAT_PROCESSOR.$output \n}else{\nmeta = $context.$nodes.FIN_AP_LOOP_SUMMARY_ITEMS.FIN_AP_CODE_ANALYZE_COLUMNS.$output.result \nreturn meta;\n}\n\n\nlet columns = meta['columns']\n\nfor(let column of columns){\nif(column['valueType'] === 'amount'){\nif( !Object.keys(column).includes('currencyField') ){\ncolumn['currencyField'] = column['field'];\n}\n}\n\n \n}\n\nmeta['columns'] = columns\nreturn meta"
+                  },
+                  "outcomes": {
+                    "success": "1769508395005"
+                  },
+                  "code": "FIN_AP_CODE_GENERATE_TABLE_FORMAT",
+                  "convergenceTargetId": "1769508395005",
+                  "id": "1770100002823",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                }
+              ],
+              "rootNode": "start_1765961201966"
+            },
+            "errorNodeId": "1765961014063",
+            "loopType": "PARALLEL",
+            "name": "LOOP"
+          },
+          "outcomes": {
+            "success": "1765961537380"
+          },
+          "code": "FIN_AP_LOOP_SUMMARY_ITEMS",
+          "convergenceTargetId": "1769690243100",
+          "id": "1765961201966",
+          "inputs": [
+            {
+              "id": "1765961201969_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.summarizeData}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1765961014063",
+            "name": "Generate Summary",
+            "returnType": "object",
+            "sourceCode": "var raw = $context.$nodes.FIN_AP_LOOP_SUMMARY_ITEMS.$output;\n\nvar parsed = [];\nvar i = 0;\n\nwhile (i < raw.length) {\n  var item = raw[i];\n  var obj = null;\n\n  try {\n    obj = typeof item === \"string\" ? JSON.parse(item) : item;\n  } catch (e) {\n    i++;\n    continue;\n  }\n\n  if (obj && obj.result && Object.keys(obj.result).length > 0) {\n    parsed.push(obj);\n  }\n\n  i++;\n}\n\ni = 0;\nvar j = 0;\nvar temp;\n\nwhile (i < parsed.length) {\n  j = i + 1;\n  while (j < parsed.length) {\n    var s1 = parsed[i].result.sequence || parsed[i].result.display_sequence || 0;\n    var s2 = parsed[j].result.sequence || parsed[j].result.display_sequence || 0;\n\n    if (s1 > s2) {\n      temp = parsed[i];\n      parsed[i] = parsed[j];\n      parsed[j] = temp;\n    }\n    j++;\n  }\n  i++;\n}\n\nvar agentResponse = [];\ni = 0;\n\nwhile (i < parsed.length) {\n  var res = parsed[i].result;\n  var type = res.type ? res.type : res.display_type;\n\n  if (!type) {\n    i++;\n    continue;\n  }\n\n  if (type === \"text\") {\n    agentResponse.push({\n      display_type: \"text\",\n      display_sequence: res.sequence,\n      text: res.content\n    });\n  }\n\n  if (type === \"table\") {\n   var tableData = {\n      display_type: \"table\",\n      display_sequence: res.display_sequence,\n      heading: res.heading,\n      rows: res.rows,\n      columns: res.columns,\n      keyAttributes: res.keyAttributes,\n      accessibility: res.accessibility\n    }\n    if('contextData' in res){\n         tableData.contextData = res.contextData\n    }\n    agentResponse.push(tableData);\n  }\n\n  if (type === \"list\") {\n    var listItems = [];\n    var k = 0;\n\n    while (k < res.content.length) {\n      listItems.push({\n        id: String(k + 1),\n        Default: res.content[k],\n        value: res.content[k]\n      });\n      k++;\n    }\n\n    agentResponse.push({\n      display_type: \"list\",\n      display_sequence: res.sequence,\n      header: res.heading,\n      fields: { items: listItems },\n      selection_mode: \"none\",\n      keyAttributes: { items: [\"id\"] },\n      accessibility: { \"aria-label\": res.heading }\n    });\n  }\n\n  if (type === \"actions\") {\n    agentResponse.push({\n      display_type: \"action\",\n      display_sequence: res.sequence,\n      recommendations: {\n        items: res.content\n      }\n    });\n  }\n\n  i++;\n}\n\n\n\nvar output = {\n  agent:  $context.$triggers.REST.$input.agentName ,\n  schema_version: \"1\",\n  timestamp: $context.$system.$currentDateTime ,\n  agent_response: agentResponse\n};\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1769763348823"
+          },
+          "code": "FIN_AP_CODE_GENERATE_SUMMARY",
+          "convergenceTargetId": "1769690243100",
+          "id": "1765961537380",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check Text Only"
+          },
+          "outcomes": {
+            "true": "1769690301508",
+            "false": "add_false_1769690243100"
+          },
+          "code": "FIN_AP_IF_CONDITION_CHECK_TEXT_ONLY",
+          "convergenceTargetId": "1765961201966",
+          "id": "1769690243100",
+          "inputs": [
+            {
+              "id": "1769690243101_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{typeof $context.$triggers.REST.$input.summarizeData === 'string'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "errorNodeId": "1765961014063",
+            "name": "Text Only Format"
+          },
+          "outcomes": {
+            "success": "1769690418471"
+          },
+          "code": "FIN_AP_LLM_TEXT_ONLY_FORMAT",
+          "convergenceTargetId": "1769690284323",
+          "id": "1769690301508",
+          "inputs": [
+            {
+              "id": "1769690301510_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Format the text content by following the instructions and return the modified text\n\nContent : {{$context.$triggers.REST.$input.summarizeData}} \n\n\n*** Instructions \nFor text in `content', apply formatting as instructed below\n\n* Detect monetary amounts and replace them with `{amount:<value>,currency:<CODE>}`.\n* Detect dates or date references and replace them with date format `{date:<YYYY-MM-DD>}`. \n* Replacement to date format should only be done when we have proper date with date, month and year. If only month and/or year is only present, do not use date format\n\n\nDo not add or remove sentences.\nDo not introduce new data. Only do the formatting as instructed"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"modifiedText\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1765961014063",
+            "name": "Generate Text Only Components",
+            "returnType": "object",
+            "sourceCode": "let displayText = $context.$nodes.FIN_AP_LLM_TEXT_ONLY_FORMAT.$output.modifiedText\n\nif( $context.$triggers.REST.$input.summarizeData.trim().length === 0){\ndisplayText = \"The query cannot be processed right now, please try again later\"\n} \n\nlet textComponent = {\n      \"display_type\": \"text\",\n      \"display_sequence\": 1,\n      \"text\":  displayText\n}\n\n\nlet agentResponse = [textComponent]\n\nlet agentSummary = {}\n\nagentSummary['agent'] = $context.$triggers.REST.$input.agentName \n\n  agentSummary['schema_version']= \"1\"\n  agentSummary['timestamp']= $context.$system.$currentDateTime \n\nagentSummary['agent_response'] = agentResponse\n\n\n\nreturn agentSummary"
+          },
+          "outcomes": {
+            "success": "1772787338547"
+          },
+          "code": "FIN_AP_CODE_GENERATE_TEXT_ONLY_COMPONENTS",
+          "convergenceTargetId": "1769690284323",
+          "id": "1769690418471",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1765961201966"
+          },
+          "id": "add_false_1769690243100",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1765961014063",
+            "name": "Return Summary"
+          },
+          "outcomes": {},
+          "code": "FIN_AP_RETURN_FINAL_SUMMARY",
+          "convergenceTargetId": "end",
+          "id": "1769763348823",
+          "inputs": [
+            {
+              "id": "1769763348824_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_GENERATE_SUMMARY.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Text Only Format"
+          },
+          "outcomes": {},
+          "code": "FIN_AP_RETURN_TEXT_ONLY_FORMAT",
+          "convergenceTargetId": "1765961201966",
+          "id": "1772787338547",
+          "inputs": [
+            {
+              "id": "1772787338548_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_GENERATE_TEXT_ONLY_COMPONENTS.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.25
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "modelName": "GPT OSS 120B (Basic)",
+      "provider": "CERT_BASIC"
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1767697314218",
+            "name": "userquery",
+            "type": "string"
+          },
+          {
+            "id": "1767345495016",
+            "name": "agentName",
+            "type": "string"
+          },
+          {
+            "id": "1765960780327",
+            "name": "useSummarizationPrompt",
+            "type": "boolean"
+          },
+          {
+            "id": "1765960744325",
+            "name": "summarizeData",
+            "type": "array",
+            "typeSpecification": "object"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "FIN",
+  "product": "PAYABLES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"9\""
+  }
+}

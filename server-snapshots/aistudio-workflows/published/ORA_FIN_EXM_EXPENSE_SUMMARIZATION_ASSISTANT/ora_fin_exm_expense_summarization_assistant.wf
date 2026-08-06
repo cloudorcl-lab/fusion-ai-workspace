@@ -1,0 +1,470 @@
+{
+  "workflowId": "100002355227088",
+  "workflowCode": "ORA_FIN_EXM_EXPENSE_SUMMARIZATION_ASSISTANT",
+  "name": "Expense Summarization Assistant",
+  "description": "This agent aggregates expense validation results, prediction outcomes, and policy actions, classifies them into open issues, acknowledgements, failures, defaults, and recommendations, merges overlapping user actions, determines whether user input is required, and generates a structured summary and call-to-action for downstream notification and response handling.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1769742917521"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Verify Output Channel"
+          },
+          "outcomes": {
+            "true": "1772490157769",
+            "false": "1769188483051"
+          },
+          "code": "VERIFY_OUTPUT_CHANNEL",
+          "convergenceTargetId": "end",
+          "id": "1769188307333",
+          "inputs": [
+            {
+              "id": "1769188307334_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.channel==\"Email\" || $context.$triggers.REST.$input.channel ==\"EMAIL\" || $context.$triggers.REST.$input.channel == \"B2B_CC\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Return Summary"
+          },
+          "outcomes": {},
+          "code": "RETURN_SUMMARY",
+          "convergenceTargetId": "end",
+          "id": "1769188483051",
+          "inputs": [
+            {
+              "id": "1769188483052_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.SUMMARIZATIONOUTPUT.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Record System Summary",
+            "returnType": "object",
+            "sourceCode": "const partnerExpenseItems = $context.$nodes.GET_PREVIOUS_SUMMARIES.$output?.items || [];\nconst partnerExpenseSummary = partnerExpenseItems.reduce((summary, item) => {\n  if (item?.sourceTypeCode === \"RECEIPT\") summary.receipt = item;\n  if (item?.sourceTypeCode === \"MESSAGE\" ) summary.message = item;\n  return summary;\n}, { receipt: null, message: null });\n\nconst partnerExpenseMessage = partnerExpenseSummary.message || partnerExpenseItems[0] || {};\nconst etag = partnerExpenseMessage?.$context?.etag || \"1\";\nconst rawSystemInformation = partnerExpenseMessage?.systemInformation;\nlet summary = rawSystemInformation ? JSON.parse(atob(rawSystemInformation)) : {};\nconst summarizedData = $context.$nodes.SUMMARIZATIONOUTPUT.$output.result.summarizedData || {};\n\nsummary.systemSummary = {\n  openIssues: summarizedData?.openIssues?.summary ?? \"\",\n  recommendations: summarizedData?.recommendations?.summary ?? \"\",\n  ack: summarizedData?.acknowledgements?.summary ?? \"\",\n  failures: summarizedData?.failures?.summary ?? \"\",\n  defaults: summarizedData?.defaults?.summary ?? \"\"\n};\n\nsummary = btoa(JSON.stringify(summary));\n\nconst predictionItems = $context.$nodes.GETEXPENSEPREDICTIONS.$output?.items || [];\nconst recommendations = predictionItems.filter(\n  (item) => item?.predictionTypeCode === \"ORA_RECOMMENDATION\"\n);\nconst actionableExpenseErrorCount = Number(summarizedData?.actionableExpenseErrorCount || 0);\n\nlet outcomeStatus = \"ORA_EXPENSE_CLEAN\";\nif (actionableExpenseErrorCount > 0 || recommendations.length > 0) {\n  outcomeStatus = \"ORA_EXPENSE_REQUIRED_USER_INPUT\";\n}\n\nreturn {updatedSummary: summary, etag, partnerExpenseId: $context.$triggers.REST.$input.partnerExpenseId, outcomeStatus};"
+          },
+          "outcomes": {
+            "success": "1780505989980"
+          },
+          "code": "PREPARE_RECORD_SYSTEM_SUMMARY",
+          "id": "1769478448347",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_PARTNEREXPENSE",
+            "functionName": "Patch_Message",
+            "processJson": true,
+            "name": "Record System Summary"
+          },
+          "outcomes": {
+            "success": "1769188307333"
+          },
+          "code": "RECORD_SYSTEM_SUMMARY",
+          "id": "1772489970456",
+          "inputs": [
+            {
+              "id": "1784479055348_1",
+              "name": "partnerExpenseId",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_RECORD_SYSTEM_SUMMARY.$output.result.partnerExpenseId}}"
+            },
+            {
+              "id": "1784479055348_2",
+              "name": "etag",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_RECORD_SYSTEM_SUMMARY.$output.result.etag}}"
+            },
+            {
+              "id": "1784479055349_3",
+              "name": "sourceTypeCode",
+              "type": "string",
+              "value": "{{$context.$nodes.SETSOURCETYPECODE.$output.result}}"
+            },
+            {
+              "id": "1784479055349_4",
+              "name": "updatedSummary",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_RECORD_SYSTEM_SUMMARY.$output.result.updatedSummary}}"
+            },
+            {
+              "id": "1784479055350_5",
+              "name": "outcomeStatus",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_RECORD_SYSTEM_SUMMARY.$output.result.outcomeStatus}}"
+            },
+            {
+              "id": "1784479055351_6",
+              "name": "messageIdentifier",
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Email Notification Assistant",
+            "workflowCode": "ORA_FIN_EXM_EXPENSE_EMAIL_NOTIFICATION_ASSISTANT"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "EMAIL_NOTIFICATION_ASSISTANT",
+          "id": "1772490157769",
+          "inputs": [
+            {
+              "id": "1780502898768_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$nodes.SUMMARIZATIONOUTPUT.$output.result}}"
+            },
+            {
+              "id": "1780502898769_2",
+              "name": "channel",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.channel}}"
+            },
+            {
+              "id": "1780502898770_3",
+              "name": "partnerExpenseId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.partnerExpenseId}}"
+            },
+            {
+              "id": "1780502898772_4",
+              "name": "summarizedData",
+              "type": "object",
+              "value": "{{$context.$nodes.SUMMARIZATIONOUTPUT.$output.result.summarizedData}}"
+            },
+            {
+              "id": "1780502898773_5",
+              "name": "replyFlow",
+              "type": "boolean",
+              "value": "{{$context.$triggers.REST.$input.replyFlow}}"
+            },
+            {
+              "id": "1780502898775_6",
+              "name": "expenseId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.expenseId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "generatePayloadGetMessages",
+            "returnType": "object",
+            "sourceCode": "let channel = $context.$triggers.REST.$input.channel;\nlet partnerExpenseId = $context.$triggers.REST.$input.partnerExpenseId;\n\nlet filter;\nlet subTypes;\n\nif (channel === \"B2B_CC\") {\n  filter = `(sourceTypeCode='MESSAGE' and id='${partnerExpenseId}') or (sourceTypeCode='B2B_CC' and id='${partnerExpenseId}')`;\n\n  subTypes = {\n    \"MESSAGE\": {\n      \"fields\": [\n        \"systemInformation\",\n        \"partnerExpenseOutcome\",\n        \"outcomeSubReason\",\n        \"statusCode\",\n        \"stageStatus\"\n      ]\n    },\n    \"B2B_CC\": {\n      \"fields\": [\n        \"creditCardTransactionIdentifier\",\n        \"creditCardNetworkReferenceNumber\",\n        \"cardIdentifier\",\n        \"companyIdentifier\",\n        \"requestIdentifier\",\n        \"systemInformation\"\n      ]\n    }\n  };\n} else {\n  filter = `(sourceTypeCode='MESSAGE' and id='${partnerExpenseId}') or (sourceTypeCode='RECEIPT' and partnerExpenseReferenceId='${partnerExpenseId}')`;\n\n  subTypes = {\n    \"MESSAGE\": {\n      \"fields\": [\n        \"systemInformation\",\n        \"partnerExpenseOutcome\",\n        \"outcomeSubReason\",\n        \"statusCode\",\n        \"stageStatus\"\n      ]\n    },\n    \"RECEIPT\": {\n      \"fields\": [\n        \"receiptAmount\",\n        \"tipAmount\"\n      ],\n      \"accessors\": {\n        \"receiptCurrency\": {\n          \"fields\": [\"currencyCode\"]\n        },\n        \"businessUnit\": {\n          \"fields\": [\"name\"]\n        }\n      }\n    }\n  };\n}\n\nlet payload = {\n  \"fields\": [\n    \"id\",\n    \"partnerExpenseReferenceId\",\n    \"timeCreated\"\n  ],\n  \"accessors\": {\n    \"person\": {\n      \"fields\": [\"id\"]\n    }\n  },\n  \"collection\": {\n    \"filter\": filter,\n    \"sortBy\": [\n      { \"id\": \"desc\" }\n    ]\n  },\n  \"subTypes\": subTypes\n};\n\nreturn payload;\n"
+          },
+          "outcomes": {
+            "success": "1772489887761"
+          },
+          "code": "GENERATEPAYLOADGETMESSAGES",
+          "convergenceTargetId": "1773516770488",
+          "id": "1769742917521",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_PARTNEREXPENSE",
+            "functionName": "Get_Messages",
+            "name": "Get Previous Summaries"
+          },
+          "outcomes": {
+            "success": "1768258224003"
+          },
+          "code": "GET_PREVIOUS_SUMMARIES",
+          "convergenceTargetId": "1773516770488",
+          "id": "1772489887761",
+          "inputs": [
+            {
+              "id": "1772489917747_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.GENERATEPAYLOADGETMESSAGES.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EXPENSEPREDICTION",
+            "functionName": "listExpensePredictions",
+            "name": "getExpensePredictions"
+          },
+          "outcomes": {
+            "success": "1773525164414"
+          },
+          "code": "GETEXPENSEPREDICTIONS",
+          "convergenceTargetId": "1773516770488",
+          "id": "1768258224003",
+          "inputs": [
+            {
+              "id": "1769766269715_1",
+              "name": "partnerExpense",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.partnerExpenseId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "expenseExists"
+          },
+          "outcomes": {
+            "true": "1768258152627",
+            "false": "add_false_1773525164414"
+          },
+          "code": "EXPENSEEXISTS",
+          "convergenceTargetId": "1769478448347",
+          "id": "1773525164414",
+          "inputs": [
+            {
+              "id": "1773525164415_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.expenseId!==\"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1773525375834"
+          },
+          "id": "add_false_1773525164414",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EXPENSE",
+            "functionName": "getExpenseInfo",
+            "name": "getExpenseInfo"
+          },
+          "outcomes": {
+            "success": "1779435721229"
+          },
+          "code": "GETEXPENSEINFO",
+          "convergenceTargetId": "1773525194400",
+          "id": "1768258152627",
+          "inputs": [
+            {
+              "id": "1768386021892_1",
+              "name": "expenseId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.expenseId}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"expenseInfo\": {\n            \"type\": \"object\",\n            \"properties\": {}\n        }\n    }\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "summarizationOutput",
+            "returnType": "object",
+            "sourceCode": "const expenseData = $context.$nodes.GETEXPENSEINFO?.$output || {};\nconst itemizedExpenseItems =\n  expenseData?.itemizedExpenses?.items ||\n  expenseData?.itemizedExpenses ||\n  [];\nconst predictionItems = $context.$nodes.GETEXPENSEPREDICTIONS?.$output?.items || [];\nconst partnerExpenseItems = $context?.$nodes?.GET_PREVIOUS_SUMMARIES?.$output?.items || [];\nconst trigger = $context.$triggers?.REST?.$input || {};\nconst autoSubmissionEnabledFlag =\n  $context.$nodes.GET_AUTO_SUBMISSION_FLAG?.$output?.result?.autoSubmissionEnabledFlag || \"\";\nconst isSimplifiedExpense = $context.$triggers.REST.$input.isSimplifiedExpense;\n\nconst partnerExpenseSummary = partnerExpenseItems.reduce(\n  (summary, item) => {\n    if (item?.sourceTypeCode === \"RECEIPT\") summary.receipt = item;\n    if (item?.sourceTypeCode === \"MESSAGE\" ) summary.message = item;\n    return summary;\n  },\n  { receipt: null, message: null }\n);\n\nconst partnerExpenseReceipt = partnerExpenseSummary.receipt;\nconst partnerExpenseMessage = partnerExpenseSummary.message;\n\nconst VALIDATION_STATUS = {\n  TOUCHLESS_ERROR: \"ERROR\",\n  CLASSIC_ERROR: \"E\"\n};\n\nconst ERROR_VALIDATION_STATUS_CODES = new Set([\n  VALIDATION_STATUS.TOUCHLESS_ERROR,\n  VALIDATION_STATUS.CLASSIC_ERROR\n]);\n\nconst PENDING_CORPORATE_CARD_SOURCES = new Set([\n  \"CARD_AUTH\",\n  \"ORA_UBER\",\n  \"CORP_CARD\"\n]);\n\nconst FIELD_NAMES = {\n  ACTION: \"action\",\n  ATTENDEES: \"attendees\",\n  ACCOUNTS: \"accounts\",\n  CUSTOMER: \"customer\",\n  CUSTOMERS: \"customers\",\n  PROJECTS: \"projects\"\n};\n\nconst INTERNAL_ONLY_PREDICTION_FIELDS = new Set([\n  \"issimplifiedexpensetype\"\n]);\n\nconst FIELD_LABELS = {\n  PROJECT_AND_TASK: \"project and task\",\n  CUSTOMER_OR_PARTNER_ORG: \"Customer or Partner Organization (Type None if not applicable):\"\n};\n\nconst EXPENSE_ERROR_STRING_CODES = {\n  INSTANCE_JUSTIFICATION: \"EXM_SQ_V_RL_INST_JSTF\",\n  INSTANCE_PERSONAL_AMOUNT: \"EXM_SQ_V_RL_INST_E\",\n  DAILY_JUSTIFICATION: \"EXM_SQ_V_RL_DAILY_JSTF\",\n  DAILY_PERSONAL_AMOUNT: \"EXM_SQ_V_RL_DAILY_E\",\n  CORP_CARD_JUSTIFICATION: \"EXM_SQ_V_CCV_JSTF\",\n  CORP_CARD_PERSONAL_AMOUNT: \"EXM_SQ_V_CCV_E\",\n  FLIGHT_CLASS_JUSTIFICATION: \"EXM_SQ_V_FLT_CLASS_JSTF\",\n  RECEIPT_REQUIRED: \"EXM_SQ_RCPT_REQ\",\n  MISSING_REQUIRED_FIELD: \"EXM_REST_REQ_MISSING\"\n};\n\nconst SUPPORTED_EXPENSE_ERRORS_BY_ATTRIBUTE = {\n  description: true,\n  justification: true,\n  startdate: true,\n  enddate: true,\n  merchantname: true,\n  exchangerate: true,\n  location: true,\n  receiptamount: new Set([\n    EXPENSE_ERROR_STRING_CODES.INSTANCE_PERSONAL_AMOUNT,\n    EXPENSE_ERROR_STRING_CODES.DAILY_JUSTIFICATION,\n    EXPENSE_ERROR_STRING_CODES.DAILY_PERSONAL_AMOUNT,\n    EXPENSE_ERROR_STRING_CODES.INSTANCE_JUSTIFICATION,\n    EXPENSE_ERROR_STRING_CODES.CORP_CARD_JUSTIFICATION,\n    EXPENSE_ERROR_STRING_CODES.CORP_CARD_PERSONAL_AMOUNT\n  ]),\n  expensetype: true,\n  expensetypeid: true,\n  currencycode: true,\n  receiptcurrencycode: true,\n  expensesource: true,\n  locationid: true,\n  numberofattendees: true,\n  destinationfrom: true,\n  destinationto: true,\n  agencyname: true,\n  passengername: true,\n  ticketclasscode: true,\n  flightduration: true,\n  traveltype: true,\n  personalreceiptamount: true,\n  flightclassjustification: true,\n  ora_flex_projectscostcollection__info: true\n};\n\nconst CLASSIC_EXPENSE_ERRORS = {\n  \"EXM:::EXM_ATTENDEE_AMT_VALIDATN\": { needsAttention: true },\n  \"EXM:::EXM_ATTENDEE_EMPLOYEE_REQ\": { attribute: \"names and emails of the attendees\" },\n  \"EXM:::EXM_CMN_PERSONAL_AMOUNT\": { needsAttention: true },\n  \"EXM:::EXM_COMMUTE_DISTANCE_REQD\": { needsAttention: true },\n  \"EXM:::EXM_DUPLICATE_ERROR_REPORT\": { needsAttention: true },\n  \"EXM:::EXM_EREC_FUTURE_DATE_ERROR\": { needsAttention: true },\n  \"EXM:::EXM_ERECP_ADD_DISPUTED_TXN_ERR\": { needsAttention: true },\n  \"EXM:::EXM_ERECP_ATTENDEE_REQ\": { attribute: \"required attendee information\" },\n  \"EXM:::EXM_ERECP_CC_ALLOWANCE\": { limitType: \"allowance\", needsAttention: true },\n  \"EXM:::EXM_REQ_NONEMPLOYEE\": { attribute: \"names and emails of the non employee attendees\" },\n  \"FND:::FND_CMN_CMPLT_FLDS\": { useAttributeName: true },\n  \"EXM:::EXM_ERECP_CC_JUSTIFY\": { limitType: \"corporateCardJustification\" },\n  \"EXM:::EXM_ERECP_CC_TOLERANCE\": { needsAttention: true },\n  \"EXM:::EXM_ERECP_CON_RATE_ERR\": { needsAttention: true },\n  \"EXM:::EXM_ERECP_CON_RATE_WARN\": { needsAttention: true },\n  \"EXM:::EXM_ERECP_RECEIPT_JUSTIFY\": { limitType: \"missingReceiptJustification\" },\n  \"EXM:::EXM_ERECP_CON_RATE_JUSTIFY\": { limitType: \"conversionRateJustification\" },\n  \"EXM:::EXM_ERECP_CHANGE_TEMPLATE\": { needsAttention: true },\n  \"EXM:::EXM_ERECP_INVALID_ITEM_TOTAL\": { needsAttention: true },\n  \"EXM:::EXM_ERECP_INVALID_LOCATION\": { attribute: \"location\" },\n  \"EXM:::EXM_ERECP_INVALID_TAX_CODE\": { needsAttention: true },\n  \"EXM:::EXM_ERECP_ITEMIZATION_REQD\": { needsAttention: true },\n  \"EXM:::EXM_ERECP_MISSING_RECEIPT\": { needsAttention: true },\n  \"EXM:::EXM_ERECP_NULL_EXPENSE_TYPE\": { needsAttention: true },\n  \"EXM:::EXM_ERECP_POL_VIOLATE\": { needsAttention: true },\n  \"EXM:::EXM_ERECP_PROJ_TASK_REQD\": { attribute: FIELD_LABELS.PROJECT_AND_TASK },\n  \"EXM:::EXM_ERECP_UPDT_PARENT_NO_ITEM\": { needsAttention: true },\n  \"EXM:::EXM_ERECP_WRN_CON_RATE_ONE\": { needsAttention: true },\n  \"EXM:::EXM_ITEMIZATION_INCOMPLETE\": { needsAttention: true },\n  \"EXM:::EXM_ITEMIZED_ATTENDEE_AMT_VALI\": { needsAttention: true },\n  \"EXM:::EXM_JUST_REQ_CHILD_VIOLATN\": { needsAttention: true },\n  \"EXM:::EXM_LOCATION_INVALID\": { attribute: \"location\" },\n  \"EXM:::EXM_MISC_POL_MIN_NO_DAYS\": { needsAttention: true },\n  \"EXM:::EXM_POLICY_DAILY_LIM\": { limitType: \"daily\" },\n  \"EXM:::EXM_POLICY_DAILY_LIM_E\": { needsAttention: true },\n  \"EXM:::EXM_POLICY_LT_LIM\": { limitType: \"lifetime\" },\n  \"EXM:::EXM_POLICY_LT_LIM_E\": { needsAttention: true },\n  \"EXM:::EXM_POLICY_MONTHLY_LIM\": { limitType: \"monthly\" },\n  \"EXM:::EXM_POLICY_MONTHLY_LIM_E\": { needsAttention: true },\n  \"EXM:::EXM_POLICY_SINGLE_INST_LIM\": { limitType: \"single\" },\n  \"EXM:::EXM_POLICY_SINGLE_LIM_E\": { needsAttention: true },\n  \"EXM:::EXM_POLICY_YEARLY_LIM\": { limitType: \"yearly\" },\n  \"EXM:::EXM_POLICY_YEARLY_LIM_E\": { needsAttention: true },\n  \"EXM:::EXM_POL_ENT_ATTENDEE_REQ\": { needsAttention: true },\n  \"EXM:::EXM_POL_PREFERRED_AGENCY\": { needsAttention: true },\n  \"EXM:::EXM_POL_PREFERRED_AGENCY_E\": { needsAttention: true },\n  \"EXM:::EXM_POL_PREFERRED_MERCHANT\": { needsAttention: true },\n  \"EXM:::EXM_POL_PREFERRED_MERCHANT_E\": { needsAttention: true },\n  \"EXM:::EXM_PRIOR_EMPL_DATE\": { needsAttention: true },\n  \"EXM:::EXM_RCPT_VIOLATION_INVALID\": { needsAttention: true }\n};\n\nconst JUSTIFICATION_LIMIT_TYPES = new Set([\n  \"daily\",\n  \"lifetime\",\n  \"monthly\",\n  \"single\",\n  \"yearly\",\n  \"corporateCardJustification\",\n  \"missingReceiptJustification\",\n  \"conversionRateJustification\"\n]);\n\nconst SPECIFIC_JUSTIFICATION_ERROR_STRING_CODES = new Set([\n  EXPENSE_ERROR_STRING_CODES.DAILY_JUSTIFICATION,\n  EXPENSE_ERROR_STRING_CODES.INSTANCE_JUSTIFICATION,\n  EXPENSE_ERROR_STRING_CODES.FLIGHT_CLASS_JUSTIFICATION\n]);\n\nconst PREDICTION_TYPES = {\n  EXACT_MATCH: \"ORA_EXACT_MATCH\",\n  RESOLVED_SUCCESSFULLY: \"ORA_RESOLVED_SUCCESSFULLY\",\n  RECOMMENDATION_RESOLVED: \"ORA_RECOMMENDATION_RESOLVED\",\n  RESOLVED_INVALID: \"ORA_RESOLVED_INVALID\",\n  NO_ACCESS: \"ORA_NO_ACCESS\",\n  UNSUPPORTED: \"ORA_UNSUPPORTED\",\n  NOT_RESOLVED: \"ORA_NOT_RESOLVED\",\n  OPERATION_NOT_SUPPORTED: \"ORA_OPERATION_NOT_SUPPORTED\",\n  EXPENSE_SUBMITTED: \"ORA_EXPENSE_SUBMITTED\",\n  ATTRIBUTE_NOT_SUPPORTED: \"ORA_ATTRIBUTE_NOT_SUPPORTED\",\n  INVALID_REPLY: \"ORA_INVALID_REPLY\",\n  AGENT_ADJUSTMENT: \"ORA_AGENT_ADJUSTMENT\",\n  DEFAULT: \"ORA_DEFAULT\",\n  RECOMMENDATION: \"ORA_RECOMMENDATION\"\n};\n\nconst PREDICTION_RULE_CODES = {\n  PROJECT_NOT_REQUIRED_FOR_TYPE: \"ORA_PROJECT_NOT_REQ_FOR_TYPE\",\n  NO_PRIVILEGE: \"ORA_NO_PRIVILEGE\",\n  DERIVED_FROM_CUSTOMERS: \"ORA_DERIVED_FROM_CUSTOMERS\"\n};\n\nconst PREDICTION_SOURCES = {\n  COMPLETION_ASSISTANT: \"ORA_COMPLETION_ASSISTANT\",\n  IDR: \"ORA_IDR\"\n};\n\nconst PARTNER_OUTCOMES = {\n  EXPENSE_CREATED: \"ORA_EXPENSE_CREATED\",\n  EXPENSE_MATCHED: \"ORA_EXPENSE_MATCHED\",\n  EMAIL_NOT_PROCESSED: \"ORA_EMAIL_NOT_PROCESSED\"\n};\n\nconst PARTNER_STATUS = {\n  ERROR: \"ERROR\"\n};\n\nconst PARTNER_STAGE_STATUS = {\n  TECHNICAL_ERROR: \"ORA_TECHNICAL_ERROR\",\n  FACADE_FAILURE: \"ORA_FACADE_FAILURE\"\n};\n\nconst OUTCOME_SUBREASONS = {\n  FIRST_RECEIPT_WITH_TIP_AMT: \"FIRST_RECEIPT_WITH_TIP_AMT\",\n  FIRST_RECEIPT_WITH_ADDT_AMT: \"FIRST_RECEIPT_WITH_ADDT_AMT\",\n  FIRST_RECEIPT_WITHOUT_ADDT_AMT: \"FIRST_RECEIPT_WITHOUT_ADDT_AMT\",\n  MAX_LIMIT_EXCEEDED: \"MAX_LIMIT_EXCEEDED\",\n  RECEIPT_ALREADY_PROCESSED: \"RECEIPT_ALREADY_PROCESSED\",\n  RECEIPT_IGNORED: \"RECEIPT_IGNORED\",\n  RECEIPT_INVALID: \"RECEIPT_INVALID\",\n  INVALID_ERECEIPT_EMAIL: \"INVALID_ERECEIPT_EMAIL\",\n  BU_NOT_ENABLED: \"BU_NOT_ENABLED\",\n  DO_NOT_PROCESS: \"DO_NOT_PROCESS\",\n  IDR_AMOUNT_ZERO: \"IDR_AMOUNT_ZERO\",\n  INVALID_EXPENSECATEGORY: \"INVALID_EXPENSECATEGORY\",\n  INVALID_DELEGATE: \"INVALID_DELEGATE\"\n};\n\nconst ACK_CODES = new Set([\n  PREDICTION_TYPES.EXACT_MATCH,\n  PREDICTION_TYPES.RESOLVED_SUCCESSFULLY,\n  PREDICTION_TYPES.RECOMMENDATION_RESOLVED\n]);\n\nconst FAIL_CODES = new Set([\n  PREDICTION_TYPES.RESOLVED_INVALID,\n  PREDICTION_TYPES.NO_ACCESS,\n  PREDICTION_TYPES.UNSUPPORTED,\n  PREDICTION_TYPES.NOT_RESOLVED\n]);\n\nconst DEFAULT_CODES = new Set([\n  PREDICTION_TYPES.AGENT_ADJUSTMENT,\n  PREDICTION_TYPES.DEFAULT\n]);\n\nconst FIRST_RECEIPT_WITH_ADDITIONAL_SUBREASONS = new Set([\n  OUTCOME_SUBREASONS.FIRST_RECEIPT_WITH_TIP_AMT,\n  OUTCOME_SUBREASONS.FIRST_RECEIPT_WITH_ADDT_AMT\n]);\n\nconst PREDICTION_NEEDS_ATTENTION_TYPES = new Set([\n  PREDICTION_TYPES.OPERATION_NOT_SUPPORTED,\n  PREDICTION_TYPES.EXPENSE_SUBMITTED,\n  PREDICTION_TYPES.ATTRIBUTE_NOT_SUPPORTED,\n  PREDICTION_TYPES.INVALID_REPLY\n]);\n\nconst PARTNER_NEEDS_ATTENTION_SUBREASONS = new Set([\n  OUTCOME_SUBREASONS.MAX_LIMIT_EXCEEDED\n]);\n\nconst FAILURE_SOURCE_PRIORITY = {\n  partner: 0,\n  invalid: 1,\n  prediction: 2\n};\n\nconst MESSAGES = {\n  needsAttention: \"Go to Oracle Expenses to address additional issues.\",\n  multipleIssues: \"There are multiple issues in this expense. Go to the Expenses application to resolve them.\",\n  preApprovalFormRequired: \"This expense needs a Preapproval form, go to Oracle expenses to attach one.\",\n  technicalIssue: \"We ran into an unexpected issue while processing this expense. Go to Oracle Expenses to provide the required information.\",\n  noAccessAccounting: \"You do not have permission to charge a different company and cost center; your assigned company and cost center will be used for this expense.\",\n  noAccessCostCenter: \"You do not have permission to charge a different cost center; your assigned cost center will be used for this expense.\",\n  companyNotUpdated: \"You do not have permission to update the company.\",\n  noAccessProjectTask: \"Project and task information will not apply because this expense type is not project-enabled.\",\n  noAccessProject: \"You do not have permission to charge this expense to a Project\",\n  additionalChargeFallback: \"The attached receipt includes an additional charge which will update the expense amount when the final charge comes in.\",\n  invalidEReceipt: \"The receipt can't be processed as it was blurry or missing required details. Forward a valid receipt or go to Oracle Expenses to create the expense.\",\n  receiptAlreadyProcessed: \"This receipt was not used to create a new expense, as it is already attached to an expense.\",\n  receiptIgnored: \"The receipt will not be used as the corporate card expense already includes one. No further action is needed.\",\n  receiptAmountZero: \"The receipt cannot be processed automatically as the amount is zero. Go to Oracle Expenses to create a valid expense.\",\n  receiptCannotAutoProcess: \"The receipt cannot be processed automatically. Go to Oracle Expenses to create a valid expense.\",\n  invalidDelegate: \"The delegate specified was not recognized. Go to Oracle Expenses to provide further information.\",\n  pendingFinalChargeAutoSubmit: \"The expense will be automatically submitted once the final charge is received. No further action is needed.\",\n  pendingFinalChargeManualSubmit: \"Go to Oracle Expenses to submit this expense once the final charge is received.\",\n  markedAsPersonal: \"The below expense has been marked as personal.\",\n  markedAsDuplicate: \"The below expense has been marked as a duplicate.\",\n  duplicateExpense: \"We found this as a duplicate expense. Please go to Oracle Expenses to resolve this.\"\n};\n\nconst isStr = (value) => typeof value === \"string\" && value.trim() !== \"\";\n\nconst hasValue = (value) => {\n  if (value === null || value === undefined) return false;\n  if (typeof value === \"string\") return value.trim() !== \"\";\n  return true;\n};\n\nconst norm = (value) => (isStr(value) ? value.trim() : \"\");\n\nconst toLower = (value) => norm(value).toLowerCase();\n\nconst getSimplifiedParticipantLabel = () =>\n  toLower(expenseData?.expenseType?.name) === \"gifts - cw\" ? \"recipients\" : \"attendees\";\n\nconst getSimplifiedNumberLabel = () => `Number of ${getSimplifiedParticipantLabel()}`;\n\nconst getSimplifiedNumberOpenIssueLabel = () => `number of ${getSimplifiedParticipantLabel()}`;\n\nconst toNumber = (value) => {\n  if (value === null || value === undefined) return NaN;\n  const numberValue = Number(value);\n  return Number.isFinite(numberValue) ? numberValue : NaN;\n};\n\nconst safeJsonParse = (value) => {\n  if (!isStr(value)) return null;\n\n  try {\n    return JSON.parse(value);\n  } catch {\n    return null;\n  }\n};\n\nconst capitalize = (value) => {\n  const normalized = norm(value);\n  return normalized ? `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}` : \"\";\n};\n\nconst normalizePredictionFieldName = (name) => {\n  const normalized = toLower(name);\n\n  const FIELD_NORMALIZATION_MAP = {\n    project: FIELD_NAMES.PROJECTS,\n    projects: FIELD_NAMES.PROJECTS,\n    account: FIELD_NAMES.ACCOUNTS,\n    accounts: FIELD_NAMES.ACCOUNTS,\n    customer: FIELD_NAMES.CUSTOMER,\n    customers: FIELD_NAMES.CUSTOMERS\n  };\n\n  return FIELD_NORMALIZATION_MAP[normalized] || normalized || \"\";\n};\n\nconst humanizeFieldLabel = (value) => {\n  if (!hasValue(value)) return \"\";\n\n  const rawValue = String(value).trim();\n\n  if (rawValue === \"ora_flex_projectsCostCollection__info\") {\n    return FIELD_LABELS.PROJECT_AND_TASK;\n  }\n\n  const normalized = rawValue\n    .replace(/([a-z])([A-Z])/g, \"$1 $2\")\n    .replace(/\\bID\\b|\\bid\\b/gi, \"\")\n    .replace(/\\s+/g, \" \")\n    .replace(/\\bline\\b/gi, \"\")\n    .toLowerCase()\n    .trim();\n\n  const normalizedFieldKey = normalizePredictionFieldName(normalized);\n\n  if (\n    normalized === \"ora_flex_projectscostcollection__info\" ||\n    normalizedFieldKey === FIELD_NAMES.PROJECTS\n  ) {\n    return FIELD_LABELS.PROJECT_AND_TASK;\n  }\n\n  if (normalizedFieldKey === FIELD_NAMES.ACCOUNTS) {\n    return \"company and cost center\";\n  }\n\n  return normalized;\n};\n\nconst buildPersonalAmountAcknowledgement = (expense) => {\n  const personalAmountValue = expense?.personalReceiptAmount;\n  const personalAmountNumber = toNumber(personalAmountValue);\n  if (!Number.isFinite(personalAmountNumber) || personalAmountNumber <= 0) return \"\";\n\n  const currencyCode = expense?.receiptCurrency?.currencyCode;\n  const personalAmount = [personalAmountValue, currencyCode]\n    .filter((value) => value !== null && value !== undefined && String(value).trim() !== \"\")\n    .join(\" \");\n\n  if (!isStr(personalAmount)) return \"\";\n\n  const limitType = hasValue(expense?.limitPolicyLineIdentifier)\n    ? \"daily spending limit\"\n    : \"spending limit\";\n\n  return `${personalAmount} was marked as personal due to exceeding the ${limitType}.`;\n};\n\nconst isCustomerField = (fieldName) => {\n  if (!isSimplifiedExpense) return false;\n\n  const fieldKey = normalizePredictionFieldName(fieldName);\n  return fieldKey === FIELD_NAMES.CUSTOMER || fieldKey === FIELD_NAMES.CUSTOMERS;\n};\n\nconst displayFromFieldValue = (value) => {\n  if (value === null || value === undefined) return \"\";\n\n  if (typeof value === \"string\") {\n    const parsed = safeJsonParse(value);\n    return parsed ? displayFromFieldValue(parsed) : value;\n  }\n\n  if (Array.isArray(value)) {\n    return value.map(displayFromFieldValue).filter(isStr).join(\", \");\n  }\n\n  if (typeof value === \"object\") {\n    const keys = [\n      \"name\",\n      \"displayName\",\n      \"projectName\",\n      \"taskName\",\n      \"companyName\",\n      \"costCenterName\",\n      \"value\",\n      \"label\"\n    ];\n\n    for (const key of keys) {\n      if (isStr(value?.[key])) return value[key];\n    }\n\n    return \"\";\n  }\n\n  return String(value);\n};\n\nconst hasNonNoneFieldValue = (value) => {\n  const normalizedValue = toLower(displayFromFieldValue(value));\n  return Boolean(\n    normalizedValue &&\n      normalizedValue !== \"none\" &&\n      normalizedValue !== \"null\" &&\n      normalizedValue !== \"undefined\"\n  );\n};\n\nconst formatIdNamePair = (idValue, nameValue) => {\n  const id = norm(idValue);\n  const name = norm(nameValue);\n  if (id && name) return `${id} - ${name}`;\n  return id || name || \"\";\n};\n\nconst getAccountValueParts = (value) => {\n  const parsed = typeof value === \"string\" ? safeJsonParse(value) : value;\n  if (!parsed || typeof parsed !== \"object\" || Array.isArray(parsed)) return null;\n\n  const company = formatIdNamePair(parsed.companyId, parsed.companyName ?? parsed.company);\n  const costCenter = formatIdNamePair(parsed.costCenterId, parsed.costCenterName ?? parsed.costCenter);\n\n  if (!company && !costCenter) return null;\n  return { company, costCenter };\n};\n\nconst displayFromFieldValueForField = (fieldName, value) => {\n  const normalizedFieldName = humanizeFieldLabel(fieldName);\n  const accountParts = getAccountValueParts(value);\n\n  if (accountParts) {\n    if (normalizedFieldName === \"company and cost center\") {\n      return [accountParts.company, accountParts.costCenter].filter(isStr).join(\" / \");\n    }\n\n    if (normalizedFieldName === \"company\") {\n      return accountParts.company || displayFromFieldValue(value);\n    }\n\n    if (normalizedFieldName === \"cost center\") {\n      return accountParts.costCenter || displayFromFieldValue(value);\n    }\n  }\n\n  return displayFromFieldValue(value);\n};\n\nconst updateVerbForFieldName = (fieldName) => {\n  return fieldName === \"company and cost center\" ? \"have\" : \"has\";\n};\n\nconst joinLines = (lines) => {\n  const normalizedLines = (lines || [])\n    .map((line) => (typeof line === \"string\" ? line.trim() : \"\"))\n    .filter(Boolean);\n\n  return normalizedLines.length ? normalizedLines.join(\"\\n\") : \"\";\n};\n\nconst uniqueCaseInsensitive = (values) => {\n  const seen = new Set();\n  const uniqueValues = [];\n\n  for (const value of values) {\n    const normalized = toLower(value);\n    if (!normalized || seen.has(normalized)) continue;\n    seen.add(normalized);\n    uniqueValues.push(value);\n  }\n\n  return uniqueValues;\n};\n\nconst formatList = (values) => {\n  if (!Array.isArray(values) || values.length === 0) return \"\";\n  if (values.length === 1) return values[0];\n  if (values.length === 2) return `${values[0]} and ${values[1]}`;\n  return `${values.slice(0, -1).join(\", \")} and ${values[values.length - 1]}`;\n};\n\nconst formatOptionNumbers = (count) => {\n  const values = Array.from({ length: count }, (_, index) => String(index + 1));\n  if (values.length === 0) return \"\";\n  if (values.length === 1) return values[0];\n  if (values.length === 2) return `${values[0]} or ${values[1]}`;\n  return `${values.slice(0, -1).join(\", \")} or ${values[values.length - 1]}`;\n};\n\nconst getNumericPredictionRank = (item) => {\n  const rank = Number(item?.predictionRank);\n  return Number.isFinite(rank) ? rank : Number.POSITIVE_INFINITY;\n};\n\nconst sortByPredictionRank = (items) =>\n  (Array.isArray(items) ? items : [])\n    .map((item, index) => ({ item, index }))\n    .sort((left, right) => {\n      const leftRank = getNumericPredictionRank(left.item);\n      const rightRank = getNumericPredictionRank(right.item);\n      if (leftRank !== rightRank) return leftRank - rightRank;\n      return left.index - right.index;\n    })\n    .map((entry) => entry.item);\n\nconst formatIsoToMMDDYY = (isoValue) => {\n  if (!isStr(isoValue)) return \"\";\n\n  try {\n    const dateOnly = String(isoValue).split(\"T\")[0];\n    const [year, month, day] = dateOnly.split(\"-\");\n    return `${Number(month)}/${Number(day)}/${String(year).slice(-2)}`;\n  } catch {\n    return \"\";\n  }\n};\n\nconst getDisplayFieldName = (fieldName, fieldValueRaw) => {\n  const normalizedFieldName = humanizeFieldLabel(fieldName);\n\n  if (isCustomerField(fieldName)) {\n    return FIELD_NAMES.CUSTOMER;\n  }\n\n  if (normalizedFieldName === FIELD_NAMES.ATTENDEES) {\n    const parsed = safeJsonParse(fieldValueRaw);\n    const count = Array.isArray(parsed)\n      ? parsed.length\n      : parsed && typeof parsed === \"object\"\n        ? 1\n        : String(fieldValueRaw).split(\",\").length;\n\n    return count === 1 ? \"attendee\" : FIELD_NAMES.ATTENDEES;\n  }\n\n  return normalizedFieldName;\n};\n\nconst hasSupportedExpenseErrorStringCode = (attributeName, errorStringCode) => {\n  const supportedError = SUPPORTED_EXPENSE_ERRORS_BY_ATTRIBUTE[toLower(attributeName)];\n  if (!supportedError) return false;\n  if (supportedError === true) return true;\n  return supportedError.has(String(errorStringCode || \"\").trim());\n};\n\nconst isGenericJustificationRequiredExpenseError = (error) => {\n  if (norm(error?.errorCode) !== \"FND:::FND_CMN_CMPLT_FLDS\") return false;\n\n  const rawAttribute = hasValue(error?.stringToken1Value)\n    ? error.stringToken1Value\n    : error?.attributeName;\n\n  return normalizePredictionFieldName(rawAttribute) === \"justification\";\n};\n\nconst isSpecificJustificationExpenseError = (error) => {\n  const errorCode = norm(error?.errorCode);\n  const classicError = CLASSIC_EXPENSE_ERRORS[errorCode];\n  const errorStringCode = String(error?.errorStringCode || \"\").trim();\n\n  return (\n    JUSTIFICATION_LIMIT_TYPES.has(classicError?.limitType) ||\n    SPECIFIC_JUSTIFICATION_ERROR_STRING_CODES.has(errorStringCode)\n  );\n};\n\nconst suppressDuplicateGenericJustificationErrors = (errors) => {\n  if (!Array.isArray(errors) || !errors.some(isSpecificJustificationExpenseError)) {\n    return errors;\n  }\n\n  return errors.filter((error) => !isGenericJustificationRequiredExpenseError(error));\n};\n\nconst isNeedsAttentionExpenseError = (error) =>\n  CLASSIC_EXPENSE_ERRORS[norm(error?.errorCode)]?.needsAttention === true;\n\nconst isDuplicateExpenseError = (error) =>\n  norm(error?.errorCode) === \"EXM:::EXM_DUPLICATE_ERROR_REPORT\";\n\nconst isSummarizableExpenseError = (error) => {\n  if (!error) return false;\n  if (isReceiptRequiredExpenseError(error)) return true;\n  if (CLASSIC_EXPENSE_ERRORS[norm(error?.errorCode)]) return true;\n\n  const attributeName = String(error?.attributeName || \"\").trim();\n  return hasSupportedExpenseErrorStringCode(attributeName, error?.errorStringCode);\n};\n\nconst isUserActionSummarizableExpenseError = (error) =>\n  error?.userActionRequiredFlag === true &&\n  norm(error?.objectName) !== \"NA\" &&\n  isSummarizableExpenseError(error);\n\nconst isActionableSummarizableExpenseError = (error) =>\n  isUserActionSummarizableExpenseError(error) &&\n  (error?.warningFlag !== true || isSpecificJustificationExpenseError(error));\n\nconst isSupportedExpenseError = (error) => {\n  if (!error) return false;\n  if (isMissingNumberOfAttendeesExpenseError(error)) return true;\n  if (isReceiptRequiredExpenseError(error)) return true;\n\n  const errorCode = norm(error?.errorCode);\n  const classicError = CLASSIC_EXPENSE_ERRORS[errorCode];\n  if (classicError?.useAttributeName) {\n    return Boolean(SUPPORTED_EXPENSE_ERRORS_BY_ATTRIBUTE[toLower(error?.attributeName)]);\n  }\n  if (classicError) return true;\n\n  const attributeName = String(error?.attributeName || \"\").trim();\n  return hasSupportedExpenseErrorStringCode(attributeName, error?.errorStringCode);\n};\n\nconst normalizeIssueAttribute = (error, currentExpenseStatus) => {\n  if (isMissingNumberOfAttendeesExpenseError(error)) {\n    return getSimplifiedNumberOpenIssueLabel();\n  }\n\n  if (isReceiptRequiredExpenseError(error)) {\n    return \"attached receipt\";\n  }\n\n  const errorCode = norm(error?.errorCode);\n  const classicError = CLASSIC_EXPENSE_ERRORS[errorCode];\n\n  if (currentExpenseStatus === VALIDATION_STATUS.CLASSIC_ERROR && classicError?.attribute) {\n    return classicError.attribute;\n  }\n\n  const rawAttribute = hasValue(error?.stringToken1Value)\n    ? error.stringToken1Value\n    : error?.attributeName;\n\n  return humanizeFieldLabel(rawAttribute);\n};\n\nconst buildLimitOpenIssueText = (error, expense, isMultiple) => {\n  const errorCode = norm(error?.errorCode);\n  const classicError = CLASSIC_EXPENSE_ERRORS[errorCode];\n  const limitValue = String(error?.stringToken1Value ?? \"\").trim();\n  const currencyValue = String(error?.stringToken2Value ?? \"\").trim();\n  const overLimitValue = String(error?.stringToken3Value ?? \"\").trim();\n  const expenseTypeName = String(expense?.expenseType?.name ?? \"\").trim().toLowerCase() || \"expense\";\n  const limitAmount = [limitValue, currencyValue].filter(Boolean).join(\" \");\n  const overLimitAmount = [overLimitValue, currencyValue].filter(Boolean).join(\" \");\n  const allowanceAmount = [\n    expense?.receiptAmount,\n    expense?.receiptCurrency?.currencyCode\n  ].filter(hasValue).join(\" \");\n\n  if (classicError?.limitType === \"corporateCardJustification\") {\n    return `Justification on why you did not use corporate card for expenses of ${allowanceAmount} for ${expenseTypeName}.`;\n  }\n\n  if (classicError?.limitType === \"missingReceiptJustification\") {\n    return isMultiple\n      ? `Justification on why the receipt is missing for expenses of ${allowanceAmount} for ${expenseTypeName}.`\n      : `Reply with why the receipt is missing for expenses of ${allowanceAmount} for ${expenseTypeName}.`;\n  }\n\n  if (classicError?.limitType === \"conversionRateJustification\") {\n    return isMultiple\n      ? \"Justification for your specified conversion rate.\"\n      : \"Reply with justification for your specified conversion rate.\";\n  }\n\n  const policyLimitLabels = {\n    daily: \"daily spending limit\",\n    lifetime: \"lifetime spending limit\",\n    monthly: \"monthly spending limit\",\n    single: \"spending limit\",\n    yearly: \"annual spending limit\"\n  };\n  const policyLimitLabel = policyLimitLabels[classicError?.limitType];\n  if (policyLimitLabel) {\n    return isMultiple\n      ? `Justification on why you went over the ${policyLimitLabel} for ${expenseTypeName}.`\n      : `Reply with why you went over the ${policyLimitLabel} for ${expenseTypeName}.`;\n  }\n\n  switch (String(error?.errorStringCode || \"\").trim()) {\n    case EXPENSE_ERROR_STRING_CODES.DAILY_JUSTIFICATION:\n      return isMultiple\n        ? `Justification on why you went over the ${limitAmount} daily spending limit for ${expenseTypeName}.`\n        : `Reply with why you went over the ${limitAmount} daily spending limit for ${expenseTypeName}.`;\n    case EXPENSE_ERROR_STRING_CODES.INSTANCE_JUSTIFICATION:\n      return isMultiple\n        ? `Justification on why you went over the ${limitAmount} spending limit for ${expenseTypeName}.`\n        : `Reply with why you went over the ${limitAmount} spending limit for ${expenseTypeName}.`;\n    case EXPENSE_ERROR_STRING_CODES.CORP_CARD_JUSTIFICATION:\n      return isMultiple\n        ? \"Justification for not using a corporate card.\"\n        : \"Reply with a justification for not using a corporate card for the below expense.\";\n    case EXPENSE_ERROR_STRING_CODES.DAILY_PERSONAL_AMOUNT:\n      return isMultiple\n        ? `Personal amount of at least ${overLimitAmount} to meet the ${limitAmount} daily spending limit.`\n        : `Reply with personal amount of at least ${overLimitAmount} to meet the ${limitAmount} daily spending limit.`;\n    case EXPENSE_ERROR_STRING_CODES.INSTANCE_PERSONAL_AMOUNT:\n      return isMultiple\n        ? `Personal amount of at least ${overLimitAmount} to meet the ${limitAmount} spending limit.`\n        : `Reply with personal amount of at least ${overLimitAmount} to meet the ${limitAmount} spending limit.`;\n    case EXPENSE_ERROR_STRING_CODES.CORP_CARD_PERSONAL_AMOUNT:\n      return isMultiple\n        ? `Personal amount of at least ${overLimitAmount} to meet the ${limitAmount} spending limit when not paying by corporate card.`\n        : `Reply with personal amount of at least ${overLimitAmount} to meet the ${limitAmount} spending limit when not paying by corporate card.`;\n    case EXPENSE_ERROR_STRING_CODES.FLIGHT_CLASS_JUSTIFICATION:\n      return isMultiple ? \"Justification\" : \"Reply with the justification for the below expense.\";\n    default:\n      return \"\";\n  }\n};\n\nconst buildCombinedUpdateSummary = (fieldUpdates, baseSummary) => {\n  const lines = [];\n  if (isStr(baseSummary)) lines.push(baseSummary);\n\n  if (!Array.isArray(fieldUpdates) || fieldUpdates.length === 0) {\n    return joinLines(lines);\n  }\n\n  const attendeeNames = uniqueCaseInsensitive(\n    fieldUpdates\n      .filter((update) => normalizePredictionFieldName(update.fieldName) === FIELD_NAMES.ATTENDEES)\n      .map((update) => displayFromFieldValue(update.fieldValueRaw))\n      .filter(isStr)\n  );\n\n  const otherFieldUpdates = fieldUpdates.filter(\n    (update) => normalizePredictionFieldName(update.fieldName) !== FIELD_NAMES.ATTENDEES\n  );\n\n  if (attendeeNames.length > 0) {\n    const attendeeLabel = attendeeNames.length === 1 ? \"attendee\" : FIELD_NAMES.ATTENDEES;\n    const attendeeVerb = attendeeNames.length === 1 ? \"has\" : \"have\";\n    lines.push(`The ${attendeeLabel} ${attendeeVerb} been updated to ${formatList(attendeeNames)}.`);\n  }\n\n  if (otherFieldUpdates.length === 0) {\n    return joinLines(lines);\n  }\n\n  if (otherFieldUpdates.length === 1) {\n    const singleUpdate = otherFieldUpdates[0];\n    const fieldName = getDisplayFieldName(singleUpdate.fieldName, singleUpdate.fieldValueRaw);\n    const fieldValue = displayFromFieldValueForField(singleUpdate.fieldName, singleUpdate.fieldValueRaw);\n    const line = `The ${fieldName} ${updateVerbForFieldName(fieldName)} been updated to ${fieldValue}.`;\n    lines.push(line);\n    return joinLines(lines);\n  }\n\n  const fieldNames = uniqueCaseInsensitive(\n    otherFieldUpdates\n      .map((update) => humanizeFieldLabel(update.fieldName))\n      .filter(isStr)\n  );\n\n  if (fieldNames.length === 0) {\n    return joinLines(lines);\n  }\n\n  const verb = fieldNames.length === 1 ? \"has\" : \"have\";\n  lines.push(`The ${formatList(fieldNames)} ${verb} been updated.`);\n  return joinLines(lines);\n};\n\nconst getActionableExpenseErrors = (expense) => {\n  const rawExpenseErrors = expense?.expenseErrors?.items || [];\n  if (!Array.isArray(rawExpenseErrors)) return [];\n\n  return rawExpenseErrors.filter(\n    (error) =>\n      error?.userActionRequiredFlag === true &&\n      error?.warningFlag !== true &&\n      norm(error?.objectName) !== \"NA\"\n  );\n};\n\nconst hasExpenseValidationIssue = (expense) => {\n  const validationStatus = norm(expense?.validationStatusCode).toUpperCase();\n  return validationStatus.includes(\"E\") || validationStatus.includes(\"W\");\n};\n\nconst hasItemizedExpenseValidationIssues = (items) => {\n  if (!Array.isArray(items)) return false;\n  return items.some((item) => hasExpenseValidationIssue(item));\n};\n\nconst isPendingFinalChargeExpense = (expense) => {\n  if (!expense || Object.keys(expense).length === 0) return false;\n\n  return (\n    ERROR_VALIDATION_STATUS_CODES.has(norm(expense?.validationStatusCode)) &&\n    getActionableExpenseErrors(expense).length === 0 &&\n    PENDING_CORPORATE_CARD_SOURCES.has(norm(expense?.expenseSource))\n  );\n};\n\nconst isMissingNumberOfAttendeesExpenseError = (error) => {\n  if (norm(error?.errorStringCode) !== EXPENSE_ERROR_STRING_CODES.MISSING_REQUIRED_FIELD) {\n    return false;\n  }\n\n  const missingField = normalizePredictionFieldName(error?.attributeName).replace(/[\\s_-]+/g, \"\");\n  return missingField === \"numberofattendees\";\n};\n\nconst isReceiptRequiredExpenseError = (error) =>\n  String(error?.errorStringCode || \"\").trim() === EXPENSE_ERROR_STRING_CODES.RECEIPT_REQUIRED;\n\nconst hasMissingNumberOfAttendeesExpenseError = (expense) => {\n  return getActionableExpenseErrors(expense).some(isMissingNumberOfAttendeesExpenseError);\n};\n\nconst isPreApprovalFormExpenseError = (error) =>\n  norm(error?.errorCode) === \"EXM_NONEMP_PREAPPROVAL\";\n\nconst isSimplifiedNumberOpenIssueAttribute = (attribute) => {\n  const normalized = toLower(attribute);\n  return normalized === \"number of attendees\" || normalized === \"number of recipients\";\n};\n\nconst isCustomerOrganizationOpenIssueAttribute = (attribute) =>\n  attribute === FIELD_LABELS.CUSTOMER_OR_PARTNER_ORG;\n\nconst getLogicalOpenIssueCount = (attributes) => {\n  const hasSimplifiedNumberIssue = attributes.some(isSimplifiedNumberOpenIssueAttribute);\n  const hasCustomerOrganizationIssue = attributes.some(isCustomerOrganizationOpenIssueAttribute);\n  const combinedSimplifiedIssueOffset = hasSimplifiedNumberIssue && hasCustomerOrganizationIssue ? 1 : 0;\n\n  return attributes.length - combinedSimplifiedIssueOffset;\n};\n\nconst buildOpenIssuesSummary = (\n  expense,\n  currentExpenseStatus,\n  additionalAttributes = [],\n  resolvedIssueAttributes = []\n) => {\n  const rawExpenseErrors = expense?.expenseErrors?.items || [];\n  const resolvedIssueKeys = new Set(\n    resolvedIssueAttributes\n      .map((attribute) => normalizePredictionFieldName(attribute))\n      .filter(Boolean)\n  );\n  const expenseErrors = Array.isArray(rawExpenseErrors)\n    ? rawExpenseErrors.filter(\n        (error) =>\n          isActionableSummarizableExpenseError(error) &&\n          !(\n            resolvedIssueKeys.has(\"numberofattendees\") &&\n            isMissingNumberOfAttendeesExpenseError(error)\n          ) &&\n          !isStaleAttendeeRequiredExpenseError(error)\n      )\n    : [];\n\n  const hasCorporateCardJustifyError = expenseErrors.some(\n    (error) => norm(error?.errorCode) === \"EXM:::EXM_ERECP_CC_JUSTIFY\"\n  );\n\n  const displayExpenseErrors = hasCorporateCardJustifyError\n    ? expenseErrors.filter(\n        (error) => norm(error?.errorCode) !== \"EXM:::EXM_ERECP_CC_ALLOWANCE\"\n      )\n    : expenseErrors;\n  const normalizedDisplayExpenseErrors =\n    suppressDuplicateGenericJustificationErrors(displayExpenseErrors);\n\n  if (normalizedDisplayExpenseErrors.length === 0 && additionalAttributes.length === 0) {\n    return \"\";\n  }\n\n  if (normalizedDisplayExpenseErrors.some((error) => isNeedsAttentionExpenseError(error) && !isDuplicateExpenseError(error))) {\n    return MESSAGES.needsAttention;\n  }\n\n  if (\n    normalizedDisplayExpenseErrors.length === 1 &&\n    additionalAttributes.length === 0 &&\n    isPreApprovalFormExpenseError(normalizedDisplayExpenseErrors[0])\n  ) {\n    return MESSAGES.preApprovalFormRequired;\n  }\n\n  const hasUnsupportedExpenseError = normalizedDisplayExpenseErrors.some((error) => !isSupportedExpenseError(error));\n  if (hasUnsupportedExpenseError) {\n    return MESSAGES.needsAttention;\n  }\n\n  const uniqueAttributes = [];\n  const seenAttributes = new Set();\n\n  for (const error of normalizedDisplayExpenseErrors) {\n    const limitText = buildLimitOpenIssueText(error, expense, normalizedDisplayExpenseErrors.length > 1);\n    const attributeValue = limitText || normalizeIssueAttribute(error, currentExpenseStatus);\n    const uniqueKey = limitText\n      ? String(error?.errorStringCode || error?.errorCode || \"\").trim().toLowerCase()\n      : toLower(attributeValue);\n\n    if (!isStr(attributeValue) || !uniqueKey || seenAttributes.has(uniqueKey)) continue;\n\n    seenAttributes.add(uniqueKey);\n    uniqueAttributes.push(attributeValue);\n  }\n\n  for (const attributeValue of additionalAttributes) {\n    const uniqueKey = toLower(attributeValue);\n    if (!isStr(attributeValue) || !uniqueKey || seenAttributes.has(uniqueKey)) continue;\n\n    seenAttributes.add(uniqueKey);\n    uniqueAttributes.push(attributeValue);\n  }\n\n  if (uniqueAttributes.length === 1) {\n    const firstAttribute = uniqueAttributes[0];\n    if (firstAttribute === FIELD_LABELS.CUSTOMER_OR_PARTNER_ORG) {\n      return `Reply with ${firstAttribute}`;\n    }\n    if (firstAttribute.startsWith(\"Justification on why\")) {\n      return `Reply with the following for the below expense:\\n1. ${firstAttribute}`;\n    }\n\n    return firstAttribute.startsWith(\"Reply with \") ||\n      firstAttribute.startsWith(\"Number of attendees:\") ||\n      firstAttribute.startsWith(\"Number of attendees (as extracted from mail):\") ||\n      firstAttribute.startsWith(\"Number of attendees (as extracted from receipt):\") ||\n      firstAttribute.startsWith(\"Number of recipients:\") ||\n      firstAttribute.startsWith(\"Number of recipients (as extracted from mail):\") ||\n      firstAttribute.startsWith(\"Number of recipients (as extracted from receipt):\")\n      ? firstAttribute\n      : `Reply with the ${firstAttribute} for the below expense.`;\n  }\n\n  if (getLogicalOpenIssueCount(uniqueAttributes) <= 2) {\n    const lines = uniqueAttributes.map((attribute, index) =>\n      `${index + 1}. ${\n        attribute.startsWith(\"Justification on why\") || attribute.startsWith(\"Personal amount of at least\")\n          ? attribute\n          : capitalize(attribute)\n      }`\n    );\n\n    return `Reply with the following for the below expense:\\n${lines.join(\"\\n\")}`;\n  }\n\n  return MESSAGES.multipleIssues;\n};\n\nconst getSimplifiedExpenseTypeInfo = (items = []) => {\n  const predictionItems = Array.isArray(items) ? items : [];\n\n  const findPrediction = (fieldName) =>\n    predictionItems.find((item) => normalizePredictionFieldName(item?.fieldName) === fieldName);\n\n  const simplifiedExpenseTypePrediction = findPrediction(\"issimplifiedexpensetype\");\n\n  const isTruthyPredictionValue = (value) =>\n    [\"true\", \"y\", \"yes\", \"1\"].includes(toLower(displayFromFieldValue(value)));\n\n  const isSimplifiedExpenseType = Boolean(\n    isSimplifiedExpense &&\n      (!simplifiedExpenseTypePrediction ||\n        isTruthyPredictionValue(simplifiedExpenseTypePrediction?.fieldValue))\n  );\n\n  const attendeePrediction = findPrediction(\"numberofattendees\");\n  const customerPredictions = predictionItems.filter((item) => isCustomerField(item?.fieldName));\n\n  const isResolvedCustomerPrediction = (item) =>\n    item?.predictionTypeCode === PREDICTION_TYPES.EXACT_MATCH ||\n    item?.predictionTypeCode === PREDICTION_TYPES.RESOLVED_SUCCESSFULLY ||\n    item?.predictionTypeCode === PREDICTION_TYPES.RECOMMENDATION_RESOLVED;\n\n  const isCustomerRecommendationPrediction = (item) =>\n    item?.predictionTypeCode === PREDICTION_TYPES.RECOMMENDATION;\n\n  const customerPrediction = customerPredictions.find(isResolvedCustomerPrediction) || customerPredictions[0];\n  const attendeeValue = displayFromFieldValue(attendeePrediction?.fieldValue);\n  const customerValue = displayFromFieldValue(customerPrediction?.fieldValue);\n\n  const hasResolvedCustomerPrediction = Boolean(\n    customerPrediction && isResolvedCustomerPrediction(customerPrediction)\n  );\n\n  const hasCustomerValue = Boolean(\n    hasResolvedCustomerPrediction && hasNonNoneFieldValue(customerPrediction?.fieldValue)\n  );\n\n  const hasEmployeeOnlyCustomerValue = Boolean(\n    hasResolvedCustomerPrediction && toLower(customerValue) === \"none\"\n  );\n  const hasCustomerRecommendation = customerPredictions.some(isCustomerRecommendationPrediction);\n  const requiresSimplifiedExpenseDetails = Boolean(\n    isSimplifiedExpenseType && hasMissingNumberOfAttendeesExpenseError(expenseData)\n  );\n\n  return {\n    isSimplifiedExpenseType,\n    requiresSimplifiedExpenseDetails,\n    attendeePrediction,\n    customerPrediction,\n    attendeeValue,\n    customerValue,\n    hasResolvedCustomerPrediction,\n    hasCustomerValue,\n    hasEmployeeOnlyCustomerValue,\n    hasCustomerRecommendation\n  };\n};\n\nconst hasResolvedAttendeeUpdateEvidence = (items = []) => {\n  const predictionItems = Array.isArray(items) ? items : [];\n  const hasResolvedAttendeePrediction = predictionItems.some(\n    (item) =>\n      normalizePredictionFieldName(item?.fieldName) === FIELD_NAMES.ATTENDEES &&\n      ACK_CODES.has(item?.predictionTypeCode)\n  );\n\n  if (hasResolvedAttendeePrediction) return true;\n\n  const {\n    isSimplifiedExpenseType,\n    attendeePrediction,\n    hasResolvedCustomerPrediction,\n    hasCustomerValue,\n    hasEmployeeOnlyCustomerValue\n  } = getSimplifiedExpenseTypeInfo(predictionItems);\n\n  return Boolean(\n    isSimplifiedExpenseType &&\n      attendeePrediction &&\n      hasResolvedCustomerPrediction &&\n      (hasCustomerValue || hasEmployeeOnlyCustomerValue)\n  );\n};\n\nconst isStaleAttendeeRequiredExpenseError = (error) => {\n  return Boolean(\n    error?.userActionRequiredFlag === true &&\n      norm(error?.errorCode) === \"EXM:::EXM_ATTENDEE_EMPLOYEE_REQ\" &&\n      hasResolvedAttendeeUpdateEvidence(predictionItems)\n  );\n};\n\nconst getUnresolvedActionableExpenseErrors = (expense) => {\n  const rawExpenseErrors = expense?.expenseErrors?.items || [];\n  if (!Array.isArray(rawExpenseErrors)) return [];\n\n  const actionableErrors = rawExpenseErrors.filter(\n    (error) =>\n      isActionableSummarizableExpenseError(error) &&\n      !isStaleAttendeeRequiredExpenseError(error)\n  );\n\n  return suppressDuplicateGenericJustificationErrors(actionableErrors);\n};\n\nconst buildExtractedAttendeeText = (attendeePrediction, attendeeValue) => {\n  const predictionSource = norm(attendeePrediction?.predictionSource);\n  const numberLabel = getSimplifiedNumberLabel();\n\n  if (predictionSource === PREDICTION_SOURCES.COMPLETION_ASSISTANT) {\n    return `${numberLabel} (as extracted from mail): ${attendeeValue}`;\n  }\n\n  if (predictionSource === PREDICTION_SOURCES.IDR) {\n    return `${numberLabel} (as extracted from receipt): ${attendeeValue}`;\n  }\n\n  return `${numberLabel}: ${attendeeValue}`;\n};\n\nconst buildAttendeeAcknowledgementText = (\n  attendeePrediction,\n  attendeeValue,\n  wasUpdated = false\n) => {\n  const numberLabel = getSimplifiedNumberLabel();\n\n  if (wasUpdated) {\n    return isStr(attendeeValue)\n      ? `${numberLabel} has been updated to ${attendeeValue}.`\n      : `${numberLabel} has been updated.`;\n  }\n\n  const predictionSource = norm(attendeePrediction?.predictionSource);\n\n  if (isStr(attendeeValue) && predictionSource === PREDICTION_SOURCES.IDR) {\n    return `${numberLabel} (as extracted from receipt): ${attendeeValue}.`;\n  }\n\n  return isStr(attendeeValue)\n    ? `${numberLabel} (as extracted from mail): ${attendeeValue}.`\n    : `The ${getSimplifiedNumberOpenIssueLabel()} has been updated.`;\n};\n\nconst buildSimplifiedAttendeeCustomerAcknowledgementText = (attendeePrediction, attendeeValue) => {\n  const isDerivedFromCustomers =\n    norm(attendeePrediction?.ruleCode) === PREDICTION_RULE_CODES.DERIVED_FROM_CUSTOMERS;\n  const attendeeUpdateText = isStr(attendeeValue)\n    ? `${getSimplifiedNumberLabel()} has been updated to ${attendeeValue}${\n        isDerivedFromCustomers ? \" (includes yourself and one attendee per customer)\" : \"\"\n      }`\n    : `${getSimplifiedNumberLabel()} has been updated`;\n\n  if (isDerivedFromCustomers && isStr(attendeeValue)) {\n    return `${attendeeUpdateText}. Customer(s) have been updated in the expense.`;\n  }\n\n  return `${attendeeUpdateText}, and Customer(s) have been updated in the expense.`;\n};\n\nconst applySimplifiedExpenseTypeAcknowledgements = (state, items = []) => {\n  const {\n    isSimplifiedExpenseType,\n    requiresSimplifiedExpenseDetails,\n    attendeePrediction,\n    customerPrediction,\n    attendeeValue,\n    hasResolvedCustomerPrediction,\n    hasCustomerValue,\n    hasEmployeeOnlyCustomerValue,\n    hasCustomerRecommendation\n  } = getSimplifiedExpenseTypeInfo(items);\n\n  if (!isSimplifiedExpenseType) return;\n\n  state.acknowledgements.fieldUpdates = state.acknowledgements.fieldUpdates.filter((update) => {\n    const fieldKey = normalizePredictionFieldName(update?.fieldName);\n    return fieldKey !== \"numberofattendees\" && !isCustomerField(update?.fieldName);\n  });\n\n  const isCustomerStillNeeded =\n    requiresSimplifiedExpenseDetails &&\n    !hasResolvedCustomerPrediction &&\n    !hasCustomerRecommendation;\n\n  if (attendeePrediction && isCustomerStillNeeded) {\n    if (isStr(attendeeValue)) {\n      state.acknowledgements.lines.push(\n        buildExtractedAttendeeText(attendeePrediction, attendeeValue)\n      );\n    }\n    return;\n  }\n\n  const attendeeAcknowledgement = buildAttendeeAcknowledgementText(\n    attendeePrediction,\n    attendeeValue,\n    Boolean(attendeePrediction) && !requiresSimplifiedExpenseDetails\n  );\n\n  if (\n    attendeePrediction &&\n    customerPrediction &&\n    hasResolvedCustomerPrediction &&\n    (hasCustomerValue || hasEmployeeOnlyCustomerValue)\n  ) {\n    state.acknowledgements.lines.push(\n      buildSimplifiedAttendeeCustomerAcknowledgementText(attendeePrediction, attendeeValue)\n    );\n    if (hasEmployeeOnlyCustomerValue) {\n      state.acknowledgements.lines.push(\"Expense has been updated as employee only expense.\");\n    }\n  } else if (attendeePrediction && (!customerPrediction || !hasResolvedCustomerPrediction)) {\n    state.acknowledgements.lines.push(attendeeAcknowledgement);\n  } else if (customerPrediction && hasEmployeeOnlyCustomerValue) {\n    if (attendeePrediction) {\n      state.acknowledgements.lines.push(attendeeAcknowledgement);\n    }\n    state.acknowledgements.lines.push(\"Expense has been updated as employee only expense.\");\n  } else if (attendeePrediction && customerPrediction && hasResolvedCustomerPrediction) {\n    state.acknowledgements.lines.push(attendeeAcknowledgement);\n  } else if (!attendeePrediction && customerPrediction && hasCustomerValue) {\n    state.acknowledgements.lines.push(\"Customer(s) have been updated.\");\n  }\n};\n\nconst buildSyntheticOpenIssueAttributes = (state, items = []) => {\n  const invalidFields = uniqueCaseInsensitive(\n    Array.from(state.failures.invalidFields)\n      .map((fieldName) => humanizeFieldLabel(fieldName))\n      .filter(isStr)\n  );\n\n  const attributes =\n    invalidFields.includes(FIELD_NAMES.ATTENDEES) || invalidFields.includes(\"attendee\")\n      ? [\"names and emails of the attendees\"]\n      : [];\n\n  const {\n    isSimplifiedExpenseType,\n    requiresSimplifiedExpenseDetails,\n    attendeePrediction,\n    attendeeValue,\n    hasResolvedCustomerPrediction,\n    hasCustomerRecommendation\n  } = getSimplifiedExpenseTypeInfo(items);\n\n  if (isSimplifiedExpenseType && requiresSimplifiedExpenseDetails) {\n    const isCustomerStillNeeded =\n      !hasResolvedCustomerPrediction &&\n      !hasCustomerRecommendation;\n\n    if (!attendeePrediction || !isStr(attendeeValue)) {\n      attributes.push(getSimplifiedNumberOpenIssueLabel());\n    }\n\n    if (isCustomerStillNeeded) {\n      attributes.push(FIELD_LABELS.CUSTOMER_OR_PARTNER_ORG);\n    }\n  }\n\n  return uniqueCaseInsensitive(attributes);\n};\n\nconst createPredictionState = () => ({\n  recommendations: {\n    items: [],\n    data: []\n  },\n  acknowledgements: {\n    lines: [],\n    fieldUpdates: []\n  },\n  failures: {\n    entries: [],\n    invalidFields: new Set(),\n    hasPredictionNeedsAttention: false\n  },\n  defaults: {\n    fieldUpdates: []\n  }\n});\n\nconst addFailureEntry = (state, message, source) => {\n  if (!isStr(message)) return;\n\n  state.failures.entries.push({\n    message: message.trim(),\n    source,\n    order: state.failures.entries.length\n  });\n};\n\nconst addNeedsAttentionFailure = (state, source) => {\n  const existingEntry = state.failures.entries.find(\n    (entry) => entry.message === MESSAGES.needsAttention\n  );\n\n  if (existingEntry) return;\n\n  addFailureEntry(state, MESSAGES.needsAttention, source);\n};\n\nconst hasPartnerTechnicalIssue = (partnerRecord) => {\n  if (!partnerRecord) return false;\n\n  const stageStatus = norm(partnerRecord?.stageStatus);\n\n  return (\n    norm(partnerRecord?.statusCode) === PARTNER_STATUS.ERROR &&\n    (\n      stageStatus === PARTNER_STAGE_STATUS.TECHNICAL_ERROR ||\n      stageStatus === PARTNER_STAGE_STATUS.FACADE_FAILURE\n    )\n  );\n};\n\nconst addRecommendationData = (state, item, partnerExpenseId) => {\n  state.recommendations.items.push(item);\n\n  const parsed = safeJsonParse(item?.fieldValue) || {};\n  const fieldKey = normalizePredictionFieldName(item?.fieldName);\n  const accountCompanySegmentDisabled = parsed.companySegmentDisabled === true;\n\n  const record = accountCompanySegmentDisabled && fieldKey === FIELD_NAMES.ACCOUNTS\n    ? {\n        type: item?.fieldName,\n        keys: { partnerExpenseId },\n        fieldValue: {\n          fieldName1: parsed.costCenterName ?? parsed.costCenter ?? \"\",\n          fieldNumber1: parsed.costCenterId ?? \"\",\n          rank: item?.predictionRank\n        }\n      }\n    : {\n        type: item?.fieldName,\n        keys: { partnerExpenseId },\n        fieldValue: {\n          fieldName1: parsed.projectName ?? parsed.companyName ?? parsed.spendAuthHeader ?? \"\",\n          fieldName2: parsed.taskName ?? parsed.costCenterName ?? parsed.spendAuthLine ?? \"\",\n          fieldNumber1: parsed.projectNumber ?? parsed.companyId ?? \"\",\n          fieldNumber2: parsed.taskNumber ?? parsed.costCenterId ?? \"\",\n          rank: item?.predictionRank\n        }\n      };\n\n  const completeFields = accountCompanySegmentDisabled && fieldKey === FIELD_NAMES.ACCOUNTS\n    ? [\n        record.type,\n        record.fieldValue.fieldName1,\n        record.fieldValue.fieldNumber1,\n        record.fieldValue.rank\n      ]\n    : [\n        record.type,\n        record.fieldValue.fieldName1,\n        record.fieldValue.fieldName2,\n        record.fieldValue.fieldNumber1,\n        record.fieldValue.fieldNumber2,\n        record.fieldValue.rank\n      ];\n\n  if (completeFields.every(hasValue)) {\n    state.recommendations.data.push(record);\n  }\n};\n\nconst handleAcknowledgementPrediction = (state, fieldKey, rawFieldName, fieldValueRaw) => {\n  if (fieldKey === FIELD_NAMES.ACTION) {\n    const actionValue = norm(\n      typeof fieldValueRaw === \"string\" ? fieldValueRaw : displayFromFieldValue(fieldValueRaw)\n    );\n\n    if (actionValue === \"markAsPersonal\") {\n      state.acknowledgements.lines.push(MESSAGES.markedAsPersonal);\n    } else if (actionValue === \"markAsDuplicate\") {\n      state.acknowledgements.lines.push(MESSAGES.markedAsDuplicate);\n    }\n\n    return;\n  }\n\n  if (fieldKey === FIELD_NAMES.ACCOUNTS) {\n    const parsed = safeJsonParse(fieldValueRaw) || {};\n    if (parsed.companySegmentDisabled === true) {\n      if (parsed.companyRequested === true && !state.acknowledgements.lines.includes(MESSAGES.companyNotUpdated)) {\n        state.acknowledgements.lines.push(MESSAGES.companyNotUpdated);\n      }\n      if (parsed.costCenterRequested === true) {\n        state.acknowledgements.fieldUpdates.push({ fieldName: \"Cost Center\", fieldValueRaw });\n      }\n      return;\n    }\n  }\n\n  if (isCustomerField(rawFieldName) && !hasNonNoneFieldValue(fieldValueRaw)) {\n    return;\n  }\n\n  state.acknowledgements.fieldUpdates.push({ fieldName: rawFieldName, fieldValueRaw });\n};\n\nconst handleFailurePrediction = (state, code, fieldKey, rawFieldName, fieldValueRaw, ruleCode) => {\n  if (code === PREDICTION_TYPES.RESOLVED_INVALID || code === PREDICTION_TYPES.NOT_RESOLVED) {\n    if (fieldKey === FIELD_NAMES.PROJECTS) {\n      const fieldLabel = getDisplayFieldName(rawFieldName, fieldValueRaw) || FIELD_LABELS.PROJECT_AND_TASK;\n      const message = code === PREDICTION_TYPES.RESOLVED_INVALID\n        ? `The ${fieldLabel} provided is invalid.`\n        : `The ${fieldLabel} provided could not be matched.`;\n      addFailureEntry(state, message, \"prediction\");\n      return;\n    }\n    if (fieldKey === FIELD_NAMES.ACCOUNTS) {\n      const parsed = safeJsonParse(fieldValueRaw) || {};\n      if (parsed.companySegmentDisabled === true) {\n        if (parsed.companyRequested === true && !state.failures.entries.some((entry) => entry.message === MESSAGES.companyNotUpdated)) {\n          addFailureEntry(state, MESSAGES.companyNotUpdated, \"prediction\");\n        }\n        if (parsed.costCenterRequested === true) {\n          state.failures.invalidFields.add(\"Cost Center\");\n        }\n        return;\n      }\n    }\n    if (isStr(rawFieldName)) {\n      state.failures.invalidFields.add(rawFieldName);\n    }\n    return;\n  }\n\n  if (code === PREDICTION_TYPES.NO_ACCESS) {\n    if (fieldKey === FIELD_NAMES.ACCOUNTS) {\n      const parsed = safeJsonParse(fieldValueRaw) || {};\n      addFailureEntry(\n        state,\n        parsed.companySegmentDisabled === true ? MESSAGES.noAccessCostCenter : MESSAGES.noAccessAccounting,\n        \"prediction\"\n      );\n    } else if (fieldKey === FIELD_NAMES.PROJECTS) {\n      addFailureEntry(\n        state,\n        norm(ruleCode) === PREDICTION_RULE_CODES.NO_PRIVILEGE\n          ? MESSAGES.noAccessProject\n          : MESSAGES.noAccessProjectTask,\n        \"prediction\"\n      );\n    }\n    return;\n  }\n\n  if (code === PREDICTION_TYPES.UNSUPPORTED) {\n    addFailureEntry(state, MESSAGES.needsAttention, \"prediction\");\n  }\n};\n\nconst handleDefaultPrediction = (state, code, rawFieldName, fieldValueRaw) => {\n  if (code === PREDICTION_TYPES.AGENT_ADJUSTMENT) {\n    return;\n  }\n\n  state.defaults.fieldUpdates.push({ fieldName: rawFieldName, fieldValueRaw });\n};\n\nconst buildPredictionState = (items, partnerExpenseId) => {\n  const state = createPredictionState();\n  const recommendationItems = [];\n\n  for (const item of items) {\n    const code = item?.predictionTypeCode;\n    if (!isStr(code)) continue;\n\n    if (PREDICTION_NEEDS_ATTENTION_TYPES.has(code)) {\n      state.failures.hasPredictionNeedsAttention = true;\n      addNeedsAttentionFailure(state, \"prediction\");\n      continue;\n    }\n\n    const rawFieldName = item?.fieldName;\n    const fieldKey = normalizePredictionFieldName(rawFieldName);\n    const fieldValueRaw = item?.fieldValue;\n\n    if (INTERNAL_ONLY_PREDICTION_FIELDS.has(fieldKey)) {\n      continue;\n    }\n\n    if (ACK_CODES.has(code)) {\n      handleAcknowledgementPrediction(state, fieldKey, rawFieldName, fieldValueRaw);\n      continue;\n    }\n\n    if (FAIL_CODES.has(code)) {\n      handleFailurePrediction(state, code, fieldKey, rawFieldName, fieldValueRaw, item?.ruleCode);\n      continue;\n    }\n\n    if (DEFAULT_CODES.has(code)) {\n      handleDefaultPrediction(state, code, rawFieldName, fieldValueRaw);\n      continue;\n    }\n\n    if (code === PREDICTION_TYPES.RECOMMENDATION) {\n      recommendationItems.push(item);\n    }\n  }\n\n  for (const item of sortByPredictionRank(recommendationItems)) {\n    addRecommendationData(state, item, partnerExpenseId);\n  }\n\n  return state;\n};\n\nconst hasUserPersonalIntent = (items) =>\n  (Array.isArray(items) ? items : []).some((item) => {\n    const code = item?.predictionTypeCode;\n    if (!ACK_CODES.has(code)) return false;\n\n    const fieldKey = normalizePredictionFieldName(item?.fieldName);\n    const fieldValueRaw = item?.fieldValue;\n\n    if (fieldKey === FIELD_NAMES.ACTION) {\n      const actionValue = norm(\n        typeof fieldValueRaw === \"string\" ? fieldValueRaw : displayFromFieldValue(fieldValueRaw)\n      );\n      return actionValue === \"markAsPersonal\";\n    }\n\n    return fieldKey === \"personalreceiptamount\";\n  });\n\nconst buildRecommendationSummary = (recommendationItems) => {\n  if (recommendationItems.length === 0) {\n    return \"\";\n  }\n\n  const attendeeRecommendations = recommendationItems.filter(\n    (item) => normalizePredictionFieldName(item?.fieldName) === FIELD_NAMES.ATTENDEES\n  );\n\n  const customerRecommendations = recommendationItems.filter(\n    (item) => isCustomerField(item?.fieldName)\n  );\n\n  if (attendeeRecommendations.length === 0 && customerRecommendations.length === 0) {\n    const optionNumbers = formatOptionNumbers(recommendationItems.length);\n    const firstRecommendation = recommendationItems[0];\n    const firstRecommendationValue = safeJsonParse(firstRecommendation?.fieldValue) || {};\n    const primaryField = firstRecommendationValue.companySegmentDisabled === true && normalizePredictionFieldName(firstRecommendation?.fieldName) === FIELD_NAMES.ACCOUNTS\n      ? \"cost center\"\n      : humanizeFieldLabel(firstRecommendation?.fieldName);\n    return `Reply with option ${optionNumbers} from the below recommendations or enter a new ${primaryField}.`;\n  }\n\n  const sections = [];\n\n  if (customerRecommendations.length > 0) {\n    const groupedCustomerRecommendations = new Map();\n\n    for (const recommendation of customerRecommendations) {\n      const groupKey = isStr(recommendation?.driverValue2)\n        ? recommendation.driverValue2.trim()\n        : \"customer\";\n\n      if (!groupedCustomerRecommendations.has(groupKey)) {\n        groupedCustomerRecommendations.set(groupKey, []);\n      }\n\n      groupedCustomerRecommendations.get(groupKey).push(recommendation);\n    }\n\n    for (const [groupName, items] of groupedCustomerRecommendations.entries()) {\n      const lines = sortByPredictionRank(items).map((item, index) => {\n        const customerName = displayFromFieldValue(item?.fieldValue);\n        return `${index + 1}. ${customerName}`;\n      });\n\n      sections.push(`Reply with which ${groupName} to add:\\n${lines.join(\"\\n\")}`);\n    }\n  }\n\n  if (attendeeRecommendations.length === 0) {\n    return sections.join(\"\\n\\n\");\n  }\n\n  const groupedRecommendations = new Map();\n\n  for (const recommendation of attendeeRecommendations) {\n    const groupKey = isStr(recommendation?.driverValue2)\n      ? recommendation.driverValue2.trim()\n      : \"attendee\";\n\n    if (!groupedRecommendations.has(groupKey)) {\n      groupedRecommendations.set(groupKey, []);\n    }\n\n    groupedRecommendations.get(groupKey).push(recommendation);\n  }\n\n  for (const [groupName, items] of groupedRecommendations.entries()) {\n    const lines = sortByPredictionRank(items).map((item, index) => {\n      const parsed = safeJsonParse(item?.fieldValue) || {};\n      const name = isStr(parsed?.name) ? parsed.name : displayFromFieldValue(parsed?.name ?? \"\");\n      const id = isStr(parsed?.id) ? parsed.id : displayFromFieldValue(parsed?.id ?? \"\");\n      return `${index + 1}. ${name}, ${id}`;\n    });\n\n    sections.push(`Reply with which ${groupName} attended:\\n${lines.join(\"\\n\")}`);\n  }\n\n  return sections.join(\"\\n\\n\");\n};\n\nconst applyPartnerExpenseOutcome = (state, partnerMessage, partnerReceipt, expense) => {\n  if (hasPartnerTechnicalIssue(partnerMessage)) {\n    state.failures.entries = [];\n    state.failures.invalidFields.clear();\n    addFailureEntry(state, MESSAGES.technicalIssue, \"partner\");\n    return true;\n  }\n\n  if (!(partnerMessage && isStr(partnerMessage?.partnerExpenseOutcome))) {\n    return false;\n  }\n\n  const outcome = norm(partnerMessage.partnerExpenseOutcome);\n  const subReason = norm(partnerMessage.outcomeSubReason);\n\n  if (outcome === PARTNER_OUTCOMES.EXPENSE_MATCHED) {\n    if (FIRST_RECEIPT_WITH_ADDITIONAL_SUBREASONS.has(subReason)) {\n      const partnerAmount = toNumber(partnerReceipt?.receiptAmount);\n      const expenseAmount = toNumber(expense?.receiptAmount);\n      const tipAmount = toNumber(partnerReceipt?.tipAmount);\n      let additionalAmount = NaN;\n\n      if (\n        subReason === OUTCOME_SUBREASONS.FIRST_RECEIPT_WITH_TIP_AMT &&\n        Number.isFinite(tipAmount) &&\n        tipAmount > 0\n      ) {\n        additionalAmount = tipAmount;\n      } else if (Number.isFinite(partnerAmount) && Number.isFinite(expenseAmount)) {\n        additionalAmount = Math.max(partnerAmount - expenseAmount, 0);\n      }\n\n      const currencyCode = partnerReceipt?.receiptCurrency?.currencyCode ?? \"\";\n\n      if (Number.isFinite(additionalAmount) && additionalAmount > 0 && isStr(currencyCode)) {\n        state.acknowledgements.lines.unshift(\n          `The attached receipt has an additional ${additionalAmount} ${currencyCode} charge which will update the expense amount when the final charge comes in.`\n        );\n      } else {\n        state.acknowledgements.lines.unshift(MESSAGES.additionalChargeFallback);\n      }\n    }\n\n    return false;\n  }\n\n  if (outcome !== PARTNER_OUTCOMES.EMAIL_NOT_PROCESSED) {\n    return false;\n  }\n\n  const when = formatIsoToMMDDYY(partnerMessage?.timeCreated || partnerReceipt?.timeCreated);\n\n  if (PARTNER_NEEDS_ATTENTION_SUBREASONS.has(subReason)) {\n    addNeedsAttentionFailure(state, \"partner\");\n    return true;\n  }\n\n  if (state.failures.hasPredictionNeedsAttention) {\n    return false;\n  }\n\n  if (subReason === OUTCOME_SUBREASONS.RECEIPT_INVALID) {\n    addFailureEntry(\n      state,\n      `The receipt submitted on ${when} cannot be processed due to an unsupported file format. Forward the receipt in a supported format (.eml, .tif, .tiff, .jpg, .jpeg, .png, .bmp, .pdf).`,\n      \"partner\"\n    );\n  } else if (subReason === OUTCOME_SUBREASONS.BU_NOT_ENABLED) {\n    const businessUnit =\n      partnerReceipt?.businessUnit?.name ||\n      expense?.businessUnit?.name ||\n      \"your business unit\";\n\n    addFailureEntry(\n      state,\n      `The receipt cannot be processed automatically for ${businessUnit}. Go to Oracle Expenses to create the expense.`,\n      \"partner\"\n    );\n  } else if (subReason === OUTCOME_SUBREASONS.RECEIPT_ALREADY_PROCESSED) {\n    addFailureEntry(state, MESSAGES.receiptAlreadyProcessed, \"partner\");\n  } else if (subReason === OUTCOME_SUBREASONS.INVALID_ERECEIPT_EMAIL) {\n    addFailureEntry(state, MESSAGES.invalidEReceipt, \"partner\");\n  } else if (subReason === OUTCOME_SUBREASONS.RECEIPT_IGNORED) {\n    addFailureEntry(state, MESSAGES.receiptIgnored, \"partner\");\n  } else if (subReason === OUTCOME_SUBREASONS.IDR_AMOUNT_ZERO) {\n    addFailureEntry(state, MESSAGES.receiptAmountZero, \"partner\");\n  } else if (subReason === OUTCOME_SUBREASONS.DO_NOT_PROCESS) {\n    addFailureEntry(state, MESSAGES.receiptCannotAutoProcess, \"partner\");\n  } else if (subReason === OUTCOME_SUBREASONS.INVALID_DELEGATE) {\n    addFailureEntry(state, MESSAGES.invalidDelegate, \"partner\");\n  }\n\n  return true;\n};\n\nconst getOrderedFailureLines = (state) => {\n  const entries = state.failures.entries.slice();\n\n  const hasAcknowledgedAttendees = state.acknowledgements.fieldUpdates.some(\n    (update) => normalizePredictionFieldName(update.fieldName) === FIELD_NAMES.ATTENDEES\n  );\n\n  const invalidFields = uniqueCaseInsensitive(\n    Array.from(state.failures.invalidFields)\n      .map((fieldName) => humanizeFieldLabel(fieldName))\n      .filter(isStr)\n  );\n\n  const hasInvalidAttendees =\n    invalidFields.includes(FIELD_NAMES.ATTENDEES) || invalidFields.includes(\"attendee\");\n\n  const hasInvalidCustomers =\n    invalidFields.includes(FIELD_NAMES.CUSTOMER) || invalidFields.includes(FIELD_NAMES.CUSTOMERS);\n\n  const otherInvalidFields = invalidFields.filter(\n    (fieldName) =>\n      fieldName !== FIELD_NAMES.ATTENDEES &&\n      fieldName !== \"attendee\" &&\n      fieldName !== FIELD_NAMES.CUSTOMER &&\n      fieldName !== FIELD_NAMES.CUSTOMERS\n  );\n\n  if (hasInvalidAttendees) {\n    entries.push({\n      message: hasAcknowledgedAttendees\n        ? \"Some of the attendees provided could not be matched.\"\n        : \"The attendees provided could not be matched.\",\n      source: \"invalid\",\n      order: entries.length\n    });\n  }\n\n  if (hasInvalidCustomers) {\n    entries.push({\n      message: \"The customers provided could not be matched. Please go to Oracle Expenses to add them.\",\n      source: \"invalid\",\n      order: entries.length\n    });\n  }\n\n  if (otherInvalidFields.length > 0) {\n    entries.push({\n      message: `The ${formatList(otherInvalidFields)} provided could not be matched.`,\n      source: \"invalid\",\n      order: entries.length\n    });\n  }\n\n  return entries\n    .sort((left, right) => {\n      const sourcePriorityDiff =\n        FAILURE_SOURCE_PRIORITY[left.source] - FAILURE_SOURCE_PRIORITY[right.source];\n\n      if (sourcePriorityDiff !== 0) return sourcePriorityDiff;\n\n      return left.order - right.order;\n    })\n    .map((entry) => entry.message);\n};\n\nconst predictionState = buildPredictionState(predictionItems, trigger.partnerExpenseId);\n\nlet failureOnly = applyPartnerExpenseOutcome(\n  predictionState,\n  partnerExpenseMessage,\n  partnerExpenseReceipt,\n  expenseData\n);\n\nconst hasDuplicateExpenseError = (expenseData?.expenseErrors?.items || []).some(\n  (error) =>\n    error?.userActionRequiredFlag === true &&\n    error?.objectName !== \"NA\" &&\n    isDuplicateExpenseError(error)\n);\n\nif (hasDuplicateExpenseError) {\n  addFailureEntry(predictionState, MESSAGES.duplicateExpense, \"partner\");\n  failureOnly = true;\n}\n\nconst userPersonalIntent = hasUserPersonalIntent(predictionItems);\n\nconst personalAmountAcknowledgement =\n  !failureOnly &&\n  !userPersonalIntent &&\n  norm(partnerExpenseMessage?.partnerExpenseOutcome) === PARTNER_OUTCOMES.EXPENSE_CREATED\n    ? buildPersonalAmountAcknowledgement(expenseData)\n    : \"\";\n\nif (isStr(personalAmountAcknowledgement)) {\n  predictionState.acknowledgements.lines = predictionState.acknowledgements.lines.filter(\n    (line) => line !== MESSAGES.markedAsPersonal\n  );\n\n  predictionState.acknowledgements.lines.push(personalAmountAcknowledgement);\n}\n\nif (!failureOnly) {\n  applySimplifiedExpenseTypeAcknowledgements(predictionState, predictionItems);\n}\n\nconst pendingFinalChargeAcknowledgement =\n  !failureOnly && isPendingFinalChargeExpense(expenseData)\n    ? autoSubmissionEnabledFlag === \"Y\"\n      ? MESSAGES.pendingFinalChargeAutoSubmit\n      : MESSAGES.pendingFinalChargeManualSubmit\n    : \"\";\n\nif (isStr(pendingFinalChargeAcknowledgement)) {\n  predictionState.acknowledgements.lines.push(pendingFinalChargeAcknowledgement);\n}\n\nconst orderedFailureLines = getOrderedFailureLines(predictionState);\nconst simplifiedExpenseTypeInfo = getSimplifiedExpenseTypeInfo(predictionItems);\nconst resolvedOpenIssueAttributes =\n  simplifiedExpenseTypeInfo.requiresSimplifiedExpenseDetails &&\n  simplifiedExpenseTypeInfo.attendeePrediction &&\n  isStr(simplifiedExpenseTypeInfo.attendeeValue)\n    ? [\"numberofattendees\"]\n    : [];\n\nconst syntheticOpenIssueAttributes = failureOnly\n  ? []\n  : buildSyntheticOpenIssueAttributes(predictionState, predictionItems);\n\nconst recommendationSummary = failureOnly\n  ? \"\"\n  : buildRecommendationSummary(predictionState.recommendations.items);\n\nconst acknowledgementSummary = failureOnly\n  ? \"\"\n  : buildCombinedUpdateSummary(\n      predictionState.acknowledgements.fieldUpdates,\n      joinLines(predictionState.acknowledgements.lines)\n    );\n\nconst defaultSummary = failureOnly\n  ? \"\"\n  : buildCombinedUpdateSummary(predictionState.defaults.fieldUpdates, \"\");\n\nconst hasItemizedExpenseIssues =\n  hasItemizedExpenseValidationIssues(itemizedExpenseItems);\nconst actionableExpenseErrorCount = getUnresolvedActionableExpenseErrors(expenseData).length;\nconst openIssuesSummary = failureOnly\n  ? \"\"\n  : hasItemizedExpenseIssues\n    ? MESSAGES.needsAttention\n    : buildOpenIssuesSummary(\n        expenseData,\n        expenseData?.validationStatusCode,\n        syntheticOpenIssueAttributes,\n        resolvedOpenIssueAttributes\n      );\n\nconst summarizedData = {\n  isSimplifiedExpense:\n    String(isSimplifiedExpense ?? \"\")\n      .trim()\n      .toLowerCase() === \"true\",\n  openIssues: {\n    summary: openIssuesSummary,\n    data: {\n      ...expenseData,\n      itemizedExpenseItems,\n      syntheticOpenIssueAttributes\n    }\n  },\n  recommendations: {\n    summary: recommendationSummary,\n    data: failureOnly ? [] : predictionState.recommendations.data\n  },\n  acknowledgements: {\n    summary: acknowledgementSummary,\n    data: []\n  },\n  failures: {\n    summary: joinLines(orderedFailureLines),\n    data: []\n  },\n  defaults: {\n    summary: defaultSummary,\n    data: []\n  },\n  actionableExpenseErrorCount: actionableExpenseErrorCount + (hasItemizedExpenseIssues ? 1 : 0)\n};\n\nconst summarizedOutput = {\n  expenseId: trigger.expenseId,\n  replyFlow: trigger.replyFlow,\n  summarizedData,\n  partnerExpenseId: trigger.partnerExpenseId\n};\n\nreturn summarizedOutput;\n"
+          },
+          "outcomes": {
+            "success": "1769478448347"
+          },
+          "code": "SUMMARIZATIONOUTPUT",
+          "convergenceTargetId": "1769478448347",
+          "id": "1773525375834",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EXPENSEBUSINESSUNITSETTING",
+            "functionName": "fetchAutoSubmissionEnabledFlag",
+            "name": "Get Auto Submission Flag"
+          },
+          "outcomes": {
+            "success": "1773525375834"
+          },
+          "code": "GET_AUTO_SUBMISSION_FLAG",
+          "id": "1779435721229",
+          "inputs": [
+            {
+              "id": "1779435763479_1",
+              "name": "organizationId",
+              "type": "string",
+              "value": "{{ $context.$nodes.GETEXPENSEINFO?.$output?.businessUnit?.id || $context.$nodes.GET_PREVIOUS_SUMMARIES.$output?.items.find((item) => item?.sourceTypeCode === \"RECEIPT\")?.businessUnit?.id || \"\" }}"
+            },
+            {
+              "id": "1779435763480_2",
+              "name": "personId",
+              "type": "string",
+              "value": "{{ $context.$nodes.GET_PREVIOUS_SUMMARIES.$output?.items.find((item) => item?.sourceTypeCode === \"MESSAGE\")?.person?.id || \"\" }}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "setSourceTypeCode",
+            "returnType": "string",
+            "sourceCode": "const channel = String($context?.$triggers?.REST?.$input?.channel || \"\").trim().toUpperCase();\n\nlet sourceTypeCode = \"MESSAGE\"; // default fallback\n\nif (channel === \"B2B_CC\") {\n  sourceTypeCode = \"B2B_CC\";\n} else if (channel === \"EMAIL\") {\n  sourceTypeCode = \"MESSAGE\";\n}\n\nreturn sourceTypeCode;"
+          },
+          "outcomes": {
+            "success": "1772489970456"
+          },
+          "code": "SETSOURCETYPECODE",
+          "id": "1780505989980",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.3
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "modelName": "Gpt Oss",
+      "provider": "CERT_BASIC"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1779391893193",
+            "name": "isSimplifiedExpense",
+            "type": "boolean"
+          },
+          {
+            "id": "1768258051023",
+            "name": "channel",
+            "type": "string"
+          },
+          {
+            "id": "1768258042376",
+            "name": "replyFlow",
+            "type": "boolean"
+          },
+          {
+            "id": "1768258029652",
+            "name": "partnerExpenseId",
+            "type": "string"
+          },
+          {
+            "id": "1768258023211",
+            "name": "expenseId",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "FIN",
+  "product": "EXPENSES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": true,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"9\""
+  }
+}

@@ -1,0 +1,1146 @@
+{
+  "workflowId": "100002355227085",
+  "workflowCode": "ORA_FIN_EXM_EXPENSE_COMPLETION_ASSISTANT",
+  "name": "Expense Completion Assistant",
+  "description": "This agent interprets user instructions, updates the expense accordingly, checks the updates against policy rules, records any system recommendations, and summarizes all compliance issues or errors so the user can take the required corrective actions.",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1775149956343"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "checkRequestType"
+          },
+          "outcomes": {
+            "true": "1768288232614",
+            "false": "add_false_1765277137500"
+          },
+          "code": "CHECKREQUESTTYPE",
+          "convergenceTargetId": "1767897941470",
+          "id": "1765277137500",
+          "inputs": [
+            {
+              "id": "1765277137501_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.mode!== \"summary\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1769744117941"
+          },
+          "id": "add_false_1765277137500",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775149970860",
+            "name": "createPredictionsPayload",
+            "returnType": "object",
+            "sourceCode": "let RecommendationAgentOutput =\n  JSON.parse($context.$nodes.EXPENSE_RECOMMENDATION_ASSISTANT.$output.output)\n    .result.resolvedEntities || [];\n\nconst valueResolverOutput =\n  JSON.parse($context.$nodes.EXPENSE_VALUE_RESOLVER_ASSISTANT.$output.output || \"{}\");\n\nlet ResolvedInstructionsArray =\n  valueResolverOutput?.result?.ResolvedInstructions ||\n  valueResolverOutput?.ResolvedInstructions ||\n  [];\n\nlet raw = $context.$nodes.EXPENSE_MESSAGE_DECOMPOSITION_AGENT.$output;\nlet isSimplified = $context.$triggers.REST.$input.isSimplifiedExpense;\n\nif (typeof raw === \"string\") {\n  try {\n    raw = JSON.parse(raw);\n  } catch (e) {\n    raw = {};\n  }\n}\n\nlet output = raw.output;\n\nif (typeof output === \"string\") {\n  try {\n    output = JSON.parse(output);\n  } catch (e) {\n    output = {};\n  }\n}\n\nconst DecomposedInstructionsArray =\n  output?.result?.DecomposedInstructions || [];\n\nlet partnerExpensexpenseId = $context.$triggers.REST.$input.partnerExpenseId;\n\nlet predictionsPayload = {};\nlet itemsArray = [];\n\nlet personId = $context.$nodes.FETCHEXPENSEDETAILS.$output.person.id;\n\nlet partnerExpenseObject = {\n  id: partnerExpensexpenseId\n};\n\nconst isSimplifiedExpense =\n  String(isSimplified).trim().toLowerCase() === \"true\";\n\nconst isSupportedPredictionValue = value => {\n  return (\n    typeof value === \"string\" ||\n    typeof value === \"number\" ||\n    typeof value === \"boolean\" ||\n    (value && typeof value === \"object\" && !Array.isArray(value))\n  );\n};\n\nconst serializePredictionFieldValue = value => {\n  if (value && typeof value === \"object\") {\n    try {\n      return JSON.stringify(value);\n    } catch (e) {\n      return \"\";\n    }\n  }\n\n  return String(value);\n};\n\nconst normalizePredictionFieldName = field => {\n  let normalizedField = String(field || \"\").trim();\n\n  const FIELD_NORMALIZATION_MAP = {\n    project: \"Project\",\n    projects: \"Project\",\n    account: \"Account\",\n    accounts: \"Account\",\n    numberofattendees: \"numberOfAttendees\",\n    \"number of attendees\": \"numberOfAttendees\"\n  };\n\n  return FIELD_NORMALIZATION_MAP[normalizedField.toLowerCase()] || normalizedField;\n};\n\nconst isField = (field, expectedField) => {\n  return (\n    normalizePredictionFieldName(field).trim().toLowerCase() ===\n    normalizePredictionFieldName(expectedField).trim().toLowerCase()\n  );\n};\n\nconst MAX_DRIVER_VALUE_LENGTH = 1900;\nconst TRUNCATION_SUFFIX = \"... [truncated]\";\n\nconst truncateDriverValue = value => {\n  if (value === null || value === undefined) return \"\";\n\n  const text = typeof value === \"string\" ? value : String(value);\n\n  if (text.length <= MAX_DRIVER_VALUE_LENGTH) {\n    return text;\n  }\n\n  return (\n    text.substring(0, MAX_DRIVER_VALUE_LENGTH - TRUNCATION_SUFFIX.length) +\n    TRUNCATION_SUFFIX\n  );\n};\n\nconst normalizeDriverValues = item => {\n  [\n    \"driverValue1\",\n    \"driverValue2\",\n    \"driverValue3\",\n    \"driverValue4\",\n    \"driverValue5\"\n  ].forEach(field => {\n    item[field] = truncateDriverValue(item[field]);\n  });\n\n  return item;\n};\n\nconst pushPredictionItem = item => {\n  item.fieldValue = truncateDriverValue(\n    serializePredictionFieldValue(item.fieldValue)\n  );\n  itemsArray.push(normalizeDriverValues(item));\n};\n\nconst hasResolvedPredictionForField = fieldName => {\n  const RESOLVED_TYPE_CODES = [\n    \"ORA_EXACT_MATCH\",\n    \"ORA_RESOLVED_SUCCESSFULLY\",\n    \"ORA_RECOMMENDATION_RESOLVED\"\n  ];\n\n  return itemsArray.some(item => {\n    let itemFieldName = item?.fieldName;\n    let predictionTypeCode = String(item?.predictionTypeCode || \"\")\n      .trim()\n      .toUpperCase();\n\n    return (\n      isField(itemFieldName, fieldName) &&\n      RESOLVED_TYPE_CODES.includes(predictionTypeCode)\n    );\n  });\n};\n\nconst pushInstructionPrediction = instruction => {\n  if (!instruction || typeof instruction !== \"object\") return;\n\n  const { type, field, value, message, reasoning } = instruction;\n\n  if (typeof field !== \"string\" || !isSupportedPredictionValue(value)) return;\n  if (type === \"needsResolution\" || type === \"delegation\") return;\n\n  let itemPayload = {};\n\n  itemPayload[\"$operation\"] = \"CREATE\";\n  itemPayload[\"partnerExpense\"] = partnerExpenseObject;\n  itemPayload[\"sourceObjectCode\"] = \"ORA_PARTNER_EXPENSE\";\n  itemPayload[\"fieldName\"] = normalizePredictionFieldName(field);\n  itemPayload[\"fieldValue\"] = value;\n  itemPayload[\"predictionRank\"] = \"\";\n  itemPayload[\"driverName1\"] = \"ORA_INSTRUCTION\";\n  itemPayload[\"driverValue1\"] = message;\n  itemPayload[\"driverName2\"] = \"ORA_ENTITY_VALUE\";\n  itemPayload[\"driverValue2\"] = \"\";\n  itemPayload[\"driverName3\"] = \"ORA_AGENT_REASONING\";\n  itemPayload[\"driverValue3\"] = reasoning;\n  itemPayload[\"driverName4\"] = \"\";\n  itemPayload[\"driverValue4\"] = \"\";\n  itemPayload[\"driverName5\"] = \"\";\n  itemPayload[\"driverValue5\"] = \"\";\n  itemPayload[\"predictionSource\"] = \"ORA_COMPLETION_ASSISTANT\";\n  itemPayload[\"ruleCode\"] = \"ORA_LLM_EXTRACTED\";\n  itemPayload[\"person\"] = { id: personId };\n\n  if (type === \"resolved\") {\n    itemPayload[\"predictionTypeCode\"] = \"ORA_RESOLVED_SUCCESSFULLY\";\n    itemPayload[\"predictionDisplayRule\"] = \"ORA_NOTIFY_USER\";\n    pushPredictionItem(itemPayload);\n  }\n\n  if (type === \"rec_resolved\") {\n    itemPayload[\"predictionTypeCode\"] = \"ORA_RECOMMENDATION_RESOLVED\";\n    itemPayload[\"predictionDisplayRule\"] = \"ORA_NOTIFY_USER\";\n    pushPredictionItem(itemPayload);\n  }\n\n  if (type === \"notResolved\") {\n    itemPayload[\"predictionTypeCode\"] = \"ORA_NOT_RESOLVED\";\n    itemPayload[\"predictionDisplayRule\"] = \"ORA_NOTIFY_USER\";\n    pushPredictionItem(itemPayload);\n  }\n\n  if (type === \"irrelevant\") {\n    itemPayload[\"predictionTypeCode\"] = \"ORA_IRRELEVANT\";\n    itemPayload[\"predictionDisplayRule\"] = \"ORA_NOTIFY_USER\";\n    pushPredictionItem(itemPayload);\n  }\n\n  if (type === \"unsupported\") {\n    itemPayload[\"predictionTypeCode\"] = \"ORA_UNSUPPORTED\";\n    itemPayload[\"predictionDisplayRule\"] = \"ORA_NOTIFY_USER\";\n    pushPredictionItem(itemPayload);\n  }\n};\n\nRecommendationAgentOutput.forEach(resolvedEntity => {\n  let fieldName = resolvedEntity[\"name\"];\n\n  if (\n    Array.isArray(resolvedEntity.resolvedValues) &&\n    resolvedEntity.resolvedValues.length > 0\n  ) {\n    resolvedEntity.resolvedValues.forEach(resolvedValue => {\n      if (\n        resolvedValue &&\n        Array.isArray(resolvedValue.matches) &&\n        resolvedValue.matches.length > 0\n      ) {\n        resolvedValue.matches.forEach(match => {\n          if (match) {\n            let itemPayload = {};\n            let fieldValueString = match.fieldValue;\n\n            itemPayload[\"$operation\"] = \"CREATE\";\n            itemPayload[\"partnerExpense\"] = partnerExpenseObject;\n            itemPayload[\"fieldName\"] = normalizePredictionFieldName(fieldName);\n            itemPayload[\"sourceObjectCode\"] = \"ORA_PARTNER_EXPENSE\";\n            itemPayload[\"fieldValue\"] = fieldValueString;\n            itemPayload[\"predictionTypeCode\"] = match.predictionTypeCode;\n            itemPayload[\"predictionDisplayRule\"] = match.predictionDisplayRule;\n            itemPayload[\"predictionRank\"] = match.predictionRank;\n            itemPayload[\"predictionSource\"] = match.predictionSource;\n            itemPayload[\"ruleCode\"] = match.ruleCode;\n            itemPayload[\"driverName1\"] = match.driverName1;\n            itemPayload[\"driverValue1\"] = match.driverValue1;\n            itemPayload[\"driverName2\"] = match.driverName2;\n            itemPayload[\"driverValue2\"] = match.driverValue2;\n            itemPayload[\"driverName3\"] = match.driverName3;\n            itemPayload[\"driverValue3\"] = match.driverValue3;\n            itemPayload[\"driverName4\"] = match.driverName4;\n            itemPayload[\"driverValue4\"] = match.driverValue4;\n            itemPayload[\"driverName5\"] = match.driverName5;\n            itemPayload[\"driverValue5\"] = match.driverValue5;\n            itemPayload[\"person\"] = { id: personId };\n\n            pushPredictionItem(itemPayload);\n          }\n        });\n      }\n    });\n  }\n});\n\nDecomposedInstructionsArray.forEach(pushInstructionPrediction);\nResolvedInstructionsArray.forEach(pushInstructionPrediction);\n\nif (isSimplifiedExpense && !hasResolvedPredictionForField(\"numberOfAttendees\")) {\n  const RESOLVED_CUSTOMER_PREDICTION_TYPE_CODES = [\n    \"ORA_EXACT_MATCH\",\n    \"ORA_RESOLVED_SUCCESSFULLY\",\n    \"ORA_RECOMMENDATION_RESOLVED\"\n  ];\n\n  let customerPredictionItems = itemsArray.filter(item => {\n    let predictionTypeCode = String(item?.predictionTypeCode || \"\")\n      .trim()\n      .toUpperCase();\n\n    return (\n      (isField(item?.fieldName, \"Customer\") || isField(item?.fieldName, \"Customers\")) &&\n      RESOLVED_CUSTOMER_PREDICTION_TYPE_CODES.includes(predictionTypeCode)\n    );\n  });\n\n  let uniqueCustomerKeys = new Set();\n\n  customerPredictionItems.forEach(item => {\n    let fieldValue = item?.fieldValue || \"\";\n    let customerKey = \"\";\n\n    try {\n      let parsedFieldValue = JSON.parse(fieldValue);\n\n      customerKey = String(\n        parsedFieldValue?.id ||\n          parsedFieldValue?.name ||\n          parsedFieldValue?.PartyId ||\n          parsedFieldValue?.PartyName ||\n          fieldValue\n      ).trim();\n    } catch (e) {\n      customerKey = String(fieldValue).trim();\n    }\n\n    if (customerKey) {\n      uniqueCustomerKeys.add(customerKey);\n    }\n  });\n\n  let numberOfCustomers = uniqueCustomerKeys.size;\n\n  if (numberOfCustomers > 0) {\n    pushPredictionItem({\n      \"$operation\": \"CREATE\",\n      \"partnerExpense\": partnerExpenseObject,\n      \"sourceObjectCode\": \"ORA_PARTNER_EXPENSE\",\n      \"fieldName\": \"numberOfAttendees\",\n      \"fieldValue\": String(numberOfCustomers + 1),\n      \"predictionTypeCode\": \"ORA_RESOLVED_SUCCESSFULLY\",\n      \"predictionDisplayRule\": \"ORA_NOTIFY_USER\",\n      \"predictionRank\": \"\",\n      \"driverName1\": \"ORA_TRIGGER_INPUT\",\n      \"driverValue1\": \"isSimplifiedExpense\",\n      \"driverName2\": \"ORA_ENTITY_VALUE\",\n      \"driverValue2\": \"customer\",\n      \"driverName3\": \"ORA_AGENT_REASONING\",\n      \"driverValue3\": \"Derived number of attendees from unique resolved customer predictions for simplified expense\",\n      \"driverName4\": \"\",\n      \"driverValue4\": \"\",\n      \"driverName5\": \"\",\n      \"driverValue5\": \"\",\n      \"predictionSource\": \"ORA_COMPLETION_AGENT\",\n      \"ruleCode\": \"ORA_DERIVED_FROM_CUSTOMERS\",\n      \"person\": { id: personId }\n    });\n  }\n}\n\nif (isSimplifiedExpense) {\n  pushPredictionItem({\n    \"$operation\": \"CREATE\",\n    \"partnerExpense\": partnerExpenseObject,\n    \"sourceObjectCode\": \"ORA_PARTNER_EXPENSE\",\n    \"fieldName\": \"issimplifiedexpensetype\",\n    \"fieldValue\": \"true\",\n    \"predictionTypeCode\": \"ORA_EXACT_MATCH\",\n    \"predictionDisplayRule\": \"ORA_NOTIFY_USER\",\n    \"predictionRank\": \"\",\n    \"driverName1\": \"ORA_TRIGGER_INPUT\",\n    \"driverValue1\": \"isSimplifiedExpenseType\",\n    \"driverName2\": \"\",\n    \"driverValue2\": \"\",\n    \"driverName3\": \"\",\n    \"driverValue3\": \"\",\n    \"driverName4\": \"\",\n    \"driverValue4\": \"\",\n    \"driverName5\": \"\",\n    \"driverValue5\": \"\",\n    \"predictionSource\": \"ORA_COMPLETION_AGENT\",\n    \"ruleCode\": \"ORA_EXACT_MATCH\",\n    \"person\": { id: personId }\n  });\n}\n\nitemsArray = itemsArray.map(normalizeDriverValues);\n\npredictionsPayload[\"items\"] = itemsArray;\n\nreturn predictionsPayload;"
+          },
+          "outcomes": {
+            "success": "1769153287319"
+          },
+          "code": "CREATEPREDICTIONSPAYLOAD",
+          "id": "1766565407586",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_SAVEEXPENSE",
+            "errorNodeId": "1775149970860",
+            "functionName": "facade",
+            "name": "saveExpense"
+          },
+          "outcomes": {
+            "success": "1776329856558"
+          },
+          "code": "SAVE_EXPENSE",
+          "convergenceTargetId": "1765396371530",
+          "id": "1765477320985",
+          "inputs": [
+            {
+              "id": "1768302997506_1",
+              "name": "expenseData",
+              "type": "string"
+            },
+            {
+              "id": "1768302997507_2",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.ADD_SIMPLIFIED_BULK_PATCH_TO_FACADE_PAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775149970860",
+            "name": "createFacadePayload",
+            "returnType": "object",
+            "sourceCode": "let expenseData = {\n    id: $context.$triggers.REST.$input.expenseId.toString()\n};\nconst expenseTypeId = $context.$nodes.FETCHEXPENSEDETAILS && $context.$nodes.FETCHEXPENSEDETAILS.$output && $context.$nodes.FETCHEXPENSEDETAILS.$output.expenseType ? $context.$nodes.FETCHEXPENSEDETAILS.$output.expenseType.id : null;\n\nif (expenseTypeId !== null && expenseTypeId !== undefined && expenseTypeId !== \"\") {\n  expenseData.expenseType = expenseTypeId;\n}\nlet expenseAttendees = [];\nconst expenseDistributionsItems =\n    $context.$nodes.FETCHEXPENSEDETAILS.$output.expenseDistributions?.items || [];\n\n// This ensures there's always one object in expenseDistributions\nlet expenseDistributionId = expenseDistributionsItems[0]?.id;\nlet expenseDistribution = {\n  xContextSegmentFk: \"EXM_Expense_Report_Line\"\n};\n\nif (expenseDistributionId) {\n  expenseDistribution.id = expenseDistributionId;\n}\n\nlet payload = {\n  personId: $context.$nodes.FETCHEXPENSEDETAILS.$output.person.id,\n  expense: expenseData,\n  expenseDistributions: [expenseDistribution]\n};\n\nlet raw = $context.$nodes.EXPENSE_MESSAGE_DECOMPOSITION_AGENT.$output;\n\n// Step 0: ensure raw is object\nif (typeof raw === \"string\") {\n  try {\n    raw = JSON.parse(raw);\n  } catch (e) {\n    raw = {};\n  }\n}\n\n// Step 1: parse output\nlet output = raw.output;\n\nif (typeof output === \"string\") {\n  try {\n    output = JSON.parse(output);\n  } catch (e) {\n    output = {};\n  }\n}\n\n// Step 2: final extraction\nconst DecomposedInstructionsArray =\n  output?.result?.DecomposedInstructions || [];\nconst valueResolverOutput =\n  JSON.parse($context.$nodes.EXPENSE_VALUE_RESOLVER_ASSISTANT.$output.output || \"{}\");\n\nlet ResolvedInstructionsArray =\n  valueResolverOutput?.result?.ResolvedInstructions ||\n  valueResolverOutput?.ResolvedInstructions ||\n  [];\nDecomposedInstructionsArray.forEach((instruction) => {\n    const { type, field, value } = instruction;\n    if (type === \"resolved\" || type===\"rec_resolved\") {\n        if (field === \"Project\" || field === \"Task\") {\n            let projectObj;\n            if (typeof value === \"string\") {\n                projectObj = JSON.parse(value);\n            } else {\n                projectObj = value;\n            }\n            //payload.expenseDistributions[0][\"xProjectUId\"] = projectObj?.projectId;\n            //payload.expenseDistributions[0][\"xTaskUId\"] = projectObj?.taskId;\n            payload.expenseDistributions[0][\"xProjectUId\"] = projectObj?.projectId;\n            payload.expenseDistributions[0][\"xTaskUId\"] = projectObj?.taskId;\n            expenseData[field] = projectObj;\n        }\n        if (field === \"Company\" || field === \"Cost Center\" || field === \"Accounts\") {\n            const accountObj = typeof value === \"string\" ? JSON.parse(value) : value;\n            if (accountObj) {\n                if (accountObj?.companySegmentDisabled === true) {\n                    expenseData[\"costCenter\"] = accountObj?.costCenterId;\n                } else {\n                    if (accountObj?.companyId) expenseData[\"company\"] = accountObj.companyId;\n                    expenseData[\"costCenter\"] = accountObj?.costCenterId;\n                }\n            }\n        }\n        if (field === \"spendAuthorizationLine\") {\n            const spendAuthObj = typeof value === \"string\" ? JSON.parse(value) : value;\n            expenseData[\"spendAuthorizationLine\"] = spendAuthObj?.id;\n        }\n        if (typeof field === \"string\") {\n            if (field === \"expenseType\" && value && typeof value === \"object\") {\n                if (value.id !== undefined && value.id !== null && value.id !== \"\") {\n                    expenseData[field] = String(value.id);\n                }\n            } else if (typeof value === \"string\") {\n                expenseData[field] = value;\n            }\n        }\n    }\n});\n\nResolvedInstructionsArray.forEach((instruction) => {\n    const { type, field, value } = instruction;\n    if (type === \"resolved\") {\n        if (typeof field === \"string\") {\n            if (field === \"expenseType\" && value && typeof value === \"object\") {\n                if (value.id !== undefined && value.id !== null && value.id !== \"\") {\n                    expenseData[field] = String(value.id);\n                }\n            } else if (typeof value === \"string\") {\n                expenseData[field] = value;\n            }\n        }\n    }\n});\n\nconst rawOutput = $context?.$nodes?.EXPENSE_POLICY_ENFORCEMENT_ASSISTANT?.$output?.output;\nif (typeof rawOutput === \"string\" && rawOutput.trim() !== \"\") {\n    const parsed = JSON.parse(rawOutput);\n    expenseAttendees = parsed?.result?.expenseAttendees ?? [];\n}\n\n// Add attendees only if present\nif (Array.isArray(expenseAttendees) && expenseAttendees.length > 0) {\n    payload.expenseAttendees = expenseAttendees;\n}\n\nlet setByPath = (root, path, value) => {\n  if (!path || value === undefined || value === null) return;\n\n  const parts = path\n    .replace(/^\\$\\./, \"\")\n    .replace(/\\[(\\d+)\\]/g, \".$1\")\n    .split(\".\");\n\n  let obj = root;\n\n  while (parts.length > 1) {\n    let key = parts.shift();\n\n    // Detect array index\n    if (!isNaN(key)) {\n      key = Number(key);\n\n      if (!Array.isArray(obj)) obj = [];\n\n      if (!obj[key]) obj[key] = {};\n\n      obj = obj[key];\n    } else {\n      if (!obj[key]) {\n        // If next key is a number, create array\n        obj[key] = !isNaN(parts[0]) ? [] : {};\n      }\n\n      obj = obj[key];\n    }\n  }\n\n  const lastKey = parts[0];\n  obj[lastKey] = value;\n};\n\n\nconst schemaMap = {\n    company: \"$.expense.company\",\n    costCenter: \"$.expense.costCenter\",\n    projectId: \"$.expenseDistributions[0].xProjectUId\",\n    taskId: \"$.expenseDistributions[0].xTaskUId\"\n};\n\nconst entityHandlers = {\n    Projects(match, payload) {\n        const { projectId, taskId } = match?.fieldValue || {};\n        setByPath(payload, schemaMap.projectId, projectId);\n        setByPath(payload, schemaMap.taskId, taskId);\n    },\n    Accounts(match, payload) {\n        const { companyId, costCenterId, companySegmentDisabled } = match?.fieldValue || {};\n        if (companySegmentDisabled === true) {\n            setByPath(payload, schemaMap.costCenter, costCenterId);\n        } else {\n            if (companyId) setByPath(payload, schemaMap.company, companyId);\n            setByPath(payload, schemaMap.costCenter, costCenterId);\n        }\n    }\n};\n\nconst resolvedOutput = JSON.parse($context.$nodes.EXPENSE_RECOMMENDATION_ASSISTANT.$output.output).result;\n(resolvedOutput?.resolvedEntities || []).forEach(entity => {\n    const handler = entityHandlers[entity.name];\n    if (entity?.name === \"Spend Authorization Line\") {\n        (entity.resolvedValues || []).forEach(rv => {\n            if (rv.status === \"ORA_DEFAULT\") {\n                const topMatch = (rv.matches || []).find(m => m.predictionRank === \"1\");\n                expenseData[\"spendAuthorizationLine\"] = topMatch?.fieldValue?.id;\n            }\n        });\n    }\n    if (!handler) return;\n    (entity.resolvedValues || []).forEach(rv => {\n        if (rv.status !== \"ORA_EXACT_MATCH\") return;\n        const topMatch = (rv.matches || []).find(m => m.predictionRank === \"1\");\n        if (topMatch) handler(topMatch, payload);\n    });\n});\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "1779392946754"
+          },
+          "code": "CREATEFACADEPAYLOAD",
+          "convergenceTargetId": "1765477320985",
+          "id": "1765399773475",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Expense Summarization Assistant",
+            "workflowCode": "ORA_FIN_EXM_EXPENSE_SUMMARIZATION_ASSISTANT"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "EXPENSE_SUMMARIZATION_ASSISTANT",
+          "id": "1767897941470",
+          "inputs": [
+            {
+              "id": "1779393057984_1",
+              "name": "message",
+              "type": "string"
+            },
+            {
+              "id": "1779393057984_2",
+              "name": "isSimplifiedExpense",
+              "type": "boolean",
+              "value": "{{$context.$triggers.REST.$input.isSimplifiedExpense}}"
+            },
+            {
+              "id": "1779393057985_3",
+              "name": "channel",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.channel}}"
+            },
+            {
+              "id": "1779393057986_4",
+              "name": "replyFlow",
+              "type": "boolean",
+              "value": "{{$context.$triggers.REST.$input.isReplyFlow}}"
+            },
+            {
+              "id": "1779393057987_5",
+              "name": "partnerExpenseId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.partnerExpenseId}}"
+            },
+            {
+              "id": "1779393057988_6",
+              "name": "expenseId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.expenseId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775149970860",
+            "name": "createValueResolverPayload",
+            "returnType": "object",
+            "sourceCode": "const safeJsonParse = (raw, fallback) => {\n    try {\n        return typeof raw === \"string\" ? JSON.parse(raw) : raw;\n    } catch (err) {\n        return fallback;\n    }\n};\n\nconst isSimplifiedExpense =\n    String($context.$triggers?.REST?.$input?.isSimplifiedExpense ?? \"\")\n        .trim()\n        .toLowerCase() === \"true\";\n\n// ✅ FIX: handle both string and object safely\nconst decompositionNodeOutput = $context.$nodes?.EXPENSE_MESSAGE_DECOMPOSITION_AGENT?.$output?.output;\n\nlet parsedDecompositionRoot = {};\ntry {\n    parsedDecompositionRoot = JSON.parse(decompositionNodeOutput);\n} catch (e) {\n    parsedDecompositionRoot = {};\n}\n\n// ✅ FIX: result may already be object → don’t parse again blindly\nconst rawDecomposition = parsedDecompositionRoot?.result;\nconst decompositionParsed = safeJsonParse(rawDecomposition, {});\n\n// ✅ This will now work correctly\nconst DecomposedInstructionsArray = Array.isArray(decompositionParsed?.DecomposedInstructions)\n    ? decompositionParsed.DecomposedInstructions\n    : [];\n\nconst expenseDetails = $context.$nodes?.FETCHEXPENSEDETAILS?.$output ?? {};\nconst assignmentDetails = $context.$nodes?.GET_ASSIGNMENT_DETAILS?.$output ?? {};\nconst expenseError = $context.$nodes?.FETCH_EXPENSE_ERRORS?.$output ?? {};\n\nconst safeExpenseField = (fn, fallback = \"\") => {\n    try {\n        const value = fn();\n        return value === undefined || value === null ? fallback : value;\n    } catch (err) {\n        return fallback;\n    }\n};\n\nlet payload = {\n    userInput: $context.$triggers?.REST?.$input?.userMessage ?? \"\",\n    entities: [\n        { name: \"Projects\", possibleValues: [] },\n        { name: \"Accounts\", possibleValues: [] },\n        { name: \"Attendees\", possibleValues: [] },\n        { name: \"NonEmployeeAttendees\", possibleValues: [] },\n        { name: \"Customer\", possibleValues: [] }\n    ],\n    expenses: {\n        expenseId: $context.$triggers?.REST?.$input?.expenseId ?? \"\",\n        personId: safeExpenseField(() => expenseDetails.person.id),\n        expenseType: safeExpenseField(() => expenseDetails.expenseType.id),\n        receiptCurrencyCode: safeExpenseField(() => expenseDetails.receiptCurrency.currencyCode),\n        reimbursementCurrencyCode: safeExpenseField(() => expenseDetails.reimbursementCurrency.currencyCode),\n        expenseLocation: safeExpenseField(() => expenseDetails.expenseLocation.$id),\n        businessUnitId: safeExpenseField(() => expenseDetails.businessUnit.id),\n\n        // ✅ FIX: correct field\n        assignmentId: safeExpenseField(() => assignmentDetails?.result?.assignmentId),\n\n        expenseDate: safeExpenseField(() => expenseDetails.expenseDate),\n        partnerExpenseId: $context.$triggers.REST.$input.partnerExpenseId \n    }\n};\n\nconst normalizeToArray = (value) => {\n    if (Array.isArray(value)) return value;\n\n    if (typeof value === \"string\") {\n        return value\n            .replace(/^\\[|\\]$/g, \"\")\n            .split(\",\")\n            .map((v) => v.trim())\n            .filter(Boolean);\n    }\n\n    return [];\n};\n\nDecomposedInstructionsArray.forEach((inst) => {\n    if (inst?.type === \"needsResolution\" && inst?.value) {\n        const fields = normalizeToArray(inst.field);\n        const values = normalizeToArray(inst.value);\n\n        // Project + Task pairing\n        if (\n            fields.length === 2 &&\n            (\n                (fields[0] === \"Project\" && fields[1] === \"Task\") ||\n                (fields[0] === \"Task\" && fields[1] === \"Project\")\n            ) &&\n            values.length === 2\n        ) {\n            fields.forEach((field, idx) => {\n                if (field === \"Project\") {\n                    payload.entities[0].possibleValues.push({\n                        value: values[idx],\n                        entity: \"Project\"\n                    });\n                } else if (field === \"Task\") {\n                    payload.entities[0].possibleValues.push({\n                        value: values[idx],\n                        entity: \"Task\"\n                    });\n                }\n            });\n\n            return;\n        }\n\n        fields.forEach((field) => {\n            if (field === \"Project\" || field === \"Task\") {\n                const entityKey = field === \"Project\" ? \"Project\" : \"Task\";\n\n                values.forEach((value) => {\n                    payload.entities[0].possibleValues.push({\n                        value,\n                        entity: entityKey\n                    });\n                });\n            }\n\n            if (field === \"Company\" || field === \"Cost Center\") {\n                const entityKey = field === \"Company\" ? \"company\" : \"costCenter\";\n\n                values.forEach((value) => {\n                    payload.entities[1].possibleValues.push({\n                        value,\n                        entity: entityKey\n                    });\n                });\n            }\n\n            if (field === \"Attendees\") {\n                values.forEach((value) => {\n                    payload.entities[2].possibleValues.push({\n                        value,\n                        entity: \"\"\n                    });\n                });\n            }\n\n            if (field === \"NonEmployeeAttendees\") {\n                values.forEach((value) => {\n                    payload.entities[3].possibleValues.push({\n                        value,\n                        entity: \"\"\n                    });\n                });\n            }\n\n            if (field === \"AmbiguousAttendees\") {\n                values.forEach((value) => {\n                    payload.entities[2].possibleValues.push({\n                        value,\n                        entity: \"ambiguous\"\n                    });\n                });\n            }\n\n            // Customer is added for resolution only when simplified expense is true.\n            if (isSimplifiedExpense && (field === \"Customer\" || field === \"customer\")) {\n                values.forEach((value) => {\n                    if (String(value || \"\").trim().toLowerCase() !== \"none\") {\n                        payload.entities[4].possibleValues.push({\n                            entity: \"Customer\",\n                            value\n                        });\n                    }\n                });\n            }\n        });\n    }\n});\n\nif (\n    Array.isArray(payload.entities[0].possibleValues) &&\n    payload.entities[0].possibleValues.length === 0 &&\n    Array.isArray(expenseError?.items) &&\n    expenseError.items.some((item) => item?.errorStringCode === \"EXM_PROJECT_DETAILS_REQUIRED\") &&\n    !$context.$triggers?.REST?.$input?.isReplyFlow\n) {\n    payload.entities[0].possibleValues.push({\n        value: \"\",\n        entity: \"PROJECT_RECOMMENDATIONS_REQUIRED\"\n    });\n}\n\nconst targetEntityNames = [\"Projects\", \"Accounts\", \"Attendees\", \"NonEmployeeAttendees\", \"Customer\"];\n\nconst valueResolverRequired = payload.entities.some(\n    (entity) =>\n        targetEntityNames.includes(entity.name) &&\n        Array.isArray(entity.possibleValues) &&\n        entity.possibleValues.length > 0\n)\n    ? \"true\"\n    : \"false\";\n\nreturn { payload, valueResolverRequired };"
+          },
+          "outcomes": {
+            "success": "1772877640760"
+          },
+          "code": "CREATEVALUERESOLVERPAYLOAD",
+          "id": "1768288283148",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EXPENSE",
+            "errorNodeId": "1775149970860",
+            "functionName": "getExpenseErrors",
+            "name": "Fetch Expense Errors"
+          },
+          "outcomes": {
+            "success": "1770145681259"
+          },
+          "code": "FETCH_EXPENSE_ERRORS",
+          "id": "1769002771646",
+          "inputs": [
+            {
+              "id": "1769002785885_1",
+              "name": "expenseId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.expenseId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "checkPredictionPayload "
+          },
+          "outcomes": {
+            "true": "1769153501395",
+            "false": "add_false_1769153287319"
+          },
+          "code": "CHECKPREDICTIONPAYLOAD",
+          "convergenceTargetId": "1765399773475",
+          "id": "1769153287319",
+          "inputs": [
+            {
+              "id": "1769153287321_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATEPREDICTIONSPAYLOAD.$output.result.items.length>0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1765399773475"
+          },
+          "id": "add_false_1769153287319",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EXPENSEPREDICTION",
+            "errorNodeId": "1775149970860",
+            "functionName": "bulkWriteExpensePredictions",
+            "name": "createPredictions"
+          },
+          "outcomes": {
+            "success": "1765399773475"
+          },
+          "code": "CREATEPREDICTIONS",
+          "id": "1769153501395",
+          "inputs": [
+            {
+              "id": "1769153516815_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATEPREDICTIONSPAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775149970860",
+            "name": "Expense Message Decomposition Agent",
+            "workflowCode": "ORA_FIN_EXM_EXPENSE_MESSAGE_DECOMPOSITION_ASSISTANT"
+          },
+          "outcomes": {
+            "success": "1769002771646"
+          },
+          "code": "EXPENSE_MESSAGE_DECOMPOSITION_AGENT",
+          "id": "1769514549676",
+          "inputs": [
+            {
+              "id": "1779432255106_1",
+              "name": "message",
+              "type": "string"
+            },
+            {
+              "id": "1779432255107_2",
+              "name": "isSimplifiedExpense",
+              "type": "boolean",
+              "value": "{{$context.$triggers.REST.$input.isSimplifiedExpense}}"
+            },
+            {
+              "id": "1779432255108_3",
+              "name": "preparerId",
+              "type": "string"
+            },
+            {
+              "id": "1779432255108_4",
+              "name": "partnerExpenseReferenceId",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCHEXPENSEDETAILS.$output.partnerExpenseReferenceId}}"
+            },
+            {
+              "id": "1779432255109_5",
+              "name": "expenseId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.expenseId}}"
+            },
+            {
+              "id": "1779432255110_6",
+              "name": "isReplyFlow",
+              "type": "boolean",
+              "value": "{{$context.$triggers.REST.$input.isReplyFlow}}"
+            },
+            {
+              "id": "1779432255111_7",
+              "name": "userMessage",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.userMessage}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775149970860",
+            "name": "Expense Recommendation Assistant",
+            "workflowCode": "ORA_FIN_EXM_EXPENSE_RECOMMENDATION_ASSISTANT"
+          },
+          "outcomes": {
+            "success": "1769574760830"
+          },
+          "code": "EXPENSE_RECOMMENDATION_ASSISTANT",
+          "id": "1769536466870",
+          "inputs": [
+            {
+              "id": "1769763828649_1",
+              "name": "message",
+              "type": "string"
+            },
+            {
+              "id": "1769763828650_2",
+              "name": "userDecompositionAgentOutput",
+              "type": "object",
+              "value": "{{$context.$nodes.EXPENSE_MESSAGE_DECOMPOSITION_AGENT.$output.output}}"
+            },
+            {
+              "id": "1769763828651_3",
+              "name": "expenseDetails",
+              "type": "object",
+              "value": "{{$context.$nodes.FETCHEXPENSEDETAILS.$output}}"
+            },
+            {
+              "id": "1769763828652_4",
+              "name": "businessUnitId",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCHEXPENSEDETAILS.$output.businessUnit.id}}"
+            },
+            {
+              "id": "1769763828652_5",
+              "name": "personId",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCHEXPENSEDETAILS.$output.person.id}}"
+            },
+            {
+              "id": "1769763828653_6",
+              "name": "expenseErrors",
+              "type": "object",
+              "value": "{{$context.$nodes.FETCH_EXPENSE_ERRORS.$output}}"
+            },
+            {
+              "id": "1769763828654_7",
+              "name": "InputRest",
+              "type": "object",
+              "value": "{{$context.$variables.entityValueResolverOuptut}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775149970860",
+            "name": "Expense Policy Enforcement Assistant",
+            "workflowCode": "ORA_FIN_EXM_EXPENSE_POLICY_ENFORCEMENT_ASSISTANT"
+          },
+          "outcomes": {
+            "success": "1766565407586"
+          },
+          "code": "EXPENSE_POLICY_ENFORCEMENT_ASSISTANT",
+          "id": "1769574760830",
+          "inputs": [
+            {
+              "id": "1775828184320_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$nodes.VALUERESOLVER.$output}}"
+            },
+            {
+              "id": "1775828184321_2",
+              "name": "precision",
+              "type": "number",
+              "value": "{{$context.$nodes.FETCHEXPENSEDETAILS.$output.receiptCurrency?.precision}}"
+            },
+            {
+              "id": "1775828184322_3",
+              "name": "userDecompositionOutput",
+              "type": "object",
+              "value": "{{$context.$nodes.EXPENSE_MESSAGE_DECOMPOSITION_AGENT.$output.output}}"
+            },
+            {
+              "id": "1775828184322_4",
+              "name": "expenseId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.expenseId}}"
+            },
+            {
+              "id": "1775828184323_5",
+              "name": "isReplyflow",
+              "type": "boolean",
+              "value": "{{$context.$triggers.REST.$input.isReplyFlow}}"
+            },
+            {
+              "id": "1775828184324_6",
+              "name": "personID",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCHEXPENSEDETAILS.$output.person.id}}"
+            },
+            {
+              "id": "1775828184324_7",
+              "name": "resolvedEntities",
+              "type": "object",
+              "value": "{{$context.$variables.entityValueResolverOuptut}}"
+            },
+            {
+              "id": "1775828184325_8",
+              "name": "receiptAmount",
+              "type": "number",
+              "value": "{{$context.$nodes.FETCHEXPENSEDETAILS.$output.receiptAmount}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "generateSummaryPayload",
+            "returnType": "object",
+            "sourceCode": "let message = {\n    \"channel\": \"EMAIL\",\n    \"replyFlow\": $context.$triggers.REST.$input.isReplyFlow ,\n    \"partnerExpenseId\": $context.$triggers.REST.$input.partnerExpenseId ,\n    \"expenseId\": $context.$triggers.REST.$input.expenseId \n};\nreturn message;"
+          },
+          "outcomes": {
+            "success": "1767897941470"
+          },
+          "code": "GENERATESUMMARYPAYLOAD",
+          "convergenceTargetId": "1767897941470",
+          "id": "1769744117941",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775149970860",
+            "name": "Expense Value Resolver Assistant",
+            "workflowCode": "ORA_FIN_EXM_EXPENSE_VALUE_RESOLVER_ASSISTANT"
+          },
+          "outcomes": {
+            "success": "1768288283148"
+          },
+          "code": "EXPENSE_VALUE_RESOLVER_ASSISTANT",
+          "id": "1770145681259",
+          "inputs": [
+            {
+              "id": "1778177472618_1",
+              "name": "message",
+              "type": "string"
+            },
+            {
+              "id": "1778177472619_2",
+              "name": "isReplyFlow",
+              "type": "boolean",
+              "value": "{{$context.$triggers.REST.$input.isReplyFlow}}"
+            },
+            {
+              "id": "1778177472620_3",
+              "name": "expenseData",
+              "type": "object",
+              "value": "{{$context.$nodes.FETCHEXPENSEDETAILS.$output}}"
+            },
+            {
+              "id": "1778177472621_4",
+              "name": "expenseId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.expenseId}}"
+            },
+            {
+              "id": "1778177472622_5",
+              "name": "userDecompositionAgentOutput",
+              "type": "object",
+              "value": "{{$context.$nodes.EXPENSE_MESSAGE_DECOMPOSITION_AGENT.$output.output}}"
+            },
+            {
+              "id": "1770145681259_6",
+              "name": "userMessage",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EXPENSE",
+            "errorNodeId": "1775149970860",
+            "functionName": "getExpenseDetails",
+            "name": "FetchExpenseDetails"
+          },
+          "outcomes": {
+            "success": "1778056898940"
+          },
+          "code": "FETCHEXPENSEDETAILS",
+          "convergenceTargetId": "1769514549676",
+          "id": "1768288232614",
+          "inputs": [
+            {
+              "id": "1768385969012_1",
+              "name": "expenseId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.expenseId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Check If Value Resolver is required"
+          },
+          "outcomes": {
+            "true": "1768288426371",
+            "false": "1772878107100"
+          },
+          "code": "CHECK_IF_VALUE_RESOLVER_IS_REQUIRED",
+          "convergenceTargetId": "1769536466870",
+          "id": "1772877640760",
+          "inputs": [
+            {
+              "id": "1772877640761_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATEVALUERESOLVERPAYLOAD.$output.result.valueResolverRequired==\"true\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_ENTITYVALUERESOLVER",
+            "errorNodeId": "1775149970860",
+            "functionName": "entityValueResolver",
+            "name": "valueResolver"
+          },
+          "outcomes": {
+            "success": "1772878071975"
+          },
+          "code": "VALUERESOLVER",
+          "convergenceTargetId": "1772877778700",
+          "id": "1768288426371",
+          "inputs": [
+            {
+              "id": "1768299530432_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATEVALUERESOLVERPAYLOAD.$output.result.payload}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Set Value Resolver Output"
+          },
+          "outcomes": {
+            "success": "1769536466870"
+          },
+          "code": "SET_VALUE_RESOLVER_OUTPUT",
+          "id": "1772878071975",
+          "inputs": [
+            {
+              "id": "1772878083349",
+              "name": "entityValueResolverOuptut",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.VALUERESOLVER.$output}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Set Empty Value Resolver Output"
+          },
+          "outcomes": {
+            "success": "1769536466870"
+          },
+          "code": "SET_EMPTY_VALUE_RESOLVER_OUTPUT",
+          "id": "1772878107100",
+          "inputs": [
+            {
+              "id": "1772878116731",
+              "name": "entityValueResolverOuptut",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{\n    \"resolvedEntities\": [\n        \n    ]\n}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Error Handler Always true"
+          },
+          "outcomes": {
+            "true": "add_true_1775149956343",
+            "false": "1775149970860"
+          },
+          "code": "ERROR_HANDLER_ALWAYS_TRUE",
+          "convergenceTargetId": "1765277137500",
+          "id": "1775149956343",
+          "inputs": [
+            {
+              "id": "1775149956345_1",
+              "name": "condition",
+              "type": "string",
+              "value": "true"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for true branch",
+            "name": "Add (True Branch)"
+          },
+          "outcomes": {
+            "success": "1765277137500"
+          },
+          "id": "add_true_1775149956343",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Error Handler",
+            "workflowCode": "ORA_FIN_EXM_EXPENSE_ASSISTANT_ERROR_HANDLER"
+          },
+          "outcomes": {
+            "success": "1775150657040"
+          },
+          "code": "ERROR_HANDLER",
+          "id": "1775149970860",
+          "inputs": [
+            {
+              "id": "1775214124351_1",
+              "name": "message",
+              "type": "string"
+            },
+            {
+              "id": "1775214124352_2",
+              "name": "stageStatus",
+              "type": "string",
+              "value": "ORA_TECHNICAL_ERROR"
+            },
+            {
+              "id": "1775214124352_3",
+              "name": "stage",
+              "type": "string",
+              "value": "{{$context.$workflow.$name}}"
+            },
+            {
+              "id": "1775214124352_4",
+              "name": "expenseId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.expenseId}}"
+            },
+            {
+              "id": "1775214124353_5",
+              "name": "isReplyFlow",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.isReplyFlow}}"
+            },
+            {
+              "id": "1775214124353_6",
+              "name": "channel",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.channel}}"
+            },
+            {
+              "id": "1775214124353_7",
+              "name": "error",
+              "type": "object",
+              "value": "{{$context.$error}}"
+            },
+            {
+              "id": "1775214124354_8",
+              "name": "partnerExpenseId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.partnerExpenseId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "Return"
+          },
+          "outcomes": {},
+          "code": "RETURN",
+          "convergenceTargetId": "1765277137500",
+          "id": "1775150657040",
+          "inputs": [
+            {
+              "id": "1775150657042_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$workflow.$traceId}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Check Facade Failure"
+          },
+          "outcomes": {
+            "true": "1778050307820",
+            "false": "1776254379909"
+          },
+          "code": "CHECK_FACADE_FAILURE",
+          "convergenceTargetId": "1769744117941",
+          "id": "1776254346883",
+          "inputs": [
+            {
+              "id": "1776254346884_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_FACADE_STATUS.$output.result}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Facade error handling",
+            "workflowCode": "ORA_FIN_EXM_EXPENSE_ASSISTANT_ERROR_HANDLER"
+          },
+          "outcomes": {
+            "success": "1776254519396"
+          },
+          "code": "FACADE_ERROR_HANDLING",
+          "id": "1776254379909",
+          "inputs": [
+            {
+              "id": "1776254405381_1",
+              "name": "message",
+              "type": "string"
+            },
+            {
+              "id": "1776254405382_2",
+              "name": "stageStatus",
+              "type": "string",
+              "value": "ORA_FACADE_FAILURE"
+            },
+            {
+              "id": "1776254405382_3",
+              "name": "stage",
+              "type": "string",
+              "value": "{{$context.$workflow.$name}}"
+            },
+            {
+              "id": "1776254405383_4",
+              "name": "expenseId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.expenseId}}"
+            },
+            {
+              "id": "1776254405384_5",
+              "name": "isReplyFlow",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.isReplyFlow}}"
+            },
+            {
+              "id": "1776254405384_6",
+              "name": "channel",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.channel}}"
+            },
+            {
+              "id": "1776254405385_7",
+              "name": "error",
+              "type": "object",
+              "value": "{{$context.$error}}"
+            },
+            {
+              "id": "1776254405386_8",
+              "name": "partnerExpenseId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.partnerExpenseId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "Return Facade Failure"
+          },
+          "outcomes": {},
+          "code": "RETURN_FACADE_FAILURE",
+          "convergenceTargetId": "1769744117941",
+          "id": "1776254519396",
+          "inputs": [
+            {
+              "id": "1776254519397_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$workflow.$traceId}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1775149970860",
+            "name": "Check Facade Status",
+            "returnType": "boolean",
+            "sourceCode": "const statusCode = Number($context.$nodes.SAVE_EXPENSE.$output.statusCode);\nconst isSuccess = statusCode >= 200 && statusCode <= 300;\nreturn isSuccess;"
+          },
+          "outcomes": {
+            "success": "1776254346883"
+          },
+          "code": "CHECK_FACADE_STATUS",
+          "id": "1776329856558",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check Reply Flow"
+          },
+          "outcomes": {
+            "true": "1777029735296",
+            "false": "add_false_1778050307820"
+          },
+          "code": "CHECK_REPLY_FLOW",
+          "convergenceTargetId": "1769744117941",
+          "id": "1778050307820",
+          "inputs": [
+            {
+              "id": "1778050307822_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.isReplyFlow}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1769744117941"
+          },
+          "id": "add_false_1778050307820",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_PARTNEREXPENSE",
+            "functionName": "GetPartnerExpenseDetails",
+            "name": "Get Partner Expense"
+          },
+          "outcomes": {
+            "success": "1777029804359"
+          },
+          "code": "GET_PARTNER_EXPENSE",
+          "convergenceTargetId": "1778050345612",
+          "id": "1777029735296",
+          "inputs": [
+            {
+              "id": "1777029758384_1",
+              "name": "partnerExpense_id",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.partnerExpenseId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_PARTNEREXPENSE",
+            "functionName": "Patch_PartnerExpenseOutcome",
+            "name": "Update Partner Expense Outcome"
+          },
+          "outcomes": {
+            "success": "1769744117941"
+          },
+          "code": "UPDATE_PARTNER_EXPENSE_OUTCOME",
+          "convergenceTargetId": "1778050345612",
+          "id": "1777029804359",
+          "inputs": [
+            {
+              "id": "1777029830304_1",
+              "name": "partnerExpenseId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.partnerExpenseId}}"
+            },
+            {
+              "id": "1777029830305_2",
+              "name": "etag",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PARTNER_EXPENSE.$output.$context.etag}}"
+            },
+            {
+              "id": "1777029830305_3",
+              "name": "partnerExpenseOutcome",
+              "type": "string",
+              "value": "ORA_EXPENSE_UPDATED"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EXPENSEBUSINESSUNITSETTING",
+            "functionName": "fetchAssignmentId",
+            "name": "Get Assignment Details"
+          },
+          "outcomes": {
+            "success": "1769514549676"
+          },
+          "code": "GET_ASSIGNMENT_DETAILS",
+          "id": "1778056898940",
+          "inputs": [
+            {
+              "id": "1778056923893_1",
+              "name": "organizationId",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCHEXPENSEDETAILS.$output?.businessUnit?.id}}"
+            },
+            {
+              "id": "1778056923894_2",
+              "name": "personId",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCHEXPENSEDETAILS.$output?.person?.id}}"
+            },
+            {
+              "id": "1778056923895_3",
+              "name": "expenseDate",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCHEXPENSEDETAILS.$output?.expenseDate}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Add Simplified Bulk Patch to Facade Payload",
+            "returnType": "object",
+            "sourceCode": "let inputPayload = $context.$nodes.CREATEFACADEPAYLOAD?.$output?.result || {};\nlet allExpenseErrors = $context.$nodes.FETCH_EXPENSE_ERRORS?.$output?.items || [];\n\nlet getAllPredictionsOutput = $context.$nodes.GET_ALL_PREDICTIONS?.$output || {};\nlet predictionItems =\n  getAllPredictionsOutput?.response?.items ||\n  getAllPredictionsOutput?.items ||\n  [];\n\nif (typeof getAllPredictionsOutput?.response === \"string\") {\n  try {\n    predictionItems = JSON.parse(getAllPredictionsOutput.response)?.items || [];\n  } catch (e) {\n    predictionItems = [];\n  }\n}\n\nlet raw = $context.$nodes.EXPENSE_MESSAGE_DECOMPOSITION_AGENT.$output;\n\nif (typeof raw === \"string\") {\n  try {\n    raw = JSON.parse(raw);\n  } catch (e) {\n    raw = {};\n  }\n}\n\nlet output = raw.output;\n\nif (typeof output === \"string\") {\n  try {\n    output = JSON.parse(output);\n  } catch (e) {\n    output = {};\n  }\n}\n\nconst DecomposedInstructionsArray =\n  output?.result?.DecomposedInstructions || [];\n\nlet isSimplifiedExpense =\n  String($context.$triggers.REST?.$input?.isSimplifiedExpense || \"\")\n    .trim()\n    .toLowerCase() === \"true\";\n\nif (!isSimplifiedExpense) {\n  return inputPayload;\n}\n\nlet xContextSegmentFkValue =\n  $context.$nodes.FETCHEXPENSEDETAILS?.$output?.expenseType?.name || \"\";\n\nlet recommendationsAgentOutput = {};\n\ntry {\n  recommendationsAgentOutput = JSON.parse(\n    $context.$nodes.EXPENSE_RECOMMENDATION_ASSISTANT?.$output?.output || \"{}\"\n  ).result || {};\n} catch (e) {\n  recommendationsAgentOutput = {};\n}\n\nlet finalPayload = {\n  ...inputPayload,\n  isSimplified: true,\n  expense: {\n    ...(inputPayload?.expense || {})\n  }\n};\n\nconst RESOLVED_PREDICTION_TYPE_CODES = [\n  \"ORA_EXACT_MATCH\",\n  \"ORA_RESOLVED_SUCCESSFULLY\",\n  \"ORA_RECOMMENDATION_RESOLVED\"\n];\n\nconst normalizePredictionFieldName = value =>\n  String(value || \"\")\n    .trim()\n    .toLowerCase()\n    .replace(/[\\s_-]+/g, \"\");\n\nconst isResolvedPrediction = prediction => {\n  let predictionTypeCode = String(prediction?.predictionTypeCode || \"\")\n    .trim()\n    .toUpperCase();\n\n  return RESOLVED_PREDICTION_TYPE_CODES.includes(predictionTypeCode);\n};\n\nconst parsePredictionFieldValue = value => {\n  if (typeof value !== \"string\") return value;\n\n  try {\n    return JSON.parse(value);\n  } catch (e) {\n    return value;\n  }\n};\n\nconst hasMissingNumberOfAttendeesError = expenseErrors =>\n  (Array.isArray(expenseErrors) ? expenseErrors : []).some(error => {\n    if (\n      error?.userActionRequiredFlag !== true ||\n      error?.warningFlag === true ||\n      error?.objectName === \"NA\" ||\n      String(error?.errorStringCode || \"\").trim() !== \"EXM_REST_REQ_MISSING\"\n    ) {\n      return false;\n    }\n\n    const errorFieldName = error?.attributeName ?? error?.stringToken1Value;\n    return normalizePredictionFieldName(errorFieldName) === \"numberofattendees\";\n  });\n\nlet numberOfAttendeesPrediction = predictionItems.find(\n  prediction =>\n    normalizePredictionFieldName(prediction?.fieldName) === \"numberofattendees\" &&\n    isResolvedPrediction(prediction) &&\n    String(prediction?.fieldValue ?? \"\").trim() !== \"\"\n);\n\nlet customerPredictions = predictionItems.filter(prediction => {\n  let fieldName = normalizePredictionFieldName(prediction?.fieldName);\n\n  return (\n    [\"customer\", \"customers\"].includes(fieldName) &&\n    isResolvedPrediction(prediction)\n  );\n});\n\nconst canUpdateNumberOfAttendees =\n  Boolean(numberOfAttendeesPrediction) &&\n  (customerPredictions.length > 0 ||\n    !hasMissingNumberOfAttendeesError(allExpenseErrors));\n\nif (canUpdateNumberOfAttendees) {\n  finalPayload.expense.numberOfAttendees = String(\n    numberOfAttendeesPrediction.fieldValue\n  ).trim();\n} else {\n  delete finalPayload.expense.numberOfAttendees;\n}\n\nlet expenseAttendees = [];\nlet firstMatchedAttendeeType = \"\";\nlet seenCustomerKeys = new Set();\n\nconst normalizeToArray = value => {\n  if (!value) return [];\n  return Array.isArray(value) ? value : [value];\n};\n\nconst parseCustomerValue = value => {\n  let parsedValue = parsePredictionFieldValue(value);\n\n  if (typeof parsedValue === \"string\") {\n    try {\n      parsedValue = JSON.parse(parsedValue);\n    } catch (e) {\n      return null;\n    }\n  }\n\n  return parsedValue && typeof parsedValue === \"object\" ? parsedValue : null;\n};\n\nconst addCustomerAttendee = (value, fallbackLookupCode) => {\n  let customerValue = parseCustomerValue(value);\n  if (!customerValue) return;\n\n  let lookupCode =\n    customerValue?.attendeeTypeInformation?.lookupCode ||\n    fallbackLookupCode ||\n    \"\";\n\n  let employerName = customerValue?.name || \"\";\n  let nonEmployeeAttendeeId = customerValue?.id || \"\";\n\n  if (!employerName && !nonEmployeeAttendeeId) return;\n\n  let customerKey = nonEmployeeAttendeeId || employerName;\n  if (seenCustomerKeys.has(customerKey)) return;\n  seenCustomerKeys.add(customerKey);\n\n  if (!firstMatchedAttendeeType) {\n    firstMatchedAttendeeType = lookupCode;\n  }\n\n  expenseAttendees.push({\n    $operation: \"CREATE\",\n    attendeeTypeInformation: {\n      lookupType: \"EXM_ATTENDEE_TYPES\",\n      lookupCode: lookupCode\n    },\n    employerName: employerName,\n    nonEmployeeAttendeeInformation: {\n      $id: nonEmployeeAttendeeId\n    }\n  });\n};\n\nlet recResolvedCustomerInstructions = DecomposedInstructionsArray.filter(\n  instruction => {\n    let type = String(instruction?.type || \"\")\n      .trim()\n      .toLowerCase();\n\n    let field = String(instruction?.field || \"\")\n      .trim()\n      .toLowerCase();\n\n    return (\n      type === \"rec_resolved\" &&\n      [\"customer\", \"customers\"].includes(field)\n    );\n  }\n);\n\nfor (let instruction of recResolvedCustomerInstructions) {\n  for (let value of normalizeToArray(instruction?.value)) {\n    addCustomerAttendee(value);\n  }\n}\n\nif (expenseAttendees.length === 0) {\n  for (let prediction of customerPredictions) {\n    addCustomerAttendee(\n      prediction?.fieldValue,\n      prediction?.driverValue3\n    );\n  }\n}\n\nif (expenseAttendees.length === 0) {\n  let resolvedEntities = recommendationsAgentOutput?.resolvedEntities || [];\n\n  let customerEntity = resolvedEntities.find(\n    entity =>\n      [\"customer\", \"customers\"].includes(\n        String(entity?.name || \"\").trim().toLowerCase()\n      )\n  );\n\n  for (let resolvedValue of customerEntity?.resolvedValues || []) {\n    let exactOrResolvedMatches = (resolvedValue?.matches || []).filter(\n      match => {\n        let predictionTypeCode = String(match?.predictionTypeCode || \"\")\n          .trim()\n          .toUpperCase();\n\n        return RESOLVED_PREDICTION_TYPE_CODES.includes(predictionTypeCode);\n      }\n    );\n\n    for (let match of exactOrResolvedMatches) {\n      addCustomerAttendee(\n        match?.fieldValue || {},\n        match?.driverValue3\n      );\n    }\n  }\n}\n\nif (expenseAttendees.length > 0) {\n  finalPayload.expense.ora_flex_expense__info = {\n    xContextSegmentFk: xContextSegmentFkValue,\n    attendeeType: firstMatchedAttendeeType\n  };\n\n  finalPayload.expenseAttendees = expenseAttendees;\n}\n\nreturn finalPayload;\n"
+          },
+          "outcomes": {
+            "success": "1765477320985"
+          },
+          "code": "ADD_SIMPLIFIED_BULK_PATCH_TO_FACADE_PAYLOAD",
+          "id": "1779392921122",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EXPENSEPREDICTION",
+            "functionName": "listExpensePredictions",
+            "name": "Get All Predictions"
+          },
+          "outcomes": {
+            "success": "1779392921122"
+          },
+          "code": "GET_ALL_PREDICTIONS",
+          "id": "1779392946754",
+          "inputs": [
+            {
+              "id": "1779392981707_1",
+              "name": "partnerExpense",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.partnerExpenseId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1772877897040",
+          "name": "entityValueResolverOuptut",
+          "scope": "CONVERSATION",
+          "type": "object"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.3
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "modelName": "Gpt Oss",
+      "provider": "CERT_BASIC"
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1779392889637",
+            "name": "isSimplifiedExpense",
+            "scope": "JOB",
+            "type": "boolean"
+          },
+          {
+            "id": "1769687566987",
+            "name": "channel",
+            "type": "string"
+          },
+          {
+            "id": "1769148074588",
+            "name": "mode",
+            "type": "string"
+          },
+          {
+            "id": "1765275724035",
+            "name": "preparerId",
+            "type": "string"
+          },
+          {
+            "id": "1765275711321",
+            "name": "userMessage",
+            "type": "string"
+          },
+          {
+            "id": "1765275691517",
+            "name": "partnerExpenseId",
+            "type": "string"
+          },
+          {
+            "id": "1765275678738",
+            "name": "expenseId",
+            "type": "string"
+          },
+          {
+            "id": "1765275637789",
+            "name": "isReplyFlow",
+            "type": "boolean"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "FIN",
+  "product": "EXPENSES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": true,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"8\""
+  }
+}

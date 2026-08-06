@@ -1,0 +1,306 @@
+{
+  "workflowId": "300000331058271",
+  "workflowCode": "ORA_QUOTE_SUMMARIZATION_AGENT",
+  "name": "Quote Summarization Agent",
+  "description": "Quote summarization agent.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1769470392611"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1769450163111",
+            "1": "1769450441046",
+            "2": "add_1769450145868_2"
+          },
+          "code": "PARALLEL_1769450145869",
+          "convergenceTargetId": "1769451175384",
+          "id": "1769450145868",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Data for LLM",
+            "returnType": "object",
+            "sourceCode": "// --- STEP 1: GET ATTRIBUTES TO INCLUDE ---\nvar includeAttrsRaw = $context.$variables.mainDocAttrs;\nvar includeAttrsArray = [];\n\n// Check type and parse accordingly\nif (typeof includeAttrsRaw === 'string') {\n    // Remove all double quotes and split by comma\n    var cleanedString = includeAttrsRaw.split('\"').join('');\n    var splitArray = cleanedString.split(',');\n    for (var a = 0; a < splitArray.length; a++) {\n        var attrName = splitArray[a].trim();\n        if (attrName.length > 0) {\n            includeAttrsArray.push(attrName);\n        }\n    }\n} else if (Array.isArray(includeAttrsRaw)) {\n    for (var b = 0; b < includeAttrsRaw.length; b++) {\n        var attrNameArr = includeAttrsRaw[b];\n        attrNameArr = attrNameArr.split('\"').join('').trim();\n        if (attrNameArr.length > 0) {\n            includeAttrsArray.push(attrNameArr);\n        }\n    }\n}\n\n// --- STEP 2: BUILD MAIN DOC ATTRIBUTE MAP ---\nvar attrItems = $context.$nodes.GET_MAIN_DOC_ATTRIBUTES.$output.items || [];\nvar mainAttrMap = {};\n\nfor (var i = 0; i < attrItems.length; i++) {\n    var attr = attrItems[i];\n    var varName = attr.variableName;\n    mainAttrMap[varName] = {\n        label: attr.label || varName,\n        dataType: attr.type ? attr.type.displayValue : \"Text\",\n        required: attr.required || false,\n        readOnly: attr.readOnly || false\n    };\n}\n\n// --- STEP 3: GET QUOTE DATA ---\nvar quoteDataRaw = $context.$nodes.GET_QUOTE_DETAIL.$output;\nvar quoteDoc = quoteDataRaw.documents || quoteDataRaw;\n\n// --- STEP 4: ENRICH ONLY INCLUDED FIELDS ---\nvar enrichedQuote = [];\nvar missingRequired = [];\n\nfor (var q = 0; q < includeAttrsArray.length; q++) {\n    var fieldName = includeAttrsArray[q];\n    \n    // Skip if field not in quote data\n    if (!quoteDoc.hasOwnProperty(fieldName)) {\n        continue;\n    }\n    \n    var fieldValue = quoteDoc[fieldName];\n    var meta = mainAttrMap[fieldName];\n    \n    // Determine if value is null/empty\n    var isNull = false;\n    if (fieldValue === null || fieldValue === undefined || fieldValue === \"\") {\n        isNull = true;\n    } else if (typeof fieldValue === \"object\" && fieldValue !== null && fieldValue.value !== undefined) {\n        isNull = fieldValue.value === null || fieldValue.value === 0;\n    }\n    \n    // Extract display value\n    var displayValue = fieldValue;\n    if (typeof fieldValue === \"object\" && fieldValue !== null) {\n        if (fieldValue.displayValue !== undefined) {\n            displayValue = fieldValue.displayValue;\n        } else if (fieldValue.value !== undefined && fieldValue.currency !== undefined) {\n            displayValue = fieldValue.currency + \" \" + fieldValue.value;\n        }\n    }\n    \n    var enrichedField = {\n        fieldName: fieldName,\n        label: meta ? meta.label : fieldName,\n        dataType: meta ? meta.dataType : \"Unknown\",\n        required: meta ? meta.required : false,\n        readOnly: meta ? meta.readOnly : false,\n        value: displayValue,\n        isNull: isNull\n    };\n    \n    enrichedQuote.push(enrichedField);\n    \n    // Track missing required fields\n    if (enrichedField.required && isNull) {\n        missingRequired.push(enrichedField.label);\n    }\n}\n\n// --- STEP 5: BUILD OUTPUT ---\nvar output = {\n    quoteFields: enrichedQuote,\n    summary: {\n        quoteFieldCount: enrichedQuote.length,\n        missingRequiredFields: missingRequired\n    }\n};\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1769451249908"
+          },
+          "code": "PREPARE_DATA_FOR_LLM",
+          "id": "1769451175384",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Summarize"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SUMMARIZE",
+          "id": "1769451249908",
+          "inputs": [
+            {
+              "id": "1769451249909_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Generate a Quote Summary, a content-indicative Title, and Action Steps based on the provided enriched quote data.\n\n## PROCESS CONTEXT\nProcess Name: {{$context.$triggers.REST.$input.processName}}\nMain Document: {{$context.$triggers.REST.$input.mainDocName}}\nTransaction ID: {{$context.$triggers.REST.$input.quoteId}}\n\n## ENRICHED QUOTE DATA\n{{$context.$nodes.PREPARE_DATA_FOR_LLM.$output.result.quoteFields}}\n\n## DATA SUMMARY\n- Quote-level fields: {{$context.$nodes.PREPARE_DATA_FOR_LLM.$output.result.summary.quoteFieldCount}}\n- Missing required fields: {{$context.$nodes.PREPARE_DATA_FOR_LLM.$output.result.summary.missingRequiredFields}}\n\n## FIELD STRUCTURE\nEach field contains:\n- label: Human-readable name (USE THIS IN OUTPUT)\n- dataType: Currency, Date, Text, Menu, Number, etc.\n- required: Mandatory field flag\n- value: Formatted display value\n- isNull: True if missing/empty/zero\n\n## INSTRUCTIONS\nStep 1 - Analyze Data:\nGroup fields by their label and dataType into:\n- Identification (IDs, names, versions, references)\n- Status & Ownership (status, owner, assigned, source)\n- Financials (Currency dataType, amounts, values, discounts)\n- Dates (Date dataType, start, end, expiration, created)\n- Customer & Contact (customer, contact, account related)\n- Billing & Shipping (bill to, ship to, address related)\n\nStep 2 - Identify Issues (prioritize by business impact):\nPriority 1 - Blockers (prevent quote progression):\n- Missing required fields from missingRequiredFields\n- Missing customer/contact information\n- Missing Bill To or Ship To details\n\nPriority 2 - Warnings (need attention):\n- Currency fields where isNull is true (especially Transaction Total, Contract Value)\n- Date fields where isNull is true (especially Price Expiration Date)\n- Annual Contract Value of $0 on multi-year contracts\n\nPriority 3 - Recommendations:\n- Status indicates draft/in progress - recommend next stage\n- Discount thresholds that may require approval\n\nStep 3 - Generate Output:\nReturn ONLY valid JSON with no additional text, no markdown, no code blocks.\n\n## OUTPUT FORMAT\nReturn exactly this JSON structure:\n{\"summary\":\"&lt;summary text here>\",\"nextSteps\":[\"1. &lt;step 1>\",\"2. &lt;step 2>\",\"3. &lt;step 3>\"]}\n\n## TITLE REQUIREMENTS (max 10 words):\n- Do NOT include Quote #, Quote Name, Transaction ID, or any unique identifiers\n- Title must indicate what the quote summary is about (content/focus)\n- Construct the title using available business attributes, in this priority order (use only what is present):\n  1) Commercial context (e.g., Renewal/New/Amendment) if indicated by fields/values\n  2) Customer/Account name (if present)\n  3) Product/solution family or primary offering (if indicated by fields/values)\n  4) Region/country (if present)\n  5) Contract term length (e.g., “36-Month”) if present/derivable\n- If customer/product/context are missing, use a neutral fallback:\n  - \"Quote Readiness Summary\"\n  - \"Quote Financials Summary\"\n  - \"Quote Data Completeness Summary\"\n- Keep it factual, professional, and concise\n- No marketing language, no special characters, no trailing period\n\n## SUMMARY REQUIREMENTS (under 120 words):\n- Lead with Quote # and Quote Name, then Status and Version\n- State Owner (omit \"initiated by\" source unless relevant)\n- Contract term: X months from [start date] to [end date]\n- Financials: Total Contract Value, discount % (or \"no discount\" if 0%), Annual Contract Value\n- Customer readiness: mention if customer/contact info is populated or missing\n- Billing/Shipping: mention if populated or missing\n- Keep it factual and concise - no filler phrases\n\n## NEXT STEPS REQUIREMENTS:\n- Return as an array of strings.\n- If there are issues, use this exact structure:\n  1) Item 1 must be plain text with NO numbering: \"X items require attention before this quote can progress.\"\n  2) Follow with numbered action items only, using consecutive numbering \"1.\", \"2.\", \"3.\" as needed.\n  3) Final item must be plain text with NO numbering: \"Once addressed, [specific next action].\"\n- X must exactly equal the number of numbered action items you returned.\n- Do not add any extra unnumbered action item between numbered items and the final \"Once addressed\" line.\n- List Priority 1 (Blockers) first, then Priority 2 (Warnings), then Priority 3 (Recommendations).\n- Use plain English field labels only.\n- If no issues: Return single item array [\"This quote is ready for [next stage].\"] (no numbering).\n\n## OUTPUT RULES\n- Currency: Convert codes to symbols (USD → $, EUR → €, GBP → £)\n- Dates: Format as Month Day, Year (e.g., January 6, 2026)\n- Percentages: Round to 2 decimal places\n- Field references: Always use \"label\", never \"fieldName\"\n- Tone: Professional, action-oriented, concise\n- No redundancy: If List and Net values are equal, state \"no discount applied\"\n\n## SAMPLE OUTPUT\n{\"title\":\"36-Month Renewal for Acme Corp\",\"summary\":\"Quote CPQ-6 01/06 is In Progress (Version 1), owned by Super User. This 36-month contract runs from January 6, 2026 to January 5, 2029. Total Contract Value is $140,713.50 with 3.25% average discount (List: $145,439.00). Annual Contract Value is $0.00. Customer contact information is missing. Bill To and Ship To phone numbers are on file.\",\"nextSteps\":[\"3 items require attention before this quote can progress.\",\"1. Add Contact name (required).\",\"2. Add Customer Phone (required).\",\"3. Annual Contract Value shows $0.00 on a 36-month contract - verify recurring pricing is configured.\",\"Once addressed, submit for approval.\"]}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Process input Param and Prepare Quote Param",
+            "returnType": "object",
+            "sourceCode": "if ( $context.$triggers.REST.$input.processName == \"\") {\n    throw new Error(\"processVarName is empty\");\n}\nif ( $context.$triggers.REST.$input.mainDocName == \"\") {\n    throw new Error(\"mainDocVarName is empty\");\n}\nif ( $context.$triggers.REST.$input.cacheInstanceId == \"\") {\n    throw new Error(\"cacheInstanceId is empty\");\n}\nif ( $context.$triggers.REST.$input.quoteId == \"\") {\n    throw new Error(\"quoteID is empty\");\n}\n\n\n// Parameters for callback\nlet varCacheInstanceId = $context.$triggers.REST.$input.cacheInstanceId;\n\n// Default for cacheInstanceId\nvar cacheInstanceId = varCacheInstanceId !== \"\" ? varCacheInstanceId : -1;\n\n// Default for subDocVarName\nvar varSubDocVarName = $context.$triggers.REST.$input.subDocName;\nvar subDocVarName = varSubDocVarName !== \"\" ? varSubDocVarName : \"transactionLine\";\n\nvar bsId = $context.$triggers.REST.$input.quoteId;\nvar revisionId = $context.$triggers.REST.$input.revisionId;\n\nlet processVarName = $context.$triggers.REST.$input.processName;\nlet mainDocVarName = $context.$triggers.REST.$input.mainDocName;\n\n\n// Default for processVarName (There is no default)\nvar varProcessVarName = processVarName.charAt(0).toUpperCase() + processVarName.slice(1);\n\n// Default for mainDocVarName (There is no default)\nvar varMainDocVarName = mainDocVarName.charAt(0).toUpperCase() + mainDocVarName.slice(1);\n\n// Combined URI var name\nvar uriMainDocVarName = \"commerceDocuments\" + varProcessVarName + varMainDocVarName;\n\nvar result = {\n  bsId,\n  cacheInstanceId,\n  revisionId,\n  processVarName,\n  mainDocVarName,\n  subDocVarName,\n  uriMainDocVarName\n};\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1770947610376"
+          },
+          "code": "PROCESS_PARAMETER",
+          "id": "1769470392611",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CPQCOMMERC_DOCUMENTPROPERT",
+            "functionName": "getAttributes",
+            "name": "Get Main Doc Attributes"
+          },
+          "outcomes": {
+            "success": "1769451175384"
+          },
+          "code": "GET_MAIN_DOC_ATTRIBUTES",
+          "convergenceTargetId": "1769635110475",
+          "id": "1769450163111",
+          "inputs": [
+            {
+              "id": "1769450214270_1",
+              "name": "quoteVarName",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.processName}}"
+            },
+            {
+              "id": "1769450214271_2",
+              "name": "documentVarName",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.mainDocName}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Set Main Document Attributes"
+          },
+          "outcomes": {
+            "success": "1769450145868"
+          },
+          "code": "SET_MAIN_DOCUMENT_ATTRIBUTES",
+          "id": "1770947610376",
+          "inputs": [
+            {
+              "id": "1770947628876",
+              "name": "mainDocAttrs",
+              "type": "array",
+              "value": "\"bs_id\",\"transactionName_t\",\"createdDate_t\",\"owner_t\",\"priceExpirationDate_t\",\"status_t\",\"_transaction_total\",\"transactionID_t\",\"_s_assignedTo_t\",\"_s_customerStatus_t\",\"_s_transactionSource_t\",\"totalContractValue_t\",\"_date_modified\",\"contactName_t\",\"totalOneTimeNetAmount_t\",\"_date_added\",\"totalContractListValue_t\",\"totalAnnualValue_t\",\"currency_t\",\"contractStartDate_t\",\"contractEndDate_t\",\"contractedPeriods_t\",\"transactionTotalDiscountPercent_t\",\"lastUpdatedDate_t\",\"version_t\",\"_customer_t_company_name \",\"_customer_t_address \",\"_customer_t_email \",\"_customer_t_city \",\"_customer_t_state \",\"_customer_t_country \",\"_customer_t_zip \",\"_customer_t_phone\",\"_s_billTo_t_company_name \",\"_s_billTo_t_address \",\"_s_billTo_t_email \",\"_s_billTo_t_city \",\"_s_billTo_t_state \",\"_s_billTo_t_country \",\"_s_billTo_t_zip \",\"_s_billTo_t_phone\",\"_shipTo_t_company_name \",\"_shipTo_t_address \",\"_shipTo_t_email \",\"_shipTo_t_city \",\"_shipTo_t_state \",\"_shipTo_t_country \",\"_shipTo_t_zip \",\"_shipTo_t_phone\""
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "description": "Add node for branch 2",
+            "name": "Add 2"
+          },
+          "outcomes": {
+            "success": "1769451175384"
+          },
+          "id": "add_1769450145868_2",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CPQCOMMERC_GETQUOTE",
+            "functionName": "getQuote",
+            "name": "Get Quote Detail"
+          },
+          "outcomes": {
+            "success": "1769451175384"
+          },
+          "code": "GET_QUOTE_DETAIL",
+          "convergenceTargetId": "1771008915213",
+          "id": "1769450441046",
+          "inputs": [
+            {
+              "id": "1770997452147_1",
+              "name": "mainAttrs",
+              "type": "string",
+              "value": "{{$context.$variables.mainDocAttrs}}"
+            },
+            {
+              "id": "1770997452148_2",
+              "name": "cacheInstanceId",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_PARAMETER.$output.result.cacheInstanceId}}"
+            },
+            {
+              "id": "1770997452149_3",
+              "name": "quoteId",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_PARAMETER.$output.result.bsId}}"
+            },
+            {
+              "id": "1770997452149_4",
+              "name": "mainDocVarName",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_PARAMETER.$output.result.uriMainDocVarName}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1770947572973",
+          "name": "mainDocAttrs",
+          "scope": "JOB",
+          "type": "array"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1769443365094",
+            "name": "revisionId",
+            "type": "string"
+          },
+          {
+            "id": "1769443348589",
+            "name": "subDocName",
+            "type": "string"
+          },
+          {
+            "id": "1769443332740",
+            "name": "mainDocName",
+            "type": "string"
+          },
+          {
+            "id": "1769443314451",
+            "name": "processName",
+            "type": "string"
+          },
+          {
+            "id": "1769443269668",
+            "name": "cacheInstanceId",
+            "type": "string"
+          },
+          {
+            "id": "1769443246574",
+            "name": "quoteId",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "CPQ_COMMERCE",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "FULL",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

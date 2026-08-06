@@ -1,0 +1,321 @@
+{
+  "workflowId": "100002355227092",
+  "workflowCode": "ORA_FIN_EXM_EXPENSE_POLICY_ENFORCEMENT_ASSISTANT",
+  "name": "Expense Policy Enforcement Assistant",
+  "description": "This agent enforces expense policies by applying policy validation rules and performing required adjustments before the expense is finally updated. It ensures attendee-related adjustments are processed correctly and applies policy-based corrections such as adjusting receipt amounts to comply with policy limits.",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1769514652732"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "IsAttendeeRequired",
+            "returnType": "boolean",
+            "sourceCode": "let input = $context.$triggers.REST.$input.resolvedEntities.resolvedEntities || [] ;\n\nif (Array.isArray(input)) {\n    for (let i = 0; i < input.length; i++) {\n        let entity = input[i];\n\n        if (\n            entity &&\n            (\n                entity.name === \"Attendee\" ||\n                entity.name === \"Attendees\" ||\n                entity.name === \"NonEmployeeAttendees\"\n            ) &&\n            Array.isArray(entity.resolvedValues) &&\n            entity.resolvedValues.length > 0\n        ) {\n            return true;\n        }\n    }\n}\n\nreturn false;"
+          },
+          "outcomes": {
+            "success": "1770880268213"
+          },
+          "code": "ISATTENDEEREQUIRED",
+          "id": "1769514652732",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "CallAttendeeFlow"
+          },
+          "outcomes": {
+            "true": "1769506705966",
+            "false": "1769885967619"
+          },
+          "code": "CALLATTENDEEFLOW",
+          "convergenceTargetId": "end",
+          "id": "1769514784356",
+          "inputs": [
+            {
+              "id": "1769514784358_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.ISATTENDEEREQUIRED.$output.result || $context.$nodes.CHECKRESOLVEDATTENDEEOBECT.$output.result}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "AttendeeByuser",
+            "returnType": "array",
+            "sourceCode": "const validFields = new Set([\n    \"Attendee\",\n    \"Attendees\",\n    \"NonEmployeeAttendee\",\n    \"NonEmployeeAttendees\",\n    \"AmbiguousAttendees\",\n    \"AmbiguousAttendee\"\n]);\n\nlet input =\n    $context?.$triggers?.REST?.$input?.resolvedEntities?.resolvedEntities || [];\n\nlet raw =\n    $context?.$triggers?.REST?.$input?.userDecompositionOutput;\n\n// Step 1: ensure outer object\nif (typeof raw === \"string\") {\n  raw = JSON.parse(raw);\n}\n\n// Step 2: parse inner \"output\"\nlet output = raw;\n\nif (typeof output === \"string\") {\n  output = JSON.parse(output);\n}\n\n// Step 3: safely extract\nlet DecomposedInstructionsArray =\n  output?.result?.DecomposedInstructions || [];\n\nlet newAttendees = [];\n\n/* ---------- From resolvedEntities ---------- */\n\nif (Array.isArray(input)) {\n    input.forEach(entity => {\n        if (\n            entity &&\n            validFields.has(entity.name) &&\n            Array.isArray(entity.resolvedValues)\n        ) {\n            entity.resolvedValues.forEach(rv => {\n                if (\n                    rv?.status === \"ORA_EXACT_MATCH\" &&\n                    Array.isArray(rv.matches)\n                ) {\n                    rv.matches.forEach(match => {\n                        const id = match?.fieldValue?.id;\n                        const name = match?.fieldValue?.name;\n\n                        if (id && name) {\n                            newAttendees.push({\n                                emailAddress: id,\n                                name: name\n                            });\n                        }\n                    });\n                }\n            });\n        }\n    });\n}\n\n/* ---------- From DecomposedInstructions ---------- */\n\nif (Array.isArray(DecomposedInstructionsArray)) {\n    DecomposedInstructionsArray.forEach(instruction => {\n        const { type, field, value } = instruction || {};\n\n        if (\n            (type === \"resolved\" || type === \"rec_resolved\") &&\n            validFields.has(field) &&\n            value\n        ) {\n            let attendeeObj =\n                typeof value === \"string\"\n                    ? JSON.parse(value)\n                    : value;\n\n            if (attendeeObj?.id && attendeeObj?.name) {\n                newAttendees.push({\n                    emailAddress: attendeeObj.id,\n                    name: attendeeObj.name\n                });\n            }\n        }\n    });\n}\n\nreturn newAttendees;"
+          },
+          "outcomes": {
+            "success": "1769508204644"
+          },
+          "code": "GETATTENDEESBYUSER",
+          "convergenceTargetId": "1769514840183",
+          "id": "1769506705966",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_PERSONDETAILS",
+            "functionName": "getPersonById",
+            "name": "GetLoggedInPerson"
+          },
+          "outcomes": {
+            "success": "1769494888271"
+          },
+          "code": "GETLOGGEDINPERSON",
+          "convergenceTargetId": "1769514840183",
+          "id": "1769508204644",
+          "inputs": [
+            {
+              "id": "1769508223452_1",
+              "name": "DisplayName",
+              "type": "string"
+            },
+            {
+              "id": "1769508223453_2",
+              "name": "WorkEmail",
+              "type": "string"
+            },
+            {
+              "id": "1769508223454_3",
+              "name": "FirstName",
+              "type": "string"
+            },
+            {
+              "id": "1769508223455_4",
+              "name": "LastName",
+              "type": "string"
+            },
+            {
+              "id": "1769508223457_5",
+              "name": "perosnId",
+              "type": "number",
+              "value": "{{$context.$triggers.REST.$input.personID}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EXPENSEATTENDEE",
+            "functionName": "getExpenseAttendee",
+            "name": "GetAttendeeusingExpenseID"
+          },
+          "outcomes": {
+            "success": "1769496265114"
+          },
+          "code": "GETATTENDEEFROMEXPENSEID",
+          "convergenceTargetId": "1769514840183",
+          "id": "1769494888271",
+          "inputs": [
+            {
+              "id": "1769494908349_1",
+              "name": "expenseId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.expenseId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"Name\": {\n            \"type\": \"string\"\n          },\n          \"AttendeeEmail\": {\n            \"type\": [\"string\", \"null\"]\n          },\n          \"Amount\": {\n            \"type\": \"number\"\n          }\n        },\n        \"required\": [\"Name\", \"Amount\"]\n      }\n    }\n  },\n  \"required\": [\"items\"]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "updateAttendee ",
+            "returnType": "array",
+            "sourceCode": "let newAttendees = Array.isArray($context.$nodes.GETATTENDEESBYUSER?.$output?.result)\n    ? [...$context.$nodes.GETATTENDEESBYUSER.$output.result]\n    : [];\n\nlet loggedIn = $context.$nodes.GETLOGGEDINPERSON?.$output?.items?.[0] || {};\nlet existAttendees = Array.isArray($context.$nodes.GETATTENDEEFROMEXPENSEID?.$output?.items)\n    ? [...$context.$nodes.GETATTENDEEFROMEXPENSEID.$output.items]\n    : [];\n\nlet receiptAmount = Number($context.$triggers.REST?.$input?.receiptAmount) || 0;\n\nlet rawPrecision = Number($context.$triggers.REST?.$input?.precision);\nlet precision = Number.isInteger(rawPrecision) && rawPrecision >= 0 ? rawPrecision : 2;\nlet minorUnitFactor = Math.pow(10, precision);\n\nconst norm = v => (v || \"\").toString().trim().toLowerCase();\nconst toMinorUnits = value => Math.round(value * minorUnitFactor);\nconst fromMinorUnits = value => value / minorUnitFactor;\n\nconst attendeeKey = att => {\n    const email = norm(att?.emailAddress || att?.AttendeeEmail);\n    const name = norm(att?.name || att?.Name);\n\n    // Prefer email when present, otherwise fall back to name.\n    return email ? `email:${email}` : name ? `name:${name}` : \"\";\n};\n\nconst isEmployeeAttendee = att =>\n    norm(att?.emailAddress || att?.AttendeeEmail) === norm(loggedIn.WorkEmail) ||\n    norm(att?.name || att?.Name) === norm(loggedIn.DisplayName);\n\n// Add logged-in user only if they are not already in either list.\nif (loggedIn?.WorkEmail || loggedIn?.DisplayName) {\n    const loggedInKeyEmail = loggedIn.WorkEmail ? `email:${norm(loggedIn.WorkEmail)}` : \"\";\n    const loggedInKeyName = loggedIn.DisplayName ? `name:${norm(loggedIn.DisplayName)}` : \"\";\n\n    const alreadyExists = [\n        ...existAttendees,\n        ...newAttendees\n    ].some(att => {\n        const k = attendeeKey(att);\n        return k === loggedInKeyEmail || k === loggedInKeyName;\n    });\n\n    if (!alreadyExists) {\n        newAttendees.push({\n            emailAddress: loggedIn.WorkEmail || \"\",\n            name: loggedIn.DisplayName || \"\"\n        });\n    }\n}\n\n// Deduplicate existing attendees.\nlet uniqueExistingAttendees = [];\nlet seenExisting = new Set();\n\nfor (const att of existAttendees) {\n    const k = attendeeKey(att);\n    if (!k || seenExisting.has(k)) continue;\n    seenExisting.add(k);\n    uniqueExistingAttendees.push(att);\n}\n\n// Deduplicate new attendees.\nlet uniqueNewAttendees = [];\nlet seenNew = new Set();\n\nfor (const att of newAttendees) {\n    const k = attendeeKey(att);\n    if (!k || seenNew.has(k)) continue;\n    seenNew.add(k);\n    uniqueNewAttendees.push(att);\n}\n\n// Remove any new attendees that already exist in the expense.\nlet existingKeys = new Set(uniqueExistingAttendees.map(attendeeKey));\n\nlet filteredNewAttendees = uniqueNewAttendees.filter(att => !existingKeys.has(attendeeKey(att)));\n\nlet expenseAttendees = [];\n\nif (filteredNewAttendees.length > 0 || uniqueExistingAttendees.length > 0) {\n    let allAttendeesCount = uniqueExistingAttendees.length + filteredNewAttendees.length;\n    let receiptAmountMinorUnits = toMinorUnits(receiptAmount);\n    let baseAmountMinorUnits = allAttendeesCount > 0\n        ? Math.floor(receiptAmountMinorUnits / allAttendeesCount)\n        : 0;\n\n    let remainderMinorUnits =\n        receiptAmountMinorUnits - (baseAmountMinorUnits * allAttendeesCount);\n\n    let employeeRemainderAssigned = false;\n    let employeeExistsInNewAttendees = filteredNewAttendees.some(att => isEmployeeAttendee(att));\n\n    uniqueExistingAttendees.forEach(att => {\n        if (att.ExpenseAttendeeId) {\n            let amountMinorUnits = baseAmountMinorUnits;\n\n            if (!employeeRemainderAssigned && isEmployeeAttendee(att)) {\n                amountMinorUnits += remainderMinorUnits;\n                employeeRemainderAssigned = true;\n            }\n\n            expenseAttendees.push({\n                id: att.ExpenseAttendeeId,\n                amount: fromMinorUnits(amountMinorUnits)\n            });\n        }\n    });\n\n    filteredNewAttendees.forEach((att, index) => {\n        let amountMinorUnits = baseAmountMinorUnits;\n\n        let isFallbackEmployee =\n            !employeeRemainderAssigned &&\n            !employeeExistsInNewAttendees &&\n            remainderMinorUnits > 0 &&\n            index === 0;\n\n        if (!employeeRemainderAssigned && (isEmployeeAttendee(att) || isFallbackEmployee)) {\n            amountMinorUnits += remainderMinorUnits;\n            employeeRemainderAssigned = true;\n        }\n\n        expenseAttendees.push({\n            emailAddress: att.emailAddress || att.AttendeeEmail || \"\",\n            name: att.name || att.Name || \"\",\n            amount: fromMinorUnits(amountMinorUnits)\n        });\n    });\n}\n\nreturn { expenseAttendees };"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "CHECKEXISITING_ATTENDEE",
+          "convergenceTargetId": "1769514840183",
+          "id": "1769496265114",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "return",
+            "returnType": "object",
+            "sourceCode": "// Build output\nlet expenseAttendees = [];\nreturn {expenseAttendees};"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURN",
+          "id": "1769885967619",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "checkResolvedAttendeeObect",
+            "returnType": "boolean",
+            "sourceCode": "let raw = $context.$triggers.REST.$input.userDecompositionOutput;\n\n//let raw = $context.$triggers.REST.$input.userDecompositionAgentOutput;\n\n// Step 1: ensure outer object\nif (typeof raw === \"string\") {\n  raw = JSON.parse(raw);\n}\n\n// Step 2: parse inner \"output\"\nlet output = raw;\n\nif (typeof output === \"string\") {\n  output = JSON.parse(output);\n}\n\n// Step 3: safely extract\nlet DecomposedInstructionsArray =\n  output?.result?.DecomposedInstructions || [];\n\nconst hasAttendee = DecomposedInstructionsArray.some((instruction) => {\n  const { type, field } = instruction;\n\n  return (\n    (type === \"resolved\" || type === \"rec_resolved\") &&\n    (\n      field === \"Attendee\" ||\n      field === \"Attendees\" ||\n      field === \"NonEmployeeAttendee\" ||\n      field === \"NonEmployeeAttendees\" ||\n      field=== \"AmbiguousAttendees\" ||\n      field=== \"AmbiguousAttendee\"\n    )\n  );\n});\n\nreturn hasAttendee;"
+          },
+          "outcomes": {
+            "success": "1769514784356"
+          },
+          "code": "CHECKRESOLVEDATTENDEEOBECT",
+          "id": "1770880268213",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1769576540740",
+          "name": "expenseAttendees",
+          "scope": "JOB",
+          "type": "object"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.3
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "modelName": "Gpt Oss",
+      "provider": "CERT_BASIC"
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1775828032508",
+            "name": "precision",
+            "scope": "JOB",
+            "type": "number"
+          },
+          {
+            "id": "1770880059468",
+            "name": "userDecompositionOutput",
+            "scope": "JOB",
+            "type": "object"
+          },
+          {
+            "id": "1769494927843",
+            "name": "expenseId",
+            "type": "string"
+          },
+          {
+            "id": "1769494779462",
+            "name": "isReplyflow",
+            "type": "boolean"
+          },
+          {
+            "id": "1769494767753",
+            "name": "personID",
+            "type": "string"
+          },
+          {
+            "id": "1769494744258",
+            "name": "resolvedEntities",
+            "type": "object"
+          },
+          {
+            "id": "1769494706359",
+            "name": "receiptAmount",
+            "type": "number"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "FIN",
+  "product": "EXPENSES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": true,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"7\""
+  }
+}

@@ -1,0 +1,505 @@
+{
+  "workflowId": "300000331068172",
+  "workflowCode": "ORA_TRANSACTION_SUMMARY_WORKFLOW",
+  "name": "Transaction Summary Workflow",
+  "description": "Generates summary for transactions.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1762259331401"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Process Transaction Id"
+          },
+          "outcomes": {
+            "success": "1762415905546"
+          },
+          "code": "PROCESS_TRANSACTION_ID",
+          "id": "1762259331401",
+          "inputs": [
+            {
+              "id": "1762259331402_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Determine or Validate the Transaction ID\nUse only the current user input ({{$context.$system.$inputMessage}}) to decide whether a transaction_id was provided.\n\nCase1 : User provided transaction id\nTypical user messages that include a transaction ID might look like:\n“Show transaction summary for 12345”\n“Transaction summary for txn id: 12345”\n“Give me diagnostics for transaction TXN_67890”\nIf the user message already includes a transaction ID (e.g., “transaction summary for 37483728” or “transaction summary for txn id: 37483728”), treat that ID as confirmed and proceed directly to validation.\nReturn the exact transaction id and set transactionIdProvided to true\n\nCase2 : If user did NOT supply a transaction_id\nTypical user messages that do not contain a transaction_id might look like:\n“transaction summary for <user_name> in <process_name>”\n“Show transaction summary for <process_name>:<user_name>”\n“Get transaction history for Ravi under Promote process”\n\nReturn the exact process name and set transactionIdProvided to false, set processName and user_name as well."
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"TransactionIdResponse\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"TransactionId\": {\n      \"type\": \"integer\"\n    },\n    \"transactionIdProvided\": {\n      \"type\": \"boolean\"\n    },\n    \"user_name\": {\n      \"type\": \"string\"\n    },\n    \"process_name\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\"TransactionId\", \"transactionIdProvided\", \"user_name\", \"process_name\"]\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "CheckTransactionIdValidity"
+          },
+          "outcomes": {
+            "true": "1762425864327",
+            "false": "add_false_1762262351884"
+          },
+          "code": "CHECKTRANSACTIONIDVALIDITY",
+          "convergenceTargetId": "end",
+          "id": "1762262351884",
+          "inputs": [
+            {
+              "id": "1762262351885_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.TRANSACTIONIDVALIDATION.$output.isTransactionIdValid}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_false_1762262351884",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "TransactionIdValidation"
+          },
+          "outcomes": {
+            "success": "1762262351884"
+          },
+          "code": "TRANSACTIONIDVALIDATION",
+          "id": "1762264897333",
+          "inputs": [
+            {
+              "id": "1762264897334_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "In this you will have to check two cases. If input is not provided in any case then skip it. \n\nCase 1: Coming from Transaction Id Checker\nExecute the below java script code by taking this restResponse = {{$context.$nodes.TRANSACTION_ID_CHECKER.$output}}\nconst count = {{$context.$nodes.TRANSACTION_ID_CHECKER.$output.response.count}}\n\nIf value of count is equal to zero than set isTransactionIdValid to false otherwise if value of count is greater than 0 then set isTransactionIdValid to true\n\nCase2: Coming from Transaction Id Finder\nExecute the below java script code by taking this restResponse = {{$context.$variables.transactionId}} \nconst txnId = {{$context.$variables.transactionId}} \n\nIf value of txnId is a valid number then set isTransactionIdValid to true otherwise set it to false"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"TransactionIdValidationResponse\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"isTransactionIdValid\": {\n      \"type\": \"boolean\",\n      \"description\": \"Indicates if the TransactionId is considered valid\"\n    }\n  },\n  \"required\": [\"isTransactionIdValid\"]\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Create Summary"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "CREATE_SUMMARY",
+          "id": "1762333347134",
+          "inputs": [
+            {
+              "id": "1762333347135_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Execute the below javascript code by taking this input as rest response = {{$context.$nodes.TRANSACTION_DETAILS1.$output}} \nconst transactionDetails = {{$context.$nodes.TRANSACTION_DETAILS1.$output}} \nconst approvalHistory = {{$context.$nodes.APPROVAL_HISTORY1.$output}} \nconst fetchDiagnostic = {{$context.$nodes.FETCH_DIAGNOSTIC1.$output}} \nconst commentAttachments = {{$context.$nodes.COMMENTS_ATTACHMENTS1.$output}} \n\nPlease create summary for from the data provided in the below mentioned format. If any attribute in provided data is null then skip it. \nYou must follow exactly one of the two cases below.\nDo not mix cases.\nDo not add any extra text before or after the defined sections.\nDo not use markdown, emojis, or decorative formatting unless explicitly stated.\nAll headings should start in new paragraph and in bold format in normal size.\n\n##Case 1 \nDetailed Transaction Summary\n(Use when a valid transaction was found and the user asked for a full summary. If any api response has error don't mention it in final summary. Only return this sections, don't add anything at end by yourself.)\n\nTransaction Details\n<ONE concise paragraph summarizing submitter, process, status, creation last-updated dates, and other key facts.>\n\nApproval History\n\n<bullet summarizing approver #1 — person, action, date/time>\n<bullet summarizing approver #2 — …>\n…\nDiagnostic Log\n\n<bullet capturing each relevant diagnostic insight or warning>\n…\nActionable Steps\n\n<bullet describing each next step or resolution action uncovered>\n…\nComments & Attachments\n<Bullet-only list (no numbering/IDs); preserve original order; summarize each comment thread concisely with type, author and key points and CreatedDate; list every attachment with type and filename; include URLs as encoded deeplinks only; never add surrounding or trailing punctuation to links (no parentheses, brackets, quotes, commas, periods, or quotes); one item per bullet; no nested bullets>\n…\nTransaction Details Link:\n\n##Case 2 \nTransaction Not Found\n(Use when the provided transaction ID name cannot be matched to any record.)\n\nPolite message:\n“Sorry, no matching transaction was found. Please verify the transaction name or ID and try again.”"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Check Failed Transaction"
+          },
+          "outcomes": {
+            "true": "1762348195462",
+            "false": "add_false_1762348119487"
+          },
+          "code": "CHECK_FAILED_TRANSACTION",
+          "convergenceTargetId": "1762333347134",
+          "id": "1762348119487",
+          "inputs": [
+            {
+              "id": "1762348119488_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.TRANSACTION_DETAILS1.$output.Status == \"FAILED\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1762333347134"
+          },
+          "id": "add_false_1762348119487",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_TACISSUESUMMARY",
+            "functionName": "show_Issue_Description_Resolution",
+            "name": "TAC Issues Summary1"
+          },
+          "outcomes": {
+            "success": "1762333347134"
+          },
+          "code": "TAC_ISSUES_SUMMARY1",
+          "id": "1762348195462",
+          "inputs": [
+            {
+              "id": "1762348218672_1",
+              "name": "transactionId",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_TRANSACTION_ID.$output.TransactionId}}"
+            },
+            {
+              "id": "1762348218673_2",
+              "name": "issueId",
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "isTransactionIdThere"
+          },
+          "outcomes": {
+            "true": "1762416400304",
+            "false": "1762416516170"
+          },
+          "code": "ISTRANSACTIONIDTHERE",
+          "convergenceTargetId": "1762264897333",
+          "id": "1762415905546",
+          "inputs": [
+            {
+              "id": "1762415905547_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_TRANSACTION_ID.$output.transactionIdProvided}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_TRANSACTIONIDCH",
+            "functionName": "check_transaction",
+            "name": "Transaction Id Checker"
+          },
+          "outcomes": {
+            "success": "1762417915794"
+          },
+          "code": "TRANSACTION_ID_CHECKER",
+          "id": "1762416400304",
+          "inputs": [
+            {
+              "id": "1762416435053_1",
+              "name": "transaction_id",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_TRANSACTION_ID.$output.TransactionId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"BusinessProcessConsoleTransactionDetailsResponse\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"response\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"items\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"TransactionId\": {\n                \"type\": \"integer\"\n              },\n              \"Name\": {\n                \"type\": \"string\"\n              },\n              \"Status\": {\n                \"type\": \"string\"\n              },\n              \"ProcessName\": {\n                \"type\": \"string\"\n              },\n              \"SubmittedOn\": {\n                \"type\": \"string\",\n                \"format\": \"date-time\"\n              },\n              \"Assignees\": {\n                \"type\": [\"array\", \"null\"],\n                \"items\": {}\n              },\n              \"SubmittedBy\": {\n                \"type\": \"string\"\n              },\n              \"Approvers\": {\n                \"type\": [\"array\", \"null\"],\n                \"items\": {}\n              },\n              \"ArchiveDate\": {\n                \"type\": \"string\"\n              },\n              \"CompletedDate\": {\n                \"type\": \"string\",\n                \"format\": \"date-time\"\n              },\n              \"isCommunicationData\": {\n                \"type\": [\"boolean\", \"null\"]\n              },\n              \"@context\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"key\": {\n                    \"type\": \"integer\"\n                  },\n                  \"links\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"type\": \"object\",\n                      \"properties\": {\n                        \"rel\": { \"type\": \"string\" },\n                        \"href\": { \"type\": \"string\", \"format\": \"uri\" },\n                        \"name\": { \"type\": \"string\" },\n                        \"kind\": { \"type\": \"string\" }\n                      },\n                      \"required\": [\"rel\", \"href\", \"name\", \"kind\"]\n                    }\n                  }\n                },\n                \"required\": [\"key\", \"links\"]\n              }\n            },\n            \"required\": [\n              \"TransactionId\",\n              \"Name\",\n              \"Status\",\n              \"ProcessName\",\n              \"SubmittedOn\",\n              \"Assignees\",\n              \"SubmittedBy\",\n              \"Approvers\",\n              \"ArchiveDate\",\n              \"CompletedDate\",\n              \"isCommunicationData\",\n              \"@context\"\n            ]\n          }\n        },\n        \"count\": {\n          \"type\": \"integer\"\n        },\n        \"hasMore\": {\n          \"type\": \"boolean\"\n        },\n        \"limit\": {\n          \"type\": \"integer\"\n        },\n        \"offset\": {\n          \"type\": \"integer\"\n        },\n        \"links\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"rel\": { \"type\": \"string\" },\n              \"href\": { \"type\": \"string\", \"format\": \"uri\" },\n              \"name\": { \"type\": \"string\" },\n              \"kind\": { \"type\": \"string\" }\n            },\n            \"required\": [\"rel\", \"href\", \"name\", \"kind\"]\n          }\n        }\n      },\n      \"required\": [\n        \"items\",\n        \"count\",\n        \"hasMore\",\n        \"limit\",\n        \"offset\",\n        \"links\"\n      ]\n    },\n    \"responseStatus\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": [\n    \"response\",\n    \"responseStatus\"\n  ]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_TRANSACTIONIDFI",
+            "functionName": "getall_business_Process_Console_Transaction_Details",
+            "name": "Transaction Id Finder"
+          },
+          "outcomes": {
+            "success": "1762423414804"
+          },
+          "code": "TRANSACTION_ID_FINDER",
+          "id": "1762416516170",
+          "inputs": [
+            {
+              "id": "1762416565242_1",
+              "name": "user_name",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_TRANSACTION_ID.$output.user_name}}"
+            },
+            {
+              "id": "1762416565243_2",
+              "name": "process_name",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_TRANSACTION_ID.$output.process_name}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"FirstTransactionId\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"response\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"items\": {\n          \"type\": \"array\",\n          \"minItems\": 1,\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"TransactionId\": { \"type\": \"integer\" }\n            },\n            \"required\": [\"TransactionId\"]\n          }\n        }\n      },\n      \"required\": [\"items\"]\n    }\n  },\n  \"required\": [\"response\"]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "setTransactionId"
+          },
+          "outcomes": {
+            "success": "1762264897333"
+          },
+          "code": "SETTRANSACTIONID",
+          "id": "1762417915794",
+          "inputs": [
+            {
+              "id": "1762417929090",
+              "name": "transactionId",
+              "type": "number",
+              "value": "{{$context.$nodes.PROCESS_TRANSACTION_ID.$output.TransactionId}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "setTransactionId1"
+          },
+          "outcomes": {
+            "success": "1762264897333"
+          },
+          "code": "SETTRANSACTIONID1",
+          "id": "1762417958589",
+          "inputs": [
+            {
+              "id": "1762417968316",
+              "name": "transactionId",
+              "type": "number",
+              "value": "{{$context.$nodes.TRANSACTION_ID_EXTRACTER.$output.TransactionId}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Transaction Id Extracter"
+          },
+          "outcomes": {
+            "success": "1762417958589"
+          },
+          "code": "TRANSACTION_ID_EXTRACTER",
+          "id": "1762423414804",
+          "inputs": [
+            {
+              "id": "1762423414805_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You will be given a response, from this response you will have to extract transaction id and return it. \nExceute this java script code by this taking this restResponse = {{$context.$nodes.TRANSACTION_ID_FINDER.$output}}\n\nThis response may contain an array with more than 1 item. Pick the pick item and extract its TransactionId and return only TransactionId"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"TransactionIdExtraction\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"TransactionId\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": [\"TransactionId\"],\n  \"additionalProperties\": false\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1762425894038",
+            "1": "1762426009547",
+            "2": "1762426085415",
+            "3": "1762426157810",
+            "4": "add_1762425864327_4"
+          },
+          "code": "PARALLEL_1762425864328",
+          "convergenceTargetId": "1762348119487",
+          "id": "1762425864327",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_TRANSACTIONDETA",
+            "functionName": "get_businessProcessConsoleTransactionDetails",
+            "name": "Transaction Details1"
+          },
+          "outcomes": {
+            "success": "1762348119487"
+          },
+          "code": "TRANSACTION_DETAILS1",
+          "id": "1762425894038",
+          "inputs": [
+            {
+              "id": "1762425925254_1",
+              "name": "Transaction_Id",
+              "type": "string",
+              "value": "{{$context.$variables.transactionId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"TransactionId\": { \"type\": \"number\" },\n    \"Name\": { \"type\": \"string\" },\n    \"Status\": { \"type\": \"string\" },\n    \"ProcessName\": { \"type\": \"string\" },\n    \"SubmittedOn\": { \"type\": \"string\", \"format\": \"date-time\" },\n    \"Assignees\": { \"type\": [\"array\", \"null\", \"object\", \"string\"] },\n    \"SubmittedBy\": { \"type\": \"string\" },\n    \"Approvers\": { \"type\": [\"array\", \"null\", \"object\", \"string\"] },\n    \"ArchiveDate\": { \"type\": [\"string\", \"null\"], \"format\": \"date-time\" },\n    \"CompletedDate\": { \"type\": [\"string\", \"null\"], \"format\": \"date-time\" },\n    \"isCommunicationData\": { \"type\": [\"boolean\", \"null\"] },\n    \"@context\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"key\": { \"type\": \"number\" },\n        \"links\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"rel\": { \"type\": \"string\" },\n              \"href\": { \"type\": \"string\" },\n              \"name\": { \"type\": \"string\" },\n              \"kind\": { \"type\": \"string\" }\n            },\n            \"required\": [\"rel\", \"href\", \"name\", \"kind\"]\n          }\n        }\n      },\n      \"required\": [\"key\", \"links\"]\n    },\n    \"responseStatus\": { \"type\": \"number\" }\n  },\n  \"required\": [\n    \"TransactionId\",\n    \"Name\",\n    \"Status\",\n    \"ProcessName\",\n    \"SubmittedOn\",\n    \"Assignees\",\n    \"SubmittedBy\",\n    \"Approvers\",\n    \"ArchiveDate\",\n    \"CompletedDate\",\n    \"isCommunicationData\",\n    \"@context\",\n    \"responseStatus\"\n  ]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_FETCHDIAGNOSTIC",
+            "functionName": "get_fetch_Diagnostic",
+            "name": "Fetch Diagnostic1"
+          },
+          "outcomes": {
+            "success": "1762348119487"
+          },
+          "code": "FETCH_DIAGNOSTIC1",
+          "id": "1762426009547",
+          "inputs": [
+            {
+              "id": "1762426035968_1",
+              "name": "transaction_id",
+              "type": "string",
+              "value": "{{$context.$variables.transactionId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"response\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"result\": { \"type\": \"string\", \"description\": \"HTML document as a string\" }\n      },\n      \"required\": [\"result\"]\n    },\n    \"responseStatus\": { \"type\": \"number\" }\n  },\n  \"required\": [\"response\", \"responseStatus\"]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_COMMENTATTACHME",
+            "functionName": "getall_businessProcessConsoleTransactionDetails_commentsAndAttac",
+            "name": "Comments Attachments1"
+          },
+          "outcomes": {
+            "success": "1762348119487"
+          },
+          "code": "COMMENTS_ATTACHMENTS1",
+          "id": "1762426085415",
+          "inputs": [
+            {
+              "id": "1762426105900_1",
+              "name": "businessProcessConsoleTransactionDetails_Id",
+              "type": "string",
+              "value": "{{$context.$variables.transactionId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"response\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"items\": { \"type\": \"array\" },\n        \"count\": { \"type\": \"number\" },\n        \"hasMore\": { \"type\": \"boolean\" },\n        \"limit\": { \"type\": \"number\" },\n        \"offset\": { \"type\": \"number\" },\n        \"links\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"rel\": { \"type\": \"string\" },\n              \"href\": { \"type\": \"string\" },\n              \"name\": { \"type\": \"string\" },\n              \"kind\": { \"type\": \"string\" }\n            },\n            \"required\": [\"rel\", \"href\", \"name\", \"kind\"]\n          }\n        }\n      },\n      \"required\": [\n        \"items\",\n        \"count\",\n        \"hasMore\",\n        \"limit\",\n        \"offset\",\n        \"links\"\n      ]\n    },\n    \"responseStatus\": { \"type\": \"number\" }\n  },\n  \"required\": [\"response\", \"responseStatus\"]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_APPROVERHISTORY",
+            "functionName": "get_approval_history",
+            "name": "Approval History1"
+          },
+          "outcomes": {
+            "success": "1762348119487"
+          },
+          "code": "APPROVAL_HISTORY1",
+          "id": "1762426157810",
+          "inputs": [
+            {
+              "id": "1762426174438_1",
+              "name": "transaction_id",
+              "type": "string",
+              "value": "{{$context.$variables.transactionId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"response\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"items\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"Action\": { \"type\": [\"string\", \"null\"] },\n              \"ActionDate\": { \"type\": [\"string\", \"null\"], \"format\": \"date-time\" },\n              \"ActionDescription\": { \"type\": [\"string\", \"null\"] },\n              \"IsFutureParticipantFlag\": { \"type\": [\"boolean\", \"null\"] },\n              \"IsCurrentParticipantFlag\": { \"type\": [\"boolean\", \"null\"] },\n              \"Level\": { \"type\": [\"number\", \"null\"] },\n              \"Version\": { \"type\": [\"number\", \"null\"] },\n              \"RootTaskId\": { \"type\": [\"string\", \"null\"] },\n              \"UpdatedByDisplayName\": { \"type\": [\"string\", \"null\"] },\n              \"TaskId\": { \"type\": [\"string\", \"null\"] },\n              \"UpdatedById\": { \"type\": [\"string\", \"null\"] },\n              \"@context\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"key\": { \"type\": \"string\" },\n                  \"links\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"type\": \"object\",\n                      \"properties\": {\n                        \"rel\": { \"type\": \"string\" },\n                        \"href\": { \"type\": \"string\" },\n                        \"name\": { \"type\": \"string\" },\n                        \"kind\": { \"type\": \"string\" }\n                      },\n                      \"required\": [\"rel\", \"href\", \"name\", \"kind\"]\n                    }\n                  }\n                },\n                \"required\": [\"key\", \"links\"]\n              }\n            },\n            \"required\": [\n              \"Action\",\n              \"ActionDate\",\n              \"ActionDescription\",\n              \"IsFutureParticipantFlag\",\n              \"IsCurrentParticipantFlag\",\n              \"Level\",\n              \"Version\",\n              \"RootTaskId\",\n              \"UpdatedByDisplayName\",\n              \"TaskId\",\n              \"UpdatedById\",\n              \"@context\"\n            ]\n          }\n        },\n        \"count\": { \"type\": \"number\" },\n        \"hasMore\": { \"type\": \"boolean\" },\n        \"limit\": { \"type\": \"number\" },\n        \"offset\": { \"type\": \"number\" },\n        \"links\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"rel\": { \"type\": \"string\" },\n              \"href\": { \"type\": \"string\" },\n              \"name\": { \"type\": \"string\" },\n              \"kind\": { \"type\": \"string\" }\n            },\n            \"required\": [\"rel\", \"href\", \"name\", \"kind\"]\n          }\n        }\n      },\n      \"required\": [\"items\", \"count\", \"hasMore\", \"limit\", \"offset\", \"links\"]\n    },\n    \"responseStatus\": { \"type\": \"number\" }\n  },\n  \"required\": [\"response\", \"responseStatus\"]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for branch 4",
+            "name": "Add 4"
+          },
+          "outcomes": {
+            "success": "1762348119487"
+          },
+          "id": "add_1762425864327_4",
+          "inputs": [],
+          "type": "ADD"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1762417836207",
+          "name": "transactionId",
+          "scope": "JOB",
+          "type": "number"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "GLOBAL_HUMAN_RESOURCES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

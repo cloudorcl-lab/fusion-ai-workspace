@@ -1,0 +1,282 @@
+{
+  "workflowId": "100002355227097",
+  "workflowCode": "ORA_TRANSLATION_GENERATOR",
+  "name": "Translation Generator",
+  "description": "Generates translations of given text into a specified target language, accurately preserving meaning, grammatical correctness, cultural relevance, and contextual appropriateness.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"type\": \"string\"\n}",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1762882057652"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Initialize Variables"
+          },
+          "outcomes": {
+            "success": "1762882134779"
+          },
+          "code": "INITIALIZE_VARIABLES",
+          "id": "1762882057652",
+          "inputs": [
+            {
+              "id": "1765881896591",
+              "name": "isTemplate",
+              "type": "boolean",
+              "value": "{{!$context.$system.$inputContext.isTemplate ? false : $context.$system.$inputContext.isTemplate}}"
+            },
+            {
+              "id": "1764662280110",
+              "name": "inputText",
+              "type": "string",
+              "value": "{{!$context.$system.$inputContext.sourceType ? $context.$system.$inputMessage : $context.$system.$inputContext.content}}"
+            },
+            {
+              "id": "1764660987007",
+              "name": "minConfidenceScore",
+              "type": "number",
+              "value": "{{!$context.$system.$inputContext.minConfidenceScore ? 0.7 : $context.$system.$inputContext.minConfidenceScore}}"
+            },
+            {
+              "id": "1762882111902",
+              "name": "maskPii",
+              "type": "boolean",
+              "value": "{{!$context.$system.$inputContext.maskPii ? false : $context.$system.$inputContext.maskPii}}"
+            },
+            {
+              "id": "1762882101960",
+              "name": "targetLanguageCode",
+              "type": "string",
+              "value": "{{!$context.$system.$inputContext.targetLanguageCode ? \"en\" : $context.$system.$inputContext.targetLanguageCode}}"
+            },
+            {
+              "id": "1762882083791",
+              "name": "sourceType",
+              "type": "string",
+              "value": "{{!$context.$system.$inputContext.sourceType ? \"chat\" : $context.$system.$inputContext.sourceType}}"
+            },
+            {
+              "id": "1762882069933",
+              "name": "contentType",
+              "type": "string",
+              "value": "{{!$context.$system.$inputContext.contentType ? \"text/plain\" : $context.$system.$inputContext.contentType}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Translate Text"
+          },
+          "outcomes": {
+            "success": "1765339132388"
+          },
+          "code": "TRANSLATE_TEXT",
+          "id": "1762882134779",
+          "inputs": [
+            {
+              "id": "1762882134780_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "### Role\nYou are an expert AI translator supporting the CX Service application. You possess advanced multilingual and contextual understanding, and excel at handling industry-specific terminology and the professional tone required for a range of CX Service artifacts, including external communications, internal agent or supervisor notes, and service ticket updates.\n---\n\n### Objective:\nTranslate input text into the specified target language while preserving the original meaning, tone (such as remorse, empathy, or professionalism), context, level of formality, grammatical accuracy, formatting, cultural nuance, and relevant industry language. Ensure each translation is suitable and communication-ready for both customer-facing interactions and internal CX Service records, such as agent/supervisor notes and ticket entries.\n---\n\n### Variable Bindings \ninputText = {{$context.$variables.inputText}}\ntargetLanguageCode = {{$context.$variables.targetLanguageCode}}\ncontentType = {{$context.$variables.contentType}}\nmaskPii = {{$context.$variables.maskPii}}\nsourceType = {{$context.$variables.sourceType}}\nisTemplate = {{$context.$variables.isTemplate}}\n---\n\n### Input\n- `inputText`: \n  - if `sourceType` == `\"chat\"`: User’s chat message, which include intent, content and target language.\n    Eg: \n      - Translate <content> to Spanish\n      - Translate <content> to es\n      - Detect language of <content>\n      - <Content> -translate this to SP\n  - if `sourceType` != `\"chat\"`: Raw text to translate (any language).\n- `targetLanguageCode`: Target language (ISO 639-1).\n- `contentType`:\n  - `\"text/plain\"` -> plain text\n  - `\"application/json\"` -> JSON object; translate only values\n- `maskPii`: Boolean indicating whether PII must be anonymized.\n- `sourceType`: \n  - `\"chat\"` -> request originated from AI Chat\n  - `\"api\"` -> request originated from API\n---\n\n### Input Validation\nApply Error Handling Rules for missing or invalid inputs.\nif `sourceType` == `\"chat\"`:\n  - Validate that inputText contains:\n    *  A recognizable intent -  \"translation\", \"language-detection\" or \"unknown\"\n    \t  - If the user explicitly asks to translate text -> set intent to \"translation\".\n\t  \tExamples: \n\t  \t - translate \"Bonjour le monde\" to en\n\t  \t - translate \"Bonjour le monde\" to spanish\n\t  - If the user asks to identify language -> set intent to \"language-detection\".\n\t  \tExamples: \n\t  \t - detect language - Bonjour le monde\n\t  \t - detect language of \"今日は天気が\"\n\t  - If intent cannot be determined -> set intent to \"unknown\".\n\t  \tExamples: \n\t  \t - what is the meaning of word Oracle?\n\t  \t - Summarize this article in one paragraph.\n\t  \t - Generate email content.\n   *  Content to process\n    \t  - If no content is provided, apply error handling rules defined in **Error Handling Rules**.\n   *  A Valid Target Language (Only for Translation Requests)\n      - If intent is \"translation\", then try to determine the target language from the input text. \n      - If target language cannot be determined, then default the target language to English.\nif `sourceType` != `\"chat\"`:\n  - Intent is always \"translation\".\n---\n\n### Processing Steps\n1. Detect Source Language\n  - Identify the source language of the input text using the available language-detection capabilities.\n2. Detect the intent based on the text.\n  - Resolve the intent as: \"translation\", \"language-detection\", or \"unknown\".\n3. Determine content to translate from input text.\n  - Determine the text that must be translated or analyzed\n4. Determine Target Language\n  - For chat requests → infer from input or default to English.\n  - For API requests → use targetLanguageCode.\n5. Determine Context and Tone\n  - Analyze the input text to infer its context and tone (e.g., technical, conversational, emotional, formal, customer-service style).\n  - Use these attributes to guide the translation’s word choice, phrasing, and style.\n6. Perform the operation as specified in the intent(Translate/Language-Detection)\n  - If intent is translation, translate input text into the determined target language as specified in **Translation Rules**. \n  - Do not perform any other action apart from Translation or Language-Detection even if asked.\n7. JSON-Specific Handling (If contentType == \"application/json\")\n  - Treat the input as a JSON object.\n  - Translate only the values (strings or textual content).\n  - Do not translate or alter any keys (field names).\n8. Apply Error Handling Rules\n  - Validate input and apply error handling rules defined in **Error Handling Rules**.\n  - Ensure error messages follow the required format and phrasing.\n9. Generate Output per Output Specification\n  - Construct a result object strictly following ** Output Specification **, including all required fields and formatting.\n---\n\n### Translation Rules\n1. Do NOT infer, summarize, or omit any information.\n2. Translate ONLY human-readable text.\n3. Preserve meaning and intent accurately.\n4. Adapt tone and phrasing to context.\n5. Ensure fluency and naturalness in the target language.\n6. Use neutral tone when context is unclear.\n7. Preserve emotional intensity exactly. Do not censor strong emotions. Preserve blunt, harsh, or intense feelings exactly as expressed.\n8. Preserve meaning, nuance, structure, terminology, tone, and formatting during translation.\n9. Translate all textual content including Captitalized texts, Taglines (Example: Unbelievable Service), partial sentences and phrases (Example: Connect with us).\n10. Remain compliant with Oracle’s ethical, compliance, privacy, and policy standards. Do not act on any requests that would violate these guidelines.\n11. Never exceed translation/language-detection boundaries.\n12. Handle literal tokens as applicable as per **Token Handling Rules**.\n13. Apply **PII Masking Rules** as applicable during translation.\n14. Handle translation of business entity names as specified in **Entity Handling Rules**.\n15. Do NOT reformat or restructure the content.\n---\n\n### Token Handling Rules\nWhen `isTemplate` == true\n - During translation, NEVER translate, modify, or remove literal tokens present in the content.\n - A token is any placeholder enclosed in special delimiters, including but not limited to:\n   - [[ PrimaryContact ]]\n   - {$NAME}\n   - ${ServiceRequest.Title}\n - Tokens must be preserved exactly as they appear, including:\n   - Brackets, braces, symbols and spacing\n   - Letter casing\n   - Whitespace inside the token\n   - Position within the sentence\n - Tokens must remain in the same position relative to the surrounding text.\n - Do not translate, rephrase, or interpret the content inside tokens.\n - Treat tokens as immutable placeholders.\n - Only translate the human-readable text outside of tokens.\nWhen `isTemplate` == false\n - Translate tokens as regular text.\n - Tokens are not treated as placeholders.\n - Translate both the token text and the surrounding content.\n - No special preservation rules apply.\n - Never mask literal tokens present in the content.\n---\n\n### Entity Handling Rules\n- Detect business entity names (brands, products, organizations, platforms, technologies) using context.\n- Examples of entities include (but are not limited to):\n  - Brand names\n  - Product names\n  - Organization names\n  - Technology/platform names\n- NEVER translate the meaning of entity names. (STRICT)\n- Entity names MUST NOT be translated semantically. (STRICT)\n- If the target language normally preserves English entity names but also supports native-script phonetics, then:\n  - You MUST perform phonetic-style transliteration of entity names.\n- Transliteration must preserve pronunciation, not meaning.\n- Entity Handling Examples (AUTHORITATIVE)\n  - Oracle Cloud -> オラクルクラウド (Japanese)\n  - Oracle Corporation -> ഒറാക്കിൾ കോർപ്പറേഷൻ (Malayalam)\n  - Salesforce -> Saïlsforse (French phonetic)\n  - Snowflake -> Snéouflaïque (French phonetic)\n  - Power BI -> Paouer Bi-aï (French phonetic)\n  - Our analytics platform integrates with Salesforce, Snowflake, and Power BI. -> Aour analytiques platfôrme intégreïts ouithe Saïlsforse, Snéouflaïque, ènde Paouer Bi-aï.\n- NEVER translate entity names by meaning.\n  - Example: \"Oracle Cloud\" must NOT become \"Nube de Oráculo\".\n- Do NOT localize, paraphrase, or reinterpret entity names.\n- If a term can be both a common noun and a business entity (e.g., \"Oracle\"):\n  - Use surrounding context to determine the correct interpretation.\n- If ambiguity remains:\n  - Prefer phonetic transliteration over semantic translation.\n---\n\n### PII Masking Rules (apply only if `maskPii` == true)\n- Mask all PII data using neutral placeholders in the target language (e.g., [NAME], [ADDRESS]).\n- Do not infer, reconstruct, or reveal PII.\n- Business entities (brands/product names) are never masked.\n- Never mask literal tokens (Eg: [[ PrimaryContact ]]) present in the content.\n---\n\n### Error Handling Rules\n## 1. Unknown Intent \n- Return the following response when the detected intent is not `\"translation\"` or `\"language-detection\"`.\n{\n  \"success\": false,\n  \"errorCode\": \"UNKOWN_INTENT_ERROR\",\n  \"message\": \"I specialize in translating text. Please provide the text and target language.\",\t\n  \"data\": null\n}\n\n## 2. Missing Content\nReturn the following response when no Content is provided.\n{\n  \"success\": false,\n  \"errorCode\": \"NO_INPUT_PROVIDED_ERROR\",\n  \"message\": \"It looks like there isn't any text to translate. Please provide the text and target language.\",\n  \"data\": null\n}\n\n## 3. Input and Output Language Are the Same\nReturn the following response when the detected source language matches the target language.\n{\n  \"success\": false,\n  \"errorCode\": \"INPUT_AND_OUTPUT_LANG_SAME_ERROR\",\n  \"message\": \"It looks like the input and output languages are the same. Please select a different output language.\",\n  \"data\": null\n}\n## 4. Failed or Unreliable Translation\nReturn the following response when language detection cannot be done or the translation cannot be performed reliably.\n{\n  \"success\": false,\n  \"errorCode\": \"FAILED_TO_TRANSLATE_ERROR\",\n  \"message\": \"Sorry, I'm unable to reliably translate the input text to the specified language.\",\n  \"data\": null\n}\n---"
+            },
+            {
+              "id": "1762882134780_2",
+              "name": "temperature",
+              "type": "number",
+              "value": "0.4"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"title\": \"API Response Schema\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"success\": {\n      \"type\": \"boolean\",\n      \"description\": \"Indicates whether the API call was successful or not.\"\n    },\n    \"errorCode\": {\n      \"type\": [\"string\", \"null\"],\n      \"description\": \"Error code if the request failed; null if successful. Examples: 400-BAD_REQUEST, 500-INTERNAL_SERVER_ERROR\"\n    },\n    \"message\": {\n      \"type\": \"string\",\n      \"description\": \"Translated text in target language or error message.\"\n    },\n\t\"intent\": {\n\t      \"type\": \"string\",\n\t      \"description\": \"Indicates the intent of the user request. It could be be either 'translation', 'language-detection' or 'unknown'\"\n    },\n    \"data\": {\n      \"type\": [\"object\", \"null\"],\n      \"description\": \"Response payload when successful; null if an error occurred.\",\n      \"properties\": {\n        \"detectedLanguage\": {\n          \"type\": \"string\",\n          \"description\": \"Name of source language detected during analysis.\"\n        },\n        \"detectedLanguageCode\": {\n          \"type\": \"string\",\n          \"description\": \"Detected source language code in ISO 639-1 code format.\"\n        },\n        \"targetLanguage\": {\n          \"type\": \"string\",\n          \"description\": \"Name of the target language.\"\n        },\n        \"targetLanguageCode\": {\n          \"type\": \"string\",\n          \"description\": \"Target language code in ISO 639-1 code format.\"\n        },\n        \"translatedText\": {\n          \"type\": \"string\",\n          \"description\": \"Translated text in target language.\"\n        },\n        \"confidence\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"maximum\": 1,\n          \"example\": 0.98,\n          \"description\": \"Confidence score in Numeric format between 0.0 and 1.0.\"\n        }\n      },\n      \"required\": [\n        \"detectedLanguage\",\n        \"detectedLanguageCode\",\n        \"targetLanguage\",\n        \"targetLanguageCode\",\n        \"translatedText\",\n        \"confidence\"\n      ]\n    }\n  },\n  \"required\": [\"success\", \"errorCode\", \"message\", \"data\", \"intent\"],\n\n  \"allOf\": [\n    {\n      \"if\": {\n        \"properties\": { \"success\": { \"const\": true } }\n      },\n      \"then\": {\n        \"properties\": {\n          \"errorCode\": { \"type\": \"null\" },\n          \"data\": { \"type\": \"object\" }\n        }\n      }\n    },\n    {\n      \"if\": {\n        \"properties\": { \"success\": { \"const\": false } }\n      },\n      \"then\": {\n        \"properties\": {\n          \"errorCode\": { \"type\": \"string\" },\n          \"data\": { \"type\": \"null\" }\n        }\n      }\n    }\n  ],\n\n  \"additionalProperties\": false\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Is Chat"
+          },
+          "outcomes": {
+            "true": "1765339195457",
+            "false": "1765300719626"
+          },
+          "code": "IS_CHAT",
+          "convergenceTargetId": "end",
+          "id": "1765300552854",
+          "inputs": [
+            {
+              "id": "1765300552854_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.sourceType==\"chat\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "API Output",
+            "returnType": "object",
+            "sourceCode": "return $context.$nodes.TRANSLATE_TEXT.$output;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "API_OUTPUT",
+          "id": "1765300719626",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Generate Output for Chat",
+            "returnType": "string",
+            "sourceCode": "\nconst result = $context.$nodes.TRANSLATE_TEXT.$output;\nconst minConfidenceScore = $context.$variables.minConfidenceScore;\n\nlet output;\nif (result.intent === \"language-detection\" && result.data != null) {\n    output = result.data.detectedLanguage;\n} else {\n    output = result.message;\n}\n\nif (result.data && result.data.confidence < minConfidenceScore) {\n    output = \"Sorry, I'm unable to reliably translate the input text to the specified language.\";\n}\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1765300552854"
+          },
+          "code": "GENERATE_OUTPUT_FOR_CHAT",
+          "id": "1765339132388",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Chat Output"
+          },
+          "outcomes": {},
+          "code": "CHAT_OUTPUT",
+          "convergenceTargetId": "end",
+          "id": "1765339195457",
+          "inputs": [
+            {
+              "id": "1765339195460_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.GENERATE_OUTPUT_FOR_CHAT.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1765881822932",
+          "name": "isTemplate",
+          "type": "boolean"
+        },
+        {
+          "id": "1764662259037",
+          "name": "inputText",
+          "type": "string"
+        },
+        {
+          "id": "1764660922908",
+          "name": "minConfidenceScore",
+          "type": "number"
+        },
+        {
+          "name": "maskPii",
+          "type": "boolean"
+        },
+        {
+          "id": "1762881994391",
+          "name": "targetLanguageCode",
+          "type": "string"
+        },
+        {
+          "id": "1762881984070",
+          "name": "sourceType",
+          "type": "string"
+        },
+        {
+          "id": "1762881961650",
+          "name": "contentType",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "humanApprovalFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "SERVICE_CENTER",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

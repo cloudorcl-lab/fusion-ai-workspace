@@ -1,0 +1,878 @@
+{
+  "workflowId": "300000331068145",
+  "workflowCode": "ORA_RESOURCE_ALLOCATION_AGENT_RA",
+  "name": "Resource Allocation Agent",
+  "description": "The Resource Allocation Agent identifies the most suitable person for a given issue based on the user’s purpose.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1774996949331"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1767988826019",
+            "1": "1767988150521",
+            "2": "1767988548068",
+            "3": "1769380885959",
+            "4": "add_1767988072438_4"
+          },
+          "code": "PARALLEL_1767988072439",
+          "convergenceTargetId": "1773251770523",
+          "id": "1767988072438",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SERVICEREQUESTS11131805",
+            "functionName": "getSRsByQueryWithFields",
+            "name": "Fetch All Agents Open SR"
+          },
+          "outcomes": {
+            "success": "1769381621735"
+          },
+          "code": "FETCH_ALL_AGENTS_OPEN_SR",
+          "id": "1767988150521",
+          "inputs": [
+            {
+              "id": "1773254760275_1",
+              "name": "query",
+              "type": "string",
+              "value": "StatusTypeCd not in('ORA_SVC_RESOLVED','ORA_SVC_CLOSED') and RecordSet='ORA_SVC_MY_SUBORD_SRS'"
+            },
+            {
+              "id": "1773254760276_2",
+              "name": "fields",
+              "type": "string",
+              "value": "AssigneePersonName,OpenDate,SeverityCd,AccountPartyUniqueName,StatusTypeCdMeaning,TimeRemaining,AccountPartyNumber"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SERVICEREQUESTS11131805",
+            "functionName": "getSRsByQueryWithFields",
+            "name": "Fetch Agents Resolved SRs Within SLA"
+          },
+          "outcomes": {
+            "success": "1773880592347"
+          },
+          "code": "FETCH_ALL_AGENTS_RESOLVED_SRS_WITHIN_SLA",
+          "id": "1767988548068",
+          "inputs": [
+            {
+              "id": "1773254859235_1",
+              "name": "query",
+              "type": "string",
+              "value": "StatusTypeCd in ('ORA_SVC_RESOLVED','ORA_SVC_CLOSED') and RecordSet='ORA_SVC_MY_SUBORD_SRS'"
+            },
+            {
+              "id": "1773254859236_2",
+              "name": "fields",
+              "type": "string",
+              "value": "AssigneePersonName,ResolvedBy,LastResolvedDate,OpenDate,SeverityCd,AccountPartyUniqueName,TimeRemaining"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for branch 2",
+            "name": "Add 2"
+          },
+          "outcomes": {
+            "success": "1773251770523"
+          },
+          "id": "add_1767988072438_4",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_HCM",
+            "errorNodeId": "1769380985484",
+            "functionName": "getBatchResults",
+            "name": "Fetch All Agents Leave Schedule"
+          },
+          "outcomes": {
+            "success": "1769380985484"
+          },
+          "code": "FETCH_ALL_AGENTS_LEAVE_SCHEDULE",
+          "convergenceTargetId": "1767988595128",
+          "id": "1767988354764",
+          "inputs": [
+            {
+              "id": "1773345327312_1",
+              "name": "body",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_LEAVE_RECORD_QUERY.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Compute Workload Rating"
+          },
+          "outcomes": {
+            "success": "1773251770523"
+          },
+          "code": "COMPUTE_WORKLOAD_RATING",
+          "id": "1767989592708",
+          "inputs": [
+            {
+              "id": "1767989592709_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Based on each agent’s current open SRs {{$context.$nodes.MAP_ACCOUNT_SCORE_TO_SR.$output.result}} , compute a Workload Rating for every agent. The maximum score is 100.\n\nWhen calculating the rating, consider:\n- SR status (e.g., WAITING, IN-PROGRESS, NEW). Note: WAITING indicates the SR is awaiting a customer response and can be considered as lower workload when calculating agent workload.\n- Severity of the SR, with weighted counts:\n   - ORA_SVC_SEV1: count as 3 open SRs\n   - ORA_SVC_SEV2: count as 2 open SRs\n   - ORA_SVC_SEV3: count as 1 open SR\n- Time remaining to SLA: SRs closer to breaching SLA should increase the workload rating\n- AccountScore, AccountScoringTier: SRs with higher AccountScore and tier contribute more to workload\n\n\nThe resulting Workload Rating should reflect the combined effect of open SR counts, status, severity, time remaining and account level for each agent. Higher rating means higher workload.\n\nFor each agent, provide:\nWorkload Score — a numeric value reflecting their current workload and availability.\nReason — a brief explanation of why the agent received this score (e.g., based on the number of open SRs, their status, severity, time remaining, and the SR’s account score and tier).\n\nOutput Format:\nProvide a JSON list of agents, each with their score and reason, reflecting the current workload situation. Do not ask follow-up questions.\n[\n  {\n    \"Agent Name\": \"<Agent Name>\",\n    \"Score\": <Score>,\n    \"Reason\": \"<Reason for the score, reflecting the current workload situation>\"\n  },\n  {\n    \"Agent Name\": \"<Agent Name>\",\n    \"Score\": <Score>,\n    \"Reason\": \"<Reason for the score, reflecting the current workload situation>\"\n  }\n  // ...add more agents as needed\n]"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Calculate Favorable Customer Affinity"
+          },
+          "outcomes": {
+            "success": "1773251770523"
+          },
+          "code": "CALCULATE_FAVORABLE_CUSTOMER_AFFINITY",
+          "id": "1767989690188",
+          "inputs": [
+            {
+              "id": "1767989690189_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the resolved SRs {{$context.$nodes.CLEAN_UP_DATA.$output.result}} , calculate the Favorable Customer Affinity for each agent based only on the SRs they resolved within SLA, using the TimeRemaining attribute. The maximum score is 100.\n\nFor each agent, provide:\nCustomer Affinity Score — a numeric value reflecting their responsiveness and ability to resolve SRs on time.\nReason — a short explanation describing why the agent received that score (e.g., percentage of SRs resolved within SLA).\n\n\nOutput Format:\nProvide a JSON list of agents, each with their score and reason, reflecting their favorable customer affinity. Do not ask follow-up questions.\n[\n  {\n    \"Agent Name\": \"<Agent Name>\",\n    \"Score\": <Score>,\n    \"Reason\": \"<Reason for the score, reflecting their favorable customer affinity>\"\n  },\n  {\n    \"Agent Name\": \"<Agent Name>\",\n    \"Score\": <Score>,\n    \"Reason\": \"<Reason for the score, reflecting their favorable customer affinity>\"\n  }\n  // ...add more agents as needed\n]"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Calculate Competence Rating"
+          },
+          "outcomes": {
+            "success": "1773251770523"
+          },
+          "code": "CALCULATE_COMPETENCE_RATING",
+          "id": "1767989865401",
+          "inputs": [
+            {
+              "id": "1767989865403_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the SR list {{$context.$nodes.CLEAN_UP_SR_DETAILS.$output.result}} , calculate a Competence Rating for each agent listed in {{$context.$nodes.FORMAT_SUBORDINATES.$output.result}} for each SR. The maximum score is 100. The PartyName represents the agent name. Only consider agents present in this list.\n\nUse the following data:\nSimilar Issues List for each SR: {{$context.$nodes.FETCH_SIMILAR_SR.$output}}. Make sure to check the relevance of the similar SR issues in relation to the current SR issue.\nResolved SRs List: {{$context.$nodes.CLEAN_UP_SR_DATA.$output.result}} \n\nFor each SR in the SR list, calculate the competence score for each agent based on their past experience using the following weighted criteria and incorporating the number of SRs handled:\n- Highest weight: Agents who have successfully resolved similar SRs (identified from Similar Issues resolvedBy field).\n- Medium weight: Agents who have resolved SRs with the same product and category (from Resolved SRs List).\n- Lowest weight: Agents who have resolved SRs in the same queue (from Resolved SRs List).\n\nCheck the agent name carefully; for example, autoapicsr1 svc and autoapicsr2 svc are different agents and may look similar.\n\nFor each SR in the SR list, provide a list of agents with their competence score and reason, start with the sentence: “Competence Rating for SR <SR Number> is:\n\nCompetence Score: A numeric value reflecting their likelihood to successfully resolve the SR.\nReason: A short explanation describing the basis for the score (e.g., based on similar SRs handled, (referencing similar SR numbers), product/category match, queue experience).\n\nThe output should be a list of SRs, where each SR includes an array of agents, each with their score and reason. Do not include any step-by-step calculations, explanations, tables, or markdown in the final output. Ensure that you apply the weighted criteria as outlined.\n\n\nDo not ask for any follow-up questions or clarifications"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1768425723484",
+            "1": "1770947652925",
+            "2": "add_1767988826019_2"
+          },
+          "code": "PARALLEL_1767988826020",
+          "convergenceTargetId": "1767989865401",
+          "id": "1767988826019",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [],
+              "enableActions": true,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "name": "Allocate Resource"
+          },
+          "outcomes": {
+            "success": "1777918230911"
+          },
+          "code": "ALLOCATE_RESOURCE",
+          "id": "1767989937368",
+          "inputs": [
+            {
+              "id": "1767989937369_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Objective:\nGiven SR input list {{$context.$variables.SRList}} , review the corresponding SR details from {{$context.$nodes.SR_WITH_ACCOUNT_SCORE.$output.result.SRDetails}}\n\nIMPORTANT: \nFor each SR in the input list, review SR assignee and teamMembers information from {{$context.$nodes.SR_WITH_ACCOUNT_SCORE.$output.result.SRResourceInfo}}.\n\nFor each SR in the input, analyze all agents using:\n- Competence Rating: ({{$context.$nodes.CALCULATE_COMPETENCE_RATING.$output}})\n- Workload Score: ({{$context.$nodes.COMPUTE_WORKLOAD_RATING.$output}}). A higher score indicates a higher workload for the agent.\n- Favorable Customer Affinity: ({{$context.$nodes.CALCULATE_FAVORABLE_CUSTOMER_AFFINITY.$output}})\n\nDetermine the most appropriate action (Reassign or Add Team Member) and return a ranked list of eligible agents for that chosen action. Ranking agents from best fit to least fit for the selected action.\n\n\nIMPORTANT Exclusions and Constraints\n- Select agents only from manager's subordinates who're currently not on leave {{$context.$nodes.AVAILABLE_AGENTS.$output.result}}. Do not consider any other individuals.\n- Exclude the SR’s current assignee from all recommendations for that SR, for both Reassign and Add Team Member actions.\n- If the recommended action is Reassign but no eligible agent is available or no reassignment is possible, fall back to **Add Team Member** and select the best agent for that action. \n- If no eligible agent exists for either action, return an empty result for that SR.\n- If an agent’s Workload Rating is missing, assume the agent has no open Service Requests.\n\n\nAccount Information\nThe account for a given SR is identified by AccountPartyUniqueName. Account tier and priority information is available in AccountScoringTier and AccountScore.\n\nAvailable Agent Information:\nRefer to the Agent PartyId from {{$context.$nodes.AVAILABLE_AGENTS.$output.result}} when generating the Selected Agent PartyId.\n\n\nDecision Framework\nStep 1: Determine the Recommended Action\n\n\nSuggest “Reassign” when:\nGeneral Rules for reassignment: \n- Assigned to me:  An SR is considered assigned to me only if **assignToMe** is true. do not consider any other attributes or check the current assignee. In this case, always perform Reassign, regardless of account tier or any other conditions\n- The customer has **explicitly** expressed dissatisfaction with the current agent/assignee’s expertise or responsiveness, or has asked for help from a different agent.\n- The issue’s suspected cause has changed and/or the current agent lacks the required expertise.\n- The issue is at risk of missing SLA or has already missed SLA(TimeRemaining attribute).\n- There is a better candidate available (higher competence, or same competence but lower workload).\n\nIMPORTANT: Apply the below Account Tier Rules only if assignToMe is false. If assignToMe is true, ignore account tier rules and perform reassignment.\nAccount Tier Rules for reassignment: \nTier 1 customers:\n- Perform a reassignment if the customer has explicitly expressed doubt about the agent’s expertise or dissatisfaction with the agent’s handling of the issue.\n- If the customer has not explicitly expressed doubt, frustration, or dissatisfaction with the current agent, minimize reassignments.\n- If there are no concerns from the customer, prioritize adding a team member instead of reassigning.\n\n For all other customers (Tier 2, Tier 3, or those without account tier information)\n- Reassign if any of the general reassignment rules above are met.\n\n\nSuggest “Add Team Member” when:\n- If the recommended action is Reassign but no eligible agent is available or no reassignment is possible, perform **add team member** and select the best agent for add team member. Never keep the same agent. \n- The customer is high-value (Tier 1) and urgent progress is required.\n- The issue is highly urgent and would benefit from additional expertise.\n- Reassignment would be disruptive, or the customer appears to value the current assignee’s expertise or ongoing efforts.\n- The customer has not expressed dissatisfaction with the current assignee/representative’s expertise or handling of the SR.\n- A subject-matter expert is available but cannot take full ownership of the SR due to a high workload, while their expertise is still valuable to help resolve the issue. When selecting such experts, prefer those with relatively lower workload when possible.\n\n\nIMPORTANT:  If the recommended action is Reassign but no eligible agent is available or no reassignment is possible, fall back to **Add Team Member** and select the best agent for that action.\n\n\n\nStep 2: Rank the Best Eligible Agents for the Chosen Action\nIf Action = Reassign:\n- Never recommend the current assignee for the same SR under any circumstances. They may be recommended for other SRs where they are not the assignee.\n- Agents listed as team members remain eligible for reassignment, as long as they are not the assignee for that SR. For example, if agent1 is a team member but not the assignee for that SR, agent1 can still be recommended for reassignment.\n- If the SR is assigned to me (**assignToMe** is true): Recommend the best possible agent, even if the following criteria are not fully met. Prioritize selecting the agent who provides the best overall fit, balancing competence and workload to maximize suitability for the SR.\n- If the SR is not assigned to me: Recommend an agent who meets all of the following: \n a) Competence Rating greater than (or similar to) the current SR assignee.\n b) Workload Score lower than (or similar to) the SR current assignee (note: a higher workload score indicates higher workload).\n- Favorable Customer Affinity should be used only as a tie-breaker if multiple agents meet the above criteria.\n- Return a ranked list of all eligible agents for Reassign, ordered from best fit to least fit.\n\n\nIf Action = Add Team Member:\n- Never recommend the current assignee for the same SR under any circumstances. They are already part of the team. Even if they are the most qualified or have the lowest workload, they cannot be suggested, suggest the next best eligible agent. \n- Never recommend or add agents already listed in **teamMembers** for the same SR. If the top-choice agent is unavailable (already listed as teamMembers), find the next best eligible agent. Ensure that all agents present in teamMembers for that SR are strictly excluded from consideration.\n- If a subject-matter expert (excluding the current SR assignee) is available but cannot take full ownership of the SR due to high workload, consider their expertise valuable and recommend them to assist. When multiple experts are eligible, select the one who best balances competence and workload to maximize suitability for the SR.\n- It is acceptable to suggest an agent with lower competence than the current SR assignee.\n- Workload is not a hard restriction, agents with higher workload can still be recommended if they can assist.\n- If no other agent has relevant expertise, select an agent with the lowest workload to provide support, ensuring that the current assignee and all team members for that SR are excluded.\n- If no eligible agents exist at all (for example, if all of the manager’s subordinates are already listed as team members for that SR), do not suggest any agent and exclude that SR from the response.\n- If the recommended action is Reassign but no eligible agent is available or no reassignment is possible, perform **add team member** and select the best agent for add team member. Never keep the same agent.\n- Return a ranked list of all eligible agents for Add Team Member, ordered from best fit to least fit.\n\n\n\nIMPORTANT: - If a fallback action is selected, ensure the final action and ranked agent list reflect the fallback decision.\n\n\nOutput Format:\nGenerate the results in the exact same order as the SRs appear in {{$context.$variables.SRList}}. Ensure the output strictly follows the following JSON array format. Do not include any extra text, explanations, or the word “json” in the output. If no recommended action is available for a SR, do not include it in the output. \n[\n  {\n    \"ObjectNumber\": \"<SR Number1>\",\n    \"CurrentAssigneeName\": \"<Current AssigneePersonName for selected SR>\",\n    \"Reason\": \"<Provide a CSM-facing summary of the issue and the final action. Describe why this action is best, considering competence, workload, customer affinity, urgency, and any team member context. Do not include numeric scores or internal attribute names. Mention whether any suggested agent is already in teamMembers only when relevant to the final action, but do not recommend team members for Add Team Member.\",\n    \"Action\": \"<Final Suggested Action>\",\n    \"RecommendedAgents\": [\n      {\n        \"AgentName\": \"<Best eligible agent name>\",\n        \"AgentPartyId\": \"<Best eligible agent PartyId>\",\n        \"CompetenceRating\": \"<Competence rating value if available>\",\n        \"CurrentlyOpenSRCount\": \"<Currently open SR count if available>\"\n      },\n      {\n        \"AgentName\": \"<Second-best eligible agent name>\",\n        \"AgentPartyId\": \"<Second-best eligible agent PartyId>\",\n        \"CompetenceRating\": \"<Competence rating value if available>\",\n        \"CurrentlyOpenSRCount\": \"<Currently open SR count if available>\"\n      }\n    ]\n  },\n{\n    \"ObjectNumber\": \"<SR Number2>\",\n    \"CurrentAssigneeName\": \"<Current AssigneePersonName for selected SR>\",\n    \"Reason\": \"<Provide a CSM-facing summary of the issue and the final action. Describe why this action is best, considering competence, workload, customer affinity, urgency, and any team member context. Do not include numeric scores or internal attribute names. Mention whether any suggested agent is already in teamMembers only when relevant to the final action, but do not recommend team members for Add Team Member.\",\n    \"Action\": \"<Final Suggested Action>\",\n    \"RecommendedAgents\": [\n      {\n        \"AgentName\": \"<Best eligible agent name>\",\n        \"AgentPartyId\": \"<Best eligible agent PartyId>\",\n        \"CompetenceRating\": \"<Competence rating value if available>\",\n        \"CurrentlyOpenSRCount\": \"<Currently open SR count if available>\"\n      },\n      {\n        \"AgentName\": \"<Second-best eligible agent name>\",\n        \"AgentPartyId\": \"<Second-best eligible agent PartyId>\",\n        \"CompetenceRating\": \"<Competence rating value if available>\",\n        \"CurrentlyOpenSRCount\": \"<Currently open SR count if available>\"\n      }\n    ]\n  }\n// ...add more as appropriate\n]"
+            }
+          ],
+          "outputSpecification": "",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Summarize SR"
+          },
+          "outcomes": {
+            "success": "1770967564795"
+          },
+          "code": "SUMMARIZE_SR",
+          "id": "1768425723484",
+          "inputs": [
+            {
+              "id": "1768425723485_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Given the list of service requests in {{$context.$nodes.CLEAN_UP_SR_DETAILS.$output.result}} , please summarize each service request into a single concise sentence that describes the core issue. Focus only on the problem itself—do not include account information, risks, or additional context. The output should be a JSON array, where each item is an object containing the SRNumber and its corresponding Summary.\n\nOutput Format:\nReturn the results strictly in the following JSON array format. Do not include any extra text, explanations, or the word “json” in the output:\n[\n  {\"SRNumber\": \"<SR_Number1>\", \"Summary\": \"<Summary1>\"},\n  {\"SRNumber\": \"<SR_Number2>\", \"Summary\": \"<Summary2>\"}\n]"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1767988082854",
+            "1": "1769380654654",
+            "2": "add_1768425983322_2"
+          },
+          "code": "PARALLEL_1768425983323",
+          "convergenceTargetId": "1767988072438",
+          "id": "1768425983322",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SERVICEREQUESTS11131805",
+            "functionName": "getSRDetailsByQueryWithFields",
+            "name": "Fetch SR Details"
+          },
+          "outcomes": {
+            "success": "1774315948233"
+          },
+          "code": "FETCHSRDETAILS",
+          "convergenceTargetId": "1768426003229",
+          "id": "1767988082854",
+          "inputs": [
+            {
+              "id": "1774314849835_1",
+              "name": "query",
+              "type": "string",
+              "value": "{{\"SrNumber in (\" + $context.$variables.SRList + \")\"}}"
+            },
+            {
+              "id": "1774314849835_2",
+              "name": "fields",
+              "type": "string",
+              "value": "SrNumber,Title,ProblemDescription,AssigneePartyId,AssigneePersonName,CategoryId,ProdGroupId,ProductGroupReferenceNumber,QueueId,StatusCd,SeverityCd,CreationDate,AccountPartyUniqueName,AccountPartyNumber,TimeRemaining;messages:MessageContent,MessageTypeCd,CreationDate;resourceMembers:PartyUniqueName"
+            },
+            {
+              "id": "1774314849836_3",
+              "name": "expand",
+              "type": "string",
+              "value": "messages,messages.MessageContent,resourceMembers"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_ACCOUNTS",
+            "functionName": "getMultipleAccounts",
+            "name": "Fetch All Account Score"
+          },
+          "outcomes": {
+            "success": "1769380208464"
+          },
+          "code": "FETCH_ALL_ACCOUNT_SCORE",
+          "id": "1769380161589",
+          "inputs": [
+            {
+              "id": "1769381668313_1",
+              "name": "PartyNumbers",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_DISTINCT_ACCOUNTS.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"items\": {\n            \"type\": \"array\",\n            \"items\": {\n                \"type\": \"object\",\n                \"properties\": {}\n            }\n        }\n    }\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Map Account Score to SR",
+            "returnType": "array",
+            "sourceCode": "const accountsOutput = $context.$nodes.FETCH_ALL_ACCOUNT_SCORE.$output.items\nconst srOutput = $context.$nodes.FETCH_ALL_AGENTS_OPEN_SR.$output.items\n\nconst accountMap = {};\naccountsOutput.forEach(account => {\n  accountMap[account.PartyNumber] = {\n    AccountScore: account.AccountScore ?? null,\n    AccountScoringTier: account.AccountScoringTier ?? null\n  };\n});\n\nconst updatedSRs = srOutput.map(({ \"@context\": _, \"@links\": __, ...sr }) => ({\n  ...sr,\n  accountScore: accountMap[sr.AccountPartyNumber]?.AccountScore ?? null,\n  AccountScoringTier: accountMap[sr.AccountPartyNumber]?.AccountScoringTier ?? null\n}));\n\nreturn JSON.stringify(updatedSRs, null, 2);"
+          },
+          "outcomes": {
+            "success": "1767989592708"
+          },
+          "code": "MAP_ACCOUNT_SCORE_TO_SR",
+          "id": "1769380208464",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_RESOURCES",
+            "functionName": "getResourcesByQueryWithFields",
+            "processJson": true,
+            "name": "Get Subordinates"
+          },
+          "outcomes": {
+            "success": "1769458643047"
+          },
+          "code": "GET_SUBORDINATES",
+          "id": "1769380654654",
+          "inputs": [
+            {
+              "id": "1776164628483_1",
+              "name": "query",
+              "type": "string",
+              "value": "{{ \"RecordSet='ORA_MYREPORTEES' and StartDateActive<'\" + $context.$system.$currentDateTime + \"'\"}}"
+            },
+            {
+              "id": "1776164628485_2",
+              "name": "fields",
+              "type": "string",
+              "value": "PartyId,PartyName,PartyNumber,StartDateActive,EndDateActive"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1769380898912",
+            "name": "Get all PersonId query",
+            "returnType": "string",
+            "sourceCode": "const data = $context.$nodes.FORMAT_SUBORDINATES.$output.result || [];\n\n// Add the extra PartyId\nconst inClause = `(${data.map(x => `'${x.PartyId}'`).join(\",\")})`;\n\n// Construct the query\nconst query = `OwnerEntityId in ${inClause} and OwnerEntityObject='HZ_PARTIES' and SourceSystem='FUSION_HCM'`;\n\nreturn query;"
+          },
+          "outcomes": {
+            "success": "1769380898912"
+          },
+          "code": "GET_ALL_PERSONID_QUERY",
+          "id": "1769380885959",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SOURCESYSTEMREFERENCES",
+            "errorNodeId": "1769380942970",
+            "functionName": "getSourceSystemReferenceByQueryWithFields",
+            "name": "Get All PersonId"
+          },
+          "outcomes": {
+            "success": "1769380942970"
+          },
+          "code": "GET_ALL_PERSONID",
+          "id": "1769380898912",
+          "inputs": [
+            {
+              "id": "1772582302855_1",
+              "name": "query",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_ALL_PERSONID_QUERY.$output.result}}"
+            },
+            {
+              "id": "1772582302856_2",
+              "name": "fields",
+              "type": "string",
+              "value": "SourceSystemReferenceValue,OwnerEntityId"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1767988354764",
+            "name": "Get Leave Record Query",
+            "returnType": "string",
+            "sourceCode": "const responseObj = $context.$nodes.GET_ALL_PERSONID.$output\n\nconst sourceSystemValues = (responseObj.items ?? [])\n  .map(i => i?.SourceSystemReferenceValue)\n  .filter(v => v != null); // []\n\n\nconst result = {\n  parts: sourceSystemValues.map((value, index) => ({\n    id: String(index + 1),\n    path: `/absences?finder=findAbsenceUsingAllAbsParameters;personId=${value}&fields=personId,absenceType,absenceReason,startDate,startDateTime,endDate,endDateTime,absenceDispStatusMeaning&onlyData=true`,\n    operation: \"get\"\n  }))\n};\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1767988354764"
+          },
+          "code": "GET_LEAVE_RECORD_QUERY",
+          "id": "1769380942970",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Available Agents",
+            "returnType": "object",
+            "sourceCode": "// Get data safely\nconst data = $context.$nodes.FORMAT_SUBORDINATES?.$output?.result ?? [];\nconst responseObj = $context.$nodes.GET_ALL_PERSONID?.$output ?? {};\nconst leaveResponse = $context.$nodes.FETCH_ALL_AGENTS_LEAVE_SCHEDULE?.$output ?? {};\n\n// Build lookup: SourceSystemReferenceValue -> OwnerEntityId (PartyId)\nconst sourceToOwnerId = {};\n(responseObj.items ?? []).forEach(i => {\n  if (i?.SourceSystemReferenceValue && i?.OwnerEntityId) {\n    sourceToOwnerId[i.SourceSystemReferenceValue] = i.OwnerEntityId;\n  }\n});\n\nconst now = Date.now();\nconst onLeavePartyIds = new Set();\n\n// Find agents who are currently on leave\n(leaveResponse.parts ?? [])\n  .filter(part => part?.payload?.items?.length > 0)\n  .forEach(part => {\n    const item = part.payload.items[0];\n\n    const personId = item?.personId || null;\n    const partyId = personId ? sourceToOwnerId[personId] : null;\n\n    const startTime = new Date(item?.startDateTime).getTime();\n    const endTime = new Date(item?.endDateTime).getTime();\n\n    const isCurrentlyOnLeave =\n      partyId &&\n      !Number.isNaN(startTime) &&\n      !Number.isNaN(endTime) &&\n      now >= startTime &&\n      now <= endTime;\n\n    if (isCurrentlyOnLeave) {\n      onLeavePartyIds.add(partyId);\n    }\n  });\n\n// Return only agents who are NOT currently on leave\nconst result = data.filter(d => !onLeavePartyIds.has(d?.PartyId));\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1773251770523"
+          },
+          "code": "AVAILABLE_AGENTS",
+          "id": "1769380985484",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Get Distinct Accounts",
+            "returnType": "string",
+            "sourceCode": "let allAccounts = $context.$nodes.FETCH_ALL_AGENTS_OPEN_SR.$output.items\nconst accounts = allAccounts\n        .map(item => item.AccountPartyNumber) \n        .filter(num => num)                   \nconst distinctAccounts = [...new Set(accounts)]; \nreturn distinctAccounts.map(num => `'${num}'`).join(\",\");"
+          },
+          "outcomes": {
+            "success": "1769380161589"
+          },
+          "code": "GET_DISTINCT_ACCOUNTS",
+          "id": "1769381621735",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Format Subordinates",
+            "returnType": "array",
+            "sourceCode": "let allSubordinates = $context.$nodes.GET_SUBORDINATES.$output.items;\n\nlet result =  allSubordinates.map(item => ({\n    PartyName: item.PartyName,\n    PartyId: item.PartyId\n}));\n\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1767988072438"
+          },
+          "code": "FORMAT_SUBORDINATES",
+          "convergenceTargetId": "1769461218419",
+          "id": "1769458643047",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "description": "Add node for branch 1",
+            "name": "Add 1"
+          },
+          "outcomes": {
+            "success": "1767988072438"
+          },
+          "id": "add_1768425983322_2",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SERVICEREQUESTS11131805",
+            "functionName": "getSRsByQueryWithFields",
+            "name": "Fetch Agent Resolved SR"
+          },
+          "outcomes": {
+            "success": "1773880243510"
+          },
+          "code": "FETCH_AGENT_RESOLVED_SR",
+          "id": "1770947652925",
+          "inputs": [
+            {
+              "id": "1773254661179_1",
+              "name": "query",
+              "type": "string",
+              "value": "StatusTypeCd in ('ORA_SVC_RESOLVED','ORA_SVC_CLOSED') and RecordSet='ORA_SVC_MY_SUBORD_SRS'"
+            },
+            {
+              "id": "1773254661180_2",
+              "name": "fields",
+              "type": "string",
+              "value": "AssigneePersonName,ResolvedBy,LastResolvedDate,OpenDate,CategoryName,ProdGroupName,SeverityCd,QueueId"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for branch 1",
+            "name": "Add 1"
+          },
+          "outcomes": {
+            "success": "1767989865401"
+          },
+          "id": "add_1767988826019_2",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1767988831621"
+                  },
+                  "id": "start_1770967564795",
+                  "code": "START_1770967564795",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1770967564795",
+                  "code": "END_1770967564795",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_SERVICECEN_SERVICEREQUESTV1",
+                    "functionName": "searchSRsByQuery",
+                    "processJson": true,
+                    "name": "Fetch Resolved SimilarSR"
+                  },
+                  "outcomes": {
+                    "success": "1771025954583"
+                  },
+                  "code": "FETCH_RESOLVED_SIMILARSR",
+                  "convergenceTargetId": "1770967620177",
+                  "id": "1767988831621",
+                  "inputs": [
+                    {
+                      "id": "1773876620467_1",
+                      "name": "limit",
+                      "type": "integer",
+                      "value": "20"
+                    },
+                    {
+                      "id": "1773876620467_2",
+                      "name": "filter",
+                      "type": "string",
+                      "value": "status.lookupCode in ('ORA_SVC_RESOLVED','ORA_SVC_CLOSED')"
+                    },
+                    {
+                      "id": "1773876620468_3",
+                      "name": "keywords",
+                      "type": "string",
+                      "value": "{{$context.$nodes.FETCH_SIMILAR_SR.$currentItem.Summary}}"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "name": "Map Result to SR",
+                    "returnType": "object",
+                    "sourceCode": "let similarSR = $context.$nodes.FETCH_SIMILAR_SR.FETCH_RESOLVED_SIMILARSR.$output.items || [];\n\nconst filteredSimilarSR = similarSR\n.filter(item => item.$context?.search?.score > 55)\n.map(item => ({\n  number: item.number,\n  title: item.title,\n  problemDescription: item.problemDescription,\n  resolvedBy: item.resolvedBy\n}));\n\nconst result = {\n  srnumber: $context.$nodes.FETCH_SIMILAR_SR.$currentItem.SRNumber,\n  similarIssues: filteredSimilarSR\n};\n\nreturn result"
+                  },
+                  "outcomes": {
+                    "success": "end_1770967564795"
+                  },
+                  "code": "MAP_RESULT_TO_SR",
+                  "id": "1771025954583",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                }
+              ],
+              "rootNode": "start_1770967564795"
+            },
+            "loopType": "PARALLEL",
+            "name": "Fetch Similar SR"
+          },
+          "outcomes": {
+            "success": "1767989865401"
+          },
+          "code": "FETCH_SIMILAR_SR",
+          "id": "1770967564795",
+          "inputs": [
+            {
+              "id": "1770967564796_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$nodes.SUMMARIZE_SR.$output}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "name": "SR With Account Score",
+            "returnType": "object",
+            "sourceCode": "const accountsOutput = $context.$nodes.FETCH_ALL_ACCOUNT_SCORE.$output.items\nconst srObject = $context.$nodes.CLEAN_UP_SR_DETAILS.$output.result\nconst currentUserPartyId = $context.$nodes.GET_RESOURCE_PARTY_NAME.$output.items[0].PartyId\n\nconst srOutput  = Object.values(srObject);\n\nconst accountMap = {};\naccountsOutput.forEach(account => {\n  accountMap[account.PartyNumber] = {\n    AccountScore: account.AccountScore ?? null,\n    AccountScoringTier: account.AccountScoringTier ?? null\n  };\n});\n\nconst SRDetails = [];\nconst SRResourceInfo = [];\n\nsrOutput.forEach(sr => {\n  const { AssigneePersonName, resourceMembers, SrNumber,AssigneePartyId, ...srDetailsOnly } = sr;\n\n  // SRDetails entry\n  SRDetails.push({\n    SrNumber,\n    ...srDetailsOnly,\n    accountScore: accountMap[sr.AccountPartyNumber]?.AccountScore ?? null,\n    accountScoringTier: accountMap[sr.AccountPartyNumber]?.AccountScoringTier ?? null,\n    assignToMe: String(sr.AssigneePartyId) === String(currentUserPartyId)\n  });\n\n  // SRResourceInfo\n  SRResourceInfo.push({\n    SrNumber: SrNumber, \n    assignee: AssigneePersonName ?? null,\n    teamMembers: resourceMembers?.items?.map(m => m.PartyUniqueName) ?? []\n  });\n});\n\nconst result = {\nSRDetails,\nSRResourceInfo\n}\n\nreturn result"
+          },
+          "outcomes": {
+            "success": "1767989937368"
+          },
+          "code": "SR_WITH_ACCOUNT_SCORE",
+          "id": "1773251770523",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_RESOURCES",
+            "functionName": "getResourceByUsername",
+            "name": "Get Resource Party Name"
+          },
+          "outcomes": {
+            "success": "1768425983322"
+          },
+          "code": "GET_RESOURCE_PARTY_NAME",
+          "convergenceTargetId": "1768425983322",
+          "id": "1769380608287",
+          "inputs": [
+            {
+              "id": "1769458127065_1",
+              "name": "username",
+              "type": "string",
+              "value": "{{$context.$user.$name}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"items\": {\n            \"type\": \"array\",\n            \"items\": {\n                \"type\": \"object\",\n                \"properties\": {\n                    \"PartyName\": {\n                        \"type\": \"string\"\n                    },\n                   \"PartyId\": {\n                       \"type\": \"number\"\n                  }\n               }\n            }\n        }\n    }\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Clean Up SR Data",
+            "returnType": "object",
+            "sourceCode": "let closedSR = $context.$nodes.FETCH_AGENT_RESOLVED_SR.$output.items || [];\n\nconst cleanedSR = closedSR.map(({ '@context': _, '@links': __, ...rest }) => rest);\n\nreturn cleanedSR"
+          },
+          "outcomes": {
+            "success": "1767989865401"
+          },
+          "code": "CLEAN_UP_SR_DATA",
+          "id": "1773880243510",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Clean Up Data",
+            "returnType": "object",
+            "sourceCode": "let closedSR = $context.$nodes.FETCH_ALL_AGENTS_RESOLVED_SRS_WITHIN_SLA.$output.items || [];\n\nconst cleanedSR = closedSR.map(({ '@context': _, '@links': __, ...rest }) => rest);\n\nreturn cleanedSR"
+          },
+          "outcomes": {
+            "success": "1767989690188"
+          },
+          "code": "CLEAN_UP_DATA",
+          "id": "1773880592347",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Process Input",
+            "returnType": "string",
+            "sourceCode": "const srObject = $context.$triggers.REST.$input.srData \n\nconst srKeysString = Object.keys(srObject)\n  .map(key => `'${key}'`)\n  .join(\",\");\n\nreturn srKeysString"
+          },
+          "outcomes": {
+            "success": "1774314623326"
+          },
+          "code": "PROCESS_INPUT",
+          "id": "1774314562687",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set SR Input"
+          },
+          "outcomes": {
+            "success": "1769380608287"
+          },
+          "code": "SET_SR_INPUT",
+          "id": "1774314623326",
+          "inputs": [
+            {
+              "id": "1774314634462",
+              "name": "SRList",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_INPUT.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Clean Up SR Details",
+            "returnType": "object",
+            "sourceCode": "const srInput = $context.$triggers.REST.$input.srData\nconst srDetailsArray = $context.$nodes.FETCHSRDETAILS.$output.items || [];\nconst allowedTypes = [\"ORA_SVC_CUSTOMER_ENTRY\", \"ORA_SVC_RESPONSE\", \"ORA_SVC_INTERNAL_NOTE\"];\n\nconst output = {};\n\nconst srDetailsMap = new Map(\n  srDetailsArray.map(item => [item.SrNumber, item])\n);\n\n// Process each SR in srInput\nObject.entries(srInput).forEach(([srNumber, srInputObj]) => {\n  const srDetail = srDetailsMap.get(srNumber) || {};\n\n  const latestTimestamp = srInputObj.LatestMessageTimestamp\n    ? new Date(srInputObj.LatestMessageTimestamp)\n    : null;\n\n  delete srDetail[\"@context\"];\n\n  if (srDetail.messages?.items) {\n    srDetail.messages = {\n      items: srDetail.messages.items\n        .map(msg => {\n          delete msg[\"@context\"];\n          delete msg[\"@links\"];\n          return msg;\n        })\n        .filter(msg => allowedTypes.includes(msg.MessageTypeCd))\n        .filter(msg => {\n          const msgDate = new Date(msg.CreationDate);\n          return !latestTimestamp || msgDate > latestTimestamp;\n        })\n    };\n  }\n\n  if (srDetail.resourceMembers?.items) {\n    srDetail.resourceMembers = {\n      items: srDetail.resourceMembers.items.map(member => {\n        delete member[\"@context\"];\n        return member;\n      })\n    };\n  }\n\n  output[srNumber] = srDetail;\n});\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1767988072438"
+          },
+          "code": "CLEAN_UP_SR_DETAILS",
+          "id": "1774315948233",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_CREATEAIAGENTME",
+            "errorNodeId": "1774314562687",
+            "functionName": "Create_Agent_AI_Metrics",
+            "name": "Create AI Metrics"
+          },
+          "outcomes": {
+            "success": "1774314562687"
+          },
+          "code": "CREATE_AI_METRICS",
+          "id": "1774996949331",
+          "inputs": [
+            {
+              "id": "1774996966504_1",
+              "name": "agentTeamCode",
+              "type": "string",
+              "value": "{{$context.$workflow.$name}}"
+            },
+            {
+              "id": "1774996966505_2",
+              "name": "jobId",
+              "type": "string",
+              "value": "{{$context.$workflow.$jobId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Filter Existing Team Members From Recommendations",
+            "returnType": "object",
+            "sourceCode": "const allocations = $context.$nodes.ALLOCATE_RESOURCE.$output || [];\nconst srDetails = $context.$nodes.CLEAN_UP_SR_DETAILS.$output.result || {};\n\nconst normalize = value => String(value ?? \"\").trim().toLowerCase();\n\nconst filtered = allocations.map(item => {\n  const action = normalize(item?.Action);\n\n  if (action !== \"add team member\") {\n    return item;\n  }\n\n  const srNumber = item?.ObjectNumber;\n  const memberSet = new Set(\n    ((srDetails?.[srNumber]?.resourceMembers?.items) || [])\n      .map(member => normalize(member?.PartyUniqueName))\n      .filter(Boolean)\n  );\n\n  const recommendedAgents = Array.isArray(item?.RecommendedAgents)\n    ? item.RecommendedAgents\n    : [];\n\n  const filteredAgents = recommendedAgents.filter(agent => {\n    const agentName = normalize(agent?.AgentName);\n    return !memberSet.has(agentName);\n  });\n\n  return {\n    ...item,\n    RecommendedAgents: filteredAgents\n  };\n});\n\nreturn filtered;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FILTER_EXISTING_TEAM_MEMBERS_FROM_RECOMMENDATIONS",
+          "id": "1777918230911",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1774314422585",
+          "name": "SRList",
+          "scope": "JOB",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1774312645694",
+            "name": "srData",
+            "scope": "JOB",
+            "type": "object"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "SERVICE_CENTER",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": true,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

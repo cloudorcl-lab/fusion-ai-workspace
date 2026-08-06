@@ -1,0 +1,673 @@
+{
+  "workflowId": "300000326940080",
+  "workflowCode": "ORA_HCM_LEARNING_TEAM_LEARNERS_MONITOR",
+  "name": "Team Learners Monitor",
+  "description": "Lists out directs prioritized by number of overdue assignments.",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1766692038204"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Group Hints",
+            "returnType": "string",
+            "sourceCode": "let hint = $context.$app.$OraMessageHint; \n\nif (hint === \"InitDisplay\" || hint === \"Summary\" || hint === \"FillParameters\") {\n  hint = \"Init\";\n} else if (hint === \"Query\" || hint == null) {\n  hint = \"Query\";\n} \n\nreturn hint;"
+          },
+          "outcomes": {
+            "success": "1766692354965"
+          },
+          "code": "GROUP_HINTS",
+          "id": "1766692038204",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Group Hint"
+          },
+          "outcomes": {
+            "Init": "1766452929686",
+            "AdditionalContent": "1766693450240",
+            "Query": "1767823955801"
+          },
+          "code": "GROUP_HINT",
+          "convergenceTargetId": "end",
+          "id": "1766692354965",
+          "inputs": [
+            {
+              "id": "1766692354969_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.GROUP_HINTS.$output.result}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MULTIRECORD"
+              ],
+              "enableActions": false,
+              "enableCommunications": false,
+              "customNotes": "Rendering constraints\n- Do not include any plain-text list or narrative; the widget will display the data.\n- Output order only:\n  1) One panel title line\n  2) One subtitle line\n  3) The multiRecordWidget JSON payload for the table\n- No extra prose before or after.\n\nAuthoritative model\n- Treat prepared_display as the source of truth.\n- prepared_display.rows is already filtered, sorted, and ready to render.\n- prepared_display.totalRows, uniqueLearners, and asOfDate are already computed.\n\nTitle and subtitle\n- If prepared_display.totalRows > 0:\n  - Title: “Upcoming training in the next 30 days: {N} items across {M} learners”\n  - Subtitle: “Prioritized by learner with most items, then nearest due • Updated <YYYY-MM-DD>” using prepared_display.asOfDate\n- If prepared_display.totalRows = 0:\n  - Title: “No upcoming deadlines in the next 30 days”\n  - Subtitle: “All clear at this time • Updated <YYYY-MM-DD>” using prepared_display.asOfDate\n\nTable construction (MultiRecordWidget)\n- Define columns exactly in this order:\n  - cols: [\"Learner\", \"Learning\", \"Due Date\", \"Assigner\", \"Status\"]\n- For each row in prepared_display.rows, render values in this order:\n  1) Learner → learnerName\n  2) Learning → learningTitle\n  3) Due Date → dueDate\n  4) Assigner → assignerName\n  5) Status → statusText with badge from statusBadgeText / statusBadgePriority\n- Badge placement:\n  - Put the badge on the Status cell.\n\nStrict alignment and privacy\n- Do not shift values between columns; use \"—\" only if already provided in the prepared row.\n- Do not display WorkEmail, PersonNumber, or usernames.\n- Dates must be YYYY-MM-DD.\n- Preserve names and titles exactly."
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.75,
+                "reasoning_effort": "minimal"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "GPT-5 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Render Items Due Next Month"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RENDER_ITEMS_DUE_NEXT_MONTH",
+          "convergenceTargetId": "1766692441298",
+          "id": "1766689119567",
+          "inputs": [
+            {
+              "id": "1766689119568_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Role\nYou are formatting a manager-facing summary of incomplete learning assignments due within the next 30 days. Do not recompute eligibility, sorting, due-day math, or badge placement.\n\nInputs\n- User question (for context):\n  <user_question>{{$context.$variables.userQuery}}</user_question>\n- Prepared display model (authoritative):\n  <prepared_display>{{$context.$nodes.PREPARE_RECORDS_DUE_NEXT_MONTH_DISPLAY.$output.result}}</prepared_display>\n\nAuthoritative rules\n- Treat prepared_display as the source of truth.\n- prepared_display.rows is already filtered, sorted, and ready to render.\n- Use row.learnerName, row.learningTitle, row.dueDate, row.assignerName, and row.statusText exactly as provided.\n- Use the Status badge values exactly as provided.\n\nOutput format\n- Output order only:\n  1) One panel title line\n  2) One subtitle line\n  3) The multiRecordWidget JSON payload for the table\n- No extra prose before or after.\n\nTitle and subtitle\n- If prepared_display.totalRows > 0:\n  - Title: \"Upcoming training in the next 30 days: {N} items across {M} learners\"\n  - Subtitle: \"Prioritized by learner with most items, then nearest due • Updated <YYYY-MM-DD>\" using prepared_display.asOfDate\n- Else:\n  - Title: \"No upcoming deadlines in the next 30 days\"\n  - Subtitle: \"All clear at this time • Updated <YYYY-MM-DD>\" using prepared_display.asOfDate\n\nTable\n- Use a multiRecordWidget with cols: [\"Learner\", \"Learning\", \"Due Date\", \"Assigner\", \"Status\"]\n- Emit one row per object in prepared_display.rows using this order:\n  - Learner: learnerName\n  - Learning: learningTitle\n  - Due Date: dueDate\n  - Assigner: assignerName\n  - Status: statusText with badge from statusBadgeText / statusBadgePriority\n- If there are no rows, emit a multiRecordWidget with the specified columns and zero rows."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Set Run Context I"
+          },
+          "outcomes": {
+            "success": "1767748269777"
+          },
+          "code": "SET_RUN_CONTEXT_I",
+          "convergenceTargetId": "1766692545564",
+          "id": "1766452929686",
+          "inputs": [
+            {
+              "id": "1766529157376",
+              "name": "userQuery",
+              "scope": "JOB",
+              "type": "string",
+              "value": "My direct reports learning counts for current enrollments."
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Init Type"
+          },
+          "outcomes": {
+            "InitDisplay": "1766441945690",
+            "Summary": "1767914843319",
+            "FillParameters": "1774100000000"
+          },
+          "code": "INIT_TYPE",
+          "convergenceTargetId": "end",
+          "id": "1766441452432",
+          "inputs": [
+            {
+              "id": "1766441452435_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$app.$OraMessageHint}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MESSAGES_LIST"
+              ],
+              "enableActions": true,
+              "enableCommunications": false,
+              "customNotes": "Rendering constraints\n- Return exactly one valid <oraInfoDisplay> block.\n- Inside <oraInfoDisplay>, emit exactly one JSON object and nothing else.\n- Do not output raw JSON outside the wrapper.\n- Do not add plain-text title lines, subtitle lines, markdown fences, commentary, or prose before/after the wrapper.\n\nRequired wrapper format\n- Use this exact outer structure:\n  <oraInfoDisplay key=\"list\">\n  { ... }\n  </oraInfoDisplay>\n\nAuthoritative model\n- Treat prepared_display as the source of truth.\n- prepared_display.finalDisplayBlock is already fully constructed and ready to render.\n- Do not restate, summarize, or recompute learner counts, overdue totals, titles, subtitles, or actions.\n\nWidget construction\n- patternId must be \"messageListWidget\".\n- title, subtitle, and items are already embedded in the prepared block.\n- Each item action must remain a single string in this exact pattern:\n  ora.Invoke(openLearnerWorkspace, \"<item.actionQuery>\")\n- Do not emit action as an object.\n\nPrivacy and formatting\n- Do not include emails, person numbers, or usernames.\n- Preserve provided display names and counts exactly.\n\nEmpty state\n- If no learners qualify, still emit the exact prepared <oraInfoDisplay> block with an empty items array."
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.75,
+                "reasoning_effort": "minimal"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "GPT-5 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Render Learners At Risk"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RENDER_LEARNERS_AT_RISK",
+          "convergenceTargetId": "1766441665548",
+          "id": "1766441945690",
+          "inputs": [
+            {
+              "id": "1766441945692_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Role\nYou are rendering the main overdue-learners panel from a deterministic prepared model. Do not recompute inclusion, sorting, counts, titles, subtitles, actions, or widget structure.\n\nInputs\n- Prepared display model (authoritative):\n  <prepared_display>{{$context.$nodes.PREPARE_LEARNERS_AT_RISK_DISPLAY.$output.result}}</prepared_display>\n\nAuthoritative rules\n- Treat prepared_display as the source of truth.\n- prepared_display.finalDisplayBlock is already fully constructed and render-ready.\n- Do not recalculate learner counts from prose.\n- Do not paraphrase the title or subtitle.\n- Do not add any text before or after the prepared block.\n\nRequired output contract\n- Return exactly prepared_display.finalDisplayBlock and nothing else.\n- Do not return raw JSON by itself.\n- Do not emit panel title/subtitle as plain text lines outside the wrapper.\n- Do not add markdown fences or explanatory prose.\n\nWrapper reminder\n- The output must remain one valid <oraInfoDisplay> block whose JSON contains title, patternId, description, and properties.\n\nNegative rule\n- This is invalid and must never be returned:\n  - a title line outside the wrapper\n  - a subtitle line outside the wrapper\n  - any recomputed count that differs from the rendered items array\n\nFinal reminder\n- Output only the prepared_display.finalDisplayBlock string exactly."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Set Run Context AC"
+          },
+          "outcomes": {
+            "success": "1772070000002"
+          },
+          "code": "SET_RUN_CONTEXT_AC",
+          "id": "1766693450240",
+          "inputs": [
+            {
+              "id": "1766693459430",
+              "name": "userQuery",
+              "scope": "JOB",
+              "type": "string",
+              "value": "Learning records of my team members for current required items that are due within the next 30 days."
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_LOGGEDINUSERASS",
+            "functionName": "fetch_loggedIn_user_assignmentId",
+            "name": "Get Logged In Manager Info"
+          },
+          "outcomes": {
+            "success": "1772070000003"
+          },
+          "code": "GET_LOGGED_IN_MANAGER_INFO",
+          "id": "1772070000002",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Init Additional Content Context"
+          },
+          "outcomes": {
+            "success": "1772070000006"
+          },
+          "code": "INIT_ADDITIONAL_CONTENT_CONTEXT",
+          "id": "1772070000003",
+          "inputs": [
+            {
+              "id": "1772070000003_managerId",
+              "name": "managerId",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_LOGGED_IN_MANAGER_INFO.$output.items[0].PersonId}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Build Records Due Next Month Payload",
+            "returnType": "string",
+            "sourceCode": "const managerId = String($context.$variables.managerId || '').trim();\n\nreturn JSON.stringify({\n  securityFilters: {\n    type: 'MANAGER'\n  },\n  filters: [\n    {\n      name: 'enrollments',\n      value: 'CURRENT'\n    },\n    {\n      name: 'assignmentDueDate',\n      value: 'NEXT_30_DAYS'\n    },\n    {\n      name: 'managerId',\n      value: managerId\n    }\n  ],\n  facets: ['ManagerType']\n});"
+          },
+          "outcomes": {
+            "success": "1767748939450"
+          },
+          "code": "BUILD_RECORDS_DUE_NEXT_MONTH_PAYLOAD",
+          "id": "1772070000006",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_LEARNING_LEARNERAGGREGATES",
+            "functionName": "learnerAggregations",
+            "name": "Get Learners At Risk"
+          },
+          "outcomes": {
+            "success": "1772070000000"
+          },
+          "code": "GET_LEARNERS_AT_RISK",
+          "convergenceTargetId": "1766441665548",
+          "id": "1767748269777",
+          "inputs": [
+            {
+              "id": "1772071000000_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{\"securityFilters\":{\"type\":\"MANAGER\"},\"filters\":[{\"name\":\"reports\",\"value\":\"DIRECT_REPORTS\"},{\"name\":\"enrollments\",\"value\":\"CURRENT\"}],\"sort\":[{\"name\":\"overdueLearning\",\"direction\":\"desc\"}],\"offset\":0,\"limit\":50}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Learners At Risk Display",
+            "returnType": "object",
+            "sourceCode": "const raw = $context.$nodes.GET_LEARNERS_AT_RISK.$output;\nconst nowIso = $context.$system.$currentDateTime || new Date().toISOString();\nconst asOfDate = new Date(nowIso).toISOString().slice(0, 10);\n\nconst parseMaybe = (value) => {\n  if (typeof value !== 'string') return value;\n  const trimmed = value.trim();\n  if (!trimmed) return value;\n  try {\n    return JSON.parse(trimmed);\n  } catch {\n    return value;\n  }\n};\n\nconst unwrapArray = (value) => {\n  let current = parseMaybe(value);\n  for (let i = 0; i < 6; i += 1) {\n    if (Array.isArray(current)) return current;\n    if (!current || typeof current !== 'object') return [];\n    const next = [current.items, current.records, current.data, current.result, current.output]\n      .map(parseMaybe)\n      .find((candidate) => candidate != null);\n    if (next == null || next === current) return [];\n    current = next;\n  }\n  return Array.isArray(current) ? current : [];\n};\n\nconst clean = (value) => {\n  if (value == null) return '';\n  return String(value).trim();\n};\n\nconst toInt = (value) => {\n  if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.floor(value));\n  const text = clean(value);\n  if (!text) return 0;\n  const parsed = Number(text);\n  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;\n};\n\nconst pluralize = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;\n\nconst records = unwrapArray(raw);\nconst normalized = records.map((record) => {\n  const learnerId = clean(record.assignedToId);\n  const learnerName = clean(record.assignedToDisplayName);\n  const requiredCount = toInt(record.requiredLearningCount);\n  const voluntaryCount = toInt(record.voluntaryLearningCount);\n  const overdueCount = toInt(record.overdueLearningCount);\n  const totalAssigned = requiredCount + voluntaryCount;\n\n  return {\n    learnerId,\n    learnerName,\n    requiredCount,\n    voluntaryCount,\n    overdueCount,\n    totalAssigned,\n    actionQuery: `learnerId=${encodeURIComponent(learnerId)}&learnerName=${encodeURIComponent(learnerName)}`\n  };\n});\n\nconst items = normalized\n  .filter((item) => item.overdueCount > 0)\n  .sort((left, right) => {\n    if (left.overdueCount !== right.overdueCount) return right.overdueCount - left.overdueCount;\n    if (left.totalAssigned !== right.totalAssigned) return right.totalAssigned - left.totalAssigned;\n    return left.learnerName.localeCompare(right.learnerName);\n  })\n  .map((item) => ({\n    learnerName: item.learnerName,\n    overdueCount: item.overdueCount,\n    requiredCount: item.requiredCount,\n    voluntaryCount: item.voluntaryCount,\n    badgeText: 'Overdue',\n    priority: 'alert',\n    subtitleText: `Overdue: ${pluralize(item.overdueCount, 'item', 'items')}`,\n    summaryText: `Required: ${item.requiredCount}, Voluntary: ${item.voluntaryCount}`,\n    actionQuery: item.actionQuery\n  }));\n\nconst visibleLearnerCount = items.length;\nconst visibleOverdueTotal = items.reduce((sum, item) => sum + item.overdueCount, 0);\nconst pctAffected = Math.round((visibleLearnerCount / Math.max(normalized.length, 1)) * 100);\nconst topImpacted = items.slice(0, 2).map((item) => ({\n  learnerName: item.learnerName,\n  overdueCount: item.overdueCount\n}));\nconst displayTitle = visibleLearnerCount > 0\n  ? `${visibleLearnerCount} learners with overdue assignments (${visibleOverdueTotal} overdue total)`\n  : 'No learners are overdue';\nconst displaySubtitle = visibleLearnerCount > 0\n  ? `Prioritized by most overdue • Updated ${asOfDate}`\n  : `All clear at this time • Updated ${asOfDate}`;\nconst widgetItems = items.map((item) => ({\n  title: item.learnerName,\n  subtitle: item.subtitleText,\n  summary: item.summaryText,\n  badgeText: item.badgeText,\n  priority: item.priority,\n  action: `ora.Invoke(openLearnerWorkspace, \\\"${item.actionQuery}\\\")`\n}));\nconst displayPayload = {\n  title: displayTitle,\n  patternId: 'messageListWidget',\n  description: 'Learners with overdue assignments',\n  properties: {\n    subtitle: displaySubtitle,\n    items: widgetItems\n  }\n};\nconst finalDisplayBlock = `<oraInfoDisplay key=\"list\">\\n${JSON.stringify(displayPayload, null, 2)}\\n</oraInfoDisplay>`;\n\nconst result = {\n  asOfDate,\n  teamSize: normalized.length,\n  overdueLearners: visibleLearnerCount,\n  totalOverdue: visibleOverdueTotal,\n  pctAffected,\n  topImpacted,\n  displayTitle,\n  displaySubtitle,\n  items,\n  finalDisplayBlock\n};\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1766441452432"
+          },
+          "code": "PREPARE_LEARNERS_AT_RISK_DISPLAY",
+          "id": "1772070000000",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_LEARNING_LEARNERAGGREGATES",
+            "functionName": "learningRecordSearches",
+            "name": "Get Records Due Next Month"
+          },
+          "outcomes": {
+            "success": "1772070000001"
+          },
+          "code": "GET_RECORDS_DUE_NEXT_MONTH",
+          "id": "1767748939450",
+          "inputs": [
+            {
+              "id": "1772070000004_payload",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.BUILD_RECORDS_DUE_NEXT_MONTH_PAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Records Due Next Month Display",
+            "returnType": "object",
+            "sourceCode": "const raw = $context.$nodes.GET_RECORDS_DUE_NEXT_MONTH.$output;\nconst nowIso = $context.$system.$currentDateTime || new Date().toISOString();\nconst now = new Date(nowIso);\nconst DAY_MS = 24 * 60 * 60 * 1000;\n\nconst parseMaybe = (value) => {\n  if (typeof value !== 'string') return value;\n  const trimmed = value.trim();\n  if (!trimmed) return value;\n  try {\n    return JSON.parse(trimmed);\n  } catch {\n    return value;\n  }\n};\n\nconst unwrapArray = (value) => {\n  let current = parseMaybe(value);\n  for (let i = 0; i < 6; i += 1) {\n    if (Array.isArray(current)) return current;\n    if (!current || typeof current !== 'object') return [];\n    const next = [current.items, current.records, current.data, current.result, current.output]\n      .map(parseMaybe)\n      .find((candidate) => candidate != null);\n    if (next == null || next === current) return [];\n    current = next;\n  }\n  return Array.isArray(current) ? current : [];\n};\n\nconst clean = (value) => {\n  if (value == null) return '';\n  return String(value).trim();\n};\n\nconst parseDate = (value) => {\n  const text = clean(value);\n  if (!text) return null;\n  const date = new Date(text);\n  return Number.isNaN(date.getTime()) ? null : date;\n};\n\nconst startOfDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());\nconst formatDate = (value) => {\n  const date = parseDate(value);\n  return date ? date.toISOString().slice(0, 10) : '—';\n};\nconst pluralize = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;\n\nconst today = startOfDay(now);\nconst windowEnd = new Date(today.getTime() + (30 * DAY_MS));\nconst asOfDate = today.toISOString().slice(0, 10);\nconst records = unwrapArray(raw);\n\nconst eligible = [];\nfor (const record of records) {\n  const rawStatusText = clean(record.assignmentSubStatusMeaning || record.assignmentStatusMeaning || record.assignmentSubStatus || record.assignmentStatus || record.badgeText);\n  const completedDate = parseDate(record.completedDate);\n  const completed = Boolean(completedDate) || /\\bcomplete pending approval\\b|\\bcompleted\\b|\\bcomplete\\b/i.test(rawStatusText);\n  if (completed) continue;\n\n  const dueSource = record.assignmentDueDate || record.offeringEventStartDate;\n  const dueDate = parseDate(dueSource);\n  if (!dueDate) continue;\n\n  const dueDay = startOfDay(dueDate);\n  if (dueDay < today || dueDay > windowEnd) continue;\n\n  const diffDays = Math.round((dueDay.getTime() - today.getTime()) / DAY_MS);\n  eligible.push({\n    learnerName: clean(record.assignedToDisplayName),\n    learningTitle: clean(record.learningItemTitle),\n    dueDate: formatDate(dueSource),\n    assignerName: clean(record.assignerDisplayName) || '—',\n    dueDayMs: dueDay.getTime(),\n    diffDays\n  });\n}\n\nconst learnerCounts = eligible.reduce((acc, row) => {\n  acc[row.learnerName] = (acc[row.learnerName] || 0) + 1;\n  return acc;\n}, {});\n\neligible.sort((left, right) => {\n  const leftCount = learnerCounts[left.learnerName] || 0;\n  const rightCount = learnerCounts[right.learnerName] || 0;\n  if (leftCount !== rightCount) return rightCount - leftCount;\n  if (left.dueDayMs !== right.dueDayMs) return left.dueDayMs - right.dueDayMs;\n  return left.learningTitle.localeCompare(right.learningTitle);\n});\n\nconst rows = eligible.map((row) => {\n  const statusText = `Due in ${pluralize(row.diffDays, 'day', 'days')}`;\n  return {\n    learnerName: row.learnerName,\n    learningTitle: row.learningTitle,\n    dueDate: row.dueDate,\n    assignerName: row.assignerName,\n    statusText,\n    statusBadgeText: statusText,\n    statusBadgePriority: 'warning'\n  };\n});\n\nconst result = {\n  asOfDate,\n  totalRows: rows.length,\n  uniqueLearners: new Set(rows.map((row) => row.learnerName)).size,\n  rows\n};\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1766689119567"
+          },
+          "code": "PREPARE_RECORDS_DUE_NEXT_MONTH_DISPLAY",
+          "id": "1772070000001",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set Run Context Q"
+          },
+          "outcomes": {
+            "success": "1773100000001"
+          },
+          "code": "SET_RUN_CONTEXT_Q",
+          "id": "1767823955801",
+          "inputs": [
+            {
+              "id": "1767823965148",
+              "name": "userQuery",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Build Query Records Payload",
+            "returnType": "string",
+            "sourceCode": "const result = JSON.stringify({\n  securityFilters: {\n    type: 'MANAGER'\n  },\n  offset: 0,\n  limit: 100,\n  filters: [\n    {\n      name: 'reports',\n      value: 'DIRECT_REPORTS'\n    },\n    {\n      name: 'enrollments',\n      value: 'CURRENT'\n    }\n  ]\n});\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1767824008917"
+          },
+          "code": "BUILD_QUERY_RECORDS_PAYLOAD",
+          "id": "1773100000001",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Get Data To Answer Query",
+            "businessObjectCode": "ORA_HCM_LEARNING_LEARNERAGGREGATES",
+            "functionName": "learningRecordSearches"
+          },
+          "outcomes": {
+            "success": "1768332499332"
+          },
+          "code": "GET_DATA_TO_ANSWER_QUERY",
+          "id": "1767824008917",
+          "inputs": [
+            {
+              "id": "1773100000002_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.BUILD_QUERY_RECORDS_PAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MESSAGES_LIST",
+                "ORA_LAYOUT_MULTIRECORD",
+                "ORA_LAYOUT_CHANGE_LIST",
+                "ORA_LAYOUT_CARD"
+              ],
+              "enableActions": false,
+              "enableCommunications": false,
+              "customNotes": "Objective\n- Produce a concise summary title and a short explanatory subtitle, followed by one or more widgets that best match the user question and data.\n- Avoid duplicating the same data across text and widgets or across multiple widgets."
+            }
+          },
+          "metadata": {
+            "name": "Summarize Answer"
+          },
+          "outcomes": {
+            "success": "1767910281794"
+          },
+          "code": "SUMMARIZE_ANSWER",
+          "id": "1767824156869",
+          "inputs": [
+            {
+              "id": "1767824156871_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Role\nYou are an analyst answering manager questions about learning enrollments (“learner_records”). Use the provided data as the sole source of truth and produce a concise, management-ready answer focused on the people and/or items the user asks about. Questions may be learner-centric or learning-item–centric.\n\nInputs\n- User question:\n  <user_question>{{$context.$variables.userQuery}}</user_question>\n- Learner-record data (authoritative):\n  <learner_records>{{$context.$nodes.GET_DATA_TO_ANSWER_QUERY.$output}}</learner_records>\n- Chat history (system-managed; newest first; may be long or empty):\n  <chat_history>{{$context.$system.$chatHistory}}</chat_history>\n- Data history (optional; structured cache of prior run facts such as resolved entity mappings, filters, or summaries):\n  <data_history>{{$context.$variables.dataHistory}}</data_history>\n\nGuidance\n- Data first: Base all statements strictly on learner_records; do not infer or fabricate missing details.\n- Precedence for resolving brief references and continuity:\n  1) learner_records (authoritative, current)\n  2) data_history (use to recall prior resolved entities/filters; only if those entities are in current learner_records)\n  3) chat_history (recent messages; use cautiously and only to clarify intent when entities appear in current learner_records)\n- If any history conflicts with current data, follow learner_records.\n- Scope: Records may represent learners→items or items→learners. Support both patterns.\n\nStatus interpretation (values only; for reasoning and wording)\n- completed: completion date present (or status meaning indicates completion).\n- overdue: due date in the past AND not completed.\n- due soon: due date within the next 7 days AND not completed (if due dates exist).\n- in progress / not started: use status meaning when available; if unclear, omit.\n\nAnswer style\n- Start with a direct answer in 1–2 sentences that addresses the user’s question.\n- Follow with compact, decision-focused details (counts, top items/people, notable dates) relevant to the question. Keep it concise.\n\nPrivacy\n- Reference only people/items present in learner_records.\n- Do not include emails, person numbers, or internal IDs unless explicitly requested and present.\n- Preserve names exactly as they appear in the data.\n\nRobustness\n- Handle empty/malformed chat_history or data_history gracefully; never introduce entities not in learner_records.\n- If no relevant records match the request, output exactly: No relevant enrollments were found for this request."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Save Data History"
+          },
+          "outcomes": {
+            "success": "1767910337947"
+          },
+          "code": "SAVE_DATA_HISTORY",
+          "id": "1767910281794",
+          "inputs": [
+            {
+              "id": "1767910292934",
+              "name": "dataHistory",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.ADD_DATA_TO_HISTORY.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Return Answer"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURN_ANSWER",
+          "id": "1767910337947",
+          "inputs": [
+            {
+              "id": "1767910337949_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Return exactly \"{{$context.$nodes.SUMMARIZE_ANSWER.$output}}\""
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Render Summary"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RENDER_SUMMARY",
+          "id": "1767914843319",
+          "inputs": [
+            {
+              "id": "1767914843321_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Role\nYou generate a concise 1–2 sentence summary for a manager about team overdue risk using a deterministic prepared display model. Do not recompute counts or ranking.\n\nInputs\n- Prepared display model (authoritative):\n  <prepared_display>{{$context.$nodes.PREPARE_LEARNERS_AT_RISK_DISPLAY.$output.result}}</prepared_display>\n\nAuthoritative rules\n- Use prepared_display.overdueLearners, totalOverdue, pctAffected, topImpacted, and asOfDate exactly as provided.\n- If citing impacted learners, use prepared_display.topImpacted in order.\n\nOutput requirements\n- Produce 1–2 plain sentences. No quotes, labels, bullets, or extra whitespace.\n- Use human-readable wording; no internal keys. Preserve names exactly as in data.\n- Do not include emails, person numbers, or IDs.\n- If there are zero overdue learners, state that clearly and end in one sentence.\n\nContent templates (choose the first that applies)\n1) If prepared_display.overdueLearners = 0:\n   - “No learners are overdue as of <YYYY-MM-DD>.”\n2) If prepared_display.overdueLearners > 0 and prepared_display.totalOverdue > 0:\n   - One sentence minimum:\n     “<overdueLearners> learner(s) overdue with <totalOverdue> assignment(s) overdue (<pctAffected>% of team) as of <YYYY-MM-DD>.”\n   - Optional second sentence (only if helpful): “Most impacted: <Name1> (<count1>), <Name2> (<count2>).”\n\nFormatting\n- Dates: YYYY-MM-DD.\n- Numbers: integers (no decimals).\n- Keep to a maximum of two sentences."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_LEARNING_LEARNERAGGREGATES",
+            "functionName": "learningItemAggregations",
+            "name": "Get Learning Items at Risk for Report"
+          },
+          "outcomes": {
+            "success": "1774100000001"
+          },
+          "code": "GET_LEARNING_ITEMS_AT_RISK_FOR_REPORT",
+          "id": "1774100000000",
+          "inputs": [
+            {
+              "id": "1774100000000_payload",
+              "name": "payload",
+              "type": "string",
+              "value": "{\"offset\":0,\"securityFilters\":{\"type\":\"MANAGER\"},\"limit\":100,\"filters\":[{\"name\":\"reports\",\"value\":\"DIRECT_REPORTS\"},{\"name\":\"enrollments\",\"value\":\"CURRENT\"},{\"terms\":[\"ORA_ASSN_REC_NOTSTARTED\",\"ORA_ASSN_REC_NO_OFFR\",\"ORA_ASSN_REC_INPROGRESS\"],\"name\":\"assignmentSubStatus\"}],\"sort\":[{\"name\":\"overdueLearning\",\"direction\":\"desc\"}]}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Team Report Params",
+            "returnType": "string",
+            "sourceCode": "const parseMaybe = (value) => {\n  if (typeof value !== 'string') return value;\n  const trimmed = value.trim();\n  if (!trimmed) return value;\n  try {\n    return JSON.parse(trimmed);\n  } catch (e) {\n    return value;\n  }\n};\n\nconst clean = (value) => {\n  if (value == null) return '';\n  return String(value).trim();\n};\n\nconst toInt = (value) => {\n  if (typeof value === 'number' && Number.isFinite(value)) {\n    return Math.max(0, Math.floor(value));\n  }\n\n  const text = clean(value);\n  if (!text) return 0;\n\n  const parsed = Number(text);\n  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;\n};\n\nconst escapeXml = (value) => clean(value)\n  .replace(/&/g, '&amp;')\n  .replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;')\n  .replace(/\"/g, '&quot;')\n  .replace(/'/g, '&apos;');\n\nconst readCommParams = (value) => {\n  const parsed = parseMaybe(value);\n  return Array.isArray(parsed) ? parsed : [];\n};\n\nconst commParams = readCommParams($context.$app.$OraCommParamsToFill);\n\nconst learnerDisplay =\n  $context.$nodes.PREPARE_LEARNERS_AT_RISK_DISPLAY.$output.result || {};\n\nconst learningRaw =\n  $context.$nodes.GET_LEARNING_ITEMS_AT_RISK_FOR_REPORT.$output || {};\n\nconst learningItems = Array.isArray(learningRaw.items)\n  ? learningRaw.items\n  : [];\n\nconst riskParam = commParams.find(\n  (param) => clean(param.title) === 'Risk Summary and Details'\n) || {\n  id: '6067c3f0-e56b-4827-b743-c9f85828d1be',\n  title: 'Risk Summary and Details'\n};\n\nconst overdueParam = commParams.find(\n  (param) => clean(param.title) === 'Overdue Summary'\n) || {\n  id: '369c32f1-897c-4939-b24f-beac6e10ebce',\n  title: 'Overdue Summary'\n};\n\nconst normalizedLearning = learningItems\n  .map((record) => ({\n    learningItemTitle: clean(record.learningItemTitle),\n    overdueLearningCount: toInt(record.overdueLearningCount),\n    dueNextMonthLearningCount: toInt(record.dueNextMonthLearningCount)\n  }))\n  .filter((item) => item.learningItemTitle);\n\nconst totalOverdue = normalizedLearning.reduce(\n  (sum, item) => sum + item.overdueLearningCount,\n  0\n);\n\nconst totalDueNextMonth = normalizedLearning.reduce(\n  (sum, item) => sum + item.dueNextMonthLearningCount,\n  0\n);\n\nconst topLearning = normalizedLearning\n  .filter((item) => item.overdueLearningCount > 0)\n  .sort((left, right) => {\n    if (left.overdueLearningCount !== right.overdueLearningCount) {\n      return right.overdueLearningCount - left.overdueLearningCount;\n    }\n\n    return left.learningItemTitle.localeCompare(right.learningItemTitle);\n  })\n  .slice(0, 2);\n\nconst topLearningText = topLearning.length\n  ? topLearning\n      .map(\n        (item) =>\n          `${item.learningItemTitle} (${item.overdueLearningCount} overdue)`\n      )\n      .join(', ')\n  : 'None';\n\nconst topLearners = Array.isArray(learnerDisplay.topImpacted)\n  ? learnerDisplay.topImpacted\n  : [];\n\nconst topLearnerText = topLearners.length\n  ? topLearners\n      .map(\n        (item) =>\n          `${clean(item.learnerName)} (${toInt(item.overdueCount)} overdue)`\n      )\n      .join(', ')\n  : 'None';\n\nconst riskLines = [\n  `Total Learners: ${toInt(learnerDisplay.teamSize)}`,\n  `Overdue count: ${totalOverdue}`,\n  `Due within 30 days: ${totalDueNextMonth}`,\n  `Highest-Risk Learning: ${topLearningText}`,\n  `Highest-Risk Learners: ${topLearnerText}`\n];\n\nconst overdueItems = Array.isArray(learnerDisplay.items)\n  ? learnerDisplay.items\n  : [];\n\nconst overdueLines = overdueItems.length\n  ? overdueItems.map(\n      (item) =>\n        `${clean(item.learnerName)}: ${toInt(item.overdueCount)} overdue`\n    )\n  : ['No overdue learners'];\n\nconst buildParam = (param, text) =>\n  `<parameter id=\"${escapeXml(param.id)}\" title=\"${escapeXml(param.title)}\">${escapeXml(text)}</parameter>`;\n\nconst result = [\n  buildParam(riskParam, riskLines.join('\\n')),\n  buildParam(overdueParam, overdueLines.join('\\n'))\n].join('');\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1767986550822"
+          },
+          "code": "PREPARE_TEAM_REPORT_PARAMS",
+          "id": "1774100000001",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [],
+              "enableActions": false,
+              "enableCommunications": true
+            }
+          },
+          "metadata": {
+            "name": "Team Report"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "TEAM_RERPORT",
+          "id": "1767986550822",
+          "inputs": [
+            {
+              "id": "1767986550826_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Return exactly {{$context.$nodes.PREPARE_TEAM_REPORT_PARAMS.$output.result}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Add Data To History",
+            "returnType": "object",
+            "sourceCode": "const maxSize = 3;  // adjust as needed\n\nconst rawPastData = $context.$variables.dataHistory;\nconst runData = ($context.$nodes.GET_DATA_TO_ANSWER_QUERY.$output ?? null); \n\n// Normalize existing past data to { runCount, records[] } \nconst pastData = (rawPastData && typeof rawPastData === \"object\" && Array.isArray(rawPastData.records))\n  ? { runCount: Number(rawPastData.runCount) || rawPastData.records.length, records: rawPastData.records.slice() }\n  : (Array.isArray(rawPastData)\n      ? { runCount: rawPastData.length, records: rawPastData.slice() }\n      : { runCount: 0, records: [] });\n\n// Build new record\nconst record = {\n  timestamp: new Date().toISOString(),\n  runData\n};\n\n// Append and cap size by dropping oldest\npastData.records.push(record);\nwhile (pastData.records.length > maxSize) pastData.records.shift();\n\n// Increment total run counter (ever), independent of cap\npastData.runCount = (Number(pastData.runCount) || 0) + 1;\n\n// Return updated past data object\nreturn pastData;"
+          },
+          "outcomes": {
+            "success": "1767824156869"
+          },
+          "code": "ADD_DATA_TO_HISTORY",
+          "id": "1768332499332",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1767824100217",
+          "name": "dataHistory",
+          "scope": "CONVERSATION",
+          "type": "object"
+        },
+        {
+          "id": "1766528916207",
+          "name": "userQuery",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1772070000005",
+          "name": "managerId",
+          "scope": "JOB",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "dtRunProfiles": {
+      "activeProfileId": "7c4c725c-9b72-4702-b2ad-1fa8f254ca92",
+      "profiles": [
+        {
+          "id": "c696a51f-2cb2-46a5-94da-b71b4a329457",
+          "name": "New run profile 1",
+          "type": "agentic-app",
+          "agenticAppMode": "initDisplay"
+        },
+        {
+          "id": "7c4c725c-9b72-4702-b2ad-1fa8f254ca92",
+          "name": "New run profile 2",
+          "type": "agentic-app",
+          "agenticAppMode": "query",
+          "agenticAppInitialMessage": "list over due assignments for Namita"
+        }
+      ]
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": "",
+    "agentsValueMappings": [],
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": [],
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI"
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "LEARNING",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": true,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"2\""
+  }
+}

@@ -1,0 +1,550 @@
+{
+  "workflowId": "100002355226958",
+  "workflowCode": "ORA_CUSTOMER_PORTFOLIO_PROFILING_AGENT",
+  "name": "Customers Risk And Expansion Scoring Agent",
+  "description": "A worker agent which generates a light profile based on expansion and risk for each customer and generate scores. This is done for a list of customers and is bounded by the user's Territory.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1764202038420"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "HasAccountId"
+          },
+          "outcomes": {
+            "true": "1764196388937",
+            "false": "1764199577423"
+          },
+          "code": "NOACCOUNTID",
+          "convergenceTargetId": "end",
+          "id": "1764198799887",
+          "inputs": [
+            {
+              "id": "1764198799888_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.SCANACCOUNTIDS.$output.result}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "ChunkAccountIds",
+            "returnType": "object",
+            "sourceCode": "const rawAccountIds = $context.$triggers.REST.$input.action.config.listOfAccountIds;\n\nconst accountIdsArray = Array.isArray(rawAccountIds)\n  ? rawAccountIds\n  : (rawAccountIds != null && rawAccountIds.trim() !== \"\"\n      ? rawAccountIds.split(\",\").map(id => id.trim()).filter(id => id !== \"\")\n      : []);\n\nconst batchSizeRaw = $context.$triggers.REST.$input.action.config.accountBatchSize;\nconst accBatchSize = Number(batchSizeRaw) || 1;\n\nconst collections = [];\n\nfor (let i = 0; i < accountIdsArray.length; i += accBatchSize) {\n    const batch = accountIdsArray.slice(i, i + accBatchSize);\n\n    if (accountIdsArray.length === 1 && batch.length === 1) {\n        collections.push([-1, ...batch]);\n    } else {\n        collections.push(batch);\n    }\n}\n\nreturn collections;"
+          },
+          "outcomes": {
+            "success": "1769635930350"
+          },
+          "code": "CHUNKACCOUNTIDS",
+          "convergenceTargetId": "1764199334721",
+          "id": "1764196388937",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "No Data for Profiling"
+          },
+          "outcomes": {},
+          "code": "NO_DATA_FOR_PROFILING",
+          "convergenceTargetId": "end",
+          "id": "1764199577423",
+          "inputs": [
+            {
+              "id": "1764199577425_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "NO_DATA_FOR_PROFILING"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "ScanAccountIds",
+            "returnType": "boolean",
+            "sourceCode": "const rawAccountIds = $context.$triggers.REST.$input.action.config.listOfAccountIds;\n\nconst accountIds = Array.isArray(rawAccountIds)\n  ? rawAccountIds\n  : (rawAccountIds != null && rawAccountIds !== \"\"\n      ? rawAccountIds.split(\",\").map(id => id.trim()).filter(id => id !== \"\")\n      : []);\n\nreturn accountIds.length > 0;"
+          },
+          "outcomes": {
+            "success": "1764198799887"
+          },
+          "code": "SCANACCOUNTIDS",
+          "id": "1764202038420",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1769635978408"
+                  },
+                  "id": "start_1769635930350",
+                  "code": "START_1769635930350",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1769635930350",
+                  "code": "END_1769635930350",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "name": "InClause",
+                    "returnType": "string",
+                    "sourceCode": "let inClause = \"\";\n\nconst raw = $context.$nodes.LOOPACCOUNTS.$currentItem;\n\nconst ids = Array.isArray(raw) ? raw.flat(Infinity) : [];\n\nif (ids.length > 0) {\n    inClause = `fusionAccount.id IN (${ids.join(\",\")}) and (productFitStrength='Strong' or ownershipStatus='ORA_ACTIVE')`;\n}\n\nreturn inClause;"
+                  },
+                  "outcomes": {
+                    "success": "1769791422526"
+                  },
+                  "code": "INCLAUSE",
+                  "id": "1769635978408",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_SALESFORCE_ACCOUNTPRODUCTBO",
+                    "functionName": "get_account_products",
+                    "processJson": true,
+                    "name": "CountAccountProducts"
+                  },
+                  "outcomes": {
+                    "success": "1769792016553"
+                  },
+                  "code": "COUNTACCOUNTPRODUCTS",
+                  "id": "1769791422526",
+                  "inputs": [
+                    {
+                      "id": "1769791450778_1",
+                      "name": "p_filter",
+                      "type": "string",
+                      "value": "{{$context.$triggers.REST.$input.action.config.myFilterCriteria}}"
+                    },
+                    {
+                      "id": "1769791450780_2",
+                      "name": "p_where",
+                      "type": "string",
+                      "value": "{{$context.$nodes.LOOPACCOUNTS.INCLAUSE.$output.result}}"
+                    },
+                    {
+                      "id": "1769791450781_3",
+                      "name": "p_order_by",
+                      "type": "string",
+                      "value": "fusionAccount.id"
+                    },
+                    {
+                      "id": "1769791450782_4",
+                      "name": "p_offset",
+                      "type": "integer",
+                      "value": "0"
+                    },
+                    {
+                      "id": "1769791450783_5",
+                      "name": "p_row_count",
+                      "type": "integer",
+                      "value": "10000"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "name": "countProducts",
+                    "returnType": "number",
+                    "sourceCode": "let response =  $context.$nodes.LOOPACCOUNTS.COUNTACCOUNTPRODUCTS.$output;\n\nconst items = response.items || [];\n\nconst count = items.length;\n\nreturn count;"
+                  },
+                  "outcomes": {
+                    "success": "1770241845813"
+                  },
+                  "code": "COUNTPRODUCTS",
+                  "id": "1769792016553",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "name": "IfProductsExist"
+                  },
+                  "outcomes": {
+                    "true": "1769730741535",
+                    "false": "1770242044851"
+                  },
+                  "code": "IFPRODUCTSEXIST",
+                  "convergenceTargetId": "end_1769635930350",
+                  "id": "1770241845813",
+                  "inputs": [
+                    {
+                      "id": "1770241845818_1",
+                      "name": "condition",
+                      "type": "string",
+                      "value": "{{$context.$nodes.LOOPACCOUNTS.COUNTPRODUCTS.$output.result > 0}}"
+                    }
+                  ],
+                  "type": "CONDITION"
+                },
+                {
+                  "metadata": {
+                    "name": "chunkProducts",
+                    "returnType": "object",
+                    "sourceCode": "const batchSize =  $context.$triggers.REST.$input.action.config.productBatchSize;\nconst totalRows = $context.$nodes.LOOPACCOUNTS.COUNTPRODUCTS.$output.result ;\n\nconst collections = [];\nconst totalBatches = Math.ceil(totalRows / batchSize);\n\nfor (let i = 1; i <= totalBatches; i++) {\n  collections.push(i);\n}\n\nreturn collections;"
+                  },
+                  "outcomes": {
+                    "success": "1769730820186"
+                  },
+                  "code": "CHUNKPRODUCTS",
+                  "convergenceTargetId": "1770241897413",
+                  "id": "1769730741535",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "dataPipeline": {
+                      "pipelineNodes": [
+                        {
+                          "metadata": {
+                            "name": "Start",
+                            "description": "Start of data pipeline"
+                          },
+                          "outcomes": {
+                            "success": "1769731059823"
+                          },
+                          "id": "start_1769730820186",
+                          "code": "START_1769730820186",
+                          "type": "START"
+                        },
+                        {
+                          "metadata": {
+                            "name": "End",
+                            "description": "End of data pipeline"
+                          },
+                          "id": "end_1769730820186",
+                          "code": "END_1769730820186",
+                          "type": "END"
+                        },
+                        {
+                          "metadata": {
+                            "name": "GetOffset",
+                            "returnType": "number",
+                            "sourceCode": "const currentItemIndex = $context.$nodes.LOOPACCOUNTS.LOOPPRODUCTS.$currentItemIndex; \nconst batch = $context.$triggers.REST.$input.action.config.productBatchSize;\nconst offset = currentItemIndex * batch;\nreturn offset;"
+                          },
+                          "outcomes": {
+                            "success": "1769636221421"
+                          },
+                          "code": "GETOFFSET",
+                          "id": "1769731059823",
+                          "inputs": [],
+                          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                          "type": "CODE"
+                        },
+                        {
+                          "metadata": {
+                            "businessObjectCode": "ORA_CX_SALESFORCE_ACCOUNTPRODUCTBO",
+                            "functionName": "get_account_products",
+                            "processJson": true,
+                            "name": "GetAccountProductsInBatch"
+                          },
+                          "outcomes": {
+                            "success": "1771019126761"
+                          },
+                          "code": "GETACCOUNTPRODUCTINBATCH",
+                          "convergenceTargetId": "1769731141306",
+                          "id": "1769636221421",
+                          "inputs": [
+                            {
+                              "id": "1769636247574_1",
+                              "name": "p_filter",
+                              "type": "string",
+                              "value": "{{$context.$triggers.REST.$input.action.config.myFilterCriteria}}"
+                            },
+                            {
+                              "id": "1769636247574_2",
+                              "name": "p_where",
+                              "type": "string",
+                              "value": "{{$context.$nodes.LOOPACCOUNTS.INCLAUSE.$output.result}}"
+                            },
+                            {
+                              "id": "1769636247575_3",
+                              "name": "p_order_by",
+                              "type": "string",
+                              "value": "fusionAccount.id,accountProductIdentifier"
+                            },
+                            {
+                              "id": "1769636247575_4",
+                              "name": "p_offset",
+                              "type": "integer",
+                              "value": "{{$context.$nodes.LOOPACCOUNTS.LOOPPRODUCTS.GETOFFSET.$output.result}}"
+                            },
+                            {
+                              "id": "1769636247576_5",
+                              "name": "p_row_count",
+                              "type": "integer",
+                              "value": "{{$context.$triggers.REST.$input.action.config.productBatchSize}}"
+                            }
+                          ],
+                          "outputSpecification": "{}",
+                          "type": "BO_FUNCTION"
+                        },
+                        {
+                          "metadata": {
+                            "name": "LLMProfile"
+                          },
+                          "outcomes": {
+                            "success": "end_1769730820186"
+                          },
+                          "code": "LLMPROFILE",
+                          "id": "1769737673407",
+                          "inputs": [
+                            {
+                              "id": "1769737673409_1",
+                              "name": "prompt",
+                              "type": "string",
+                              "value": "ASK:\n1. Your role is to perform LIGHT ACCOUNT PRODUCT PROFILING for each account product row using data from:\n    {{$context.$nodes.LOOPACCOUNTS.LOOPPRODUCTS.CLEANRESTRESPONSE.$output.result}}\n2. Perform EXPANSION PROFILING for the product where productFitStrength == \"Strong\" using {{$context.$triggers.REST.$input.action.config.expansionFormula}}.\n   NOTE: DO NOT perform EXPANSION profile if the expansion formula {{$context.$triggers.REST.$input.action.config.expansionFormula}} is null or blank.\n3. Perform RISK PROFILING for product where ownershipStatus == \"ORA_ACTIVE\" using {{$context.$triggers.REST.$input.action.config.riskFormula}}.\n   NOTE: DO NOT perform RISK profile if the risk formula {{$context.$triggers.REST.$input.action.config.riskFormula}} is null or blank.\n4. Perform both EXPANSION PROFILING and RISK PROFILING where productFitStrength == \"Strong\" and ownershipStatus == \"ORA_ACTIVE\".\n5. Retain the account product if it satisfies at least one of the following:\n   - It has at least one product with productFitStrength == \"Strong\"\n   - It has at least one product with ownershipStatus == \"ORA_ACTIVE\"\n\n---------------------- DATA SOURCE ----------------------\n1) Input Data Source:\n    {{$context.$nodes.LOOPACCOUNTS.LOOPPRODUCTS.CLEANRESTRESPONSE.$output.result}}\n2) Expansion Scoring Formula:\n   {{$context.$triggers.REST.$input.action.config.expansionFormula}}\n3) Risk Scoring Formula:\n   {{$context.$triggers.REST.$input.action.config.riskFormula}}\n\n---------------------- TERMINOLOGY ----------------------\n- \"Account\" and \"Customer\" mean the same thing.\n- \"registryIdentifier\", \"RegistryId\", \"accountNumber\", and \"PartyNumber\" mean the same thing.\n\n---------------------- WHAT “LIGHT PROFILING” MEANS ----------------------\n- No external data or enrichment.\n- No assumptions beyond provided input.\n- No industry, demographic, or firmographic inference.\n- No advanced modeling.\n- Use only the fields provided in the input.\n- Apply simple heuristics at the PRODUCT level.\n\n---------------------- LIGHT PROFILING RULES ----------------------\n- EXPANSION SCORING:\n  - Score products only if productFitStrength == \"Strong\".\n  - Use the following formula to calculate expansion score -> {{$context.$triggers.REST.$input.action.config.expansionFormula}} \n  - Products not meeting this condition must not be scored for expansion.\n- RISK SCORING:\n  - Score products only if ownershipStatus == \"ORA_ACTIVE\".\n  - Use the following formula to calculate risk score -> {{$context.$triggers.REST.$input.action.config.riskFormula}}\n  - Products not meeting this condition must not be scored for risk.\n- When scoring a product, consider the account’s other products to build reasoning.\n\n---------------------- SCORING LOGIC ----------------------\n1. Group products by account.\n2. Include an account product row if it has at least one product that meets at least one inclusion criterion:\n   - productFitStrength == \"Strong\"\n   - ownershipStatus == \"ORA_ACTIVE\"\n3. For each product that meets at least one inclusion criterion:\n   - Compute expansionScore (0–100) ONLY if productFitStrength == \"Strong\"\n     using {{$context.$triggers.REST.$input.action.config.expansionFormula}}.\n   - Compute riskScore (0–100) ONLY if ownershipStatus == \"ORA_ACTIVE\"\n     using {{$context.$triggers.REST.$input.action.config.riskFormula}}.\n   NOTE: Truncate all decimal numbers to exactly 2 digits after the decimal point. Do not round.\n4. Products that do not meet any inclusion criteria:\n   - Must not be scored\n   - Must not affect account inclusion\n\n\n---------------------- OUTPUT INSTRUCTIONS ----------------------\n1. Exclude any product if productId is null or empty.\n2. Do NOT insert any default placeholders.\n3. Summaries must be natural, clear, and actionable.\n4. Strictly return ONLY the JSON structure below. Do not include any additional text.\n\n---------------------- FINAL MERGED OUTPUT JSON STRUCTURE (STRICT) ----------------------\n{\n  \"accountProductProfiles\": {\n    \"items\": [\n      {\n        \"accountProductIdentifier\": \"<from accountProductIdentifier>\",\n        \"accountName\": \"<from accountUniqueName>\",\n        \"registryIdentifier\": \"<from registryIdentifier>\",\n        \"accountId\": \"<from accountId>\",\n        \"productFitStrength\" :\"<from productFitStrength>\",\n        \"ownershipStatus\" :\"<from ownershipStatus>\",\n        \"annualRecurringRevenue\": \"<from annualRecurringRevenue>\",\n        \"currencyCode\": \"<from currencyCode>\",\n        \"renewalDate\": \"<from renewalDate>\",\n        \"expansionScore\": \"<expansion score for this product>\",\n        \"expansionSummary\": \"<2-3 line expansion summary highlighting growth opportunities for this product>\",\n        \"riskScore\": \"<risk score for risk product>\",\n        \"riskSummary\": \"<2-3 line risk summary highlighting risk factors for this product>\",\n        \"productName\": \"<from productName>\",\n        \"engagementTrend\":\"<from engagementTrend>\"\n      }\n    ]\n  }\n}"
+                            }
+                          ],
+                          "type": "LLM"
+                        },
+                        {
+                          "metadata": {
+                            "name": "CleanRESTResponse",
+                            "returnType": "object",
+                            "sourceCode": "const raw =  $context.$nodes.LOOPACCOUNTS.LOOPPRODUCTS.GETACCOUNTPRODUCTINBATCH.$output;\n\nconst data = (typeof raw === \"string\") ? JSON.parse(raw) : raw;\n\nconst products =\n    Array.isArray(data) ? data :\n    Array.isArray(data?.items) ? data.items :\n    Array.isArray(data?.response?.items) ? data.response.items :\n    Array.isArray(data?.response?.response?.items) ? data.response.response.items : [];\n\nconst output = {\n  items: products.map(p => ({\n    accountId: p.fusionAccount?.id ?? null,\n    registryIdentifier: p.registryIdentifier ?? null,\n    accountName: p.accountUniqueName ?? p.accountName ?? null,\n    accountProductIdentifier: p.accountProductIdentifier ?? null,\n    productName: p.productName ?? null,\n    productType: p.productType ?? null,\n    engagementTrend: p.engagementTrend ?? null,\n    annualRecurringRevenue: p.annualRecurringRevenue ?? null,\n    currencyCode: p.currencyCode ?? null,\n    renewalDate: p.renewalDate ?? null,\n    usageLevel: p.usageLevel ?? null,\n    openPriorityOne: p.openPriorityOne ?? null,\n    investmentAmount: p.investmentAmount ?? null,\n    investmentTenure: p.investmentTenure ?? null,\n    ownershipStatus: p.ownershipStatus ?? null,\n    totalPriorityOneLastSixMonths: p.totalPriorityOneLastSixMonths ?? null,\n    implementationStage: p.implementationStage ?? null,\n    qualityImpression: p.qualityImpression ?? null,\n    systemStability: p.systemStability ?? null,\n    productFitStrength: p.productFitStrength ?? null,\n    explainer: p.explainer ?? null,\n    potentialRevenueAmount: p.potentialRevenueAmount ?? null,\n    buyingGroupExists: p.buyingGroupExists ?? null\n}))\n};\n\nreturn output;"
+                          },
+                          "outcomes": {
+                            "success": "1769737673407"
+                          },
+                          "code": "CLEANRESTRESPONSE",
+                          "id": "1771019126761",
+                          "inputs": [],
+                          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                          "type": "CODE"
+                        }
+                      ],
+                      "rootNode": "start_1769730820186"
+                    },
+                    "loopType": "PARALLEL",
+                    "name": "LoopProducts"
+                  },
+                  "outcomes": {
+                    "success": "1769820222855"
+                  },
+                  "code": "LOOPPRODUCTS",
+                  "id": "1769730820186",
+                  "inputs": [
+                    {
+                      "id": "1769730820186_1",
+                      "name": "collection",
+                      "type": "string",
+                      "value": "{{$context.$nodes.LOOPACCOUNTS.CHUNKPRODUCTS.$output.result}}"
+                    }
+                  ],
+                  "type": "LOOP",
+                  "convergenceTargetId": "1770241897413"
+                },
+                {
+                  "metadata": {
+                    "modelConfiguration": {
+                      "modelProperties": {
+                        "k": 0,
+                        "max_completion_tokens": 32000,
+                        "reasoning_effort": "low"
+                      },
+                      "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+                      "model": "OCI_GPT_5_MINI",
+                      "modelName": "GPT-5 mini",
+                      "provider": "CERT_PREMIUM"
+                    },
+                    "name": "AccountLevelGroup"
+                  },
+                  "outcomes": {
+                    "success": "end_1769635930350"
+                  },
+                  "code": "ACCOUNTLEVELGROUP",
+                  "convergenceTargetId": "1770241897413",
+                  "id": "1769820222855",
+                  "inputs": [
+                    {
+                      "id": "1769820222856_1",
+                      "name": "prompt",
+                      "type": "string",
+                      "value": "ROLE:\nYou are an enterprise-grade data aggregation and account profiling assistant.\n\nINPUT:\nThe input dataset is provided from: \n {{$context.$nodes.LOOPACCOUNTS.LOOPPRODUCTS.$output}}\n\nThis input contains multiple objects, each of which may include accountProductProfiles.items representing product-level profiles.\n\nEach product item may contain:\n- accountId\n- accountName\n- registryIdentifier\n- productName\n- annualRecurringRevenue\n- renewalDate\n- expansionScore\n- expansionSummary\n- riskScore\n- riskSummary\n\nSome fields may be null, empty strings, or numeric strings.\n\nOBJECTIVE:\nTransform the product-level dataset into UNIQUE account-level profiles by aggregating,\nranking, and synthesizing insights across all products for each account.\n\nPROCESSING STEPS (FOLLOW STRICTLY):\n\nSTEP 1 — DATA EXTRACTION & GROUPING\n- Extract all accountProductProfiles.items from  {{$context.$nodes.LOOPACCOUNTS.LOOPPRODUCTS.$output}}\n- Flatten all items into a single collection.\n- Group the collection by accountId.\n- Each group represents one unique account.\n\nSTEP 2 — IDENTIFY TOP 5 EXPANSION PRODUCTS\n- Identify products with valid numeric expansionScore.\n- Sort them in descending order by expansionScore.\n- Select the TOP 5 products.\n- If fewer than 5 qualifying products exist, include all.\n- Prepare output as a child json structure\n   expansionProducts: {\n    items[\n        {\n        \"productName\":\"{from input dataset}\",\n        \"expansionScore\":\"{from input dataset}\",\n        \"expansionSummary\":\"{from input dataset}\"\n        }\n    ]\n  }\n\nSTEP 3 — IDENTIFY TOP 5 RISK PRODUCTS\n- Identify products with valid numeric riskScore.\n- Sort them in descending order by riskScore (highest risk first).\n- Select the TOP 5 products.\n- If fewer than 5 qualifying products exist, include all.\n- Prepare output as a child json structure\n   riskProducts: {\n    items[\n        {\n        \"productName\":\"{from input dataset}\",\n        \"riskScore\":\"{from input dataset}\",\n        \"riskSummary\":\"{from input dataset}\"\n        }\n    ]\n   }   \n\nSTEP 4 — ACCOUNT-LEVEL AGGREGATIONS\n- annualRecurringRevenue:\n  SUM of all valid numeric annualRecurringRevenue values in the account group (not just top 5).\n- renewalDate:\n  Earliest (minimum) valid renewalDate across all products in the account group (not just top 5).\n- registryIdentifier:\n  Any consistent registryIdentifier value within the account group.\n- accountName:\n  Any consistent accountName value within the account group.\n\nSTEP 5 — ACCOUNT URL CONSTRUCTION\nGenerate accountUrl by STRICT TEMPLATE SUBSTITUTION.\nUse this EXACT URL template:\n<a id=\\\"cx-hyperlink-{registryIdentifier}\\\" href=\\\"javascript:void(0)\\\" data-resourcename=\\\"accounts\\\" data-primarykey=\\\"{accountId}\\\" data-selflinkkey=\\\"{registryIdentifier}\\\">{accountName}</a>\nRULES:\n- Perform placeholder substitution ONLY\n- accountName MUST be inserted verbatim\n- Escape ALL double quotes using \\\"\n- NEVER truncate the template\n- The closing </a> tag is MANDATORY\n- Output MUST be valid html anchor tag link.\n- If registryIdentifier OR accountName is null → return null\n\nDATA NORMALIZATION RULES:\n- Treat empty strings (\"\") as null.\n- Convert numeric strings to numbers.\n- Ignore invalid or missing values.\n- Do NOT infer or fabricate data.\n- Do NOT duplicate accounts.\n- Round expansionScore and riskScore to 2 digits only (example 76.23 and not 76.2332459)\n\nFINAL OUTPUT:\nSTRICTLY Return a VALID JSON object with the following structure:\n{\n  \"AccountProfile\": {\n    \"items\": [\n      {\n        \"accountId\": \"<accountId>\",\n        \"registryIdentifier\": \"<registryIdentifier>\",\n        \"accountName\": \"<accountName>\",\n        \"accountUrl\": \"<from Step 5>\",\n        \"annualRecurringRevenue\": \"<from step 4 aggregations SUM (annualRecurringRevenue)>\",\n        \"renewalDate\": \"<from step 4 EARLIEST renewalDate>\",\n        \"expansionProducts\": {\n          \"items\": [\n            {\n              \"productName\": \"\",\n              \"expansionScore\": \"\",\n              \"expansionSummary\": \"\"\n            }\n          ]\n        },\n        \"riskProducts\": {\n          \"items\": [\n            {\n              \"productName\": \"\",\n              \"riskScore\": \"\",\n              \"riskSummary\": \"\"\n            }\n          ]\n        },\n        \"engagementTrend\": \"<aggregate all product (not just top 5) engagement signals into one of these four values: Up, Down, Stable, or High. If no engagement data exists for any product, return null.>\"\n      }\n    ]\n  }\n}\n\nOUTPUT CONSTRAINTS:\n- Output ONLY the final JSON object.\n- One item per unique accountId.\n- No explanatory or narrative text outside the JSON.\n- Ensure the output is strictly valid JSON."
+                    }
+                  ],
+                  "type": "LLM"
+                },
+                {
+                  "metadata": {
+                    "name": "ReturnBlankJson",
+                    "returnType": "object",
+                    "sourceCode": "const blankAccountProfile = {\n  AccountProfile: {\n    items: [\n      {\n        accountId: \"\",\n        registryIdentifier: \"\",\n        accountName: \"\",\n        annualRecurringRevenue: \"\",\n        renewalDate: \"\",\n        expansionScore: \"\",\n        expansionSummary: \"\",\n        riskScore: \"\",\n        riskSummary: \"\",\n        expansionProducts: \"\",\n        riskProducts: \"\",\n        engagementTrend: null \n      }\n    ]\n  }\n};\n\nreturn blankAccountProfile;"
+                  },
+                  "outcomes": {
+                    "success": "end_1769635930350"
+                  },
+                  "code": "RETURNBLANKJSON",
+                  "id": "1770242044851",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                }
+              ],
+              "rootNode": "start_1769635930350"
+            },
+            "loopType": "PARALLEL",
+            "name": "LoopAccounts"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "LOOPACCOUNTS",
+          "id": "1769635930350",
+          "inputs": [
+            {
+              "id": "1769635930351_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$nodes.CHUNKACCOUNTIDS.$output.result}}"
+            }
+          ],
+          "type": "LOOP"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {},
+      "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+      "model": "OCI_GPT_5_MINI",
+      "modelName": "GPT-5 mini",
+      "provider": "CERT_PREMIUM"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1771630616702",
+            "name": "action",
+            "scope": "JOB",
+            "type": "object"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "SALES_FORCE_AUTOMATION",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "seededRoles": [
+    {
+      "role": "ORA_ZBS_SALES_ADMINISTRATOR_JOB",
+      "id": "100002355227342"
+    },
+    {
+      "role": "ORA_ZBS_SALES_MANAGER_JOB",
+      "id": "100002355227343"
+    },
+    {
+      "role": "ORA_ZBS_SALES_REPRESENTATIVE_JOB",
+      "id": "100002355227344"
+    },
+    {
+      "role": "ORA_ZBS_SALES_VP_JOB",
+      "id": "100002355227345"
+    }
+  ],
+  "header": {
+    "ETag": "\"2\""
+  }
+}

@@ -1,0 +1,760 @@
+{
+  "workflowId": "300000327004222",
+  "workflowCode": "ORA_HCM_HRL_MANAGER_CONCIERGE_ABSENCE_INSIGHTS",
+  "name": "Manager Concierge - Absence Insights",
+  "description": "Displays leave and absence information for the manager's team, including upcoming time off, balance summaries, absence trends, and pending absence requests.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1763814119280"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "SetContextAndReponseDetails"
+          },
+          "outcomes": {
+            "success": "1764960311098"
+          },
+          "code": "SETCONTEXTANDRESPONSEDETAILS",
+          "id": "1770383801892",
+          "inputs": [
+            {
+              "id": "1770784568486",
+              "name": "responseDetails",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.MAPTEAMDETAILSRESPONSE.$output.result.responseDetails}}"
+            },
+            {
+              "id": "1770383807187",
+              "name": "contextDetails",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.MAPTEAMDETAILSRESPONSE.$output.result.contextDetails}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "SwitchUserMessageHint"
+          },
+          "outcomes": {
+            "ACTION": "1764961365905",
+            "default": "1764960467761",
+            "INIT": "1764963283999",
+            "COMM": "1764963585519"
+          },
+          "code": "SWITCHUSERMESSAGEHINT",
+          "convergenceTargetId": "end",
+          "id": "1764960311098",
+          "inputs": [
+            {
+              "id": "1764960311101_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$variables.userMessageHint}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "SwitchInvokeAction"
+          },
+          "outcomes": {
+            "sendTeamIntroduction": "add_sendTeamIntroduction_1764961365905",
+            "default": "add_default_1764961365905"
+          },
+          "code": "SWITCHINVOKEACTION",
+          "convergenceTargetId": "end",
+          "id": "1764961365905",
+          "inputs": [
+            {
+              "id": "1764961365908_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$variables.userMessageHint}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "description": "Add node for default case branch",
+            "name": "Add (default Case)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_default_1764961365905",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MESSAGES_LIST",
+                "ORA_LAYOUT_CHANGE_LIST",
+                "ORA_LAYOUT_CHART",
+                "ORA_LAYOUT_RECORD",
+                "ORA_LAYOUT_MULTIRECORD",
+                "ORA_LAYOUT_SANKEY",
+                "ORA_LAYOUT_CARD"
+              ],
+              "enableActions": true,
+              "enableCommunications": true,
+              "customNotes": "- show currency and number values right aligned.\n- show badgeText in sentence case unless specified otherwise."
+            }
+          },
+          "metadata": {
+            "name": "ShowQueryResponse"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SHOWQUERYRESPONSE",
+          "id": "1764960467761",
+          "inputs": [
+            {
+              "id": "1764960467763_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "**Inputs**  \n- **Query Response:** `{{$context.$variables.responseDetails}}`\n- **Context Details:** `{{$context.$variables.contextDetails }}`\n- **Action Details:** `{{$context.$variables.actionDetails}}`\n- **Communication Details:** `{{$context.$variables.communicationDetails}}`\n- **Login user (email sender):** `{{$context.$user.$name}}`\n\n---\n### **Tasks**\n\n1. **Display the Query Response, summarized and aligned with the Inbound Context Details and User Request:**\n    - Show a summary at the top, highlighting the most relevant context for the user request.\n    - Do **not** include JSON output, action details, actionable insights, or priority actions in the user-facing response text.\n    - Do **not** display `personId` or `assignmentId` in the response text.\n    - Repcounts: x - y in response indicate that employee has x number of Direct reportees and y number of Total reportees.\n\n2. **Using only from available Action Details (actionCode, actionCondition) aligned with User Request, Inbound Context Details and the Query Response:**  \n   - Provide priority actionable insights (ranked by priority, relevance) in below sample format\n{\n  \"title\": \"Suggestion: turn off lights\",\n  \"shortDescription\": \"No one was detected in the house, suggest you turn off the lights.\",\n  \"actionText\": \"Turn Off Lights\",\n  \"followUpCommand\": \"ora.Agent(<actionCode>, <actionTitle>, <actionText>, <actionPurpose>)\",\n  \"priority\":\"false\"\n}\n - Include actions along with widgets only if relevant else show separately as action items. \n - consider actions based on actionCondition  \n - use actionCode, actionTitle, actionText, actionPurpose available only from the **Action Details**\n\n4)  **Using only the available Communication Details (commCondition) aligned with User Request, Inbound Context Details and the Query Response:**  \n   - produce an agent-generated email or text alert based on commType.\n     ```json for email type\n     {\n       \"title\": \"<title based on commPurpose or commCode>\",\n       \"shortDescription\": \"<one-line description using commPurpose>\",\n       \"actionText\": \"Send email\",\n       \"type\": \"email\",\n       \"content\": \"<full email body derived from commPrompt; include salutation and closing and sign with {{$context.$user.$name}}>\",\n       \"params\": [\n         { \"id\": \"email\", \"title\": \"email address\", \"defaultValue\": \"\" },\n         { \"id\": \"subject\", \"title\": \"email subject\", \"defaultValue\": \"<short subject derived from commPurpose>\" }\n       ]\n     }\n     ```\n\n     ```json for text type\n     {\n       \"title\": \"<title based on commPurpose or commCode>\",\n       \"shortDescription\": \"<one-line description using commPurpose>\",\n       \"actionText\": \"Alert\",\n       \"type\": \"text\",\n       \"content\": \"<full alert text derived from commPurpose or commPrompt;>\",\n       \"params\": [\n         { \"id\": \"<id>\", \"title\": \"<short subject derived from commPurpose or commPrompt>\", \n           \"defaultValue\": \"<short subject derived from commPurpose or commPrompt>\" }\n       ]\n     }\n     ```\n   - For mail type Do not fabricate recipients; leave the recipient param empty if unknown.\n   - Present communications as low-priority actionable insights (ranked below priority actions).\n   - Output agent-generated communications using the oraComms wrapper (escape tags). Example:  \n     `<oraComms> { ...communication JSON... } </oraComms>`\n\n---\n\n**User Request:**  \nCurrent prompt: `{{$context.$variables.userPrompt}}`  \nChat history: `{{$context.$system.$chatHistory}}`"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "SwitchInitHint"
+          },
+          "outcomes": {
+            "InitDisplay": "1764964773689",
+            "Summary": "1764964809691",
+            "InitActions": "1764964858996",
+            "InitSubtitle": "1765268322427",
+            "AdditionalContent": "1766408484299"
+          },
+          "code": "SWITCHINITHINT",
+          "convergenceTargetId": "end",
+          "id": "1764963283999",
+          "inputs": [
+            {
+              "id": "1764963284001_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$app.$OraMessageHint}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_CARD",
+                "ORA_LAYOUT_MESSAGES_LIST",
+                "ORA_LAYOUT_CHANGE_LIST",
+                "ORA_LAYOUT_CHART",
+                "ORA_LAYOUT_RECORD",
+                "ORA_LAYOUT_MULTIRECORD",
+                "ORA_LAYOUT_SANKEY"
+              ],
+              "enableActions": true,
+              "enableCommunications": true,
+              "customNotes": "- show currency and number values right aligned.\n- show badgeText in sentence case unless specified otherwise."
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "ShowInitDisplay"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SHOWINITDISPLAY",
+          "id": "1764964773689",
+          "inputs": [
+            {
+              "id": "1764964773691_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "**Inputs**  \n- **Query Response:** `{{$context.$variables.responseDetails}}`\n- **Context Details:** `{{$context.$variables.contextDetails }}`\n\n---\n### **Tasks**\n\n1. **Present the Query Response**\n   - Do **not** display or reference actionable insights or priority actions.\n   - Do **not** include `personId` or `assignmentId` fields in the user-visible response text.\n\n\n---\n**User Request:**  \nCurrent prompt: `{{$context.$variables.userPrompt}}`  \nChat history: `{{$context.$system.$chatHistory}}`"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "ShowInitSummary"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SHOWINITSUMMARY",
+          "id": "1764964809691",
+          "inputs": [
+            {
+              "id": "1764964809693_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "**Inputs**  \n- **Query Response:** `{{$context.$variables.responseDetails}}`\n- **Context Details:** `{{$context.$variables.contextDetails }}`\n\n---\n### **Task Requirements**\n\n1. Generate a concise summary of the Query Response aligning with available Inbound Context Details in **no more than 250 words**. \n- Do not include details regarding actionable insights or priority actions in the response.\n- Do not include `personId`, `assignmentId' in the response text.\n---\n\n**User Request:**  \nCurrent prompt : `{{$context.$variables.userPrompt}}`\nChat history : `{{$context.$system.$chatHistory}}`"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [],
+              "actionsPrompt": "<actionable_insights_feature>  <overview> Actionable insights are pre-defined actions a user can perform. They are generated only when specific conditions, outlined in your prompting, are met.  The final output for an actionable insight must be the <oraInsight> XML element containing its JSON payload, with no additional wrapping or formatting around the insight itself.  You must not make up things that you cannot do. You must follow your prompting and only send actionable insights that are explicitly asked by your prompting to send. </overview>  <json_schema> {   \"$schema\": \"http://json-schema.org/draft-07/schema#\",   \"type\": \"object\",   \"properties\": {     \"title\": {       \"type\": \"string\",       \"description\": \"The main title of the notification. Must be a concise phrase, under 10 words.\"     },     \"shortDescription\": {       \"type\": \"string\",       \"description\": \"A brief description of the notification, written as a single, complete sentence.\"     },     \"actionText\": {       \"type\": \"string\",       \"description\": \"The text to display on the action button.\"     },     \"followUpCommand\": {       \"type\": \"string\",       \"description\": \"A command string to be executed. Must follow one of three standardized formats: ora.App.*(params), ora.Agent(content), or ora.URL(url). The exact content will be specified by the prompting instructions.\"     },     \"priority\": {       \"type\": \"boolean\",       \"description\": \"Optional. Controls whether this action should be prioritized in the display. If undefined or false, the action will not be prioritized. Only when set to true will the action be prioritized. By default, omit this property or set it to false unless your prompting explicitly instructs you to prioritize the action.\"     }   },   \"required\": [\"title\", \"shortDescription\", \"actionText\", \"followUpCommand\"],   \"additionalProperties\": false } </json_schema>  <command_instructions> The followUpCommand property contains the action to be performed and MUST follow one of these three standardized formats:  1. **ora.App.functionname(params)** - For application-level commands    - Can be called with or without parameters    - Parameters can be strings, numbers, booleans, JSON objects, or other valid types    - Example: `ora.App.update()`    - Example: `ora.App.navigate(\"settings\")`    - Example: `ora.App.setConfig({\"theme\": \"dark\", \"notifications\": true})`    - Example: `ora.App.processData(123, \"high-priority\")`  2. **ora.Agent(content)** - For LLM/agent commands    - Content can be a string, JSON object, or any other format as specified by your prompting    - Example: `ora.Agent(\"turn off the lights\")`    - Example: `ora.Agent({\"command\": \"lights.off\", \"rooms\": [\"bedroom\", \"kitchen\"]})`    - Example: `ora.Agent(\"summarize my emails\")`  3. **ora.URL(url)** - For navigation to URLs    - Example: `ora.URL(\\\"https://example.com/support\\\")`    - Example: `ora.URL(\\\"https://docs.example.com\\\")`  Your additional prompting will specify the exact value to use for the followUpCommand property. You MUST use this value verbatim, copying it exactly as it is written without any modifications, corrections, or alterations of any kind. </command_instructions>  <examples> <example> <description>An actionable insight that lets the user know that they should turn off the lights (using ora.Agent with JSON format):</description> <code><![CDATA[<oraInsight> {   \"title\": \"Suggestion: turn off lights\",   \"shortDescription\": \"No one was detected in the house, suggest you turn off the lights.\",   \"actionText\": \"Turn Off Lights\",   \"followUpCommand\": \"ora.Agent({\\\"command\\\": \\\"lights.off\\\", \\\"zones\\\": [\\\"all\\\"]})\" } </oraInsight>]]></code> </example>  <example> <description>An actionable insight notifying the user about a software update (using ora.App with no parameters):</description> <code><![CDATA[<oraInsight> {   \"title\": \"Software Update Available\",   \"shortDescription\": \"A new version of the application is ready to install.\",   \"actionText\": \"Install Now\",   \"followUpCommand\": \"ora.App.update()\" } </oraInsight>]]></code> </example>  <example> <description>An actionable insight suggesting the user visit a support page (using ora.URL format):</description> <code><![CDATA[<oraInsight> {   \"title\": \"Billing Issue Detected\",   \"shortDescription\": \"There seems to be an issue with your recent payment.\",   \"actionText\": \"Visit Support Page\",   \"followUpCommand\": \"ora.URL(\\\"https://example.com/support/billing\\\")\" } </oraInsight>]]></code> </example>  <example> <description>An actionable insight for opening a specific document (using ora.App with parameters):</description> <code><![CDATA[<oraInsight> {   \"title\": \"Document Ready for Review\",   \"shortDescription\": \"Your quarterly report has been generated and is ready for review.\",   \"actionText\": \"Open Document\",   \"followUpCommand\": \"ora.App.openDocument(\\\"Q4-2024-report.pdf\\\", {\\\"mode\\\": \\\"edit\\\"})\" } </oraInsight>]]></code> </example>  <example> <description>An actionable insight using ora.Agent with a simple string command:</description> <code><![CDATA[<oraInsight> {   \"title\": \"Schedule Reminder\",   \"shortDescription\": \"You have a meeting in 15 minutes.\",   \"actionText\": \"Show Details\",   \"followUpCommand\": \"ora.Agent(\\\"show my next meeting details\\\")\" } </oraInsight>]]></code> </example>  <example> <description>A prioritized actionable insight (using the priority field):</description> <code><![CDATA[<oraInsight> {   \"title\": \"Critical Security Alert\",   \"shortDescription\": \"Unusual login activity detected on your account.\",   \"actionText\": \"Review Activity\",   \"followUpCommand\": \"ora.Invoke(\\\"openSecurityCenter\\\")\",   \"priority\": true } </oraInsight>]]></code> </example>  <example> <description>A non-prioritized actionable insight (priority explicitly set to false):</description> <code><![CDATA[<oraInsight> {   \"title\": \"Suggestion: Update Profile\",   \"shortDescription\": \"Your profile information hasn't been updated in a while.\",   \"actionText\": \"Update Now\",   \"followUpCommand\": \"ora.Invoke(\\\"someCommand\\\")\",   \"priority\": false } </oraInsight>]]></code> </example> </examples>  <output_contract_and_rules> <rule id=\"followUpCommand_format_contract\"> The followUpCommand property has strict format requirements:  1. **EXACTLY ONE OF THREE FORMATS:** The value MUST use exactly one of these formats:    - `ora.App.functionname()` or `ora.App.functionname(params)` for application commands    - `ora.Agent(content)` for agent/LLM commands    - `ora.URL(url)` for navigation    - `ora.Invoke()` for running generic actions  2. **NO RAW VALUES:** The followUpCommand must NEVER be a raw command, raw function call, or raw URL. It must ALWAYS be wrapped in one of the three ora.* formats.  3. **PROPER ESCAPING:** When parameters contain strings or JSON:    - String parameters must be enclosed in escaped double quotes: `\\\"`    - JSON content must have quotes properly escaped    - **Correct:** `ora.Agent(\"turn on lights\")`    - **Correct:** `ora.Agent({\\\"command\\\": \\\"lights.on\\\"})`    - **Correct:** `ora.App.navigate(\"home\")`    - **Incorrect:** `ora.Invoke('turnOnlights')`    - **Incorrect:** `ora.Agent(turnOffLights)`  4. **FLEXIBLE PARAMETERS:**     - ora.App functions can accept zero or more parameters of any type    - ora.Agent can accept a string, JSON object, or other content as specified by prompting instructions    - ora.URL accepts a single URL string parameter  5. **VERBATIM USAGE:** When your prompting instructions specify a followUpCommand value, you MUST use it exactly as provided without any modifications.  6. **SEPARATION OF CONCERNS:** The user-visible, clickable text is handled *exclusively* by the `actionText` property. The command/destination is handled *exclusively* by the `followUpCommand` property. These two values must never be mixed or combined. </rule>  <rule id=\"self_correction_check\"> MANDATORY FINAL CHECK: Before providing your final response, you MUST perform this self-correction step: 1. Examine the value you are about to output for the followUpCommand property. 2. Ask yourself: \"Does this value start with 'ora.App.', 'ora.Agent(', or 'ora.URL('?\" 3. If the answer is NO, your output is INVALID. You must fix it by wrapping the value in the appropriate ora.* format. 4. Verify that all string content within parameters is properly escaped with `\\\"` characters. 5. For ora.Agent(), ensure the content format (string, JSON, etc.) matches what was specified in your prompting instructions. </rule>  <rule id=\"priority_field_usage\"> PRIORITY FIELD BEHAVIOR AND USAGE: 1. **Display Behavior:** If the priority property is undefined or set to false, the action will not be prioritized in the display. Only when set to true will the action be prioritized.  2. **Default Behavior:** By default, you should omit the priority property or set it to false unless your prompting explicitly instructs you to prioritize the action.  3. **When to Set to True:** Only set priority to true when:    - Your prompting explicitly instructs you to prioritize this specific action    - The action is time-sensitive or critical (and your prompting indicates this should be prioritized)    - The user explicitly requests priority for the action  4. **When to Omit or Set to False:** In all other cases, either omit the priority property entirely or explicitly set it to false. </rule>  </output_contract_and_rules>  <important_notes>  Output Formatting: Each actionable insight MUST be output as a raw <oraInsight> XML element. Do not wrap insights in markdown code blocks, CDATA sections, or other formatting. Actionable insights can be included alongside regular conversational text in your response - simply output your normal text, then append the <oraInsight> elements.   Text Content: Unless otherwise specified in your instructions, the tone for all user-visible text (title, shortDescription, actionText) must be professional and direct.  Duplicate Prevention: Avoid sending an actionable insight if the value of its followUpCommand property is a character-for-character identical match to one already sent in the current conversation. The calling application is responsible for providing an accurate history of commands used in the current session. </important_notes>  <generation_rules> <rule id=\"positive_condition\"> You MUST only generate an actionable insight if your additional prompting explicitly instructs you to do so. </rule> <rule id=\"negative_condition\"> If the conditions for generating an actionable insight are NOT met, you MUST return a completely empty response. You MUST NOT output any text, including phrases like \"No action required,\" \"No actions available,\" or any other explanatory sentence. Your entire response body must be empty. </rule> </generation_rules>  </actionable_insights_feature>",
+              "enableActions": true,
+              "communicationsPrompt": "",
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "ShowInitActions"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SHOWINITACTIONS",
+          "id": "1764964858996",
+          "inputs": [
+            {
+              "id": "1764964858997_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "**Inputs**  \n- **Query Response:** `{{$context.$variables.responseDetails}}`\n- **Context Details:** `{{$context.$variables.contextDetails }}`\n- **Action Details :** `{{$context.$variables.actionDetails}}`  \n\n---\n\n### **Tasks**\n1. **Using only from available Action Details (actionCode, actionCondition) aligned with User Request, Inbound Context Details and the Query Response:**  \n   - Provide priority actionable insights (ranked by priority, relevance) in below sample format\n{\n  \"title\": \"Suggestion: turn off lights\",\n  \"shortDescription\": \"No one was detected in the house, suggest you turn off the lights.\",\n  \"actionText\": \"Turn Off Lights\",\n  \"followUpCommand\": \"ora.Agent(<actionCode>, <actionTitle>, <actionText>, <actionPurpose>)\",\n  \"priority\":\"false\"\n}\n - Include actions along with widgets only if relevant else show separately as action items. \n - consider actions based on actionCondition  \n - use actionCode, actionTitle, actionText, actionPurpose available only from the **Action Details**\n\n---\n\n**User Request:**  \nCurrent prompt : `{{$context.$variables.userPrompt}}`\nChat history : `{{$context.$system.$chatHistory}}`"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "GenerateSubTitle"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "GENERATESUBTITLE",
+          "id": "1765268322427",
+          "inputs": [
+            {
+              "id": "1765268322428_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "just show the employee name `{{$context.$app.$OraUserContext.fullName}}` for subtitle.\nDo not include explanations, alternatives, or any other text — output only the subtitle itself."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_CARD",
+                "ORA_LAYOUT_MESSAGES_LIST",
+                "ORA_LAYOUT_CHANGE_LIST",
+                "ORA_LAYOUT_CHART",
+                "ORA_LAYOUT_RECORD",
+                "ORA_LAYOUT_MULTIRECORD",
+                "ORA_LAYOUT_SANKEY"
+              ],
+              "enableActions": true,
+              "enableCommunications": false,
+              "customNotes": "- identify appropriate widget based on data to be shown \n- show currency and number values right aligned.\n- when showing person name always include \"Image\": <Generate Person image using PersonId>\n- if text contain HTML tags show output with heading, unordered or ordered list (do not show HTML tags directly)"
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "GenerateAdditionalContent"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "GENERATEADDITIONALCONTENT",
+          "id": "1766408484299",
+          "inputs": [
+            {
+              "id": "1766408484302_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "**Inputs**  \n- **Query Response:** `{{$context.$variables.responseDetails}}`\n- **Context Details:** `{{$context.$variables.contextDetails }}`\n\n---\n### **Tasks**\n1. **Display the Query Response and/or Inbound context details based on user request**\n- Do not include details regarding actionable insights or priority actions in the response.\n- Do not include `personId`, `assignmentId' in the response text.\n\n2. **If the Query Response contains a `PersonId`:**  \n   - For each worker referenced, generate an action in the exact format as shown below, replacing each placeholder with actual values:\n     ```\n     ora.App.launch(CATESTP, <PersonId>-<AssignmentId>-<PersonDisplayName>)\n     ```\n   - Substitute `<PersonId>`, `<AssignmentId>`, and `<PersonDisplayName>` with the actual person's ID, assignment ID, and display name, respectively. Actions should be included in the output payload and not displayed in the plain response text.\n---\n\n**User Request:**  \nCurrent prompt : `{{$context.$variables.userPrompt}}`\nChat history : `{{$context.$system.$chatHistory}}`"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "SwitchCommHint"
+          },
+          "outcomes": {
+            "FillParameters": "1764963799576",
+            "GenerateTemplateContent": "1764964030386",
+            "SendCommunication": "add_SendCommunication_1764963585519",
+            "InitCommunications": "1764963747386"
+          },
+          "code": "SWITCHCOMMHINT",
+          "convergenceTargetId": "end",
+          "id": "1764963585519",
+          "inputs": [
+            {
+              "id": "1764963585522_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$app.$OraMessageHint}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [],
+              "enableActions": false,
+              "enableCommunications": true
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "FillParameters"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FILLPARAMETERS",
+          "id": "1764963799576",
+          "inputs": [
+            {
+              "id": "1764963799578_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Data: `{{$context.$variables.responseDetails}}`\nUser Request : {{$context.$variables.userPrompt}}\nChat History : {{$context.$system.$chatHistory}}\n\nFill the parameters in {{$context.$app.$OraCommParamsToFill}} with Data based on user request."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [],
+              "actionsPrompt": "",
+              "enableActions": false,
+              "communicationsPrompt": "",
+              "enableCommunications": false,
+              "configurationPrompt": ""
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "GenerateTemplateContent"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "GENERATETEMPLATECONTENT",
+          "id": "1764964030386",
+          "inputs": [
+            {
+              "id": "1764964030388_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Using the data from:  {{$context.$app.$OraCommTemplateParamList}}, \n\nproduce text with the following rules:\nto welcome employees who are new joiners\nFor listOfNewEmployeeNames,  use for addressing new joiners with names\nFor welcomeMessage, provide the text verbatim.\n\ngeneral rules\nProvide all formatting as HTML (including line breaks, bullets, etc). Do not include ```html``` markers around the HTML content.\nThe tone should be professional, polite, and reassuring. You may use the primary contact name in the greeting (e.g., “Hi [Name],”) at the start of the email body.\nInclude a polite sign-off at the end, such as “Best regards” or “Sincerely,” followed by the sender’s name {{$context.$app.$OraUserContext.fullName}}."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [],
+              "enableActions": false,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "GenerateInitCommunication"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "GENERATEINITCOMMUNICATION",
+          "id": "1764963747386",
+          "inputs": [
+            {
+              "id": "1764963747389_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are provided with talent data below, where displayName represents the employee name:\ndata :  `{{$context.$variables.responseDetails}}`\n\nIF data has employees with high risk of leaving then\n Produce one \"text\" communication suggestion with the following:\n title: Flight Risk employees\n description: one sentence on what you would send (summary)\n actionText: Alert\n content: Include the following information in the communication content\n      Employees at high risk of loss\n      Employees at high impact of loss\nContent presentation :- Present each risky deal on its own bullet points\nEND IF"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "TeamDetails",
+            "workflowCode": "ORA_HCM_HRL_TEAM_ACTIVITY_ORCHESTRATOR"
+          },
+          "outcomes": {
+            "success": "1770788366103"
+          },
+          "code": "TEAMDETAILS",
+          "id": "1770784376933",
+          "inputs": [
+            {
+              "id": "1773906286242_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$variables.userPrompt}}"
+            },
+            {
+              "id": "1773906286243_2",
+              "name": "loginPersonContext",
+              "type": "object",
+              "value": "{{$context.$variables.loginPersonContext}}"
+            },
+            {
+              "id": "1773906286244_3",
+              "name": "focusPersonContext",
+              "type": "object",
+              "value": "{{$context.$variables.loginPersonContext}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "MapTeamDetailsResponse",
+            "returnType": "object",
+            "sourceCode": "const  response = JSON.parse($context.$nodes.TEAMDETAILS.$output.output);\n\nreturn response.result;"
+          },
+          "outcomes": {
+            "success": "1770383801892"
+          },
+          "code": "MAPTEAMDETAILSRESPONSE",
+          "id": "1770788366103",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "DefaultVariableValues"
+          },
+          "outcomes": {
+            "success": "1771853159045"
+          },
+          "code": "DEFAULTVARIABLEVALUES",
+          "convergenceTargetId": "1770784376933",
+          "id": "1763814119280",
+          "inputs": [
+            {
+              "id": "1771581068250",
+              "name": "actionCode",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.GETUSERPROMPT.$output.result.actionCode}}"
+            },
+            {
+              "id": "1765653786448",
+              "name": "communicationDetails",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{\n  \"Communications\": [\n    \n  ]\n}"
+            },
+            {
+              "id": "1763893166787",
+              "name": "actionDetails",
+              "type": "object",
+              "value": "{\n  \"Actions\": [\n   \n  ]\n}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "PrepareVariableValues",
+            "returnType": "object",
+            "sourceCode": "const userPrompt = $context.$system.$inputMessage;\nconst hint = $context.$app.$OraMessageHint;\nconst strAction = $context.$app.$OraAction;\nconst actionDetails = $context.$variables.actionDetails; \nconst action = $context.$app.$OraAction;\nconst panel = $context.$app.$OraPanelName;\n\n\nlet userMessageHint = \"QUERY\";\nlet addPrompt = '';\nlet newPrompt = userPrompt;\nvar actionCode='' ;\n\nif  (hint === 'InvokeAction')  {\nactionCode='' ;\n\nif (typeof strAction === 'object') {\n    actionCode = strAction.actionCode;  \n} else {\n  var idx = strAction.indexOf('actionCode');\n  if (idx !== -1) {\n  var colonIdx = strAction.indexOf(':', idx);\n  if (colonIdx !== -1) {\n    var quoteStart = strAction.indexOf('\"', colonIdx);\n    if (quoteStart !== -1) {\n      var quoteEnd = strAction.indexOf('\"', quoteStart + 1);\n      if (quoteEnd !== -1) {\n        actionCode = strAction.substring(quoteStart + 1, quoteEnd);\n      }\n    }\n  }\n}\n}\nactionCode = actionCode.replace(/\\\\+$/, '');\nnewPrompt = \"Action is not configured. Showing default response.\";\n\nif (actionCode && actionDetails && Array.isArray(actionDetails.Actions)) {\n  for (var i = 0; i < actionDetails.Actions.length; i++) {\n    if (actionDetails.Actions[i].actionCode === actionCode) {\n      newPrompt = actionDetails.Actions[i].actionPrompt;\n      break;\n    }\n  }\n }\n}\n\nif (hint === \"InitCommunications\") {\n  addPrompt = \"list all employees compensation and talent details\";\n} else if (hint === \"FillParameters\") {\n  if (actionDetails && Array.isArray(actionDetails.Actions)) {\n    for (let i = 0; i < actionDetails.Actions.length; i++) {\n      if (actionDetails.Actions[i].actionCode === \"modelCompensationCycleScenarios\") {\n        addPrompt = actionDetails.Actions[i].actionPrompt;\n        break;\n      }\n    }\n  }\n}\n  \nif (addPrompt !== '') \n  newPrompt = addPrompt; \n\n\n\nif ( hint === \"InitDisplay\" || hint === \"Summary\" ||  hint === \"InitActions\" || hint === \"InitSubtitle\" || hint ===  \"AdditionalContent\") {\n    userMessageHint = \"INIT\";\n} else if ( hint === \"InitCommunications\" || hint === \"FillParameters\" || hint === \"GenerateTemplateContent\" || hint === \"SendCommunication\") {\n    userMessageHint = \"COMM\";\n} else if (typeof action !== \"undefined\") {\n    if (action.includes(\"sendTeamIntroduction\") || action.includes(\"modelingStrategy\") || action.includes(\"modelingOption\") ) {\n        userMessageHint = \"ACTION\";\n    }\n} else {\n    userMessageHint = \"QUERY\";\n}\n\n\nlet flowPath = \"QUERY\";\n\nif ( panel === \"scenerioModeling\" || actionCode.includes(\"modelingOption-Scenerio\")) {\n  flowPath = \"NOQUERY\";\n} \n\nlet result = {actionCode : actionCode, newPrompt: newPrompt, userMessageHint: userMessageHint, flowPath: flowPath}\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1771853201136"
+          },
+          "code": "PREPAREVARIABLEVALUES",
+          "id": "1771853159045",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "SetVariableValues"
+          },
+          "outcomes": {
+            "success": "1770784376933"
+          },
+          "code": "SETVARIABLEVALUES",
+          "id": "1771853201136",
+          "inputs": [
+            {
+              "id": "1771853319316",
+              "name": "actionCode",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPAREVARIABLEVALUES.$output.result.actionCode}}"
+            },
+            {
+              "id": "1771853303434",
+              "name": "userPrompt",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPAREVARIABLEVALUES.$output.result.newPrompt}}"
+            },
+            {
+              "id": "1771853214648",
+              "name": "userMessageHint",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPAREVARIABLEVALUES.$output.result.userMessageHint}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "description": "Add node for SendCommunication case branch",
+            "name": "Add (SendCommunication Case)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_SendCommunication_1764963585519",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "description": "Add node for sendTeamIntroduction case branch",
+            "name": "Add (sendTeamIntroduction Case)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_sendTeamIntroduction_1764961365905",
+          "inputs": [],
+          "type": "ADD"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1770805535357",
+          "name": "actionCode",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1770784541048",
+          "name": "responseDetails",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1765653480770",
+          "name": "communicationDetails",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1764959852606",
+          "name": "userMessageHint",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1764958180424",
+          "name": "contextDetails",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1763893086803",
+          "name": "actionDetails",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1763816494468",
+          "name": "userPrompt",
+          "scope": "JOB",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1765455763281",
+            "name": "dummyParam",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "WORKFORCE_DIR_MGMT",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": true,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": true,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"2\""
+  }
+}

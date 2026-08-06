@@ -1,0 +1,1101 @@
+{
+  "workflowId": "300000331068268",
+  "workflowCode": "ORA_HCM_HRM_SUCCESSION_PLANNING_ANALYST_TEAM",
+  "name": "Succession Planning Analyst",
+  "description": "Analyzes the succession related Talent Profile ratings such as risk of loss, impact of loss, and mobility and identifies team members who don't have any succession plans created for them. It also analyzes the efficacy of succession planning for a person who has left the organization.",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1772142590070"
+          },
+          "diagram": {
+            "x": 5977,
+            "y": 5000
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "name": "Extract Person Name"
+          },
+          "outcomes": {
+            "success": "1773943761924"
+          },
+          "diagram": {
+            "x": 5855,
+            "y": 5206
+          },
+          "code": "EXTRACT_PERSON_NAME",
+          "convergenceTargetId": "1772142220001",
+          "id": "1772142590070",
+          "inputs": [
+            {
+              "id": "1772142590073_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Extract personName and personNumber from {{$context.$system.$inputMessage}}.  Do not derive person number from person name.  Unless person number is explicitly mentioned, set it to \"\".  Set withinMyTeam to true only when the user explicitly refers to the user's own team or organization, using first-person ownership language such as:\n- \"my team\"\n- \"my organization\"\n- \"under me\"\n- \"my direct reports\"\n- \"on my team\"\n- \"reports to me\"\n\nSet withinMyTeam to false when the text refers to another person's team, even if it contains phrases like:\n- \"James Douglas's direct reports\"\n- \"his team\"\n- \"their reports\"\n- \"Connor's team\"\n\nExamples:\n- Who are the employees who are critical under <person name>?\n- List the critical employees in my team\n- Show me all employees with high risk of loss within <person name>'s team\n- Show me all at-risk employees within <person name>'s organization\n- What happens if <person name> moves out of her role hypothetically? \n- <person name> is planning to move to a different department. Who can we promote in place of <person name>?"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"personName\": {\n            \"type\": \"string\"\n        },\n        \"personNumber\": {\n            \"type\": \"string\"\n        },\n        \"withinMyTeam\": {\n            \"type\": \"boolean\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "If personName or personNumber Provided"
+          },
+          "outcomes": {
+            "true": "1776063020812",
+            "false": "1772142220001"
+          },
+          "diagram": {
+            "x": 5804,
+            "y": 5428
+          },
+          "code": "IF_PERSONNAME_PROVIDED",
+          "convergenceTargetId": "1772142220001",
+          "id": "1773943761924",
+          "inputs": [
+            {
+              "id": "1773943761925_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_PERSON_NAME.$output.personName !== '' || $context.$nodes.EXTRACT_PERSON_NAME.$output.personNumber !== ''}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Get Complete vQuery",
+            "returnType": "string",
+            "sourceCode": "let query = \"\";\nlet searchFields = \"\";\nlet personNumber = $context.$nodes.EXTRACT_PERSON_NAME.$output.personNumber;\nlet personName = $context.$nodes.EXTRACT_PERSON_NAME.$output.personName;\nif (personNumber.length > 0) {\n    query = '\"query\": \"' + personNumber + '\"';\n    searchFields = '\"searchFields\": [ \"PersonNumber\" ]';\n}\nelse {\n    query = '\"query\": \"' + personName + '\"';\n    searchFields = '\"searchFields\": [ \"DisplayName\" ]';\n}\nlet filters = '\"filters\": [{ \"name\": \"PrimaryAssignmentOnly\", \"value\": \"True\"}';\nif ( $context.$nodes.EXTRACT_PERSON_NAME.$output.withinMyTeam ) {\n    filters += ', {\"name\": \"Reports\", \"value\": \"ALL\"}';\n}\nfilters += ']';\nlet securityFilters = '\"securityFilters\": {\"type\": \"PersonSearch\", \"value\": \"AdvancedSearch\"}';\nlet displayFields = '\"displayFields\": [\"DisplayName\", \"PersonId\", \"PersonNumber\", \"AssignmentId\", \"AssignmentNumber\", \"BusinessTitle\", \"ManagerDisplayName\", \"AssignmentUserStatus\", \"WorkerType\", \"WorkEmail\", \"WorkPhone\"]';\n\nreturn '{' + query + ',' + searchFields + ',' + filters + ',' + securityFilters + ',' + displayFields + '}';"
+          },
+          "outcomes": {
+            "success": "1773952083554"
+          },
+          "diagram": {
+            "x": 5346.90642615558,
+            "y": 5603.172491544532
+          },
+          "code": "GET_COMPLETE_VQUERY",
+          "id": "1776063020812",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check User Input"
+          },
+          "outcomes": {
+            "CRITICALTALENT": "1773952830977",
+            "COVERAGE": "1776981222167"
+          },
+          "diagram": {
+            "x": 5860.171547847793,
+            "y": 6306.756656900984
+          },
+          "code": "CHECK_USER_INPUT",
+          "convergenceTargetId": "1774551402616",
+          "id": "1772142416724",
+          "inputs": [
+            {
+              "id": "1772142416729_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.ANALYZE_USER_INPUT.$output.userInput}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_WORKERSEARCH",
+            "functionName": "search_for_workers",
+            "name": "Get Worker Detail",
+            "errorNodeId": "1780432514556"
+          },
+          "outcomes": {
+            "success": "1772142772739"
+          },
+          "diagram": {
+            "x": 5346.282976324689,
+            "y": 5719.8105975197295
+          },
+          "code": "GET_WORKER_DETAIL",
+          "convergenceTargetId": "1772142772739",
+          "id": "1773952083554",
+          "inputs": [
+            {
+              "id": "1776063358410_1",
+              "name": "vQuery",
+              "value": "{{JSON.stringify($context.$nodes.GET_COMPLETE_VQUERY.$output.result)}}",
+              "required": true
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "If Worker Provided"
+          },
+          "outcomes": {
+            "true": "1773969947074",
+            "false": "1776981011099"
+          },
+          "diagram": {
+            "x": 5433.111612175876,
+            "y": 6516.511837655017
+          },
+          "code": "IF_TRUE",
+          "convergenceTargetId": "1774556189488",
+          "id": "1773952830977",
+          "inputs": [
+            {
+              "id": "1773952830979_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_WORKER_INFORMATION.$output.employeePersonId !== null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "If worker provided 1"
+          },
+          "outcomes": {
+            "true": "1772143349462",
+            "false": "1774551402616"
+          },
+          "diagram": {
+            "x": 6289.659526493799,
+            "y": 6516.511837655015
+          },
+          "code": "IF_WORKER_PROVIDED_1",
+          "convergenceTargetId": "end",
+          "id": "1776981222167",
+          "inputs": [
+            {
+              "id": "1776981222169_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_WORKER_INFORMATION.$output.employeePersonId !== null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Get Worker Information"
+          },
+          "outcomes": {
+            "success": "1772142895455"
+          },
+          "diagram": {
+            "x": 5345.6595264938,
+            "y": 5854.54114994363
+          },
+          "code": "GET_WORKER_INFORMATION",
+          "convergenceTargetId": "1773952083554",
+          "id": "1772142772739",
+          "inputs": [
+            {
+              "id": "1772142772741_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a deterministic entity disambiguation agent. Your inputs are a JSON list of people (`person_list_json`), a `person_name`, a `person_number`.\n\nYour goal is to output a single JSON object indicating if `person_name` and/or `person_number` match any DisplayName and/or PersonNumber in `person_list_json`.\n\n### INPUT DATA\n1. Person List - person_list_json: {{$context.$nodes.GET_WORKER_DETAIL.$output.items}} \n2. Person Name - person_name: {{$context.$nodes.EXTRACT_PERSON_NAME.$output.personName}}\n3. Person Number - person_number: {{$context.$nodes.EXTRACT_PERSON_NAME.$output.personNumber}}\n\n### ALGORITHM\nIf `person_number` is provided, use MATCHING RULES to match `person_number` with PersonNumber in `person_list_json`.  Else, use MATCHING RULES to match `person_name` with DisplayName in `person_list_json` by following these steps strictly in order:\n\n1. **One person in initial list (count of `person_list_json` is 1):** \n   - If a match is found, set `matchFoundFlag` to `true`.  \n   - If no match is found, set `matchFoundFlag` to `false`.  Set `message` to \"I couldn’t find an employee with name [person_name] or with person number [person_number]\"\n   - Skip the rest of the steps.\n\n2. **Initial Filtering:** \n   - Filter all candidates in `person_list_json` with PersonNumber matches `person_number` and/or DisplayName matches 'person_name'.\n\n3. **Determine Match Status:**\n   - **One Match Found:** If exactly one person remains after the initial filtering in Step 2, set `matchFoundFlag` to `true`.\n   - **No Match/Ambiguity:** If 0 matches found, or if >1 plausible candidates exist, set `matchFoundFlag` to `false`.\n\n4. **Construct Clarification (Only if matchFoundFlag is false):**\n   - Create a conversational question followed by a bulleted list of ALL candidates in `person_list_json`.\n   - If 0 matches found in Step 3, **Start the `message` with:** \"I couldn’t find an employee named exactly [person_name]\".   If `person_list_json` has entries, also add \"Here are the close matches I found: \\n\\n\" to `message`.  \n   - If >1 plausible candidates exist in Step 3, **Start the `message` with:** \"I found several employees match the name [person_name].  Which [person_name] can I help you with?\".    If `person_list_json` has entries, also add \"Here are the matches I found: \\n\\n\" to `message`. \n   - **Format:** \"- DisplayName - BusinessTitle\"\n   - **Duplicate Name Handling:** If multiple entries in `person_list_json` share the exact same DisplayName, you must append Person Number as distinguisher to *those specific entries* with *Format:* \"- DisplayName - BusinessTitle (Person Number [PersonNumber])\"\n\n### MATCHING RULES\n1. Ignore case differences\n2. Ignore extra spaces\n3. If person_number is provided and not empty:\n   - Match ONLY against PersonNumber using exact normalized equality.\n   - Ignore person_name.\n4. If person_number is empty:\n   - First try exact full-name match:\n     - Compare normalized person_name to normalized DisplayName.\n     - If exactly one employee matches, return it immediately.\n     - Do not consider any other candidates.\n\n   - If no exact full-name match exists:\n     - If person_name has exactly 1 token, allow match against first name or last name.\n     - If person_name has 2 or more tokens, do not use token-only matching.\n     - Do not use fuzzy matching or substring matching.\n\n### OUTPUT SCHEMA\nReturn ONLY a raw JSON object. Do not use Markdown code blocks.\n\n{\n  \"matchFoundFlag\": boolean,\n  \"employeePersonId\":  \"number (PersonId of the match) OR null\",\n  \"employeeAssignmentId\": \"number (AssignmentId of the match) OR null\",\n  \"employeeDisplayName\": \"string (DisplayName of the match) OR null\",\n  \"message\": \"String (The clarification text) OR null\"\n}"
+            },
+            {
+              "id": "1772142772739_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": ""
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"employeePersonId\": {\n            \"type\": \"number\"\n        },\n        \"employeeAssignmentId\": {\n            \"type\": \"number\"\n        },\n        \"employeeDisplayName\": {\n            \"type\": \"string\"\n        },\n        \"matchFoundFlag\": {\n            \"type\": \"string\"\n        },\n        \"message\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Set Variable For Worker"
+          },
+          "outcomes": {
+            "success": "1774556189488"
+          },
+          "diagram": {
+            "x": 5148.169673055242,
+            "y": 6725.740698985343
+          },
+          "code": "SET_VARIABLE_FOR_WORKER",
+          "id": "1773969947074",
+          "inputs": [
+            {
+              "id": "1773969986298",
+              "name": "managerPersonId",
+              "scope": "JOB",
+              "type": "number",
+              "value": "{{$context.$nodes.GET_WORKER_INFORMATION.$output.employeePersonId}}"
+            },
+            {
+              "id": "1773969962298",
+              "name": "managerAssignmentId",
+              "scope": "JOB",
+              "type": "number",
+              "value": "{{$context.$nodes.GET_WORKER_INFORMATION.$output.employeeAssignmentId}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "If within my team"
+          },
+          "outcomes": {
+            "true": "1765482643688",
+            "false": "1774551402616"
+          },
+          "diagram": {
+            "x": 5889.777339346111,
+            "y": 6657.627959413754
+          },
+          "code": "IF_WITHIN_MY_TEAM",
+          "convergenceTargetId": "end",
+          "id": "1776981011099",
+          "inputs": [
+            {
+              "id": "1776981011100_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_PERSON_NAME.$output.withinMyTeam}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_SUCCESSION_SUCCESSIONPLANS",
+            "functionName": "get_successionPlans_for_person",
+            "name": "Get Succession Plans for Person",
+            "errorNodeId": "1780432514556"
+          },
+          "outcomes": {
+            "success": "1772143506972"
+          },
+          "diagram": {
+            "x": 6642.0276211950395,
+            "y": 6637.406989853438
+          },
+          "code": "GET_SUCCESSION_PLANS_FOR_PERSON",
+          "convergenceTargetId": "1776981252521",
+          "id": "1772143349462",
+          "inputs": [
+            {
+              "id": "1775004845713_1",
+              "name": "personId",
+              "value": "{{$context.$nodes.GET_WORKER_INFORMATION.$output.employeePersonId}}",
+              "required": true
+            },
+            {
+              "id": "1775004845714_2",
+              "name": "limit",
+              "value": "25",
+              "required": true
+            },
+            {
+              "id": "1775004845714_3",
+              "name": "offset",
+              "value": "0",
+              "required": true
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "If Worker Not Found"
+          },
+          "outcomes": {
+            "true": "1774032439948",
+            "false": "1772142220001"
+          },
+          "diagram": {
+            "x": 5346.443630214205,
+            "y": 5977.564825253665
+          },
+          "code": "IF_WORKER_NOT_FOUND",
+          "convergenceTargetId": "end",
+          "id": "1772142895455",
+          "inputs": [
+            {
+              "id": "1772142895456_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_WORKER_INFORMATION.$output.matchFoundFlag === false}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Analyze User Input"
+          },
+          "outcomes": {
+            "success": "1772142416724"
+          },
+          "diagram": {
+            "x": 5857.71527336401,
+            "y": 6141.191822323958
+          },
+          "code": "ANALYZE_USER_INPUT",
+          "id": "1772142220001",
+          "inputs": [
+            {
+              "id": "1772142220002_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a classifier.\n\nInput:\n{{$context.$system.$inputMessage}}\n\nTask:\nAnalyze the input and return exactly ONE of these values:\n\nCRITICALTALENT\nCOVERAGE\n\nClassification Rules\n\nReturn CRITICALTALENT if the input is asking about:\ncritical talent\ncritical employee(s)\nlikely to leave employee(s)\nhigh-risk employee(s)\nhigh-impact employee(s)\nat-risk employee(s)\nimpact of loss\nrisk of loss\njob risk\nperformance (rating)\npotential (rating)\nkey role(s)\nteam health\norganization-wide critical talent\nsuccession plans\nsuccessors\nsuccession coverage within a manager's team\ndirect reports with or without successors\nsuccession plans needing attention\nsuccession plans at risk\nsuccession plans with successors\nsuccession plans without successors\nsuccession plans under a specific employee or manager\n\nReturn COVERAGE if the input is asking about replacement, backfill, or transition coverage, including:\nreplace\nreplacement for\nbackfill\nbackup for\nwho can replace\nwho could replace\nwho will replace\nwhat happens if leaves\nwhat happens if retires\nwhat happens if is promoted\nif leaves\nif retires\nif quits\nretirement\npromotion\nmoves out of role\n\nPriority Rule\n\nIf both CRITICALTALENT and COVERAGE match or neither of the rules matches, return CRITICALTALENT.\n\nOutput Rules\n\nReturn only one value.\nDo not explain your reasoning.\nDo not return JSON.\nDo not return any additional text.\nIf no rule matches, return EMPTY.\nMatching must be case-insensitive.\nTreat hyphenated and non-hyphenated forms as equivalent (e.g., \"high-risk\" = \"high risk\", \"at-risk\" = \"at risk\")."
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"userInput\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_FETCHLOGGEDINUSERDETAILS",
+            "functionName": "Get_User_Session_Details",
+            "name": "Fetch Logged In User Details",
+            "errorNodeId": "1780432514556"
+          },
+          "outcomes": {
+            "success": "1765482761584"
+          },
+          "diagram": {
+            "x": 5724.703494926722,
+            "y": 6803.001127395715
+          },
+          "code": "FETCH_LOGGED_IN_USER_DETAILS",
+          "convergenceTargetId": "1776981042357",
+          "id": "1765482643688",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Show No Manager or Business Leader Error"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "diagram": {
+            "x": 6230.338218714768,
+            "y": 6925.391206313417
+          },
+          "code": "SHOW_NO_MANAGER_OR_BUSINESS_LEADER_ERROR",
+          "id": "1774551402616",
+          "inputs": [
+            {
+              "id": "1774551402617_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Tell user to provide name or person number of a manager or business leader, so that the manager or business leader's hierarchy can be searched."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "List Successors"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "diagram": {
+            "x": 6661.984216459978,
+            "y": 6757.2378804960545
+          },
+          "code": "LIST_SUCCESSORS",
+          "convergenceTargetId": "1776981252521",
+          "id": "1772143506972",
+          "inputs": [
+            {
+              "id": "1772143506973_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "## Role\nYou are the response composer. Your job is to craft a clear, professional, human-friendly answer to the user's current question using ONLY the retrieved data provided below.\n\n## Current Question\n{{$context.$system.$inputMessage}}\n\n## Retrieved Data\nSuccession plans for the person: {{$context.$nodes.GET_SUCCESSION_PLANS_FOR_PERSON.$output}}\n\n## Conversation History (reference only)\n{{$context.$system.$chatHistory}}\n\n### Rule\n- Consider all succession plasn in retreived data unless the current question explicitly requested to filter the succession plans. \n\n### Formatting\n- Lead with a direct answer. No preambles like \"Based on the data retrieved...\" or \"I am able to answer.\"\n- When a succession plan is mentioned, at a minimum, show plan name, plan type, job or incumbent or position based on plan type.\n- If candidate type is external, show 'External Candidate' as its Job.\n- If readiness is needed to answer user question, always use the full CandidateReadinessMeaning value exactly as it appears to show readiness.\n- If candidate status is needed to answer user question, always use the full CandidateStatusMeaning value exactly as it appears to show candidate status.\n- Do not expose internal identifiers such as PersonId, AssignmentId, PlanId etc, except when it's inside a hyperlink."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Show Worker Not Found Error"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "diagram": {
+            "x": 5155.1826381059755,
+            "y": 6178.2795941375425
+          },
+          "code": "WORKER_NOT_FOUND",
+          "id": "1774032439948",
+          "inputs": [
+            {
+              "id": "1774032439949_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Show user {{$context.$nodes.GET_WORKER_INFORMATION.$output.message}}"
+            },
+            {
+              "id": "1774032439948_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": ""
+            }
+          ],
+          "type": "LLM",
+          "outputSpecification": ""
+        },
+        {
+          "metadata": {
+            "name": "Extract Management Level and requested talent ratings"
+          },
+          "outcomes": {
+            "success": "1765483908199"
+          },
+          "diagram": {
+            "x": 5615.6894024802705,
+            "y": 7249.0462232243535
+          },
+          "code": "EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS",
+          "id": "1765484480093",
+          "inputs": [
+            {
+              "id": "1765484480095_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Extract riskOfLoss, impactOfLoss, jobRisk, performance, potential, and managementLevel from {{$context.$system.$inputMessage}}.\n\nReturn only valid JSON.\n\nOutput format:\n\n{\n\"riskOfLoss\": [],\n\"impactOfLoss\": [],\n\"jobRisk\": [],\n\"performance\": [],\n\"potential\": [],\n\"managementLevel\": 2\n}\n\nGeneral Rules\n\n* riskOfLoss, impactOfLoss, jobRisk, performance, and potential must always be arrays.\n* Array values must always be uppercase strings.\n* Allowed values:\n  * \"HIGH\"\n  * \"MEDIUM\"\n  * \"LOW\"\n* Never return duplicate values within an array.\n* Never return null.\n* Never return \"Unknown\".\n* Use an empty array when no value is requested.\n* Return only JSON.\n* Do not include explanations.\n* Do not include additional keys.\n\nManagement Level Rules\n\n* If the user explicitly mentions \"direct reports\", set managementLevel to 1.\n* If the user explicitly specifies a management level, use that value.\n* Otherwise set managementLevel to 2.\n\nImportant:\n\nThe following phrases affect managementLevel only and must NOT set any rating filters:\n\n* under [manager name]\n* manager's team\n* reports to\n* direct reports\n* team\n* organization\n* succession coverage\n\nRating Extraction Rules\n\nExtract requested values for:\n\n* riskOfLoss\n* impactOfLoss\n* jobRisk\n* performance\n* potential\n\nConvert all extracted values to uppercase.\n\nExamples:\n\n* high impact of loss\n  => impactOfLoss: [\"HIGH\"]\n\n* low impact of loss\n  => impactOfLoss: [\"LOW\"]\n\n* medium impact of loss\n  => impactOfLoss: [\"MEDIUM\"]\n\n* high or low impact of loss\n  => impactOfLoss: [\"HIGH\", \"LOW\"]\n\n* medium or high performance\n  => performance: [\"MEDIUM\", \"HIGH\"]\n\nBoolean Logic Rules\n\nIf the user uses OR language, include all requested values.\n\nExamples:\n\n* high or low impact of loss\n* either high or low impact of loss\n* high impact of loss OR low impact of loss\n\nReturn:\n\n{\n\"impactOfLoss\": [\"HIGH\", \"LOW\"]\n}\n\nIf the user uses AND language, include the requested values in their respective arrays.\n\nExample:\n\n\"high impact of loss AND low risk of loss\"\n\nReturn:\n\n{\n\"impactOfLoss\": [\"HIGH\"],\n\"riskOfLoss\": [\"LOW\"]\n}\n\nCritical / At-Risk Rules\n\nIf the user asks about:\n\n* critical employees\n* critical talent\n* at-risk employees\n* at-risk talent\n* employees who are critical\n* employees at risk\n* who is critical\n* which employees are critical\n* which employees are at risk\n\nThen return:\n\n{\n\"riskOfLoss\": [\"HIGH\"],\n\"impactOfLoss\": [\"HIGH\"],\n\"jobRisk\": [\"HIGH\"]\n}\n\nLikely To Leave Rules\n\nIf the user asks about:\n\n* likely to leave employees\n* employees likely to leave\n* who is likely to leave\n* employees at risk of leaving\n* flight risk employees\n\nThen return:\n\n{\n\"riskOfLoss\": [\"HIGH\"]\n}\n\nCombination Rules\n\nWhen the user specifies explicit values, use only the values requested.\n\nExamples:\n\n\"employees with high impact of loss\"\n\n{\n\"impactOfLoss\": [\"HIGH\"]\n}\n\n\"employees with Low or high impact of loss\"\n\n{\n\"impactOfLoss\": [\"LOW\", \"HIGH\"]\n}\n\n\"employees with High impact of loss and Low risk of loss\"\n\n{\n\"impactOfLoss\": [\"HIGH\"],\n\"riskOfLoss\": [\"LOW\"]\n}\n\nDefault Behavior\n\nIf the user does not request any rating filter:\n\n{\n\"riskOfLoss\": [],\n\"impactOfLoss\": [],\n\"jobRisk\": [],\n\"performance\": [],\n\"potential\": [],\n\"managementLevel\": <determined value>\n}\n\nExample:\n\nInput:\n\"Show employees under James Douglas\"\n\nOutput:\n\n{\n\"riskOfLoss\": [],\n\"impactOfLoss\": [],\n\"jobRisk\": [],\n\"performance\": [],\n\"potential\": [],\n\"managementLevel\": 2\n}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"managementLevel\": {\n            \"type\": \"string\"\n        },\n        \"riskOfLoss\": {\n            \"type\": \"string\"\n        },\n        \"impactOfLoss\": {\n            \"type\": \"string\"\n        },\n        \"jobRisk\": {\n            \"type\": \"string\"\n        },\n        \"performance\": {\n            \"type\": \"string\"\n        },\n        \"potential\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_SUCCESSION_ALLREPORTSUCCES",
+            "functionName": "get_worker_primary_assignment",
+            "name": "Get Logged In User Primary Assignment",
+            "errorNodeId": "1780432514556"
+          },
+          "outcomes": {
+            "success": "1765483806753"
+          },
+          "diagram": {
+            "x": 5685.48647125141,
+            "y": 6910.06087936866
+          },
+          "code": "GET_LOGGED_IN_USER_PRIMARY_ASSIGNMENT",
+          "convergenceTargetId": "1776981042357",
+          "id": "1765482761584",
+          "inputs": [
+            {
+              "id": "1777164247612_1",
+              "name": "personNumber",
+              "value": "{{$context.$nodes.FETCH_LOGGED_IN_USER_DETAILS.$output.items[0].PersonNumber}}",
+              "required": true
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Get User Intent"
+          },
+          "outcomes": {
+            "success": "1765484349435"
+          },
+          "diagram": {
+            "x": 5735.018602029312,
+            "y": 7377.905298759863
+          },
+          "code": "GET_USER_INTENT",
+          "id": "1765483908199",
+          "inputs": [
+            {
+              "id": "1765483908203_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "**Available Options:**\n1. ** General inquires to find critical / at-risk employees without mentioning any succession plan. In this case set userIntent to \"CRITICAL_EMPLOYEE\". Examples below\n         - \"Who are the critical employees?\"\n         - \"Show team members at risk\"\n         - \"Who are likely to leave soon?\"\n2. ** Inquires to find critical / at-risk employees without succession plans.  In this case set userIntent to \"CRITICAL_EMPLOYEE_WITHOUT_PLAN\". Examples below\n         - \"Who are the critical employees without plans?\"\n         - \"Show team members at risk without coverage\"\n         - \"Which employees in my organization do not have succession plans?\"\n3. ** Inquires to find critical / at-risk employees with succession plans.  In this case set userIntent to \"CRITICAL_EMPLOYEE_WITH_PLAN\". Examples below\n         - \"Who are the critical employees who have succession plans?\"\n         - \"Show team members at risk with coverage\"\n4. ** Inquires to find at-risk / needs attention succession plans.  In this case set userIntent to \"AT_RISK_PLANS\". Examples below\n         - \"Which succession plans do not have successors who are 'Ready Now' under [manager]?\"\n         - \"Which succession plans are currently at risk under [manager]?\" \n         - \"What percentage of [manager]'s direct reports have a 'Ready Now' successor?\" \n         - \"Which plans within [manager]'s organization/team need attention?\"\n\n**Analysis Instructions:**\n\n1. **Context Analysis**: Review the complete chat history to understand conversation flow and previous engagements\n2. **Intent Classification**: Identify the primary ask from the user\n3. **Selection Logic**:\n   - Select appropriate path based on the three options you have\n   - You will output only one path.\n   - Apply contextual continuity: if the previous message targeted specific path and the current message is ambiguous or follows up, use that information to pick your path\n\n4. **Output Format**: Return a string whose value must be one of the following: \"CRITICAL_EMPLOYEE\", \"CRITICAL_EMPLOYEE_WITHOUT_PLAN\", \"CRITICAL_EMPLOYEE_WITH_PLAN\", \"AT_RISK_PLANS\"\n**Current User Message:** {{$context.$system.$inputMessage}}\n**History Message:** {{$context.$system.$chatHistory}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"userIntent\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Set Variable for Logged in User"
+          },
+          "outcomes": {
+            "success": "1774556189488"
+          },
+          "diagram": {
+            "x": 5713.550732807215,
+            "y": 7009.670800450957
+          },
+          "code": "SET_VARIABLE_FOR_LOGGED_IN_USER",
+          "convergenceTargetId": "1776981042357",
+          "id": "1765483806753",
+          "inputs": [
+            {
+              "id": "1765483857214",
+              "name": "managerAssignmentId",
+              "scope": "JOB",
+              "type": "number",
+              "value": "{{$context.$nodes.GET_LOGGED_IN_USER_PRIMARY_ASSIGNMENT.$output.items[0].AssignmentId}}"
+            },
+            {
+              "id": "1765483836984",
+              "name": "managerPersonId",
+              "scope": "JOB",
+              "type": "number",
+              "value": "{{$context.$nodes.GET_LOGGED_IN_USER_PRIMARY_ASSIGNMENT.$output.items[0].PersonId}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Check User Intent"
+          },
+          "outcomes": {
+            "CRITICAL_EMPLOYEE": "1765484671104",
+            "CRITICAL_EMPLOYEE_WITHOUT_PLAN": "1765484865594",
+            "CRITICAL_EMPLOYEE_WITH_PLAN": "1765484940764",
+            "AT_RISK_PLANS": "1777273021238"
+          },
+          "diagram": {
+            "x": 5737.633032694476,
+            "y": 7495.607666290868
+          },
+          "code": "CHECK_USER_INTENT",
+          "convergenceTargetId": "end",
+          "id": "1765484349435",
+          "inputs": [
+            {
+              "id": "1765484349436_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_USER_INTENT.$output.userIntent}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "Succession OrgChart Deep Link",
+            "toolCode": "ORA_SUCCESSION_ORGCHART_DEEP_LINK_TOOL",
+            "errorNodeId": "1780432514556"
+          },
+          "outcomes": {
+            "success": "1765484480093"
+          },
+          "diagram": {
+            "x": 5722.550732807216,
+            "y": 7128.4374295377675
+          },
+          "code": "SUCCESSION_ORGCHART_DEEP_LINK",
+          "convergenceTargetId": "1765484480093",
+          "id": "1774556189488",
+          "inputs": [],
+          "type": "TOOL"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_SUCCESSION_ALLREPORTSUCCES",
+            "functionName": "get_allReports_talentRatings_uptoManagementLevel",
+            "name": "Get All Reports Talent Ratings",
+            "errorNodeId": "1780432514556"
+          },
+          "outcomes": {
+            "success": "1780003015638"
+          },
+          "diagram": {
+            "x": 4995.700676437429,
+            "y": 7705.900789177001
+          },
+          "code": "GET_ALL_REPORTS_TALENT_RATINGS",
+          "id": "1765484671104",
+          "inputs": [
+            {
+              "id": "1777008936241_1",
+              "name": "assignmentId",
+              "value": "{{$context.$variables.managerAssignmentId}}",
+              "required": true
+            },
+            {
+              "id": "1777008936242_2",
+              "name": "managementLevel",
+              "value": "{{$context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.managementLevel}}{{$context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.managementLevel}}",
+              "required": true,
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_SUCCESSION_ALLREPORTSUCCES",
+            "functionName": "get_allReports_talentRatings_without_successionPlans_upto_mgtLev",
+            "name": "Get All Reports Talent Ratings Without Plan",
+            "errorNodeId": "1780432514556"
+          },
+          "outcomes": {
+            "success": "1780091461661"
+          },
+          "diagram": {
+            "x": 5385.238444193911,
+            "y": 7708.029312288613
+          },
+          "code": "GET_ALL_REPORTS_TALENT_RATINGS_WITHOUT_PLAN",
+          "id": "1765484865594",
+          "inputs": [
+            {
+              "id": "1777009016683_1",
+              "name": "assignmentId",
+              "value": "{{$context.$variables.managerAssignmentId}}",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "id": "1777009016684_2",
+              "name": "managementLevel",
+              "value": "{{$context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.managementLevel}}{{$context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.managementLevel}}",
+              "required": true,
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_SUCCESSION_ALLREPORTSUCCES",
+            "functionName": "get_allReports_talentRatings_with_successionPlans_upto_mgtLevel",
+            "name": "Get All Reports Talent Ratings With Plan",
+            "errorNodeId": "1780432514556"
+          },
+          "outcomes": {
+            "success": "1780092704541"
+          },
+          "diagram": {
+            "x": 5906.6758737316795,
+            "y": 7705.900789177002
+          },
+          "code": "GET_ALL_REPORTS_TALENT_RATINGS_WITH_PLAN",
+          "id": "1765484940764",
+          "inputs": [
+            {
+              "id": "1777009052879_1",
+              "name": "assignmentId",
+              "value": "{{$context.$variables.managerAssignmentId}}",
+              "required": true
+            },
+            {
+              "id": "1777009052880_2",
+              "name": "managementLevel",
+              "value": "{{$context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.managementLevel}}{{$context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.managementLevel}}",
+              "required": true,
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_SUCCESSION_ALLREPORTSUCCES",
+            "functionName": "get_directs_talentRatings_plans_readinessCandidates",
+            "processJson": true,
+            "name": "Get At Risk Succession Plans",
+            "errorNodeId": "1780432514556"
+          },
+          "outcomes": {
+            "success": "1777704919617"
+          },
+          "diagram": {
+            "x": 6528.824689966178,
+            "y": 7695.25817361894
+          },
+          "code": "GET_AT_RISK_SUCCESSION_PLANS",
+          "id": "1777273021238",
+          "inputs": [
+            {
+              "id": "1777273055359_1",
+              "name": "successionOrgCharts_Id",
+              "value": "{{$context.$variables.managerAssignmentId}}",
+              "required": true
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Show employees"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "diagram": {
+            "x": 5010.385569334836,
+            "y": 7966.310033821872
+          },
+          "code": "SHOW_EMPLOYEES",
+          "id": "1772002857394",
+          "inputs": [
+            {
+              "id": "1772002857397_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "## Role\nYou are the response composer. Your job is to craft a clear, professional, human-friendly answer to the user's current question using ONLY the retrieved data below.\n\nIf the user's current question asks about critical or at-risk employees, mention that this means any of the following is exactly \"High\":\n- RiskOfLoss\n- ImpactOfLoss\n- JobRisk\n\nIf the user's current question asks about likely to leave employees, mention that this means RiskOfLoss is \"High\".\n\nDo not mention Critical_AtRisk or LikelyToLeave field names in the answer.\n\nAlso mention that up to {{$context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.managementLevel}} management levels are searched, and that results are returned for up to 200 employees.\n\n## Current Question\n{{$context.$system.$inputMessage}}\n\n## Retrieved Data\nEmployees: {{$context.$nodes.PROCESS_ALL_REPORTS_TALENT_RATINGS.$output.result}}\nDeep Link: {{$context.$nodes.SUCCESSION_ORGCHART_DEEP_LINK.$output}}\n\n## Conversation History\n{{$context.$system.$chatHistory}}\n\n## Instructions\nYou are analyzing a list of employee records.\n\nAnswer the user's question directly first.\n\nAfter the direct answer, provide a complete numbered list of the matching employees.\n\n## Selection Logic\n1. If the user's question does not mention any filter criteria, include ALL employees in Retrieved Data.\n\n2. If the user's question asks about critical or at-risk employees, treat that as:\n   - Critical_AtRish = true\n\n3. If the user's question asks about likely to leave employees, treat that as:\n   - LikelyToLeave = true\n\n4. If the user's question contains AND, include only employees who satisfy all mentioned conditions.\n   - Example: \"High Impact of Loss AND low Risk of Loss\"\n     => ImpactOfLoss = \"High\" AND RiskOfLoss = \"Low\"\n\n5. If the user's question contains OR, include employees who satisfy any of the mentioned conditions.\n   - Example: \"High Impact of Loss OR low Risk of Loss\"\n     => ImpactOfLoss = \"High\" OR RiskOfLoss = \"Low\"\n\n6. If the user's question mentions a single filter, include only employees whose matching field is exactly the requested value.\n   - Example: \"Medium Impact of Loss\"\n     => ImpactOfLoss = \"Medium\"\n\n## Matching Rules\n- Critical_AtRisk and LikelyToLeave are helper fields only. Do not mention them in the answer.\n- Number the matching employees sequentially starting from 1.\n- Exclude empty or null values.\n- Do not summarize, aggregate, or omit any matching employee.\n- Do not use phrases such as \"several employees\", \"other employees\", \"remaining employees\", or \"etc.\"\n- Preserve employee names exactly as provided.\n\n## Formatting\n- Add a new line before the deep link.\n- Make the deep link open in a new tab rather than the same browser tab."
+            },
+            {
+              "id": "1772002857394_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": ""
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Show employee without plan"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "diagram": {
+            "x": 5422.457722660654,
+            "y": 7967.374295377677
+          },
+          "code": "SHOW_EMPLOYEE_WITHOUT_PLAN",
+          "id": "1772003045210",
+          "inputs": [
+            {
+              "id": "1772003045213_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "## Role\nYou are the response composer. Your job is to craft a clear, professional, human-friendly answer to the user's current question using ONLY the retrieved data below.\n\nIf the user's current question asks about critical or at-risk employees, mention that this means any of the following is exactly \"High\":\n- RiskOfLoss\n- ImpactOfLoss\n- JobRisk\n\nIf the user's current question asks about likely to leave employees, mention that this means RiskOfLoss is \"High\".\n\nDo not mention Critical_AtRisk or LikelyToLeave field names in the answer.\n\nAlso mention that up to {{$context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.managementLevel}} management levels are searched, and that results are returned for up to 200 employees.\n\n## Current Question\n{{$context.$system.$inputMessage}}\n\n## Retrieved Data\nEmployees without succession plans: {{$context.$nodes.PROCESS_ALL_REPORTS_TALENT_RATINGS_WITHOUT_PLAN.$output.result}}\nDeep Link: {{$context.$nodes.SUCCESSION_ORGCHART_DEEP_LINK.$output}}\n\n## Conversation History\n{{$context.$system.$chatHistory}}\n\n## Instructions\nYou are analyzing a list of employee records.\n\nAnswer the user's question directly first.\n\nAfter the direct answer, provide a complete numbered list of the matching employees.\n\n## Selection Logic\n1. If the user's question does not mention any filter criteria, include ALL employees in Retrieved Data.\n\n2. If the user's question asks about critical or at-risk employees, treat that as:\n   - Critical_AtRish = true\n\n3. If the user's question asks about likely to leave employees, treat that as:\n   - LikelyToLeave = true\n\n4. If the user's question contains AND, include only employees who satisfy all mentioned conditions.\n   - Example: \"High Impact of Loss AND low Risk of Loss\"\n     => ImpactOfLoss = \"High\" AND RiskOfLoss = \"Low\"\n\n5. If the user's question contains OR, include employees who satisfy any of the mentioned conditions.\n   - Example: \"High Impact of Loss OR low Risk of Loss\"\n     => ImpactOfLoss = \"High\" OR RiskOfLoss = \"Low\"\n\n6. If the user's question mentions a single filter, include only employees whose matching field is exactly the requested value.\n   - Example: \"Medium Impact of Loss\"\n     => ImpactOfLoss = \"Medium\"\n\n## Matching Rules\n- Critical_AtRisk and LikelyToLeave are helper fields only. Do not mention them in the answer.\n- Number the matching employees sequentially starting from 1.\n- Exclude empty or null values.\n- Do not summarize, aggregate, or omit any matching employee.\n- Do not use phrases such as \"several employees\", \"other employees\", \"remaining employees\", or \"etc.\"\n- Preserve employee names exactly as provided.\n\n## Formatting\n- Add a new line before the deep link.\n- Make the deep link open in a new tab rather than the same browser tab."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Show employee with plan"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "diagram": {
+            "x": 5937.35428947505,
+            "y": 7964.521070217682
+          },
+          "code": "SHOW_EMPLOYEE_WITH_PLAN",
+          "id": "1772003117923",
+          "inputs": [
+            {
+              "id": "1772003117927_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "## Role\nYou are the response composer. Your job is to craft a clear, professional, human-friendly answer to the user's current question using ONLY the retrieved data below.\n\nIf the user's current question asks about critical or at-risk employees, mention that this means any of the following is exactly \"High\":\n- RiskOfLoss\n- ImpactOfLoss\n- JobRisk\n\nIf the user's current question asks about likely to leave employees, mention that this means RiskOfLoss is exactly \"High\".\n\nDo not mention Critical_AtRisk or LikelyToLeave field names in the answer.\n\nAlso mention that up to {{$context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.managementLevel}} management levels are searched, and that results are returned for up to 200 employees.\n\n## Current Question\n{{$context.$system.$inputMessage}}\n\n## Retrieved Data\nEmployees with succession plans: {{$context.$nodes.PROCESS_ALL_REPORTS_TALENT_RATINGS_WITH_PLAN.$output.result}}\nDeep Link: {{$context.$nodes.SUCCESSION_ORGCHART_DEEP_LINK.$output}}\n\n## Conversation History\n{{$context.$system.$chatHistory}}\n\n## Instructions\nYou are analyzing a list of employee records.\n\nAnswer the user's question directly first.\n\nAfter the direct answer, provide a complete numbered list of the matching employees.\n\n## Selection Logic\n1. If the user's question does not mention any filter criteria, include ALL employees in Retrieved Data.\n\n2. If the user's question asks about critical or at-risk employees, treat that as:\n   - Critical_AtRish = true\n\n3. If the user's question asks about likely to leave employees, treat that as:\n   - LikelyToLeave = true\n\n4. If the user's question contains AND, include only employees who satisfy all mentioned conditions.\n   - Example: \"High Impact of Loss AND low Risk of Loss\"\n     => ImpactOfLoss = \"High\" AND RiskOfLoss = \"Low\"\n\n5. If the user's question contains OR, include employees who satisfy any of the mentioned conditions.\n   - Example: \"High Impact of Loss OR low Risk of Loss\"\n     => ImpactOfLoss = \"High\" OR RiskOfLoss = \"Low\"\n\n6. If the user's question mentions a single filter, include only employees whose matching field is exactly the requested value.\n   - Example: \"Medium Impact of Loss\"\n     => ImpactOfLoss = \"Medium\"\n\n## Matching Rules\n- Critical_AtRisk and LikelyToLeave are helper fields only. Do not mention them in the answer.\n- Number the matching employees sequentially starting from 1.\n- Exclude empty or null values.\n- Do not summarize, aggregate, or omit any matching employee.\n- Do not use phrases such as \"several employees\", \"other employees\", \"remaining employees\", or \"etc.\"\n- Preserve employee names exactly as provided.\n\n## Formatting\n- Add a new line before the deep link.\n- Make the deep link open in a new tab rather than the same browser tab."
+            },
+            {
+              "id": "1772003117923_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": ""
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Get readinessCandidates count for each readinessLevel",
+            "returnType": "object",
+            "sourceCode": "const data = $context.$nodes.GET_AT_RISK_SUCCESSION_PLANS.$output;\nconst results = [];\nconst employeeMap = new Map();\nfor (let i = 0; i < data.items.length; i++) {\n\n    const emp = data.items[i];\n    const displayName = emp.DisplayName;\n\n    if (!employeeMap.has(displayName)) { \n        employeeMap.set(displayName, {\n            displayName,\n            readinessCodesWithSuccessors: new Set()\n        });\n    }\n    \n    const employeeAgg = employeeMap.get(displayName);\n    const successionPlans = emp.successionPlans.items;\n\n    for (let j = 0; j < successionPlans.length; j++) {\n\n        const plan = successionPlans[j];\n        const planName = plan.PlanName;\n\n        const readinessLevels = plan.readinessLevels.items;\n\n        for (let k = 0; k < readinessLevels.length; k++) {\n\n            const readinessLevel = readinessLevels[k];\n            const readinessCode = readinessLevel.ReadinessCode;\n\n            const candidateCount =\n                readinessLevel.readinessCandidates.items.length;\n\n            results.push({\n                DisplayName: displayName,\n                PlanName: planName,\n                ReadinessCode: readinessCode,\n                CandidateCount: candidateCount\n            });\n\n            if (candidateCount > 0) {\n              employeeAgg.readinessCodesWithSuccessors.add(readinessCode);\n            }\n        }\n    }\n}\n\nconst totalDirectReports = employeeMap.size;\n\nconst readinessCounts = {};\nfor (const emp of employeeMap.values()) {\n    for (const code of emp.readinessCodesWithSuccessors) {\n        readinessCounts[code] = (readinessCounts[code] || 0) + 1;\n    }\n}\n\nconst readinessPercentages = {};\nfor (const [code, count] of Object.entries(readinessCounts)) {\n    readinessPercentages[code] = totalDirectReports === 0\n        ? 0\n        : Number(((count / totalDirectReports) * 100).toFixed(1));\n}\n\nreturn {\n  details: results,\n  summary: {\n          totalDirectReports,\n          readinessCounts,\n          readinessPercentages\n    }\n};"
+          },
+          "outcomes": {
+            "success": "1777273205850"
+          },
+          "diagram": {
+            "x": 6416.594137542277,
+            "y": 7815.089064261557
+          },
+          "code": "GET_READINESSCANDIDATES_COUNT_FOR_EACH_READINESSLEVEL",
+          "id": "1777704919617",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Show at-risk succession plans"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "diagram": {
+            "x": 6525.627395715896,
+            "y": 7948.7553551296505
+          },
+          "code": "SHOW_ATRISK_SUCCESSION_PLANS",
+          "id": "1777273205850",
+          "inputs": [
+            {
+              "id": "1777273205851_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "## Role\nYou are the response composer. Your job is to craft a clear, professional, human-friendly answer to the user's current question using ONLY the retrieved data provided below.  Mention only direct reports are searched. \n\n## Current Question \n{{$context.$system.$inputMessage}}\n\n## Retrieved Data\nDirect reports' succession plans and readiness levels and candidate count for each readiness level: {{$context.$nodes.GET_READINESSCANDIDATES_COUNT_FOR_EACH_READINESSLEVEL.$output.result.details}}\nAll Readiness Summary:{{$context.$nodes.GET_READINESSCANDIDATES_COUNT_FOR_EACH_READINESSLEVEL.$output.result.summary}}\n{{$context.$nodes.SUCCESSION_ORGCHART_DEEP_LINK.$output}}\n\n## Conversation History (reference only)\n{{$context.$system.$chatHistory}}\n\n### Rule\n- A succession plan is at-risk or needs attention if it's candidate count for readiness level Ready Now is 0.\n- An employee is considered to have a successor of a readiness if at least one of his/her successions plans has candidate count > 0 for that readiness level.\n\n### Formatting\n- Lead with a direct answer. No preambles like \"Based on the data retrieved...\" or \"I am able to answer.\"\n- Do not expose internal identifiers such as PersonId, AssignmentId, PlanId etc, except when it's inside a hyperlink.\n- Add a new line before deep link.\n- The hyperlink must open a new tab instead of same tab in browser.\n- Do NOT show any data that are excluded or not included."
+            }
+          ],
+          "outputSpecification": "",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Process All Reports Talent Ratings",
+            "sourceType": "code",
+            "returnType": "array",
+            "sourceCode": "const data = $context.$nodes.GET_ALL_REPORTS_TALENT_RATINGS.$output;\nconst results = [];\nconst rol = $context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.riskOfLoss;\nconst iol = $context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.impactOfLoss;\nconst jr = $context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.jobRisk;\nconst perf = $context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.performance;\nconst pot = $context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.potential;\nconst showAll = ((rol.length === 0) && (iol.length === 0) && (jr.length === 0) && (perf.length === 0) && (pot.length === 0));\n\nfor (let i = 0; i < data.items.length; i++) {\n\n    var emp = data.items[i];\n    var displayName = emp.DisplayName;\n    var assignmentName = emp.AssignmentName;           \n    var personNumber = emp.PersonNumber;\n    var departmentName = emp.DepartmentName;\n    var locationName = emp.LocationName;\n\n    var allReportsTalentRatings = emp.allReportsTalentRatings.items;\n\n    for (let j = 0; j < allReportsTalentRatings.length; j++) {\n\n        var talentRatings = allReportsTalentRatings[j];\n        var impactOfLoss = talentRatings.ImpactOfLoss ?? \"\";\n        var riskOfLoss = talentRatings.RiskOfLoss ?? \"\";\n        var jobRisk = talentRatings.JobRisk ?? \"\";\n        var performance = talentRatings.Performance ?? \"\";\n        var potential = talentRatings.Potential ?? \"\";\n        var critical_atrisk = (impactOfLoss.toUpperCase() === 'HIGH' || riskOfLoss.toUpperCase() === 'HIGH' || jobRisk.toUpperCase() === 'HIGH');\n        var likelyToLeave = (riskOfLoss.toUpperCase() === 'HIGH');\n\n        if (showAll || rol.includes(riskOfLoss.toUpperCase()) || (iol.includes(impactOfLoss.toUpperCase())) || (jr.includes(jobRisk.toUpperCase())) || (perf.includes(performance.toUpperCase())) || (pot.includes(potential.toUpperCase()))) {\n            results.push({\n                DisplayName: displayName,\n                BusinessTitle: assignmentName,\n                PersonNumber: personNumber,\n                DepartmentName: departmentName,\n                LocationName: locationName,\n                ImpactOfLoss: impactOfLoss,\n                RiskOfLoss: riskOfLoss,\n                JobRisk: jobRisk,\n                Performance: performance,\n                Potential: potential,\n                Critical_AtRisk: critical_atrisk,\n                LikelyToLeave: likelyToLeave\n            });\n        }\n    }\n}\nreturn results;"
+          },
+          "diagram": {
+            "x": 4977,
+            "y": 7837
+          },
+          "outcomes": {
+            "success": "1772002857394"
+          },
+          "id": "1780003015638",
+          "code": "PROCESS_ALL_REPORTS_TALENT_RATINGS",
+          "type": "CODE",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "metadata": {
+            "description": "",
+            "name": "Process All Reports Talent Ratings Without Plan",
+            "returnType": "array",
+            "sourceCode": "const data = $context.$nodes.GET_ALL_REPORTS_TALENT_RATINGS_WITHOUT_PLAN.$output;\nconst results = [];\nconst rol = $context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.riskOfLoss;\nconst iol = $context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.impactOfLoss;\nconst jr = $context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.jobRisk;\nconst perf = $context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.performance;\nconst pot = $context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.potential;\nconst showAll = ((rol.length === 0) && (iol.length === 0) && (jr.length === 0) && (perf.length === 0) && (pot.length === 0));\n\nfor (let i = 0; i < data.items.length; i++) {\n\n    var emp = data.items[i];\n    var displayName = emp.DisplayName;\n    var assignmentName = emp.AssignmentName;           \n    var personNumber = emp.PersonNumber;\n    var departmentName = emp.DepartmentName;\n    var locationName = emp.LocationName;\n\n    var allReportsTalentRatings = emp.allReportsTalentRatings.items;\n\n    for (let j = 0; j < allReportsTalentRatings.length; j++) {\n\n        var talentRatings = allReportsTalentRatings[j];\n        var impactOfLoss = talentRatings.ImpactOfLoss ?? \"\";\n        var riskOfLoss = talentRatings.RiskOfLoss ?? \"\";\n        var jobRisk = talentRatings.JobRisk ?? \"\";\n        var performance = talentRatings.Performance ?? \"\";\n        var potential = talentRatings.Potential ?? \"\";\n        var critical_atrisk = (impactOfLoss.toUpperCase() === 'HIGH' || riskOfLoss.toUpperCase() === 'HIGH' || jobRisk.toUpperCase() === 'HIGH');\n        var likelyToLeave = (riskOfLoss.toUpperCase() === 'HIGH');\n\n        if (showAll || rol.includes(riskOfLoss.toUpperCase()) || (iol.includes(impactOfLoss.toUpperCase())) || (jr.includes(jobRisk.toUpperCase())) || (perf.includes(performance.toUpperCase())) || (pot.includes(potential.toUpperCase()))) {\n            results.push({\n                DisplayName: displayName,\n                BusinessTitle: assignmentName,\n                PersonNumber: personNumber,\n                DepartmentName: departmentName,\n                LocationName: locationName,\n                ImpactOfLoss: impactOfLoss,\n                RiskOfLoss: riskOfLoss,\n                JobRisk: jobRisk,\n                Performance: performance,\n                Potential: potential,\n                Critical_AtRisk: critical_atrisk,\n                LikelyToLeave: likelyToLeave\n            });\n        }\n    }\n}\nreturn results;"
+          },
+          "diagram": {
+            "x": 5368,
+            "y": 7841
+          },
+          "outcomes": {
+            "success": "1772003045210"
+          },
+          "id": "1780091461661",
+          "code": "PROCESS_ALL_REPORTS_TALENT_RATINGS_WITHOUT_PLAN",
+          "type": "CODE",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "metadata": {
+            "name": "Process All Reports Talent Ratings With Plan",
+            "returnType": "array",
+            "sourceCode": "const data = $context.$nodes.GET_ALL_REPORTS_TALENT_RATINGS_WITH_PLAN.$output;\nconst results = [];\nconst rol = $context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.riskOfLoss;\nconst iol = $context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.impactOfLoss;\nconst jr = $context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.jobRisk;\nconst perf = $context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.performance;\nconst pot = $context.$nodes.EXTRACT_MANAGEMENT_LEVEL_AND_REQUESTED_TALENT_RATINGS.$output.potential;\nconst showAll = ((rol.length === 0) && (iol.length === 0) && (jr.length === 0) && (perf.length === 0) && (pot.length === 0));\n\nfor (let i = 0; i < data.items.length; i++) {\n\n    var emp = data.items[i];\n    var displayName = emp.DisplayName;\n    var assignmentName = emp.AssignmentName;           \n    var personNumber = emp.PersonNumber;\n    var departmentName = emp.DepartmentName;\n    var locationName = emp.LocationName;\n\n    var allReportsTalentRatings = emp.allReportsTalentRatings.items;\n\n    for (let j = 0; j < allReportsTalentRatings.length; j++) {\n\n        var talentRatings = allReportsTalentRatings[j];\n        var impactOfLoss = talentRatings.ImpactOfLoss ?? \"\";\n        var riskOfLoss = talentRatings.RiskOfLoss ?? \"\";\n        var jobRisk = talentRatings.JobRisk ?? \"\";\n        var performance = talentRatings.Performance ?? \"\";\n        var potential = talentRatings.Potential ?? \"\";\n        var critical_atrisk = (impactOfLoss.toUpperCase() === 'HIGH' || riskOfLoss.toUpperCase() === 'HIGH' || jobRisk.toUpperCase() === 'HIGH');\n        var likelyToLeave = (riskOfLoss.toUpperCase() === 'HIGH');\n\n        if (showAll || rol.includes(riskOfLoss.toUpperCase()) || (iol.includes(impactOfLoss.toUpperCase())) || (jr.includes(jobRisk.toUpperCase())) || (perf.includes(performance.toUpperCase())) || (pot.includes(potential.toUpperCase()))) {\n            results.push({\n                DisplayName: displayName,\n                BusinessTitle: assignmentName,\n                PersonNumber: personNumber,\n                DepartmentName: departmentName,\n                LocationName: locationName,\n                ImpactOfLoss: impactOfLoss,\n                RiskOfLoss: riskOfLoss,\n                JobRisk: jobRisk,\n                Performance: performance,\n                Potential: potential,\n                Critical_AtRisk: critical_atrisk,\n                LikelyToLeave: likelyToLeave\n            });\n        }\n    }\n}\nreturn results;"
+          },
+          "diagram": {
+            "x": 5888.281987361976,
+            "y": 7841.288290068372
+          },
+          "outcomes": {
+            "success": "1772003117923"
+          },
+          "id": "1780092704541",
+          "code": "PROCESS_ALL_REPORTS_TALENT_RATINGS_WITH_PLAN",
+          "type": "CODE",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "metadata": {
+            "name": "Process Rest Error",
+            "returnType": "object",
+            "sourceCode": "const input = $context.$error;\nconst errorObj = JSON.parse(input.$errorMessage);\nconst result = {\n    nodeName: input.$nodeName,\n    errorDetails: errorObj[\"o:errorDetails\"]\n};\n\nreturn result;"
+          },
+          "diagram": {
+            "x": 6691.663159767602,
+            "y": 5187
+          },
+          "outcomes": {
+            "success": "1780432541220"
+          },
+          "id": "1780432514556",
+          "code": "PROCESS_REST_ERROR",
+          "type": "CODE",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "metadata": {
+            "name": "Show Rest Error"
+          },
+          "diagram": {
+            "x": 6692,
+            "y": 5308
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "1780432541220",
+          "code": "SHOW_REST_ERROR",
+          "type": "LLM",
+          "inputs": [
+            {
+              "id": "1780432541220_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "1780432541220_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Present the following failure details to the user in a clear and summarized format, and tell user the user request failed to process due to the error.\n**FailureDetail : {{$context.$nodes.PROCESS_REST_ERROR.$output.result}}"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1765483684228",
+          "name": "managerAssignmentId",
+          "scope": "CONVERSATION",
+          "type": "number"
+        },
+        {
+          "id": "1765250392982",
+          "name": "managerPersonId",
+          "scope": "CONVERSATION",
+          "type": "number"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": "",
+    "agentsValueMappings": [],
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1777317060342",
+            "name": "chatHistory",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpLocalFileUploadEnabledFlag": true,
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": [],
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI"
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "SUCCESSION_MANAGEMENT",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"2\""
+  }
+}

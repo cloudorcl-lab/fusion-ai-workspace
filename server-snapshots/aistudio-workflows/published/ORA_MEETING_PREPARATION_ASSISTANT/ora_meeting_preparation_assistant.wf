@@ -1,0 +1,1666 @@
+{
+  "workflowId": "300000331067874",
+  "workflowCode": "ORA_MEETING_PREPARATION_ASSISTANT",
+  "name": "Meeting Preparation Assistant",
+  "description": "Eliminates manual meeting prep by distilling sales information from multiple records and recent customer interactions into a streamlined, actionable briefing for upcoming sales appointments, so sellers save time and focus on the conversation.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1770981410844"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Parse Input",
+            "returnType": "object",
+            "sourceCode": "/*Input Message Format - {\n    \"action\": {\n        \"config\": {\n            \"activityId\": 300100649514256,\n            \"checkOutcome\": \"N\"\n        }\n    }\n}*/\n\nconst inputMessage = $context.$triggers.REST.$input.action.config;\n\nconst extractedActivityId = inputMessage.activityId;\nconst checkOutcome= inputMessage.checkOutcome;\nconst scheduler= inputMessage.scheduler;\n\nconst output = {};\n\noutput.ActivityId = extractedActivityId;\noutput.CheckOutcome = checkOutcome;\n\n// Activity\noutput.QExpressionActivity = {\n  op: '$and',\n  criteria: [{\n    op: '$eq',\n    attribute: 'ActivityId',\n    value: extractedActivityId\n  }]\n};\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1770977084741"
+          },
+          "code": "PARSE_INPUT",
+          "id": "1770981410844",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "Get meeting details elastic"
+          },
+          "outcomes": {
+            "success": "1770984178036"
+          },
+          "code": "GET_MEETING_DETAILS_ELASTIC",
+          "convergenceTargetId": "1770282051029",
+          "id": "1770977084741",
+          "inputs": [
+            {
+              "id": "1774513849514_1",
+              "name": "object",
+              "type": "string",
+              "value": "Activity"
+            },
+            {
+              "id": "1774513849515_2",
+              "name": "q",
+              "type": "string",
+              "value": "{{$context.$nodes.PARSE_INPUT.$output.result.QExpressionActivity}}"
+            },
+            {
+              "id": "1774513849516_3",
+              "name": "sort",
+              "type": "string"
+            },
+            {
+              "id": "1774513849517_4",
+              "name": "limit",
+              "type": "integer"
+            },
+            {
+              "id": "1774513849518_5",
+              "name": "fields",
+              "type": "string",
+              "value": "[\"ActivityId\",\"Owner\",\"OpportunityId\",\"ListOfResourcesForTheTeam\",\"CallReportCount\",\"ListOfContacts\",\"PrimaryContactId\",\"CurrencyCode\",\"ListOfAttachments\",\"ActivityFunctionCode_localizedValue\",\"ActivityTypeCode_localizedValue\",\"CustomerAccount\",\"LeadId\",\"RecurRecType_localizedValue\",\"StatusCode\",\"ActivityStartDate\",\"ActivityEndDate\",\"SrId\",\"AppointmentStatus_localizedValue\",\"PriorityCode_localizedValue\",\"ActivityDescription\",\"AccountId\",\"PartnerPartyId\",\"Subject\",\"Location\",\"PriorityCode\",\"CustPartyType\",\"PrivateFlag\",\"ActivityNumber\"]"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Query for Common Context",
+            "returnType": "object",
+            "sourceCode": "// Access the direct object from the new Elastic node\nconst appt = $context.$nodes.GET_MEETING_DETAILS_ELASTIC.$output?.[0] ?? {};\n\n// Safe extraction using Optional Chaining (?.) to prevent \"null\" errors\nconst extractedPartyNumber = appt.CustomerAccount?.PartyNumber || \"\";\nconst extractedOpportunityId = appt.OpportunityId?.OptyId || \"\";\nconst extractedLeadId = appt.LeadId?.LeadId || appt.LeadId || \"\";\nconst extractedActivityId = appt.ActivityId || \"\";\nconst extractedPrimaryContactId = appt.PrimaryContactId?.PartyId || \"\";\n\nconst output = {};\nconst hasLead = (extractedLeadId  != null && extractedLeadId  !== \"\") ? \"Y\" : \"N\";\nconst hasOpty = (extractedOpportunityId  != null && extractedOpportunityId  !== \"\") ? \"Y\" : \"N\";\nconst hasAccount = (extractedPartyNumber != null && extractedPartyNumber !== \"\") ? \"Y\" : \"N\";\n\noutput.hasLead = hasLead ;\noutput.hasOpty = hasOpty;\noutput.hasAccount=hasAccount ;\n\n\n// Account\noutput.QExpressionAccount = {\n  op: '$and',\n  criteria: [{\n    op: '$eq',\n    attribute: 'PartyNumber',\n    value: extractedPartyNumber\n  }]\n};\n\n// Contacts\nlet listOfContacts = [];\nlet listOfPartyNumber = [];\nlet listOfPartyId = [];\n\n// Parse and validate the contacts list\ntry {\n  listOfContacts = $context.$nodes.GET_MEETING_DETAILS_ELASTIC.$output?.[0].ListOfContacts;\n} catch(e) {\n  // If parsing fails, set to empty array\n  listOfContacts = [];\n}\n\n// Extract PartyNumber from each contact, if structured as expected\nlistOfContacts?.forEach(contact => {\n  if (contact && contact.ContactId && contact.ContactId.PartyNumber) {\n    listOfPartyNumber.push(contact.ContactId.PartyNumber);\n  }\n});\n\n// Extract PartyId from each contact, if structured as expected\nlistOfContacts?.forEach(contact => {\n  if (contact && contact.ContactId && contact.ContactId.PartyId) {\n    listOfPartyId.push(contact.ContactId.PartyId);\n  }\n});\n\nlet ActivityContactPartyIdsString = '';\n// To fetch Activity contact engagement summary\nlistOfContacts?.forEach(contact => {\n if (contact && contact.ContactId && contact.ContactId.PartyId) {\n    if (ActivityContactPartyIdsString ) {\n      ActivityContactPartyIdsString += ',';\n    }\n    ActivityContactPartyIdsString += contact.ContactId.PartyId;\n  }\n});\n\noutput.ActivityContactPartyIdsString = ActivityContactPartyIdsString;\n\n// If any party numbers found, build the expression\n\n  output.QExpressionContact = {\n    op: '$and',\n    criteria: [{\n      op: '$in',\n      attribute: 'PartyNumber',\n      values: listOfPartyNumber\n    }]\n  };\n\noutput.ContactPartyNumbers = listOfPartyNumber;\noutput.ContactPartyIds = listOfPartyId;\n\n// Opportunity Query Expression\noutput.QExpressionOpportunity = {\n    op: \"$and\",\n    criteria: [{\n        op: \"$eq\",\n        attribute: \"OptyId\",\n        value: extractedOpportunityId\n    }]\n};\n\n// Lead Query Expression\noutput.QExpressionLead = {\n    op: \"$and\",\n    criteria: [{\n        op: \"$eq\",\n        attribute: \"LeadId\",\n        value: extractedLeadId\n    }]\n};\n\n// Primary Contact Query Expression\noutput.QExpressionPrimaryContact = {\n    op: \"$and\",\n    criteria: [{\n        op: \"$eq\",\n        attribute: \"PartyId\",\n        value: extractedPrimaryContactId\n    }]\n};\n\n// Activity for Talking Points Query Expression\noutput.QExpressionActivity = {\n    op: \"$and\",\n    criteria: [{\n        op: \"$eq\",\n        attribute: \"ActivityId\",\n        value: extractedActivityId\n    }]\n};\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1775983094850"
+          },
+          "code": "QUERY_FOR_COMMON_CONTEXT",
+          "id": "1770984178036",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Compile Router Context",
+            "returnType": "string",
+            "sourceCode": "/// 1. Meeting Details\nvar appointment = $context.$nodes.GET_MEETING_DETAILS_ELASTIC.$output?.[0] ?? {};\n\n/// 2. Opportunity + Lead\nvar opportunity = appointment.OpportunityId || null;\nvar lead = appointment.LeadId || null;\n\nvar hasOpportunity = (opportunity && (opportunity.OptyId || opportunity.Name)) ? \"YES\" : \"NO\";\nvar hasLead = (lead && (lead.LeadId || lead.Name)) ? \"YES\" : \"NO\";\n\nvar opportunityName = opportunity ? (opportunity.Name || \"N/A\") : \"None\";\nvar leadName = lead ? (lead.Name || \"N/A\") : \"None\";\n\n/// 3. Account + Metadata\nvar accountName = (appointment.CustomerAccount && appointment.CustomerAccount.PartyName) ? appointment.CustomerAccount.PartyName : \"Unknown Account\";\nvar meetingType = appointment.ActivityTypeCode_localizedValue || \"Meeting\";\n\n/// 4. Clean Description\nvar description = appointment.ActivityDescription\n    ? appointment.ActivityDescription.replace(/<[^>]*>/g, ' ')\n    : \"N/A\";\n\ndescription = description.replace(/\\s+/g, ' ').trim();\nif (description.length > 800) {\n    description = description.substring(0, 800);\n}\n\n/// 5. Internal Attendees (from Elastic Response)\nvar internalTeam = [];\nif (appointment.ListOfResourcesForTheTeam && Array.isArray(appointment.ListOfResourcesForTheTeam)) {\n    internalTeam = appointment.ListOfResourcesForTheTeam.map(function(res) {\n        var p = res.AssigneeId || {};\n        var role = p.ResourceRoleName || \"Internal\";\n        return (p.PartyName || \"Unknown\").trim() + \" [\" + role + \"]\";\n    });\n}\n\nvar internalAttendeesString = internalTeam.length > 0 ? internalTeam.join(\"; \") : \"None listed\";\n\n/// 6. External Contacts (from GET_CONTACT_DETAILS)\nvar contactsRaw = $context.$nodes.GET_CONTACT_DETAILS.$output;\nvar externalContacts = [];\n\nif (contactsRaw && Array.isArray(contactsRaw)) {\n    externalContacts = contactsRaw.map(function(c) {\n        var name = c.PersonName || \"Unknown\";\n        var title = c.JobTitle || \"External\";\n        return name.trim() + \" [\" + title + \"]\";\n    });\n}\n\nvar externalAttendeesString = externalContacts.length > 0 ? externalContacts.join(\"; \") : \"None listed\";\n\n/// 7. Build Router Context\nvar router_context =\n    \"Account: \" + accountName + \"\\n\" +\n    \"Title: \" + (appointment.Subject || \"N/A\") + \" (\" + meetingType + \")\\n\" +\n    \"Opportunity: \" + opportunityName + \" (Has Opty: \" + hasOpportunity + \")\\n\" +\n    \"Lead: \" + leadName + \" (Has Lead: \" + hasLead + \")\\n\" +\n    \"Internal Attendees: \" + internalAttendeesString + \"\\n\" +\n    \"External Attendees: \" + externalAttendeesString + \"\\n\" +\n    \"Description: \" + description;\n\nreturn router_context;"
+          },
+          "outcomes": {
+            "success": "1773315853145"
+          },
+          "code": "COMPILE_ROUTER_CONTEXT",
+          "convergenceTargetId": "1770983825084",
+          "id": "1770613202957",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check for Opportunity"
+          },
+          "outcomes": {
+            "true": "1770314995411",
+            "false": "1773315929929"
+          },
+          "code": "CHECK_FOR_OPPORTUNITY",
+          "convergenceTargetId": "end",
+          "id": "1773315853145",
+          "inputs": [
+            {
+              "id": "1773315853147_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_COMMON_CONTEXT.$output.result.hasOpty == 'Y'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "Get Opportunity details elastic"
+          },
+          "outcomes": {
+            "success": "1773310549011"
+          },
+          "code": "GET_OPPORTUNITY_DETAILS_ELASTIC",
+          "convergenceTargetId": "1773315871044",
+          "id": "1770314995411",
+          "inputs": [
+            {
+              "id": "1770315012643_1",
+              "name": "object",
+              "type": "string",
+              "value": "Opportunity"
+            },
+            {
+              "id": "1770315012644_2",
+              "name": "q",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_COMMON_CONTEXT.$output.result.QExpressionOpportunity}}"
+            },
+            {
+              "id": "1770315012645_3",
+              "name": "sort",
+              "type": "string"
+            },
+            {
+              "id": "1770315012646_4",
+              "name": "limit",
+              "type": "integer"
+            },
+            {
+              "id": "1770315012647_5",
+              "name": "fields",
+              "type": "string",
+              "value": "[\"Name\",\"OptyNumber\",\"OptyId\",\"StatusCode\",\"StatusCode_localizedValue\",\"LookupCategory\",\"LookupCategory_localizedValue\",\"SalesStage.StgOrderEnum_localizedValue\",\"SalesStage.StgId\",\"PrimaryRevenue.RevnId\",\"PrimaryRevenue.RevnAmount\",\"PrimaryRevenue.WinProb\",\"PrimaryRevenue.CrmCurcyCode\",\"PrimaryRevenue.ExpectAmount\",\"EffectiveDate\",\"ForecastCategory\",\"ForecastCategory_localizedValue\",\"OptyCreationDate\",\"LastUpdateDate\",\"Owner.PartyName\",\"Owner.PrimaryEmail.EmailAddress\",\"NumberOfContacts\",\"CustomerAccount.PartyName\",\"CustomerAccount.PartyNumber\",\"CustomerAccount.PartyId\",\"ListOfContacts.PerPartyId.PartyName\",\"ListOfContacts.PerPartyId.PrimaryEmail.EmailAddress\",\"ListOfContacts.PerPartyId.PrimaryPhone.FormattedPhone\",\"ListOfRevenues.RevnAmount\",\"ListOfRevenues.WinProb\",\"ListOfRevenues.ProdGroupId.Name_localizedValue\",\"ListOfRevenues.ProdGroupId.ProductGroupReferenceNumber\",\"ListOfRevenues.InventoryItemId\",\"OptyCreationDate\",\"LastUpdateDate\"]"
+            }
+          ],
+          "outputSpecification": "",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Fetch Opty Details",
+            "returnType": "array",
+            "sourceCode": "const appt = $context.$nodes.GET_MEETING_DETAILS_ELASTIC.$output?.[0] ?? {};\nlet optyId = appt.OpportunityId.OptyId;\n\nlet filter = `opportunity.id = ${optyId} and sourceObjectCode='opportunities'`;\n\nlet payload = {\n  \"collection\": {\n    \"limit\": 1,\n    \"offset\": 0,\n    \"filter\": filter\n  },\n  \"fields\": [\n    \"progressionSummary\",\n    \"priorityReason\",\n    \"engagementInsightNumber\",\n    \"id\"\n  ],\n  \"accessors\": {\n    \"opportunity\": {\n      \"fields\": [\n        \"id\"\n      ]\n    },\n    \"salesPlay\": {\n      \"fields\": [\n        \"id\"\n      ]\n    }\n  }\n}\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "1773310605298"
+          },
+          "code": "FETCH_OPTY_DETAILS",
+          "convergenceTargetId": "1773315871044",
+          "id": "1773310549011",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_ENGAGEMENT_INSIGHTS",
+            "errorNodeId": "1770714674204",
+            "functionName": "filter_all_engagement_insights",
+            "name": "Fetch Insights for opportunity"
+          },
+          "outcomes": {
+            "success": "1773312989734"
+          },
+          "code": "FETCH_INSIGHTS_FOR_OPPORTUNITY",
+          "convergenceTargetId": "1773315871044",
+          "id": "1773310605298",
+          "inputs": [
+            {
+              "id": "1773310640829_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCH_OPTY_DETAILS.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"Generated schema for Root\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"progressionSummary\": {\n            \"type\": \"string\"\n          },\n          \"priorityReason\": {},\n          \"engagementInsightNumber\": {\n            \"type\": \"string\"\n          },\n          \"id\": {\n            \"type\": \"string\"\n          },\n          \"$id\": {\n            \"type\": \"string\"\n          },\n          \"$context\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"etag\": {\n                \"type\": \"string\"\n              },\n              \"links\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"$self\": {\n                    \"type\": \"object\",\n                    \"properties\": {\n                      \"href\": {\n                        \"type\": \"string\"\n                      }\n                    },\n                    \"required\": [\n                      \"href\"\n                    ]\n                  }\n                },\n                \"required\": [\n                  \"$self\"\n                ]\n              }\n            },\n            \"required\": [\n              \"etag\",\n              \"links\"\n            ]\n          },\n          \"salesPlay\": {},\n          \"opportunity\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"id\": {\n                \"type\": \"string\"\n              },\n              \"OpportunityNumber\": {\n                \"type\": \"string\"\n              },\n              \"$id\": {\n                \"type\": \"string\"\n              },\n              \"$context\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"etag\": {\n                    \"type\": \"string\"\n                  },\n                  \"links\": {\n                    \"type\": \"object\",\n                    \"properties\": {\n                      \"$self\": {\n                        \"type\": \"object\",\n                        \"properties\": {\n                          \"href\": {\n                            \"type\": \"string\"\n                          }\n                        },\n                        \"required\": [\n                          \"href\"\n                        ]\n                      }\n                    },\n                    \"required\": [\n                      \"$self\"\n                    ]\n                  }\n                },\n                \"required\": [\n                  \"etag\",\n                  \"links\"\n                ]\n              }\n            },\n            \"required\": [\n              \"id\",\n              \"OpportunityNumber\",\n              \"$id\",\n              \"$context\"\n            ]\n          }\n        },\n        \"required\": [\n          \"progressionSummary\",\n          \"priorityReason\",\n          \"engagementInsightNumber\",\n          \"id\",\n          \"$id\",\n          \"$context\",\n          \"salesPlay\",\n          \"opportunity\"\n        ]\n      }\n    },\n    \"hasMore\": {\n      \"type\": \"boolean\"\n    }\n  },\n  \"required\": [\n    \"items\",\n    \"hasMore\"\n  ]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Capture Insight Id"
+          },
+          "outcomes": {
+            "success": "1770714674204"
+          },
+          "code": "CAPTURE_INSIGHT_ID",
+          "convergenceTargetId": "1773315871044",
+          "id": "1773312989734",
+          "inputs": [
+            {
+              "id": "1773313001865",
+              "name": "engagementinsightid",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCH_INSIGHTS_FOR_OPPORTUNITY.$output.items[0].id}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Check for Lead"
+          },
+          "outcomes": {
+            "true": "1770315248183",
+            "false": "1773868165953"
+          },
+          "code": "CHECK_FOR_LEAD",
+          "convergenceTargetId": "end",
+          "id": "1773315929929",
+          "inputs": [
+            {
+              "id": "1773315929932_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_COMMON_CONTEXT.$output.result.hasLead == 'Y'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "Get Lead details elastic"
+          },
+          "outcomes": {
+            "success": "1770714674204"
+          },
+          "code": "GET_LEAD_DETAILS_ELASTIC",
+          "convergenceTargetId": "1773315945265",
+          "id": "1770315248183",
+          "inputs": [
+            {
+              "id": "1770315266595_1",
+              "name": "object",
+              "type": "string",
+              "value": "Lead"
+            },
+            {
+              "id": "1770315266596_2",
+              "name": "q",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_COMMON_CONTEXT.$output.result.QExpressionLead}}"
+            },
+            {
+              "id": "1770315266598_3",
+              "name": "sort",
+              "type": "string"
+            },
+            {
+              "id": "1770315266598_4",
+              "name": "limit",
+              "type": "integer"
+            },
+            {
+              "id": "1770315266600_5",
+              "name": "fields",
+              "type": "string",
+              "value": "[\"Name\",\"Rank\",\"StatusCode\",\"StatusCode_localizedValue\",\"DealAmount\",\"LeadNumber\",\"ListOfProducts\",\"PrimaryContactPartyName\",\"AILeadScore\",\"Timeframe\",\"LeadCreationDate\",\"Score\",\"BudgetAmount\",\"BudgetStatus\",\"LeadAcceptedFlag\",\"Owner.PartyName\",\"JobTitle\",\"SalesChannel_localizedValue\",\"CustomerNeed\",\"DecisionMakerIdentifiedFlag\"]"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Query for PMB Context",
+            "returnType": "object",
+            "sourceCode": "let leadNumber;\nlet optyNumber;\n\n// none has been set so that in case of only Contact in the meeting, it shouldn't give improper results.\nconst output = {\n    primaryId: \"-1\",\n    primaryObject: \"none\",\n    partyNumber: \"none\",\n    primaryTypeActivities: \"none\",\n    primaryTypeEmails: \"none\",\n    primaryTypeWrapups: \"none\",\n    primaryTypeNotes: \"none\",\n    QExpressionActivityAppointments: null,\n    QExpressionActivityTasks: null\n};\n\nconst appt = $context.$nodes.GET_MEETING_DETAILS_ELASTIC.$output?.[0] ?? null;\nconst oppty = $context.$nodes.GET_OPPORTUNITY_DETAILS_ELASTIC.$output?.[0] ?? null;\nconst lead = $context.$nodes.GET_LEAD_DETAILS_ELASTIC.$output?.[0] ?? null;\n\nif (!appt || typeof appt !== 'object' || Object.keys(appt).length === 0) {\n    return output;\n}\nif (oppty) {\n    optyNumber = $context.$nodes.GET_OPPORTUNITY_DETAILS_ELASTIC.$output?.[0]?.OptyNumber ?? null;\n}\nif (lead ) {\n    leadNumber = $context.$nodes.GET_LEAD_DETAILS_ELASTIC.$output?.[0]?.LeadNumber ?? null;\n}\n\nlet targetAttribute = \"ActivityId\";\n\n// 1. OPPORTUNITY\nif (appt.OpportunityId && typeof appt.OpportunityId === 'object' && appt.OpportunityId.OptyId) {\n    let opptyNum = appt?.OpportunityId?.OptyNumber;\n    output.primaryId = String(appt.OpportunityId.OptyId);\n    output.partyNumber = opptyNum ? String(opptyNum) : '';\n    output.primaryTypeActivities = \"OpportunityId\";\n    output.primaryTypeEmails = \"ORA_MOO_OPTY\";\n    output.primaryTypeWrapups = \"MOO_OPTY\";\n    output.primaryTypeNotes = \"opportunities\";\n    output.primaryObject = \"Opportunity\";\n\n    targetAttribute = \"OpportunityId.OptyId\";\n} \n\n// 2. LEAD\nelse if (appt.LeadId) {\n\n    const leadIdValue = appt.LeadId.LeadId ?? appt.LeadId;\n    let leadNum = appt.LeadId.LeadNumber || leadNumber || '';\n\n    output.primaryId = String(leadIdValue);\n    output.partyNumber = leadNum ? String(leadNum) : '';\n    output.primaryTypeActivities = \"LeadId\";\n    output.primaryTypeEmails = \"ORA_MKL_LM_LEADS\";\n    output.primaryTypeWrapups = \"MKL_LM_LEADS\";\n    output.primaryTypeNotes = \"leads\";\n    output.primaryObject = \"Lead\";\n\n    targetAttribute = \"LeadId\";\n} \n\n// 3. ACCOUNT\nelse {\n\n    const acct = appt.CustomerAccount || {};\n\n    if (acct.PartyId || appt.AccountId) {\n\n        output.primaryId = acct.PartyId ? String(acct.PartyId) : String(appt.AccountId);\n        output.partyNumber = acct.PartyNumber ? String(acct.PartyNumber) : \"\";\n        output.primaryTypeActivities = \"AccountId\";\n        output.primaryTypeEmails = \"ORA_HZ_ORGANIZATION_PROFILES\";\n        output.primaryTypeWrapups = \"HZ_ORGANIZATION_PROFILES\";\n        output.primaryTypeNotes = \"account\";\n        output.primaryObject = \"Account\";\n\n        targetAttribute = \"AccountId\";\n    }\n}\n\n// Compile Queries\nif (output.primaryId && targetAttribute) {\n\n    output.QExpressionActivityAppointments = {\n        op: '$and',\n        criteria: [\n            {\n                op: '$eq',\n                attribute: targetAttribute,\n                value: Number(output.primaryId)\n            },\n            {\n                op: '$eq',\n                attribute: \"ActivityFunctionCode\",\n                value: \"APPOINTMENT\"\n            }\n        ]\n    };\n\n    output.QExpressionActivityTasks = {\n        op: '$and',\n        criteria: [\n            {\n                op: '$eq',\n                attribute: targetAttribute,\n                value: Number(output.primaryId)\n            },\n            {\n                op: '$eq',\n                attribute: \"ActivityFunctionCode\",\n                value: \"TASK\"\n            }\n        ]\n    };\n}\n\n// ==============================\nconst extractedPartyNumber = appt.CustomerAccount?.PartyNumber;\nconst customerPartyId = appt.CustomerAccount?.PartyId;\n\n\n// -------------------------------\n// SUBSCRIPTIONS\n// -------------------------------\n\nlet listOfFinParties = [];\nlet listOfFinPartyNumbers = [];\nlet customerPartyIdsString='';\ncustomerPartyIdsString +=customerPartyId \n\ntry {\n  listOfFinParties = $context.$nodes.GET_FINANCIAL_PARTY_DATA.$output;\n} catch(e) {\n  listOfFinParties = [];\n}\n\n// Extract PartyNumbers safely\nif (listOfFinParties && listOfFinParties.items && listOfFinParties.items.length) {\n  for (let i = 0; i < listOfFinParties.items.length; i++) {\n    const party = listOfFinParties.items[i];\t\n    if (party && party.PartyNumber) {\n      listOfFinPartyNumbers.push(String(party.PartyNumber));\n\t  if (customerPartyIdsString ) {\n      customerPartyIdsString += ',';\n    }\n\t  customerPartyIdsString +=party.PartyId\n    }\n  }\n} else {\n  listOfFinPartyNumbers.push(String(extractedPartyNumber ));\n}\n\noutput.CustomerPartyIdsString = customerPartyIdsString ;\n\n\n\n\n\n// Build Subscription Query Expression\noutput.QExpressionSubscription = {\n  op: '$and',\n  criteria: [{\n    op: '$in',\n    attribute: 'ListOfParties.PartyNumber',\n    values: listOfFinPartyNumbers\n  },\n{\n        \"op\": \"$in\",\n      \"attribute\": \"Status\",\n      \"values\": [\"ORA_ACTIVE\",\"ORA_HOLD\",\"ORA_SUSPENDED\",\"ORA_UNDER_AMENDMENT\",\"ORA_EXPIRED\"]\n    }\n]\n};\n\noutput.SubscriptionPartyNumbers = listOfFinPartyNumbers;\n\n\n// -------------------------------\n// ASSETS\n// -------------------------------\n\noutput.QExpressionAssets = {\n  op: '$and',\n  criteria: [{\n    op: '$eq',\n    attribute: 'CustomerAccount.PartyNumber',\n    value: extractedPartyNumber \n  },\n{\n      \"op\": \"$eq\",\n      \"attribute\": \"StatusCode\",\n      \"value\": \"ACTIVE\"\n    }\n]\n};\n\n\n// -------------------------------\n// RETURN\n// -------------------------------\n\n\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1773752691385"
+          },
+          "code": "QUERY_FOR_PMB_CONTEXT",
+          "convergenceTargetId": "1773316009919",
+          "id": "1770714674204",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Generate Engagement Summary"
+          },
+          "outcomes": {
+            "success": "1774872960253"
+          },
+          "code": "GENERATE_ENGAGEMENT_SUMMARY",
+          "convergenceTargetId": "1773316009919",
+          "id": "1770715102966",
+          "inputs": [
+            {
+              "id": "1770715102967_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI Assistant skilled at summarizing Sales CRM engagement data from Oracle Sales, including Emails, Meeting / Phone Call Wrapup Notes, and Notes. Refer to **##SALES CONTEXT** for CRM data.\n\n## Instructions\n\n0. Review the **Appointment Context Summary** to understand the upcoming meeting’s topic, participants, and purpose. Use this only as guidance to prioritize relevant engagements. Do not over-filter strictly based on it.\n\n1. Summarize each engagement as a **concise paragraph covering the key details**, including participants (if available), discussion highlights, and outcomes.\n\n2. Write each engagement using the following format:\nEngagement Type (MMM DD, YYYY): <Engagement summary>\n\nExample:\nMeeting (Mar 15, 2026): Discussed server capacity expansion; customer confirmed ~90% utilization and requested proposal for additional infrastructure.\n\n3. Determine **Engagement Type** as follows:\n\n* Wrapup Notes:\n\n  * `ChannelDisplayName = Web` → **Meeting**\n  * `ChannelDisplayName = Phone` → **Phone Call**\n  * Infer other values accordingly as well\n* Emails → **Email**\n* Notes → **Note**\n\n4. Determine **Engagement Date** using the **actual interaction start time** of the engagement.\n\n* Wrapup Notes → use **InteractionStartTime**\n* Emails → use **SentDate**\n* Notes → use **CreationDate**\n\nImportant:\n\n* Always derive the engagement date from **InteractionStartTime**, not from wrapup creation time\n* Ignore InteractionEndTime for date determination\n* Convert the timestamp to \"MMM DD, YYYY\" format (example: Mar 11, 2026)\n\n5. **Select engagements most useful for preparing for the upcoming appointment**, using signals such as:\n\n* Similarity to meeting topic, description, or purpose\n* Same customer, contacts, or participants\n* Prior discussions, commitments, next steps, risks, or open questions\n* Continuation of the same conversation thread\n\nImportant:\n\n* Do **not** aggressively filter out engagements\n* If relevance is unclear, **include the engagement rather than exclude it**\n* Prefer relevant engagements, but allow supporting context when helpful\n\n6. **Do NOT apply a fixed time window**.\n\n* Older engagements may be included if they provide important context\n* Prefer more recent engagements when relevance is similar\n\n7. **Exclude future-dated engagements**.\n\n8. Perform **strict de-duplication**:\n\n* If multiple engagements represent the same interaction, keep only the most complete version\n* Prefer **Wrapup Notes** over other sources since they contain discussion details\n* Avoid repeating the same discussion across multiple sources unless new information is added\n\n9. Limit output to **up to 8 engagements**, prioritizing the most relevant ones.\n\n10. Sort engagements in **reverse chronological order**, starting with the most recent.\n\n11. If no valid engagement data is available, return:\n    No recent engagement available\n\n---\n\n## SALES CONTEXT\n\n### Appointment Context Summary\n{{$context.$nodes.COMPILE_ROUTER_CONTEXT.$output.result}}\n\n### Sales Meeting & Phone Call Wrapup Notes\n\n {{$context.$nodes.GET_ACCOUNT_WRAPUPS.$output}} + {{$context.$nodes.GET_PMB_OBJECT_CONVERSATION_MESSAGES.$output }}\n \n### Sales Emails\n\n{{$context.$nodes.GET_EMAILS.$output}}\n\n### Sales Notes\n\n{{$context.$nodes.GET_NOTES.$output}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1770281983429",
+            "1": "1770282641372",
+            "2": "1770282215364",
+            "3": "1774522072409",
+            "4": "1774522940108",
+            "5": "add_1773752361339_5"
+          },
+          "code": "PARALLEL_1773752361340",
+          "convergenceTargetId": "1770613202957",
+          "id": "1773752361339",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "Get account details elastic"
+          },
+          "outcomes": {
+            "success": "1770613202957"
+          },
+          "code": "GET_ACCOUNT_DETAILS_ELASTIC",
+          "convergenceTargetId": "1773752368834",
+          "id": "1770281983429",
+          "inputs": [
+            {
+              "id": "1770281997912_1",
+              "name": "object",
+              "type": "string",
+              "value": "Account"
+            },
+            {
+              "id": "1770281997913_2",
+              "name": "q",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_COMMON_CONTEXT.$output.result.QExpressionAccount}}"
+            },
+            {
+              "id": "1770281997914_3",
+              "name": "sort",
+              "type": "string"
+            },
+            {
+              "id": "1770281997915_4",
+              "name": "limit",
+              "type": "integer"
+            },
+            {
+              "id": "1770281997916_5",
+              "name": "fields",
+              "type": "string",
+              "value": "['PartyNumber','PartyId','PartyUniqueName','OrganizationName','PrimaryIndustry','AccountRollup.SumOfActiveSubscriptionsTCV','AccountRollup.SumOfOpenOpportunitiesRevenue','AccountRollup.SumOfWonOpportunitiesRevenue','AccountRollup.NumberOfOpenCriticalServiceRequests','AccountRollup.NumberOfDecisionMakerContacts','AccountRollup.CurrencyCode','AccountRollup.LastTouchDate','PrimaryContact.PartyName','PrimaryContact.PrimaryEmail.EmailAddress','PrimaryAddress.FormattedAddress','PrimaryPhone.FormattedPhone','PrimaryEmail.EmailAddress','Owner.PartyName','Owner.PrimaryEmail.EmailAddress','AccountHierarchySummary.TotalChildAccounts','AccountHierarchySummary.UltimateParent.PartyNumber']"
+            }
+          ],
+          "outputSpecification": "",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "Get contact details"
+          },
+          "outcomes": {
+            "success": "1770613202957"
+          },
+          "code": "GET_CONTACT_DETAILS",
+          "convergenceTargetId": "1773752400434",
+          "id": "1770282641372",
+          "inputs": [
+            {
+              "id": "1770282652476_1",
+              "name": "object",
+              "type": "string",
+              "value": "Contact"
+            },
+            {
+              "id": "1770282652476_2",
+              "name": "q",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_COMMON_CONTEXT.$output.result.QExpressionContact}}"
+            },
+            {
+              "id": "1770282652477_3",
+              "name": "sort",
+              "type": "string"
+            },
+            {
+              "id": "1770282652478_4",
+              "name": "limit",
+              "type": "integer"
+            },
+            {
+              "id": "1770282652478_5",
+              "name": "fields",
+              "type": "string",
+              "value": "['PartyId','PersonName','PrimaryAccount','JobTitle','AffinityLevel','ContactRollup','PrimaryAddress','FormattedAddress', 'SalesBuyingRoleCode', 'SalesAffinityCode']"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"Generated schema for Root\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"_entity\": {\n        \"type\": \"string\"\n      },\n      \"PartyId\": {\n        \"type\": \"number\"\n      },\n      \"PersonName\": {\n        \"type\": \"string\"\n      },\n      \"PrimaryAddress\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"CountryCode_localizedValue\": {\n            \"type\": \"string\"\n          },\n          \"FormattedAddress\": {\n            \"type\": \"string\"\n          },\n          \"PostalCode\": {\n            \"type\": \"string\"\n          },\n          \"City\": {\n            \"type\": \"string\"\n          },\n          \"LocationEOObjectVersionNumber\": {\n            \"type\": \"number\"\n          },\n          \"Province\": {\n            \"type\": \"string\"\n          },\n          \"CurrencyCode\": {\n            \"type\": \"string\"\n          },\n          \"PartySiteNumber\": {\n            \"type\": \"string\"\n          },\n          \"ObjectVersionNumber\": {\n            \"type\": \"number\"\n          },\n          \"State\": {\n            \"type\": \"string\"\n          },\n          \"PartySiteId\": {\n            \"type\": \"number\"\n          },\n          \"CurrencyCode_localizedValue\": {\n            \"type\": \"string\"\n          },\n          \"CountryCode\": {\n            \"type\": \"string\"\n          },\n          \"ListOfPartySiteUses\": {},\n          \"OverallPrimary\": {\n            \"type\": \"boolean\"\n          }\n        },\n        \"required\": [\n          \"CountryCode_localizedValue\",\n          \"FormattedAddress\",\n          \"PostalCode\",\n          \"City\",\n          \"LocationEOObjectVersionNumber\",\n          \"Province\",\n          \"CurrencyCode\",\n          \"PartySiteNumber\",\n          \"ObjectVersionNumber\",\n          \"State\",\n          \"PartySiteId\",\n          \"CurrencyCode_localizedValue\",\n          \"CountryCode\",\n          \"ListOfPartySiteUses\",\n          \"OverallPrimary\"\n        ]\n      },\n      \"ContactRollup\": {},\n      \"PrimaryAccount\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"AccountHierarchySummary\": {},\n          \"PartyNumber\": {\n            \"type\": \"string\"\n          },\n          \"PrimaryAddress\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"CountryCode_localizedValue\": {\n                \"type\": \"string\"\n              },\n              \"PartySiteNumber\": {\n                \"type\": \"string\"\n              },\n              \"State\": {\n                \"type\": \"string\"\n              },\n              \"PartySiteId\": {\n                \"type\": \"number\"\n              },\n              \"FormattedAddress\": {\n                \"type\": \"string\"\n              },\n              \"PostalCode\": {\n                \"type\": \"string\"\n              },\n              \"City\": {\n                \"type\": \"string\"\n              },\n              \"CountryCode\": {\n                \"type\": \"string\"\n              },\n              \"ListOfPartySiteUses\": {\n                \"type\": \"array\",\n                \"items\": {\n                  \"type\": \"object\",\n                  \"properties\": {\n                    \"SiteUseType_localizedValue\": {\n                      \"type\": \"string\"\n                    },\n                    \"SiteUseType\": {\n                      \"type\": \"string\"\n                    },\n                    \"PrimaryPerType\": {\n                      \"type\": \"boolean\"\n                    }\n                  },\n                  \"required\": [\n                    \"SiteUseType_localizedValue\",\n                    \"SiteUseType\",\n                    \"PrimaryPerType\"\n                  ]\n                }\n              },\n              \"Province\": {\n                \"type\": \"string\"\n              }\n            },\n            \"required\": [\n              \"CountryCode_localizedValue\",\n              \"PartySiteNumber\",\n              \"State\",\n              \"PartySiteId\",\n              \"FormattedAddress\",\n              \"PostalCode\",\n              \"City\",\n              \"CountryCode\",\n              \"ListOfPartySiteUses\",\n              \"Province\"\n            ]\n          },\n          \"PromotedAccount\": {},\n          \"PartyId\": {\n            \"type\": \"number\"\n          },\n          \"PromotedFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"PartyUniqueName\": {\n            \"type\": \"string\"\n          },\n          \"PartyName\": {\n            \"type\": \"string\"\n          },\n          \"ListOfPartyUsageAssignments\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"PartyUsageCode_localizedValue\": {\n                  \"type\": \"string\"\n                },\n                \"PartyUsageCode\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"PartyUsageCode_localizedValue\",\n                \"PartyUsageCode\"\n              ]\n            }\n          },\n          \"OrganizationProfileId\": {\n            \"type\": \"number\"\n          }\n        },\n        \"required\": [\n          \"AccountHierarchySummary\",\n          \"PartyNumber\",\n          \"PrimaryAddress\",\n          \"PromotedAccount\",\n          \"PartyId\",\n          \"PromotedFlag\",\n          \"PartyUniqueName\",\n          \"PartyName\",\n          \"ListOfPartyUsageAssignments\",\n          \"OrganizationProfileId\"\n        ]\n      },\n      \"SalesAffinityCode_localizedValue\": {},\n      \"SalesBuyingRoleCode_localizedValue\": {},\n      \"JobTitle\": {\n        \"type\": \"string\"\n      },\n      \"SalesAffinityCode\": {},\n      \"SalesBuyingRoleCode\": {},\n      \"PartyNumber\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\n      \"_entity\",\n      \"PartyId\",\n      \"PersonName\",\n      \"ContactRollup\",\n      \"PrimaryAccount\",\n      \"SalesAffinityCode_localizedValue\",\n      \"SalesBuyingRoleCode_localizedValue\",\n      \"JobTitle\",\n      \"SalesAffinityCode\",\n      \"SalesBuyingRoleCode\",\n      \"PartyNumber\"\n    ]\n  }\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_GETFINANCIALPAR",
+            "functionName": "getAccountRelatedFinancialPartyIds",
+            "name": "Get financial party data"
+          },
+          "outcomes": {
+            "success": "1770613202957"
+          },
+          "code": "GET_FINANCIAL_PARTY_DATA",
+          "convergenceTargetId": "1773752480900",
+          "id": "1770282215364",
+          "inputs": [
+            {
+              "id": "1770282227386_1",
+              "name": "AccountPartyId",
+              "type": "number",
+              "value": "{{$context.$nodes.GET_MEETING_DETAILS_ELASTIC.$output.CustomerAccount.PartyId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1773078842029",
+            "1": "1773078892655",
+            "2": "1773079851371",
+            "3": "1770714787034",
+            "4": "1773225295400",
+            "5": "1774858374718",
+            "6": "1774866772402",
+            "7": "1775813104560",
+            "8": "1776018173770",
+            "9": "1778495931790"
+          },
+          "code": "PARALLEL_1773752691386",
+          "convergenceTargetId": "1770715102966",
+          "id": "1773752691385",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_EMAILS",
+            "functionName": "get_emails_by_object",
+            "name": "Get Emails"
+          },
+          "outcomes": {
+            "success": "1770715102966"
+          },
+          "code": "GET_EMAILS",
+          "convergenceTargetId": "1773752697068",
+          "id": "1773078842029",
+          "inputs": [
+            {
+              "id": "1773078858460_1",
+              "name": "objectId",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_PMB_CONTEXT.$output.result.primaryId}}"
+            },
+            {
+              "id": "1773078858461_2",
+              "name": "objectCode",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_PMB_CONTEXT.$output.result.primaryTypeEmails}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "Get Appointment Activities"
+          },
+          "outcomes": {
+            "success": "1770715102966"
+          },
+          "code": "GET_APPOINTMENT_ACTIVITIES",
+          "convergenceTargetId": "1773752733944",
+          "id": "1773078892655",
+          "inputs": [
+            {
+              "id": "1773078910940_1",
+              "name": "object",
+              "type": "string",
+              "value": "Activity"
+            },
+            {
+              "id": "1773078910940_2",
+              "name": "q",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_PMB_CONTEXT.$output.result.QExpressionActivityAppointments}}"
+            },
+            {
+              "id": "1773078910941_3",
+              "name": "sort",
+              "type": "string",
+              "value": "[{\"attribute\":\"SortDate\",\"direction\":\"descending\"}]"
+            },
+            {
+              "id": "1773078910942_4",
+              "name": "limit",
+              "type": "integer",
+              "value": "25"
+            },
+            {
+              "id": "1773078910943_5",
+              "name": "fields",
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"Generated schema for Root\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"_entity\": {\n        \"type\": \"string\"\n      },\n      \"ActivityId\": {\n        \"type\": \"number\"\n      },\n      \"Delegator\": {},\n      \"Owner\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"PersonLastName\": {\n            \"type\": \"string\"\n          },\n          \"PrimaryPhone\": {},\n          \"ResourceProfileId\": {\n            \"type\": \"number\"\n          },\n          \"InternalFlag\": {\n            \"type\": \"string\"\n          },\n          \"PartyName\": {\n            \"type\": \"string\"\n          },\n          \"PrimaryEmail\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"DoNotEmail\": {\n                \"type\": \"boolean\"\n              },\n              \"EmailAddress\": {\n                \"type\": \"string\"\n              },\n              \"OverallPrimary\": {\n                \"type\": \"boolean\"\n              }\n            },\n            \"required\": [\n              \"DoNotEmail\",\n              \"EmailAddress\",\n              \"OverallPrimary\"\n            ]\n          },\n          \"PersonFirstName\": {\n            \"type\": \"string\"\n          },\n          \"ResourceEmailAddress\": {\n            \"type\": \"string\"\n          },\n          \"StartDateActive\": {\n            \"type\": \"string\"\n          },\n          \"EndDateActive\": {\n            \"type\": \"string\"\n          },\n          \"PartyNumber\": {\n            \"type\": \"string\"\n          },\n          \"ResourceRoleName\": {\n            \"type\": \"string\"\n          },\n          \"PartyId\": {\n            \"type\": \"number\"\n          }\n        },\n        \"required\": [\n          \"PersonLastName\",\n          \"PrimaryPhone\",\n          \"ResourceProfileId\",\n          \"InternalFlag\",\n          \"PartyName\",\n          \"PrimaryEmail\",\n          \"PersonFirstName\",\n          \"ResourceEmailAddress\",\n          \"StartDateActive\",\n          \"EndDateActive\",\n          \"PartyNumber\",\n          \"ResourceRoleName\",\n          \"PartyId\"\n        ]\n      },\n      \"OpportunityId\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"SumRevnItemId\": {\n            \"type\": \"number\"\n          },\n          \"StatusCode_localizedValue\": {\n            \"type\": \"string\"\n          },\n          \"ListOfResourceIdsInTheManagementChainOfAResourceForTheTeam\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"number\"\n            }\n          },\n          \"StatusCode\": {\n            \"type\": \"string\"\n          },\n          \"OptyId\": {\n            \"type\": \"number\"\n          },\n          \"ListOfTerritoryIds\": {},\n          \"Name\": {\n            \"type\": \"string\"\n          },\n          \"ListOfTerritoryIdsThatAreAncestorsOfAnAssociatedTerritory\": {},\n          \"ListOfResourceIdsForTheTeam\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"number\"\n            }\n          },\n          \"OptyNumber\": {\n            \"type\": \"string\"\n          },\n          \"ListOfResourceIdsInTheManagementChainOfTheOwner\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"number\"\n            }\n          },\n          \"BusinessUnitOrgId\": {\n            \"type\": \"number\"\n          },\n          \"LastUpdateLogin\": {\n            \"type\": \"string\"\n          },\n          \"TargetPartyId\": {\n            \"type\": \"number\"\n          }\n        },\n        \"required\": [\n          \"SumRevnItemId\",\n          \"StatusCode_localizedValue\",\n          \"ListOfResourceIdsInTheManagementChainOfAResourceForTheTeam\",\n          \"StatusCode\",\n          \"OptyId\",\n          \"ListOfTerritoryIds\",\n          \"Name\",\n          \"ListOfTerritoryIdsThatAreAncestorsOfAnAssociatedTerritory\",\n          \"ListOfResourceIdsForTheTeam\",\n          \"OptyNumber\",\n          \"ListOfResourceIdsInTheManagementChainOfTheOwner\",\n          \"BusinessUnitOrgId\",\n          \"LastUpdateLogin\",\n          \"TargetPartyId\"\n        ]\n      },\n      \"LeadId\": {},\n      \"ListOfResourcesForTheTeam\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"CurrencyCode\": {\n              \"type\": \"string\"\n            },\n            \"ResponseCode\": {\n              \"type\": \"string\"\n            },\n            \"AssigneeId\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"PersonLastName\": {\n                  \"type\": \"string\"\n                },\n                \"PrimaryPhone\": {},\n                \"ResourceProfileId\": {\n                  \"type\": \"number\"\n                },\n                \"InternalFlag\": {\n                  \"type\": \"string\"\n                },\n                \"PartyName\": {\n                  \"type\": \"string\"\n                },\n                \"PrimaryEmail\": {\n                  \"type\": \"object\",\n                  \"properties\": {\n                    \"DoNotEmail\": {\n                      \"type\": \"boolean\"\n                    },\n                    \"EmailAddress\": {\n                      \"type\": \"string\"\n                    },\n                    \"OverallPrimary\": {\n                      \"type\": \"boolean\"\n                    }\n                  },\n                  \"required\": [\n                    \"DoNotEmail\",\n                    \"EmailAddress\",\n                    \"OverallPrimary\"\n                  ]\n                },\n                \"PersonFirstName\": {\n                  \"type\": \"string\"\n                },\n                \"ResourceEmailAddress\": {\n                  \"type\": \"string\"\n                },\n                \"StartDateActive\": {\n                  \"type\": \"string\"\n                },\n                \"EndDateActive\": {\n                  \"type\": \"string\"\n                },\n                \"PartyNumber\": {\n                  \"type\": \"string\"\n                },\n                \"ResourceRoleName\": {\n                  \"type\": \"string\"\n                },\n                \"PartyId\": {\n                  \"type\": \"number\"\n                }\n              },\n              \"required\": [\n                \"PersonLastName\",\n                \"PrimaryPhone\",\n                \"ResourceProfileId\",\n                \"InternalFlag\",\n                \"PartyName\",\n                \"PrimaryEmail\",\n                \"PersonFirstName\",\n                \"ResourceEmailAddress\",\n                \"StartDateActive\",\n                \"EndDateActive\",\n                \"PartyNumber\",\n                \"ResourceRoleName\",\n                \"PartyId\"\n              ]\n            },\n            \"ActivityAssigneeId\": {\n              \"type\": \"number\"\n            },\n            \"ObjectVersionNumber\": {\n              \"type\": \"number\"\n            },\n            \"CurrencyCode_localizedValue\": {\n              \"type\": \"string\"\n            },\n            \"DismissFlag\": {\n              \"type\": \"boolean\"\n            },\n            \"ResponseCode_localizedValue\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"CurrencyCode\",\n            \"ResponseCode\",\n            \"AssigneeId\",\n            \"ActivityAssigneeId\",\n            \"ObjectVersionNumber\",\n            \"CurrencyCode_localizedValue\",\n            \"DismissFlag\",\n            \"ResponseCode_localizedValue\"\n          ]\n        }\n      },\n      \"CallReportCount\": {\n        \"type\": \"number\"\n      },\n      \"ListOfContacts\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"CurrencyCode\": {\n              \"type\": \"string\"\n            },\n            \"ActivityContactId\": {\n              \"type\": \"number\"\n            },\n            \"ObjectVersionNumber\": {\n              \"type\": \"number\"\n            },\n            \"CurrencyCode_localizedValue\": {\n              \"type\": \"string\"\n            },\n            \"ContactId\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"PartyNumber\": {\n                  \"type\": \"string\"\n                },\n                \"DoNotContactFlag\": {\n                  \"type\": \"boolean\"\n                },\n                \"PartyId\": {\n                  \"type\": \"number\"\n                },\n                \"DoNotCallFlag\": {\n                  \"type\": \"boolean\"\n                },\n                \"PrimaryPhone\": {\n                  \"type\": \"object\",\n                  \"properties\": {\n                    \"FormattedPhone\": {\n                      \"type\": \"string\"\n                    },\n                    \"DoNotCall\": {\n                      \"type\": \"boolean\"\n                    },\n                    \"PhoneType\": {\n                      \"type\": \"string\"\n                    },\n                    \"PhoneType_localizedValue\": {\n                      \"type\": \"string\"\n                    },\n                    \"PhoneNumber\": {\n                      \"type\": \"string\"\n                    },\n                    \"CountryCode\": {\n                      \"type\": \"string\"\n                    },\n                    \"PrimaryPerPhoneType\": {\n                      \"type\": \"boolean\"\n                    },\n                    \"OverallPrimary\": {\n                      \"type\": \"boolean\"\n                    }\n                  },\n                  \"required\": [\n                    \"FormattedPhone\",\n                    \"DoNotCall\",\n                    \"PhoneType\",\n                    \"PhoneType_localizedValue\",\n                    \"PhoneNumber\",\n                    \"CountryCode\",\n                    \"PrimaryPerPhoneType\",\n                    \"OverallPrimary\"\n                  ]\n                },\n                \"DoNotEmailFlag\": {\n                  \"type\": \"boolean\"\n                },\n                \"PartyName\": {\n                  \"type\": \"string\"\n                },\n                \"PrimaryEmail\": {\n                  \"type\": \"object\",\n                  \"properties\": {\n                    \"DoNotEmail\": {\n                      \"type\": \"boolean\"\n                    },\n                    \"EmailAddress\": {\n                      \"type\": \"string\"\n                    },\n                    \"OverallPrimary\": {\n                      \"type\": \"boolean\"\n                    }\n                  },\n                  \"required\": [\n                    \"DoNotEmail\",\n                    \"EmailAddress\",\n                    \"OverallPrimary\"\n                  ]\n                },\n                \"ListOfPartyUsageAssignments\": {\n                  \"type\": \"array\",\n                  \"items\": {\n                    \"type\": \"object\",\n                    \"properties\": {\n                      \"PartyUsageCode_localizedValue\": {\n                        \"type\": \"string\"\n                      },\n                      \"PartyUsageCode\": {\n                        \"type\": \"string\"\n                      }\n                    },\n                    \"required\": [\n                      \"PartyUsageCode_localizedValue\",\n                      \"PartyUsageCode\"\n                    ]\n                  }\n                },\n                \"JobTitle\": {\n                  \"type\": \"string\"\n                },\n                \"DoNotMailFlag\": {\n                  \"type\": \"boolean\"\n                }\n              },\n              \"required\": [\n                \"PartyNumber\",\n                \"DoNotContactFlag\",\n                \"PartyId\",\n                \"DoNotCallFlag\",\n                \"DoNotEmailFlag\",\n                \"PartyName\",\n                \"PrimaryEmail\",\n                \"ListOfPartyUsageAssignments\",\n                \"JobTitle\",\n                \"DoNotMailFlag\"\n              ]\n            }\n          },\n          \"required\": [\n            \"CurrencyCode\",\n            \"ActivityContactId\",\n            \"ObjectVersionNumber\",\n            \"CurrencyCode_localizedValue\",\n            \"ContactId\"\n          ]\n        }\n      },\n      \"StatusCode_localizedValue\": {},\n      \"_listOfReferences\": {},\n      \"CurrencyCode\": {\n        \"type\": \"string\"\n      },\n      \"ConsumerAccount\": {},\n      \"PrimaryContactId\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"PartyNumber\": {\n            \"type\": \"string\"\n          },\n          \"DoNotContactFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"PartyId\": {\n            \"type\": \"number\"\n          },\n          \"DoNotCallFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"PrimaryPhone\": {},\n          \"DoNotEmailFlag\": {\n            \"type\": \"boolean\"\n          },\n          \"PartyName\": {\n            \"type\": \"string\"\n          },\n          \"PrimaryEmail\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"DoNotEmail\": {\n                \"type\": \"boolean\"\n              },\n              \"EmailAddress\": {\n                \"type\": \"string\"\n              },\n              \"OverallPrimary\": {\n                \"type\": \"boolean\"\n              }\n            },\n            \"required\": [\n              \"DoNotEmail\",\n              \"EmailAddress\",\n              \"OverallPrimary\"\n            ]\n          },\n          \"ListOfPartyUsageAssignments\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"PartyUsageCode_localizedValue\": {\n                  \"type\": \"string\"\n                },\n                \"PartyUsageCode\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"PartyUsageCode_localizedValue\",\n                \"PartyUsageCode\"\n              ]\n            }\n          },\n          \"JobTitle\": {\n            \"type\": \"string\"\n          },\n          \"DoNotMailFlag\": {\n            \"type\": \"boolean\"\n          }\n        },\n        \"required\": [\n          \"PartyNumber\",\n          \"DoNotContactFlag\",\n          \"PartyId\",\n          \"DoNotCallFlag\",\n          \"PrimaryPhone\",\n          \"DoNotEmailFlag\",\n          \"PartyName\",\n          \"PrimaryEmail\",\n          \"ListOfPartyUsageAssignments\",\n          \"JobTitle\",\n          \"DoNotMailFlag\"\n        ]\n      },\n      \"SmartActionId\": {},\n      \"LastUpdatedBy\": {\n        \"type\": \"string\"\n      },\n      \"_deleted\": {},\n      \"ActivityFunctionCode\": {\n        \"type\": \"string\"\n      },\n      \"CreatedBy\": {\n        \"type\": \"string\"\n      },\n      \"ActivityFunctionCode_localizedValue\": {\n        \"type\": \"string\"\n      },\n      \"ActivityTypeCode_localizedValue\": {\n        \"type\": \"string\"\n      },\n      \"CustomerAccount\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"PrimaryAddress\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"CountryCode_localizedValue\": {\n                \"type\": \"string\"\n              },\n              \"PartySiteNumber\": {\n                \"type\": \"string\"\n              },\n              \"State\": {\n                \"type\": \"string\"\n              },\n              \"PartySiteId\": {\n                \"type\": \"number\"\n              },\n              \"FormattedAddress\": {\n                \"type\": \"string\"\n              },\n              \"PostalCode\": {\n                \"type\": \"string\"\n              },\n              \"City\": {\n                \"type\": \"string\"\n              },\n              \"CountryCode\": {\n                \"type\": \"string\"\n              },\n              \"ListOfPartySiteUses\": {\n                \"type\": \"array\",\n                \"items\": {\n                  \"type\": \"object\",\n                  \"properties\": {\n                    \"SiteUseType_localizedValue\": {\n                      \"type\": \"string\"\n                    },\n                    \"SiteUseType\": {\n                      \"type\": \"string\"\n                    },\n                    \"PrimaryPerType\": {\n                      \"type\": \"boolean\"\n                    }\n                  },\n                  \"required\": [\n                    \"SiteUseType_localizedValue\",\n                    \"SiteUseType\",\n                    \"PrimaryPerType\"\n                  ]\n                }\n              },\n              \"Province\": {\n                \"type\": \"string\"\n              }\n            },\n            \"required\": [\n              \"CountryCode_localizedValue\",\n              \"PartySiteNumber\",\n              \"State\",\n              \"PartySiteId\",\n              \"FormattedAddress\",\n              \"PostalCode\",\n              \"City\",\n              \"CountryCode\",\n              \"ListOfPartySiteUses\",\n              \"Province\"\n            ]\n          },\n          \"ListOfTerritoryIdsThatAreAncestorsOfAnAssociatedTerritory\": {},\n          \"PartyNumber\": {\n            \"type\": \"string\"\n          },\n          \"PartyId\": {\n            \"type\": \"number\"\n          },\n          \"PartyUniqueName\": {\n            \"type\": \"string\"\n          },\n          \"PartyName\": {\n            \"type\": \"string\"\n          },\n          \"ListOfPartyUsageAssignments\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"PartyUsageCode_localizedValue\": {\n                  \"type\": \"string\"\n                },\n                \"PartyUsageCode\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"PartyUsageCode_localizedValue\",\n                \"PartyUsageCode\"\n              ]\n            }\n          },\n          \"OrganizationProfileId\": {\n            \"type\": \"number\"\n          },\n          \"ListOfResourceIdsForTheTeam\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"number\"\n            }\n          },\n          \"ListOfResourceIdsInTheManagementChainOfAResourceForTheTeam\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"number\"\n            }\n          },\n          \"ListOfTerritoryIds\": {},\n          \"ListOfResourceIdsInTheManagementChainOfTheOwner\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"number\"\n            }\n          }\n        },\n        \"required\": [\n          \"PrimaryAddress\",\n          \"ListOfTerritoryIdsThatAreAncestorsOfAnAssociatedTerritory\",\n          \"PartyNumber\",\n          \"PartyId\",\n          \"PartyUniqueName\",\n          \"PartyName\",\n          \"ListOfPartyUsageAssignments\",\n          \"OrganizationProfileId\",\n          \"ListOfResourceIdsForTheTeam\",\n          \"ListOfResourceIdsInTheManagementChainOfAResourceForTheTeam\",\n          \"ListOfTerritoryIds\",\n          \"ListOfResourceIdsInTheManagementChainOfTheOwner\"\n        ]\n      },\n      \"ListOfResourceIdsInTheManagementChainOfTheActivityDelegator\": {},\n      \"SmartActionContext\": {},\n      \"ActivityTypeCode\": {\n        \"type\": \"string\"\n      },\n      \"ActivityMtgMinutes\": {},\n      \"SortDate\": {\n        \"type\": \"string\"\n      },\n      \"_snippet\": {\n        \"type\": \"string\"\n      },\n      \"RecurRecType_localizedValue\": {\n        \"type\": \"string\"\n      },\n      \"LastUpdateDate\": {\n        \"type\": \"string\"\n      },\n      \"_userRelevantItems\": {},\n      \"AccountId\": {\n        \"type\": \"number\"\n      },\n      \"StatusCode\": {},\n      \"RecordSet\": {},\n      \"PartnerPartyId\": {},\n      \"TemplateFlag\": {\n        \"type\": \"boolean\"\n      },\n      \"ObjectVersionNumber\": {\n        \"type\": \"number\"\n      },\n      \"RecurRecType\": {\n        \"type\": \"string\"\n      },\n      \"OrchestrationId\": {},\n      \"Subject\": {\n        \"type\": \"string\"\n      },\n      \"ActivityEndDate\": {\n        \"type\": \"string\"\n      },\n      \"Location\": {},\n      \"CreationDate\": {\n        \"type\": \"string\"\n      },\n      \"AppointmentStatus\": {},\n      \"PriorityCode_localizedValue\": {},\n      \"_userFavorite\": {\n        \"type\": \"boolean\"\n      },\n      \"ListOfResourceIdsInTheManagementChainOfTheOwner\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"number\"\n        }\n      },\n      \"AssetId\": {},\n      \"PriorityCode\": {},\n      \"Partner\": {},\n      \"OrchestrationStepId\": {},\n      \"CustPartyType\": {\n        \"type\": \"string\"\n      },\n      \"HouseholdAccount\": {},\n      \"AppointmentStatus_localizedValue\": {},\n      \"PrivateFlag\": {\n        \"type\": \"boolean\"\n      },\n      \"ListOfAccessGroups\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"number\"\n        }\n      },\n      \"ActivityNumber\": {\n        \"type\": \"string\"\n      },\n      \"ListOfResourceIdsForTheTeam\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"number\"\n        }\n      },\n      \"RecordSet_localizedValue\": {},\n      \"ActivityDescription\": {\n        \"type\": \"string\"\n      },\n      \"ActivityStartDate\": {\n        \"type\": \"string\"\n      },\n      \"ListOfResourceIdsInTheManagementChainOfAResourceForTheTeam\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"number\"\n        }\n      },\n      \"DueDate\": {},\n      \"SrId\": {},\n      \"ActivityCustCurrency_cCurcyConvRate\": {\n        \"type\": \"number\"\n      },\n      \"CurrencyCode_localizedValue\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\n      \"_entity\",\n      \"ActivityId\",\n      \"Delegator\",\n      \"Owner\",\n      \"OpportunityId\",\n      \"LeadId\",\n      \"ListOfResourcesForTheTeam\",\n      \"CallReportCount\",\n      \"ListOfContacts\",\n      \"StatusCode_localizedValue\",\n      \"_listOfReferences\",\n      \"CurrencyCode\",\n      \"ConsumerAccount\",\n      \"PrimaryContactId\",\n      \"SmartActionId\",\n      \"LastUpdatedBy\",\n      \"_deleted\",\n      \"ActivityFunctionCode\",\n      \"CreatedBy\",\n      \"ActivityFunctionCode_localizedValue\",\n      \"ActivityTypeCode_localizedValue\",\n      \"CustomerAccount\",\n      \"ListOfResourceIdsInTheManagementChainOfTheActivityDelegator\",\n      \"SmartActionContext\",\n      \"ActivityTypeCode\",\n      \"ActivityMtgMinutes\",\n      \"SortDate\",\n      \"_snippet\",\n      \"RecurRecType_localizedValue\",\n      \"LastUpdateDate\",\n      \"_userRelevantItems\",\n      \"AccountId\",\n      \"StatusCode\",\n      \"RecordSet\",\n      \"PartnerPartyId\",\n      \"TemplateFlag\",\n      \"ObjectVersionNumber\",\n      \"RecurRecType\",\n      \"OrchestrationId\",\n      \"Subject\",\n      \"ActivityEndDate\",\n      \"Location\",\n      \"CreationDate\",\n      \"AppointmentStatus\",\n      \"PriorityCode_localizedValue\",\n      \"_userFavorite\",\n      \"ListOfResourceIdsInTheManagementChainOfTheOwner\",\n      \"AssetId\",\n      \"PriorityCode\",\n      \"Partner\",\n      \"OrchestrationStepId\",\n      \"CustPartyType\",\n      \"HouseholdAccount\",\n      \"AppointmentStatus_localizedValue\",\n      \"PrivateFlag\",\n      \"ListOfAccessGroups\",\n      \"ActivityNumber\",\n      \"ListOfResourceIdsForTheTeam\",\n      \"RecordSet_localizedValue\",\n      \"ActivityDescription\",\n      \"ActivityStartDate\",\n      \"ListOfResourceIdsInTheManagementChainOfAResourceForTheTeam\",\n      \"DueDate\",\n      \"SrId\",\n      \"ActivityCustCurrency_cCurcyConvRate\",\n      \"CurrencyCode_localizedValue\"\n    ]\n  }\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "Get Task Activities"
+          },
+          "outcomes": {
+            "success": "1770715102966"
+          },
+          "code": "GET_TASK_ACTIVITIES",
+          "convergenceTargetId": "1773752757375",
+          "id": "1773079851371",
+          "inputs": [
+            {
+              "id": "1773079882308_1",
+              "name": "object",
+              "type": "string",
+              "value": "Activity"
+            },
+            {
+              "id": "1773079882309_2",
+              "name": "q",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_PMB_CONTEXT.$output.result.QExpressionActivityTasks}}"
+            },
+            {
+              "id": "1773079882310_3",
+              "name": "sort",
+              "type": "string",
+              "value": "[{\"attribute\":\"SortDate\",\"direction\":\"descending\"}]"
+            },
+            {
+              "id": "1773079882310_4",
+              "name": "limit",
+              "type": "integer",
+              "value": "25"
+            },
+            {
+              "id": "1773079882311_5",
+              "name": "fields",
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"Generated schema for Root\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"_entity\": {\n        \"type\": \"string\"\n      },\n      \"ActivityId\": {\n        \"type\": \"number\"\n      },\n      \"Delegator\": {},\n      \"Owner\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"PersonLastName\": {\n            \"type\": \"string\"\n          },\n          \"PrimaryPhone\": {},\n          \"ResourceProfileId\": {\n            \"type\": \"number\"\n          },\n          \"InternalFlag\": {\n            \"type\": \"string\"\n          },\n          \"PartyName\": {\n            \"type\": \"string\"\n          },\n          \"PrimaryEmail\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"DoNotEmail\": {\n                \"type\": \"boolean\"\n              },\n              \"EmailAddress\": {\n                \"type\": \"string\"\n              },\n              \"OverallPrimary\": {\n                \"type\": \"boolean\"\n              }\n            },\n            \"required\": [\n              \"DoNotEmail\",\n              \"EmailAddress\",\n              \"OverallPrimary\"\n            ]\n          },\n          \"PersonFirstName\": {\n            \"type\": \"string\"\n          },\n          \"ResourceEmailAddress\": {\n            \"type\": \"string\"\n          },\n          \"StartDateActive\": {\n            \"type\": \"string\"\n          },\n          \"EndDateActive\": {\n            \"type\": \"string\"\n          },\n          \"PartyNumber\": {\n            \"type\": \"string\"\n          },\n          \"ResourceRoleName\": {\n            \"type\": \"string\"\n          },\n          \"PartyId\": {\n            \"type\": \"number\"\n          }\n        },\n        \"required\": [\n          \"PersonLastName\",\n          \"PrimaryPhone\",\n          \"ResourceProfileId\",\n          \"InternalFlag\",\n          \"PartyName\",\n          \"PrimaryEmail\",\n          \"PersonFirstName\",\n          \"ResourceEmailAddress\",\n          \"StartDateActive\",\n          \"EndDateActive\",\n          \"PartyNumber\",\n          \"ResourceRoleName\",\n          \"PartyId\"\n        ]\n      },\n      \"OpportunityId\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"SumRevnItemId\": {\n            \"type\": \"number\"\n          },\n          \"StatusCode_localizedValue\": {\n            \"type\": \"string\"\n          },\n          \"ListOfResourceIdsInTheManagementChainOfAResourceForTheTeam\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"number\"\n            }\n          },\n          \"StatusCode\": {\n            \"type\": \"string\"\n          },\n          \"OptyId\": {\n            \"type\": \"number\"\n          },\n          \"ListOfTerritoryIds\": {},\n          \"Name\": {\n            \"type\": \"string\"\n          },\n          \"ListOfTerritoryIdsThatAreAncestorsOfAnAssociatedTerritory\": {},\n          \"ListOfResourceIdsForTheTeam\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"number\"\n            }\n          },\n          \"OptyNumber\": {\n            \"type\": \"string\"\n          },\n          \"ListOfResourceIdsInTheManagementChainOfTheOwner\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"number\"\n            }\n          },\n          \"BusinessUnitOrgId\": {\n            \"type\": \"number\"\n          },\n          \"LastUpdateLogin\": {\n            \"type\": \"string\"\n          },\n          \"TargetPartyId\": {\n            \"type\": \"number\"\n          }\n        },\n        \"required\": [\n          \"SumRevnItemId\",\n          \"StatusCode_localizedValue\",\n          \"ListOfResourceIdsInTheManagementChainOfAResourceForTheTeam\",\n          \"StatusCode\",\n          \"OptyId\",\n          \"ListOfTerritoryIds\",\n          \"Name\",\n          \"ListOfTerritoryIdsThatAreAncestorsOfAnAssociatedTerritory\",\n          \"ListOfResourceIdsForTheTeam\",\n          \"OptyNumber\",\n          \"ListOfResourceIdsInTheManagementChainOfTheOwner\",\n          \"BusinessUnitOrgId\",\n          \"LastUpdateLogin\",\n          \"TargetPartyId\"\n        ]\n      },\n      \"LeadId\": {},\n      \"ListOfResourcesForTheTeam\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"CurrencyCode\": {\n              \"type\": \"string\"\n            },\n            \"AssigneeOrganization\": {},\n            \"ResponseCode\": {\n              \"type\": \"string\"\n            },\n            \"AssigneeId\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"PersonLastName\": {\n                  \"type\": \"string\"\n                },\n                \"PrimaryPhone\": {},\n                \"ResourceProfileId\": {\n                  \"type\": \"number\"\n                },\n                \"InternalFlag\": {\n                  \"type\": \"string\"\n                },\n                \"PartyName\": {\n                  \"type\": \"string\"\n                },\n                \"PrimaryEmail\": {\n                  \"type\": \"object\",\n                  \"properties\": {\n                    \"DoNotEmail\": {\n                      \"type\": \"boolean\"\n                    },\n                    \"EmailAddress\": {\n                      \"type\": \"string\"\n                    },\n                    \"OverallPrimary\": {\n                      \"type\": \"boolean\"\n                    }\n                  },\n                  \"required\": [\n                    \"DoNotEmail\",\n                    \"EmailAddress\",\n                    \"OverallPrimary\"\n                  ]\n                },\n                \"PersonFirstName\": {\n                  \"type\": \"string\"\n                },\n                \"ResourceEmailAddress\": {\n                  \"type\": \"string\"\n                },\n                \"StartDateActive\": {\n                  \"type\": \"string\"\n                },\n                \"EndDateActive\": {\n                  \"type\": \"string\"\n                },\n                \"PartyNumber\": {\n                  \"type\": \"string\"\n                },\n                \"ResourceRoleName\": {\n                  \"type\": \"string\"\n                },\n                \"PartyId\": {\n                  \"type\": \"number\"\n                }\n              },\n              \"required\": [\n                \"PersonLastName\",\n                \"PrimaryPhone\",\n                \"ResourceProfileId\",\n                \"InternalFlag\",\n                \"PartyName\",\n                \"PrimaryEmail\",\n                \"PersonFirstName\",\n                \"ResourceEmailAddress\",\n                \"StartDateActive\",\n                \"EndDateActive\",\n                \"PartyNumber\",\n                \"ResourceRoleName\",\n                \"PartyId\"\n              ]\n            },\n            \"ActivityAssigneeId\": {\n              \"type\": \"number\"\n            },\n            \"ObjectVersionNumber\": {\n              \"type\": \"number\"\n            },\n            \"CurrencyCode_localizedValue\": {\n              \"type\": \"string\"\n            },\n            \"DismissFlag\": {\n              \"type\": \"boolean\"\n            },\n            \"ResponseCode_localizedValue\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"CurrencyCode\",\n            \"AssigneeOrganization\",\n            \"ResponseCode\",\n            \"AssigneeId\",\n            \"ActivityAssigneeId\",\n            \"ObjectVersionNumber\",\n            \"CurrencyCode_localizedValue\",\n            \"DismissFlag\",\n            \"ResponseCode_localizedValue\"\n          ]\n        }\n      },\n      \"CallReportCount\": {\n        \"type\": \"number\"\n      },\n      \"ListOfContacts\": {},\n      \"StatusCode_localizedValue\": {\n        \"type\": \"string\"\n      },\n      \"_listOfReferences\": {},\n      \"CurrencyCode\": {\n        \"type\": \"string\"\n      },\n      \"ConsumerAccount\": {},\n      \"PrimaryContactId\": {},\n      \"SmartActionId\": {},\n      \"LastUpdatedBy\": {\n        \"type\": \"string\"\n      },\n      \"_deleted\": {},\n      \"ActivityFunctionCode\": {\n        \"type\": \"string\"\n      },\n      \"CreatedBy\": {\n        \"type\": \"string\"\n      },\n      \"ActivityFunctionCode_localizedValue\": {\n        \"type\": \"string\"\n      },\n      \"ActivityTypeCode_localizedValue\": {\n        \"type\": \"string\"\n      },\n      \"CustomerAccount\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"PrimaryAddress\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"CountryCode_localizedValue\": {\n                \"type\": \"string\"\n              },\n              \"PartySiteNumber\": {\n                \"type\": \"string\"\n              },\n              \"State\": {\n                \"type\": \"string\"\n              },\n              \"PartySiteId\": {\n                \"type\": \"number\"\n              },\n              \"FormattedAddress\": {\n                \"type\": \"string\"\n              },\n              \"PostalCode\": {\n                \"type\": \"string\"\n              },\n              \"City\": {\n                \"type\": \"string\"\n              },\n              \"CountryCode\": {\n                \"type\": \"string\"\n              },\n              \"ListOfPartySiteUses\": {\n                \"type\": \"array\",\n                \"items\": {\n                  \"type\": \"object\",\n                  \"properties\": {\n                    \"SiteUseType_localizedValue\": {\n                      \"type\": \"string\"\n                    },\n                    \"SiteUseType\": {\n                      \"type\": \"string\"\n                    },\n                    \"PrimaryPerType\": {\n                      \"type\": \"boolean\"\n                    }\n                  },\n                  \"required\": [\n                    \"SiteUseType_localizedValue\",\n                    \"SiteUseType\",\n                    \"PrimaryPerType\"\n                  ]\n                }\n              },\n              \"Province\": {\n                \"type\": \"string\"\n              }\n            },\n            \"required\": [\n              \"CountryCode_localizedValue\",\n              \"PartySiteNumber\",\n              \"State\",\n              \"PartySiteId\",\n              \"FormattedAddress\",\n              \"PostalCode\",\n              \"City\",\n              \"CountryCode\",\n              \"ListOfPartySiteUses\",\n              \"Province\"\n            ]\n          },\n          \"ListOfTerritoryIdsThatAreAncestorsOfAnAssociatedTerritory\": {},\n          \"PartyNumber\": {\n            \"type\": \"string\"\n          },\n          \"PartyId\": {\n            \"type\": \"number\"\n          },\n          \"PartyUniqueName\": {\n            \"type\": \"string\"\n          },\n          \"PartyName\": {\n            \"type\": \"string\"\n          },\n          \"ListOfPartyUsageAssignments\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"PartyUsageCode_localizedValue\": {\n                  \"type\": \"string\"\n                },\n                \"PartyUsageCode\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"PartyUsageCode_localizedValue\",\n                \"PartyUsageCode\"\n              ]\n            }\n          },\n          \"OrganizationProfileId\": {\n            \"type\": \"number\"\n          },\n          \"ListOfResourceIdsForTheTeam\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"number\"\n            }\n          },\n          \"ListOfResourceIdsInTheManagementChainOfAResourceForTheTeam\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"number\"\n            }\n          },\n          \"ListOfTerritoryIds\": {},\n          \"ListOfResourceIdsInTheManagementChainOfTheOwner\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"number\"\n            }\n          }\n        },\n        \"required\": [\n          \"PrimaryAddress\",\n          \"ListOfTerritoryIdsThatAreAncestorsOfAnAssociatedTerritory\",\n          \"PartyNumber\",\n          \"PartyId\",\n          \"PartyUniqueName\",\n          \"PartyName\",\n          \"ListOfPartyUsageAssignments\",\n          \"OrganizationProfileId\",\n          \"ListOfResourceIdsForTheTeam\",\n          \"ListOfResourceIdsInTheManagementChainOfAResourceForTheTeam\",\n          \"ListOfTerritoryIds\",\n          \"ListOfResourceIdsInTheManagementChainOfTheOwner\"\n        ]\n      },\n      \"ListOfResourceIdsInTheManagementChainOfTheActivityDelegator\": {},\n      \"SmartActionContext\": {},\n      \"ActivityTypeCode\": {\n        \"type\": \"string\"\n      },\n      \"ActivityMtgMinutes\": {},\n      \"SortDate\": {\n        \"type\": \"string\"\n      },\n      \"_snippet\": {\n        \"type\": \"string\"\n      },\n      \"RecurRecType_localizedValue\": {\n        \"type\": \"string\"\n      },\n      \"LastUpdateDate\": {\n        \"type\": \"string\"\n      },\n      \"_userRelevantItems\": {},\n      \"AccountId\": {\n        \"type\": \"number\"\n      },\n      \"StatusCode\": {\n        \"type\": \"string\"\n      },\n      \"RecordSet\": {},\n      \"PartnerPartyId\": {},\n      \"TemplateFlag\": {\n        \"type\": \"boolean\"\n      },\n      \"ObjectVersionNumber\": {\n        \"type\": \"number\"\n      },\n      \"RecurRecType\": {\n        \"type\": \"string\"\n      },\n      \"OrchestrationId\": {},\n      \"Subject\": {\n        \"type\": \"string\"\n      },\n      \"ActivityEndDate\": {},\n      \"Location\": {},\n      \"CreationDate\": {\n        \"type\": \"string\"\n      },\n      \"AppointmentStatus\": {},\n      \"PriorityCode_localizedValue\": {\n        \"type\": \"string\"\n      },\n      \"_userFavorite\": {\n        \"type\": \"boolean\"\n      },\n      \"ListOfResourceIdsInTheManagementChainOfTheOwner\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"number\"\n        }\n      },\n      \"AssetId\": {},\n      \"PriorityCode\": {\n        \"type\": \"string\"\n      },\n      \"Partner\": {},\n      \"OrchestrationStepId\": {},\n      \"CustPartyType\": {\n        \"type\": \"string\"\n      },\n      \"HouseholdAccount\": {},\n      \"AppointmentStatus_localizedValue\": {},\n      \"PrivateFlag\": {\n        \"type\": \"boolean\"\n      },\n      \"ListOfAccessGroups\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"number\"\n        }\n      },\n      \"ActivityNumber\": {\n        \"type\": \"string\"\n      },\n      \"ListOfResourceIdsForTheTeam\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"number\"\n        }\n      },\n      \"RecordSet_localizedValue\": {},\n      \"ActivityDescription\": {\n        \"type\": \"string\"\n      },\n      \"ActivityStartDate\": {},\n      \"ListOfResourceIdsInTheManagementChainOfAResourceForTheTeam\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"number\"\n        }\n      },\n      \"DueDate\": {\n        \"type\": \"string\"\n      },\n      \"SrId\": {},\n      \"ActivityCustCurrency_cCurcyConvRate\": {\n        \"type\": \"number\"\n      },\n      \"CurrencyCode_localizedValue\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\n      \"_entity\",\n      \"ActivityId\",\n      \"Delegator\",\n      \"Owner\",\n      \"OpportunityId\",\n      \"LeadId\",\n      \"ListOfResourcesForTheTeam\",\n      \"CallReportCount\",\n      \"ListOfContacts\",\n      \"StatusCode_localizedValue\",\n      \"_listOfReferences\",\n      \"CurrencyCode\",\n      \"ConsumerAccount\",\n      \"PrimaryContactId\",\n      \"SmartActionId\",\n      \"LastUpdatedBy\",\n      \"_deleted\",\n      \"ActivityFunctionCode\",\n      \"CreatedBy\",\n      \"ActivityFunctionCode_localizedValue\",\n      \"ActivityTypeCode_localizedValue\",\n      \"CustomerAccount\",\n      \"ListOfResourceIdsInTheManagementChainOfTheActivityDelegator\",\n      \"SmartActionContext\",\n      \"ActivityTypeCode\",\n      \"ActivityMtgMinutes\",\n      \"SortDate\",\n      \"_snippet\",\n      \"RecurRecType_localizedValue\",\n      \"LastUpdateDate\",\n      \"_userRelevantItems\",\n      \"AccountId\",\n      \"StatusCode\",\n      \"RecordSet\",\n      \"PartnerPartyId\",\n      \"TemplateFlag\",\n      \"ObjectVersionNumber\",\n      \"RecurRecType\",\n      \"OrchestrationId\",\n      \"Subject\",\n      \"ActivityEndDate\",\n      \"Location\",\n      \"CreationDate\",\n      \"AppointmentStatus\",\n      \"PriorityCode_localizedValue\",\n      \"_userFavorite\",\n      \"ListOfResourceIdsInTheManagementChainOfTheOwner\",\n      \"AssetId\",\n      \"PriorityCode\",\n      \"Partner\",\n      \"OrchestrationStepId\",\n      \"CustPartyType\",\n      \"HouseholdAccount\",\n      \"AppointmentStatus_localizedValue\",\n      \"PrivateFlag\",\n      \"ListOfAccessGroups\",\n      \"ActivityNumber\",\n      \"ListOfResourceIdsForTheTeam\",\n      \"RecordSet_localizedValue\",\n      \"ActivityDescription\",\n      \"ActivityStartDate\",\n      \"ListOfResourceIdsInTheManagementChainOfAResourceForTheTeam\",\n      \"DueDate\",\n      \"SrId\",\n      \"ActivityCustCurrency_cCurcyConvRate\",\n      \"CurrencyCode_localizedValue\"\n    ]\n  }\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_NOTES",
+            "functionName": "get_notes_by_object",
+            "name": "Get Notes"
+          },
+          "outcomes": {
+            "success": "1770715102966"
+          },
+          "code": "GET_NOTES",
+          "convergenceTargetId": "1773752782655",
+          "id": "1770714787034",
+          "inputs": [
+            {
+              "id": "1770714800781_1",
+              "name": "objectRestResourceName",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_PMB_CONTEXT.$output.result.primaryTypeNotes}}"
+            },
+            {
+              "id": "1770714800782_2",
+              "name": "objectId",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_PMB_CONTEXT.$output.result.partyNumber}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"description\": \"Sales Notes\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"uniqueItems\": true,\n      \"minItems\": 1,\n      \"items\": {\n        \"required\": [\n          \"NoteId\",\n          \"SourceObjectCode\",\n          \"SourceObjectId\",\n          \"PartyName\",\n          \"NoteTxt\",\n          \"NoteTypeCode\",\n          \"VisibilityCode\",\n          \"CreatorPartyId\",\n          \"CreatedBy\",\n          \"CreationDate\",\n          \"LastUpdateDate\",\n          \"PartyId\",\n          \"CorpCurrencyCode\",\n          \"CurcyConvRateType\",\n          \"CurrencyCode\",\n          \"LastUpdatedBy\",\n          \"LastUpdateLogin\",\n          \"EmailAddress\",\n          \"UpdateFlag\",\n          \"DeleteFlag\",\n          \"NoteNumber\",\n          \"NoteTitle\"\n        ],\n        \"properties\": {\n          \"NoteId\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"SourceObjectCode\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"SourceObjectId\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"PartyName\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"NoteTxt\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"NoteTypeCode\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"VisibilityCode\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"CreatorPartyId\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"CreatedBy\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"CreationDate\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"LastUpdateDate\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"PartyId\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"CorpCurrencyCode\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"CurcyConvRateType\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"CurrencyCode\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"ContactRelationshipId\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"ParentNoteId\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"LastUpdatedBy\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"LastUpdateLogin\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"EmailAddress\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"FormattedAddress\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"FormattedPhoneNumber\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"UpdateFlag\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"DeleteFlag\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"NoteNumber\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"NoteTitle\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"SourceSystem\": {\n            \"type\": \"object\",\n            \"properties\": {},\n            \"required\": []\n          },\n          \"@context\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"key\": {\n                \"type\": \"string\",\n                \"minLength\": 1\n              },\n              \"headers\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"ETag\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  }\n                },\n                \"required\": [\n                  \"ETag\"\n                ]\n              }\n            },\n            \"required\": [\n              \"key\",\n              \"headers\"\n            ]\n          }\n        }\n      }\n    },\n    \"count\": {\n      \"type\": \"number\"\n    },\n    \"hasMore\": {\n      \"type\": \"boolean\"\n    },\n    \"limit\": {\n      \"type\": \"number\"\n    },\n    \"offset\": {\n      \"type\": \"number\"\n    },\n    \"links\": {\n      \"type\": \"array\",\n      \"uniqueItems\": true,\n      \"minItems\": 1,\n      \"items\": {\n        \"required\": [\n          \"rel\",\n          \"href\",\n          \"name\",\n          \"kind\"\n        ],\n        \"properties\": {\n          \"rel\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"href\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"name\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"kind\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          }\n        }\n      }\n    }\n  },\n  \"required\": [\n    \"items\",\n    \"count\",\n    \"hasMore\",\n    \"limit\",\n    \"offset\",\n    \"links\"\n  ]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "Get Assets"
+          },
+          "outcomes": {
+            "success": "1770715102966"
+          },
+          "code": "GET_ASSETS",
+          "convergenceTargetId": "1773752860154",
+          "id": "1773225295400",
+          "inputs": [
+            {
+              "id": "1773225326861_1",
+              "name": "object",
+              "type": "string",
+              "value": "Asset"
+            },
+            {
+              "id": "1773225326862_2",
+              "name": "q",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_PMB_CONTEXT.$output.result.QExpressionAssets}}"
+            },
+            {
+              "id": "1773225326863_3",
+              "name": "sort",
+              "type": "string",
+              "value": "[{\"attribute\":\"TotalAssetAmount\",\"direction\":\"descending\"}]"
+            },
+            {
+              "id": "1773225326864_4",
+              "name": "limit",
+              "type": "integer",
+              "value": "10"
+            },
+            {
+              "id": "1773225326866_5",
+              "name": "fields",
+              "type": "string",
+              "value": "['InventoryItemId.Name','InventoryItemId.Name_localizedValue','InventoryItemId.SalesProductType_localizedValue','ProdGroupId','AssetDescription','AssetAmount','TotalAssetAmount','Quantity','CurrencyCode','CompetitiveAsset_localizedValue','StatusCode','AssetNumber','AssetName','AssetId','SerialNumber','EndDate','PurchaseDate']"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Check for Account"
+          },
+          "outcomes": {
+            "true": "add_true_1773868165953",
+            "false": "1773867996545"
+          },
+          "code": "CHECK_FOR_ACCOUNT",
+          "convergenceTargetId": "1770714674204",
+          "id": "1773868165953",
+          "inputs": [
+            {
+              "id": "1773868165953_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_COMMON_CONTEXT.$output.result.hasAccount == 'Y'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for true branch",
+            "name": "Add (True Branch)"
+          },
+          "outcomes": {
+            "success": "1770714674204"
+          },
+          "id": "add_true_1773868165953",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "Get Primary Contact details elastic"
+          },
+          "outcomes": {
+            "success": "1770714674204"
+          },
+          "code": "GET_PRIMARY_CONTACT_DETAILS_ELASTIC",
+          "convergenceTargetId": "1773868306969",
+          "id": "1773867996545",
+          "inputs": [
+            {
+              "id": "1773868015107_1",
+              "name": "object",
+              "type": "string",
+              "value": "Contact"
+            },
+            {
+              "id": "1773868015107_2",
+              "name": "q",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_COMMON_CONTEXT.$output.result.QExpressionPrimaryContact}}"
+            },
+            {
+              "id": "1773868015108_3",
+              "name": "sort",
+              "type": "string"
+            },
+            {
+              "id": "1773868015109_4",
+              "name": "limit",
+              "type": "integer"
+            },
+            {
+              "id": "1773868015109_5",
+              "name": "fields",
+              "type": "string",
+              "value": "['PartyId','PersonName','PrimaryAccount','JobTitle','AffinityLevel','ContactRollup','PrimaryAddress','FormattedAddress', 'SalesBuyingRoleCode', 'SalesAffinityCode']"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CALLNOTES",
+            "functionName": "get_wrapups_by_contact",
+            "name": "Get call Notes of meeting contacts"
+          },
+          "outcomes": {
+            "success": "1770613202957"
+          },
+          "code": "GET_CALL_NOTES_OF_MEETING_CONTACTS",
+          "id": "1774522072409",
+          "inputs": [
+            {
+              "id": "1774522142081_1",
+              "name": "ListOfContactPartyId",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_COMMON_CONTEXT.$output.result.ActivityContactPartyIdsString}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_EMAILS",
+            "functionName": "get_emails_by_contact",
+            "name": "Get Conversation Messages"
+          },
+          "outcomes": {
+            "success": "1770613202957"
+          },
+          "code": "GET_CONVERSATION_MESSAGES",
+          "id": "1774522940108",
+          "inputs": [
+            {
+              "id": "1774522988700_1",
+              "name": "ListOfContactPartyId",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_COMMON_CONTEXT.$output.result.ActivityContactPartyIdsString}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for branch 2",
+            "name": "Add 2"
+          },
+          "outcomes": {
+            "success": "1770613202957"
+          },
+          "id": "add_1773752361339_5",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CALLNOTES",
+            "functionName": "get_wrapups_by_object",
+            "name": "Get PMB Object Conversation Messages"
+          },
+          "outcomes": {
+            "success": "1770715102966"
+          },
+          "code": "GET_PMB_OBJECT_CONVERSATION_MESSAGES",
+          "id": "1774858374718",
+          "inputs": [
+            {
+              "id": "1775729032010_1",
+              "name": "objectId",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_PMB_CONTEXT.$output.result.primaryId}}"
+            },
+            {
+              "id": "1775729032013_2",
+              "name": "objectCode",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_PMB_CONTEXT.$output.result.primaryTypeWrapups}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "Get Subscriptions"
+          },
+          "outcomes": {
+            "success": "1770715102966"
+          },
+          "code": "GET_SUBSCRIPTIONS",
+          "id": "1774866772402",
+          "inputs": [
+            {
+              "id": "1774866802222_1",
+              "name": "object",
+              "type": "string",
+              "value": "Subscription"
+            },
+            {
+              "id": "1774866802225_2",
+              "name": "q",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_PMB_CONTEXT.$output.result.QExpressionSubscription}}"
+            },
+            {
+              "id": "1774866802229_3",
+              "name": "sort",
+              "type": "string",
+              "value": "[{\"attribute\":\"TotalContractValue\",\"direction\":\"descending\"}]"
+            },
+            {
+              "id": "1774866802231_4",
+              "name": "limit",
+              "type": "integer",
+              "value": "10"
+            },
+            {
+              "id": "1774866802234_5",
+              "name": "fields",
+              "type": "string",
+              "value": "['SubscriptionNumber','Status','StartDate','EndDate','TotalContractValue','ListOfProducts.ProductName','ListOfParties.PartyPuid','ListOfParties.PartyNumber']"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1774873837507",
+            "name": "Check for Insight Id"
+          },
+          "outcomes": {
+            "true": "1774873200209",
+            "false": "1774873837507"
+          },
+          "code": "CHECK_FOR_INSIGHT_ID",
+          "convergenceTargetId": "1774875172159",
+          "id": "1774872960253",
+          "inputs": [
+            {
+              "id": "1774872960258_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.engagementinsightid !== \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Create the prompt",
+            "returnType": "string",
+            "sourceCode": "let currentAppt = $context.$nodes.GET_MEETING_DETAILS_ELASTIC.$output ?? {};\n\nlet recommendationDetails = `You are a sales enablement assistant. Using the JSON payload below from Oracle CRM, generate concise, step-by-step preparation instructions for the assigned seller to get ready for the upcoming meeting. The output should be action-oriented, scannable, and suitable to share internally with the account team.\n\n            Goals:\n\n            Summarize the meeting basics (who, what, when, where) from the payload.\n            Provide a clear pre-meeting checklist tailored to the account and opportunity context.\n            Include call logistics (Teams link, meeting ID and passcode), with a reminder to keep details internal and follow corporate security/privacy policies.\n            Suggest 3–5 discovery questions aligned to the opportunity and customer profile.\n            Recommend 2–3 next-step outcomes to secure during the meeting.\n            Highlight potential stakeholders to invite or consult, if identifiable from the payload (contacts, owner, team, management chain).\n            Flag any missing or unclear data the rep should confirm before the call.\n            Formatting requirements:\n\n            Start with a brief Meeting Overview section.\n            Follow with a Pre-Meeting Checklist (bulleted).\n            Add a Discovery Questions section (bulleted).\n            Add an Intended Outcomes section (bulleted).\n            Add a Logistics & Security Notes section (bulleted).\n            Close with a Data Gaps to Confirm section (bulleted).\n            Keep the total length under 300 words. No tables. No external speculation beyond the fields provided.\n            Tone:\n\n            Professional, concise, and action-oriented.\n            Avoid assumptions about deal stage beyond what's in the payload.\n            Emphasize security, privacy, and compliance best practices.\n            Oracle CRM Activity JSON: \n            ${JSON.stringify(currentAppt)}\n\n            Notes:\n\n            Do not invent attendee names or roles not present in the payload.\n            If PrimaryContactId or ListOfContacts is empty, explicitly prompt the rep to identify and confirm attendees. But never mention those API fields names.\n            Time zone is not specified; remind the rep to confirm the customer's time zone.\n            Do not click or test links; include them for reference only and remind the user to observe internal security policies when sharing or accessing links.\n            Keep customer and meeting details internal to Oracle systems and follow least-privilege access.`;\n\nreturn recommendationDetails;"
+          },
+          "outcomes": {
+            "success": "1774873317830"
+          },
+          "code": "CREATE_THE_PROMPT",
+          "id": "1774873200209",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1774873747153",
+            "name": "Calling Assistant for the Talking Points",
+            "workflowCode": "ORA_OPPORTUNITY_ASSISTANT_AGENT_TEAM"
+          },
+          "outcomes": {
+            "success": "1774873672951"
+          },
+          "code": "CALLING_ASSISTANT_FOR_THE_TALKING_POINTS",
+          "id": "1774873317830",
+          "inputs": [
+            {
+              "id": "1774873363965_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{'Preparation for Meeting: '+$context.$nodes.GET_MEETING_DETAILS_ELASTIC.$output.Subject}}"
+            },
+            {
+              "id": "1774873363968_2",
+              "name": "taskType",
+              "type": "string"
+            },
+            {
+              "id": "1774873363971_3",
+              "name": "salesPlay",
+              "type": "string"
+            },
+            {
+              "id": "1774873363973_4",
+              "name": "insightNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCH_INSIGHTS_FOR_OPPORTUNITY.$output.items[0].engagementInsightNumber}}"
+            },
+            {
+              "id": "1774873363976_5",
+              "name": "insightId",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCH_INSIGHTS_FOR_OPPORTUNITY.$output.items[0].id}}"
+            },
+            {
+              "id": "1774873363980_6",
+              "name": "puid",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_OPPORTUNITY_DETAILS_ELASTIC.$output[0].OptyNumber}}"
+            },
+            {
+              "id": "1774873363983_7",
+              "name": "id",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCH_INSIGHTS_FOR_OPPORTUNITY.$output.items[0].opportunity.id}}"
+            },
+            {
+              "id": "1774873363987_8",
+              "name": "recommendationDetails",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_THE_PROMPT.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "Get Talking Points",
+            "returnType": "string",
+            "sourceCode": "const raw = $context.$nodes.CALLING_ASSISTANT_FOR_THE_TALKING_POINTS.$output;\n\nconst parsed = JSON.parse(raw.output);\n\nconst output = { postback: parsed.postback };\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1774873747153"
+          },
+          "code": "GET_TALKING_POINTS",
+          "id": "1774873672951",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Generate Brief with Orchestration"
+          },
+          "outcomes": {
+            "success": "1774875172159"
+          },
+          "code": "GENERATE_BRIEF_WITH_ORCHESTRATION",
+          "id": "1774873747153",
+          "inputs": [
+            {
+              "id": "1774873747160_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI assistant that generates a Pre-Meeting Brief for a Sales Representative preparing for an upcoming customer meeting. Refer to ##SALES CONTEXT from Sales CRM and generate a crisp, briefing-style document following the structure below. Return the output STRICTLY in valid JSON format.\n\nSTYLE GUIDELINES • Use short briefing-style bullets. • Maximum 15 words per bullet. • Avoid explanations or narrative. • Prefer phrases over full sentences. • Focus only on actionable sales insights. • Do not write multi-sentence bullets.\n----------------------------------------------------------------------------------\nSECTION 1 — Meeting Details\nSection JSON Response Structure:\n\"meetingDetails\": {\n  \"activityId\": \"{{$context.$nodes.GET_MEETING_DETAILS_ELASTIC.$output.ActivityId}}\",\n  \"summary\" : \"\"\n}\n\nUse context from:\n### Meeting Context Data\n### Meeting Details Data\n### \n\nSection Rules:\n•  summary → Generate a concise, business-friendly summary (3–4 lines) describing the meeting objective, intended outcomes, key talking points, and anticipated objections, drawing on context from ##SALES CONTEXT. Leverage information from meeting data, opportunity and account insights, and recent engagement data to construct a cohesive narrative summarizing what the meeting is about. Omit all identifiers, locations, and specific meeting platform details. Focus on providing a high-level overview that enables readers to quickly understand the meeting’s purpose in the context of the associated opportunity, leads, accounts, and recent engagements. STRICTLY Summary shouldn't be in Bullet points or in number format\n----------------------------------------------------------------------------------\nSECTION 2 — Agenda\nSection JSON Response Structure:\n\"agenda\": {\n  \"shortAgenda\": \"\",\n  \"detailedAgenda\": \"\"\n}\n\nSection Rules:\n•  shortAgenda → Summarize the meeting agenda in 1 short paragraph equivalent (2-3 lines), using context from ActivityDescription\n•  detailedAgenda → Provide a comprehensive Meeting Agenda in 2 short paragraph (5-7 lines) using provided section context. STRICTLY Summary shouldn't be in Bullet points or in number format.\n\nUse section context:\n### Meeting Details Data → ActivityDescription\n### Opportunity Details Data\n----------------------------------------------------------------------------------\nSECTION 3 — Account Insights (Omit this section if no Account data)\nSection JSON Response Structure:\n\n\"accountInsights\": {\n    \"accountPartyId\":\"\",\n   \"accountPartyNumber\":\"\",\n    \"name\": \"\",\n    \"industry\":\"\",\n    \"sentiment\": \"\",\n    \"products\": \"\"\n}\n\nAccount\n• accountPartyId → {{$context.$nodes.GET_ACCOUNT_DETAILS_ELASTIC.$output?.[0].PartyId}}\n• accountPartyNumber → {{$context.$nodes.GET_ACCOUNT_DETAILS_ELASTIC.$output?.[0].PartyNumber}}\n• name → Mention Account name\n• industry → Mention PrimaryIndustry.ClassCode_localizedValue\n• sentiment → (Positive / Neutral / Negative) with short justification\n• products → Return exactly one short, sales-relevant bullet from account assets/subscriptions/IB Assets. Prefer meeting-relevant footprint first; else upcoming renewal/expiry; else highest-value item. Do not list multiple products or summarize the full installed base. While Summarizing for IB Asset take only those price for which PriceElementUsageCode is \"NET_PRICE\". For similar IB Assets, Assets take one which has high UnitPrice. Follow DATE FORMAT RULES. \n\nUse section context:\n###Account Details Data\n###Account level - Assets and Subscriptions\n----------------------------------------------------------------------------------\n\nSECTION 4 — Opportunity Insights (Omit this section if If ###Meeting Context Data has 'Has Opty' = 'NO' or null or \"\")\nSection JSON Response Structure:\n\n  \"opportunityInsights\": {\n    \"opportunityId\": \"\",\n    \"opportunityNumber\": \"\",\n    \"name\": \"\",\n    \"stage\": \"\",\n    \"winProbability\": \"\",\n    \"dealSize\": \"\",\n    \"closeDate\": \"\",\n    \"products\": \"\",\n    \"keyStakeholder\": \"\",\n    \"signals\": \"\",\n    \"competitiveLandscape\": \"\"\n}\n\nOpportunity\n• opportunityId → {{$context.$nodes.GET_OPPORTUNITY_DETAILS_ELASTIC.$output?.[0]?.OptyId}}\n• opportunityNumber→ {{$context.$nodes.GET_OPPORTUNITY_DETAILS_ELASTIC.$output?.[0]?.OptyNumber}}\n• name → Opportunity name\n• stage → Opportunity stage\n• winProbability → Use CRM win probability when available (e.g., “20%”). If unavailable, omit.\n• dealSize → Revenue amount with currency symbol. Follow CURRENCY FORMAT RULES\n• closeDate → Must be formatted as “MMM DD, YYYY” only. Follow DATE FORMAT RULES\n• products → list Revenue product names only (comma separated - maximum 3)\n• keyStakeholder → list 1 key stakeholder opty contact name.\n• signals → 1 concise bullet highlighting buying signals or urgency \n• competitiveLandscape → If competitors are mentioned or there are any relevant insights.\n\nUse section context:\n### Opportunity Details Data\n\n----------------------------------------------------------------------------------\nSECTION 5 — Lead Insights  (Omit this section if If ###Meeting Context Data has 'Has Lead' = 'NO' OR null OR \"\"))\nSection JSON Response Structure:\n\n\"leadInsights\": {\n \"leadId\": \"\",\n \"leadNumber\": \"\",\n \"name\": \"\",\n \"status\": \"\",\n \"rank\": \"\",\n \"dealSize\": \"\",\n \"products\": \"\",\n \"primaryContact\": \"\",\n \"signals\": \"\",\n \"competitiveLandscape\": \"\"\n}\n\nLead\n• leadId → {{$context.$nodes.GET_LEAD_DETAILS_ELASTIC.$output?.[0]?.LeadId}}\n• leadNumber → {{$context.$nodes.GET_LEAD_DETAILS_ELASTIC.$output?.[0]?.LeadNumber}}\n• name → Lead name\n• status → Lead status\n• rank → Lead rank when available (for example: HOT, WARM, COLD)\n• dealSize → Deal amount with currency symbol. Follow CURRENCY FORMAT RULES\n• products → Lead product or product group name only (comma separated, maximum 3) based on Amount in descending order\n• primaryContact → Primary contact party name when available\n• signals → 1 concise bullet highlighting urgency, engagement, open activity, or qualification signals\n• competitiveLandscape → If competitors are mentioned or there are any relevant insights\n\nUse section context:\n### Lead Details Data\n----------------------------------------------------------------------------------\n\nSECTION 6 — Contact Relationship\nFor each meeting contact, create an object entry.\n\nSection JSON Response Structure:\n\"contactRelationship\": [\n  {\"contactPartyId\": \"\", \"name\": \"\", \"jobTitle\": \"\", \"influenceLevel\": \"\", \"sentiment\": \"\", \"recentEngagement\": \"\"}\n]\n\nSection Rules:\n• contactPartyId - PartyId of the contact\n• name - Name of the contact\n• influenceLevel (High, moderate or Low along with 1 line justification based on recent engagement, Won opportunity Data from ContactRollup, contact influenceLevelCode, JobTitle and affinity)\n• sentiment (Positive / Neutral / Negative) with **short justification** based on recent engagement\n• recentEngagement in one line only. Example: Phone Call (Mar 12): Shared capacity utilization data. NOTE - Use phrase \"Phone Call\" instead of \"Phone\" whenever needed.\n\nUse:\n### Contact Details Data\n### Meeting Contact Engagement Data\n----------------------------------------------------------------------------------\nSECTION 7 — Recent Engagement Summary\n\nSection JSON Response Structure:\n\"recentEngagementSummary\": {\n  \"engagements\": [\n    { \n\t  \"contactName\": \"\",\n      \"engagementType\": \"\",\n      \"date\": \"MMM DD, YYYY\",\n      \"shortInsight\": \"\"\n    },\n    {\n\t  \"contactName\": \"\",\n      \"engagementType\": \"\",\n      \"date\": \"MMM DD, YYYY\",\n      \"shortInsight\": \"\"\n    },\n    {\n\t  \"contactName\": \"\",\n      \"engagementType\": \"\",\n      \"date\": \"MMM DD, YYYY\",\n      \"shortInsight\": \"\"\n    }\n  ],\n  \"sinceLastMeeting\": {\n    \"date\": \"MMM DD, YYYY\",\n    \"shortInsight\": \"\"\n  }\n}\n\nSection Rules:\nWrite 3 most recent Engagements, capturing only the key outcome or signal from each engagement.\nShow most recent engagement first, followed by older. \nOnly include engagements with date earlier than {{$context.$system.$currentDateTime}}.\nDo not include future engagements.\nPrioritize meetings, demos, and calls over routine emails.\nIf total engagement is less than 3 then show only <3 engagements in JSON structure.\nshortInsight should mention Contact names while summarizing the engagement to ensure there is grounding on the facts.\nExample:\nPhone Call (Mar 12): Customer confirmed June implementation window.  NOTE - Use phrase \"Phone Call\" instead of \"Phone\" whenever needed.\nUse:\n### Sales Engagement Summary Data\n\nRules for 'Since Last Meeting'\nSummarize key developments since the most recent meeting. Omit if no prior meeting exists.\nshortInsight should mention Contact names while summarizing the engagement to ensure there is grounding on the facts.\nExample:\n• Since Last Meeting (MMM DD): <single concise update, max 20 words>\nDo not include phone calls here.\nUse the most recent meeting from:\n### Sales Activities data - Activities\n----------------------------------------------------------------------------------\nSECTION 8 — Meeting Strategy and Recommendations\n\nSection JSON Response Structure:\n\"meetingStrategyAndRecommendations\": {\n  \"preMeetingChecklist\": [],\n  \"talkingPoints\": [],\n  \"objectionHandling\": [],\n  \"intendedOutcome\": []\n}\n\n*Rules for preMeetingChecklist*\nMention tasks that Sales Rep need to complete before the meeting. Refer to open tasks in Sales and recommendations from:\n### Opportunity Assistant Strategy Insights\nIf unavailable, infer from ###Sales Activities data - Tasks and ###Meeting Details Data.\nWrite 2-4 bullets.\nExample:\n• Prepare preliminary infrastructure sizing options\nUse context from:\n### Sales Activities data - Tasks\n### Meeting Details Data\n\n*Rules for talkingPoints*\nWrite 3–5 concise bullets (max 15 words).\nPrefer insights from:\n### Opportunity Assistant Strategy Insights\nIf insufficient, derive from:\nengagement history, deal progression, customer priorities, competitive differentiation.\nAvoid explanations.\n\n*Rules for objectionHandling*\nWrite **1–3 bullets** identifying potential risks, objections, or competitive signals mentioned in engagement data.\nOnly include objections supported by Opportunity Assistant Strategy Insights or engagement data, opportunity signals. \nIf no risks are detected, just say: No information available.\n\n*Rules for intendedOutcome*\nWrite **2-3 short bullets** describing the meeting's intended outcome for the Sales Rep.\n\nUse:\nPrimary source for this section:\n### Opportunity Assistant Strategy Insights\nUse the suggestions from this source whenever available to write the four subsections: preMeetingChecklist, talkingPoints, objectionHandling, intendedOutcome.\nIf bullet points corresponding to these sections are already present in this source, reuse them directly with minimal rewriting.\nIf this source contains limited information, supplement using other data in ##SALES CONTEXT.\n### Sales Engagement Summary Data\n### Meeting Details Data\n\n----------------------------------------------------------------------------------\nSECTION 9 — Discussion Points\n\nSection JSON Response Structure:\n\"discussionPoints\": [ { \"title\": \"\", \"goal\": \"\", \"detail\": [ \"\", \"\", \"\", \"\" ], \"outcome\": \"\" } ]\n\t\nInstructions: *Rules for discussionPoints* section\n- Generate four discussion points for this section, structured as separate JSON objects in the array above.\n- For each discussion point include these subsections:\n\ntitle: Provide a clear, specific discussion topic.\n\ngoal: State the main objective for this point.\n\ndetail: Provide four concise lines elaborating the point, focusing on:\n   1. Agenda relevance\n   2. Key talking points\n   3. Anticipated objections and handling\n   4. Reference to relevant engagement history\n\noutcome: Provide one line describing the intended result from this discussion point.\n\nNOTE - Output should only include the populated JSON structure.\n\nPrimary source for this data section\n### Opportunity Assistant Strategy Insights\n### Opportunity Details Data\n### Sales Engagement Summary Data\n### Meeting Details Data\n\nIf ### Opportunity Assistant Strategy Insights is not present then use Below as source\n### Sales Engagement Summary Data\n### Meeting Details Data\n### Account Details Data\n### Lead Details Data \n\n----------------------------------------------------------------------------------\nSECTION 10 — Meeting Criticality\n\nsource : ### Meeting Criticality\n\nIf from source the \"critical\" = \"Y\" then add it in the final structure\nelse add \"critical\" = \"N\" in final JSON structure\n\n----------------------------------------------------------------------------------\n\nFINAL JSON OUTPUT STRUCTURE\n{\n  \"meetingDetails\": {\n    \"activityId\": \"\",\n    \"summary\": \"\"\n  },\n  \"agenda\": {\n    \"shortAgenda\": \"\",\n    \"detailedAgenda\": \"\"\n  },\n  \"accountInsights\": {\n  },\n  \"opportunityInsights\": {\n  },\n  \"leadInsights\": {\n  },\n  \"contactRelationship\": [\n  ],\n  \"recentEngagementSummary\": {\n  },\n  \"meetingStrategyAndRecommendations\": {\n  },\n  \"discussionPoints\": [  ],\n  \"critical\":\"\"\n}\n----------------------------------------------------------------------------------\nDATE FORMAT RULES\n• Dates must appear as: MMM DD or MMM DD, YYYY formats only. \n• Add timezone to DateTime as per specified instructions.\n• Do not invent missing dates\n• Never output dates in ISO format (YYYY-MM-DD) anywhere in JSON. If a source date is in ISO format, convert it to MMM DD, YYYY.\n----------------------------------------------------------------------------------\nCURRENCY FORMAT RULES\nUse currency symbols when available.\nFormat numbers using:\nK = thousand  \nM = million  \nB = billion\n\nExamples:\n$15K  \n$3.2M  \n$1.45B\n----------------------------------------------------------------------------------\nLOCATION FORMAT RULES\nDisplay location as:\nCity, Country  \nElse → State, Country  \nElse → Country\n\nDo not display pin codes or full addresses.\n----------------------------------------------------------------------------------\nSTRICT RULES\n1. Return only valid JSON.\n2. Do not include commentary before or after JSON.\n3. Do not include markdown formatting.\n4. Important: Always follow DATE FORMAT RULES. Do not output dates in ISO format (YYYY-MM-DD) anywhere in JSON.\n5. If data is not available, return empty string/array or null; do not invent.\n6. Do not display internal identifiers.\n7. Display product names only, not product IDs.\n8. Arrays must be valid JSON arrays.\n9. Each object in Contact Relationship must include Name\n\n----------------------------------------------------------------------------------\n##SALES CONTEXT\n###**Meeting Details Data**###\n{{$context.$nodes.GET_MEETING_DETAILS_ELASTIC.$output}}\n\n###**Meeting Context Data**###\n {{$context.$nodes.COMPILE_ROUTER_CONTEXT.$output.result}}\n\n###**Account Details Data**###\n{{$context.$nodes.GET_ACCOUNT_DETAILS_ELASTIC.$output}}\n\n###**Opportunity Details Data**###\n{{$context.$nodes.GET_OPPORTUNITY_DETAILS_ELASTIC.$output}}\n {{$context.$nodes.FETCH_INSIGHTS_FOR_OPPORTUNITY.$output.items[0].progressionSummary}}\n\n###**Lead Details Data**###\n{{$context.$nodes.GET_LEAD_DETAILS_ELASTIC.$output}}\n\n###**Contact Details Data**###\n{{$context.$nodes.GET_CONTACT_DETAILS.$output}}\n\n###**Meeting Contact Engagement Data**###\nCall Notes \n {{$context.$nodes.GET_CALL_NOTES_OF_MEETING_CONTACTS.$output}} \nConversation Messages\n {{$context.$nodes.GET_CONVERSATION_MESSAGES.$output}} \n\n###**Sales Engagement Summary Data**###\n{{$context.$nodes.GENERATE_ENGAGEMENT_SUMMARY.$output}}\n\n###**Sales Activities data**###\nAppointments\n {{$context.$nodes.GET_APPOINTMENT_ACTIVITIES.$output}} \nTasks\n {{$context.$nodes.GET_TASK_ACTIVITIES.$output}} \n\n###**Opportunity Assistant Strategy Insights**###\nMeeting Strategy and Insights\n {{$context.$nodes.GET_TALKING_POINTS.$output.result}}\n\n###**Account level - Assets and Subscriptions**###\n {{$context.$nodes.GET_ASSETS.$output}}\n {{$context.$nodes.GET_SUBSCRIPTIONS.$output}}\n {{$context.$nodes.GET_IB_ASSETS.$output}}\n\n###**Meeting Criticality**###\n {{$context.$nodes.GET_MEETING_CRITICALITY.$output}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Generate Premeeting Brief"
+          },
+          "outcomes": {
+            "success": "1774875172159"
+          },
+          "code": "GENERATE_PREMEETING_BRIEF",
+          "id": "1774873837507",
+          "inputs": [
+            {
+              "id": "1774873837513_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI assistant that generates a Pre-Meeting Brief for a Sales Representative preparing for an upcoming customer meeting. Refer to ##SALES CONTEXT from Sales CRM and generate a crisp, briefing-style document following the structure below. Return the output STRICTLY in valid JSON format.\n\nSTYLE GUIDELINES • Use short briefing-style bullets. • Maximum 15 words per bullet. • Avoid explanations or narrative. • Prefer phrases over full sentences. • Focus only on actionable sales insights. • Do not write multi-sentence bullets.\n----------------------------------------------------------------------------------\nSECTION 1 — Meeting Details\nSection JSON Response Structure:\n\"meetingDetails\": {\n  \"activityId\": \"{{$context.$nodes.GET_MEETING_DETAILS_ELASTIC.$output.ActivityId}}\",\n  \"summary\" : \"\"\n}\n\nUse context from:\n### Meeting Context Data\n### Meeting Details Data\n### \n\nSection Rules:\n•  summary → Generate a concise, business-friendly summary (3–4 lines) describing the meeting objective, intended outcomes, key talking points, and anticipated objections, drawing on context from ##SALES CONTEXT. Leverage information from meeting data, opportunity and account insights, and recent engagement data to construct a cohesive narrative summarizing what the meeting is about. Omit all identifiers, locations, and specific meeting platform details. Focus on providing a high-level overview that enables readers to quickly understand the meeting’s purpose in the context of the associated opportunity, leads, accounts, and recent engagements. STRICTLY Summary shouldn't be in Bullet points or in number format\n----------------------------------------------------------------------------------\nSECTION 2 — Agenda\nSection JSON Response Structure:\n\"agenda\": {\n  \"shortAgenda\": \"\",\n  \"detailedAgenda\": \"\"\n}\n\nSection Rules:\n•  shortAgenda → Summarize the meeting agenda in 1 short paragraph equivalent (2-3 lines), using context from ActivityDescription\n•  detailedAgenda → Provide a comprehensive Meeting Agenda in 2 short paragraph (5-7 lines) using provided section context. STRICTLY Summary shouldn't be in Bullet points or in number format.\n\nUse section context:\n### Meeting Details Data → ActivityDescription\n### Opportunity Details Data\n----------------------------------------------------------------------------------\nSECTION 3 — Account Insights (Omit this section if no Account data)\nSection JSON Response Structure:\n\n\"accountInsights\": {\n    \"accountPartyId\":\"\"\n    \"accountPartyNumber\":\"\",\n    \"name\": \"\",\n    \"industry\":\"\",\n    \"sentiment\": \"\",\n    \"products\": \"\"\n}\n\nAccount\n• accountPartyId → {{$context.$nodes.GET_ACCOUNT_DETAILS_ELASTIC.$output?.[0].PartyId}}\n• accountPartyNumber → {{$context.$nodes.GET_ACCOUNT_DETAILS_ELASTIC.$output?.[0].PartyNumber}}\n• name → Mention Account name\n• industry → Mention PrimaryIndustry.ClassCode_localizedValue\n• sentiment → (Positive / Neutral / Negative) with short justification\n• products → Return exactly one short, sales-relevant bullet from account assets/subscriptions/IB Assets. Prefer meeting-relevant footprint first; else upcoming renewal/expiry; else highest-value item. Do not list multiple products or summarize the full installed base. While Summarizing for IB Asset take only those price for which PriceElementUsageCode is \"NET_PRICE\". For similar IB Assets, Assets take one which has high UnitPrice. Follow DATE FORMAT RULES.\nNote → Don't mix Asset Expiry as Subscription expired. Example Don't mention \"Sun StorEdge A7000 Array — subscription expiry May 31, 2026\" instead mention \"Sun StorEdge A7000 Array —  expiry May 31, 2026\"\n\nUse section context:\n###Account Details Data\n###Account level - Assets and Subscriptions\n----------------------------------------------------------------------------------\n\nSECTION 4 — Opportunity Insights (Omit this section if If ###Meeting Context Data has 'Has Opty' = 'NO' or null or \"\")\nSection JSON Response Structure:\n\n  \"opportunityInsights\": {\n    \"opportunityId\": \"\",\n    \"opportunityNumber\": \"\",\n    \"name\": \"\",\n    \"stage\": \"\",\n    \"winProbability\": \"\",\n    \"dealSize\": \"\",\n    \"closeDate\": \"\",\n    \"products\": \"\",\n    \"keyStakeholder\": \"\",\n    \"signals\": \"\",\n    \"competitiveLandscape\": \"\"\n}\n\nOpportunity\n• opportunityId → {{$context.$nodes.GET_OPPORTUNITY_DETAILS_ELASTIC.$output?.[0]?.OptyId}}\n• opportunityNumber→ {{$context.$nodes.GET_OPPORTUNITY_DETAILS_ELASTIC.$output?.[0]?.OptyNumber}}\n• name → Opportunity name\n• stage → Opportunity stage\n• winProbability → Use CRM win probability when available (e.g., “20%”). If unavailable, omit.\n• dealSize → Revenue amount with currency symbol. Follow CURRENCY FORMAT RULES\n• closeDate → Must be formatted as “MMM DD, YYYY” only. Follow DATE FORMAT RULES\n• products → list Revenue product names only (comma separated - maximum 3)\n• keyStakeholder → list 1 key stakeholder opty contact name.\n• signals → 1 concise bullet highlighting buying signals or urgency \n• competitiveLandscape → If competitors are mentioned or there are any relevant insights.\n\nUse section context:\n### Opportunity Details Data\n\n----------------------------------------------------------------------------------\nSECTION 5 — Lead Insights  (Omit this section if If ###Meeting Context Data has 'Has Lead' = 'NO' OR null OR \"\"))\nSection JSON Response Structure:\n\n\"leadInsights\": {\n \"leadId\": \"\",\n \"leadNumber\": \"\",\n \"name\": \"\",\n \"status\": \"\",\n \"rank\": \"\",\n \"dealSize\": \"\",\n \"products\": \"\",\n \"primaryContact\": \"\",\n \"signals\": \"\",\n \"competitiveLandscape\": \"\"\n}\n\nLead\n• leadId → {{$context.$nodes.GET_LEAD_DETAILS_ELASTIC.$output?.[0]?.LeadId}}\n• leadNumber → {{$context.$nodes.GET_LEAD_DETAILS_ELASTIC.$output?.[0]?.LeadNumber}}\n• name → Lead name\n• status → Lead status\n• rank → Lead rank when available (for example: HOT, WARM, COLD)\n• dealSize → Deal amount with currency symbol. Follow CURRENCY FORMAT RULES\n• products → Lead product or product group name only (comma separated, maximum 3)\n• primaryContact → Primary contact party name when available\n• signals → 1 concise bullet highlighting urgency, engagement, open activity, or qualification signals\n• competitiveLandscape → If competitors are mentioned or there are any relevant insights\n\nUse section context:\n### Lead Details Data\n----------------------------------------------------------------------------------\n\nSECTION 6 — Contact Relationship\nFor each meeting contact, create an object entry.\n\nSection JSON Response Structure:\n\"contactRelationship\": [\n  {\"contactPartyId\": \"\", \"name\": \"\", \"jobTitle\": \"\", \"influenceLevel\": \"\", \"sentiment\": \"\", \"recentEngagement\": \"\"}\n]\n\nSection Rules:\n• contactPartyId - PartyId of the contact\n• name - Name of the contact\n• influenceLevel (High, moderate or Low along with 1 line justification based on recent engagement, Won opportunity Data from ContactRollup, contact influenceLevelCode, JobTitle and affinity)\n• sentiment (Positive / Neutral / Negative) with **short justification** based on recent engagement\n• recentEngagement in one line only. Example: Phone Call (Mar 12): Shared capacity utilization data. NOTE - Use phrase \"Phone Call\" instead of \"Phone\" whenever needed.\n\nUse:\n### Contact Details Data\n### Meeting Contact Engagement Data\n----------------------------------------------------------------------------------\nSECTION 7 — Recent Engagement Summary\n\nSection JSON Response Structure:\n\"recentEngagementSummary\": {\n  \"engagements\": [\n    { \n\t  \"contactName\": \"\",\n      \"engagementType\": \"\",\n      \"date\": \"MMM DD, YYYY\",\n      \"shortInsight\": \"\"\n    },\n    {\n\t  \"contactName\": \"\",\n      \"engagementType\": \"\",\n      \"date\": \"MMM DD, YYYY\",\n      \"shortInsight\": \"\"\n    },\n    {\n\t  \"contactName\": \"\",\n      \"engagementType\": \"\",\n     \"date\": \"MMM DD, YYYY\",\n      \"shortInsight\": \"\"\n    }\n  ],\n  \"sinceLastMeeting\": {\n    \"date\": \"MMM DD, YYYY\",\n    \"shortInsight\": \"\"\n  }\n}\n\nSection Rules:\nWrite 3 most recent Engagements, capturing only the key outcome or signal from each engagement.\nShow most recent engagement first, followed by older. \nOnly include engagements with date earlier than {{$context.$system.$currentDateTime}}.\nDo not include future engagements.\nPrioritize meetings, demos, and calls over routine emails.\nIf total engagement is less than 3 then show only <3 engagements in JSON structure.\nshortInsight should mention Contact names while summarizing the engagement to ensure there is grounding on the facts.\nExample:\nPhone Call (Mar 12): Customer confirmed June implementation window. NOTE - Use phrase \"Phone Call\" instead of \"Phone\" whenever needed.\nUse:\n### Sales Engagement Summary Data\n\nRules for 'Since Last Meeting'\nSummarize key developments since the most recent meeting. Omit if no prior meeting exists.\nshortInsight should mention Contact names while summarizing the engagement to ensure there is grounding on the facts.\nExample:\n• Since Last Meeting (MMM DD): <single concise update, max 20 words>\nDo not include phone calls here.\nUse the most recent meeting from:\n### Sales Activities data - Activities\n----------------------------------------------------------------------------------\nSECTION 8 — Meeting Strategy and Recommendations\n\nSection JSON Response Structure:\n\"meetingStrategyAndRecommendations\": {\n  \"preMeetingChecklist\": [],\n  \"talkingPoints\": [],\n  \"objectionHandling\": [],\n  \"intendedOutcome\": []\n}\n\n*Rules for preMeetingChecklist*\nMention tasks that Sales Rep need to complete before the meeting. Refer to open tasks in Sales or infer from Meeting details.\n\nWrite 2-4 bullets.\nExample:\n• Prepare preliminary infrastructure sizing options\nUse context from:\n### Sales Activities data - Tasks\n### Meeting Details Data\n\n*Rules for talkingPoints*\nWrite 3–5 concise bullets (max 15 words) highlighting discussion themes derived from:\n\nengagement history, deal progression, customer priorities, competitive differentiation.\nAvoid explanations.\n\n*Rules for objectionHandling*\nWrite **1–3 bullets** identifying potential risks, objections, or competitive signals mentioned in engagement data.\nOnly include objections that are supported by engagement data or opportunity signals.\nIf no risks are detected, just say: No information available.\n\n*Rules for intendedOutcome*\nWrite **2-3 short bullets** describing the meeting's intended outcome for the Sales Rep.\n\nUse:\nPrimary source for this section:\n\n### Sales Engagement Summary Data\n### Meeting Details Data\n\n----------------------------------------------------------------------------------\nSECTION 9 — Discussion Points\n\nSection JSON Response Structure:\n\"discussionPoints\": [ { \"title\": \"\", \"goal\": \"\", \"detail\": [ \"\", \"\", \"\", \"\" ], \"outcome\": \"\" } ]\n\t\nInstructions: *Rules for discussionPoints* section\n- Generate four discussion points for this section, structured as separate JSON objects in the array above.\n- For each discussion point include these subsections:\n\ntitle: Provide a clear, specific discussion topic.\n\ngoal: State the main objective for this point.\n\ndetail: Provide four concise lines elaborating the point, focusing on:\n   1. Agenda relevance\n   2. Key talking points\n   3. Anticipated objections and handling\n   4. Reference to relevant engagement history\n\noutcome: Provide one line describing the intended result from this discussion point.\n\nNOTE - Output should only include the populated JSON structure.\n\nPrimary source for this data section\n### Opportunity Assistant Strategy Insights\n### Opportunity Details Data\n### Sales Engagement Summary Data\n### Meeting Details Data\n\nIf ### Opportunity Assistant Strategy Insights is not present then use Below as source\n### Sales Engagement Summary Data\n### Meeting Details Data\n### Account Details Data\n### Lead Details Data \n\n\n----------------------------------------------------------------------------------\nSECTION 10 — Meeting Criticality\n\nsource : ### Meeting Criticality\n\nIf from source the \"critical\" = \"Y\" then add it in the final structure\nelse add \"critical\" = \"N\" in final JSON structure\n----------------------------------------------------------------------------------\n\nFINAL JSON OUTPUT STRUCTURE\n{\n  \"meetingDetails\": {\n    \"activityId\": \"\",\n    \"summary\": \"\"\n  },\n  \"agenda\": {\n    \"shortAgenda\": \"\",\n    \"detailedAgenda\": \"\"\n  },\n  \"accountInsights\": {\n  },\n  \"opportunityInsights\": {\n  },\n  \"leadInsights\": {\n  },\n  \"contactRelationship\": [\n  ],\n  \"recentEngagementSummary\": {\n  },\n  \"meetingStrategyAndRecommendations\": {\n  },\n  \"discussionPoints\": [  ],\n  \"critical\":\"\"\n}\n----------------------------------------------------------------------------------\nDATE FORMAT RULES\n• Dates must appear as: MMM DD or MMM DD, YYYY formats only. \n• Add timezone to DateTime as per specified instructions.\n• Do not invent missing dates\n• Never output dates in ISO format (YYYY-MM-DD) anywhere in JSON. If a source date is in ISO format, convert it to MMM DD, YYYY.\n----------------------------------------------------------------------------------\nCURRENCY FORMAT RULES\nUse currency symbols when available.\nFormat numbers using:\nK = thousand  \nM = million  \nB = billion\n\nExamples:\n$15K  \n$3.2M  \n$1.45B\n----------------------------------------------------------------------------------\nLOCATION FORMAT RULES\nDisplay location as:\nCity, Country  \nElse → State, Country  \nElse → Country\n\nDo not display pin codes or full addresses.\n----------------------------------------------------------------------------------\nSTRICT RULES\n1. Return only valid JSON.\n2. Do not include commentary before or after JSON.\n3. Do not include markdown formatting.\n4. Important: Always follow DATE FORMAT RULES. Do not output dates in ISO format (YYYY-MM-DD) anywhere in JSON.\n5. If data is not available, return empty string/array or null; do not invent.\n6. Do not display internal identifiers.\n7. Display product names only, not product IDs.\n8. Arrays must be valid JSON arrays.\n9. Each object in Contact Relationship must include Name\n\n----------------------------------------------------------------------------------\n##SALES CONTEXT\n###**Meeting Details Data**###\n{{$context.$nodes.GET_MEETING_DETAILS_ELASTIC.$output}}\n\n###**Meeting Context Data**###\n {{$context.$nodes.COMPILE_ROUTER_CONTEXT.$output.result}}\n\n###**Account Details Data**###\n{{$context.$nodes.GET_ACCOUNT_DETAILS_ELASTIC.$output}}\n\n###**Opportunity Details Data**###\n{{$context.$nodes.GET_OPPORTUNITY_DETAILS_ELASTIC.$output}}\n\n###**Lead Details Data**###\n{{$context.$nodes.GET_LEAD_DETAILS_ELASTIC.$output}}\n\n###**Contact Details Data**###\n{{$context.$nodes.GET_CONTACT_DETAILS.$output}}\n\n###**Meeting Contact Engagement Data**###\nCall Notes \n {{$context.$nodes.GET_CALL_NOTES_OF_MEETING_CONTACTS.$output}} \nConversation Messages\n {{$context.$nodes.GET_CONVERSATION_MESSAGES.$output}} \n\n###**Sales Engagement Summary Data**###\n{{$context.$nodes.GENERATE_ENGAGEMENT_SUMMARY.$output}}\n\n###**Sales Activities data**###\nAppointments\n {{$context.$nodes.GET_APPOINTMENT_ACTIVITIES.$output}} \nTasks\n {{$context.$nodes.GET_TASK_ACTIVITIES.$output}} \n\n###**Account level - Assets and Subscriptions**###\n {{$context.$nodes.GET_ASSETS.$output}}\n {{$context.$nodes.GET_SUBSCRIPTIONS.$output}}\n {{$context.$nodes.GET_IB_ASSETS.$output}}\n\n###**Meeting Criticality**###\n {{$context.$nodes.GET_MEETING_CRITICALITY.$output}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "convert PMB Output for outcome store",
+            "returnType": "object",
+            "sourceCode": "// Extract appointment details from context\nconst appt = $context.$nodes.GET_MEETING_DETAILS_ELASTIC.$output?.[0] ?? {};\nconst activityId = appt.ActivityId;\nconst activityNumber = appt.ActivityNumber;\nconst criticalFlag = $context?.$nodes?.GET_MEETING_CRITICALITY?.$output?.critical === 'Y' ? 'CRITICAL' : 'MEDIUM';\n\n// Step 1: The facts object (as above)\n\nconst insightId = $context.$variables.engagementinsightid ;\nlet factsObject = {}\n\nif (insightId){\nfactsObject = $context.$nodes.GENERATE_BRIEF_WITH_ORCHESTRATION.$output;\n} else {\nfactsObject = $context.$nodes.GENERATE_PREMEETING_BRIEF.$output ;\n}\n\n\n// Step 2: Create the container with facts as an object\nconst container = {\n  \"schemaVersion\": \"1.0\",\n  \"what\": {\n    \"title\": \"Pre-MeetingBrief\",\n    \"summary\": \"Pre-MeetingBrief for Appointment with ActivityNumber as \"+activityNumber ,\n    \"facts\": factsObject  // <<-- assigned as object, NOT string\n  }\n};\n\n// Construct and populate the JSON object\nconst result = {\n  \"items\": [\n    {\n      \"$lookupBy\": {\n        \"outcomeType\": \"SUMMARY\",\n        \"outcomeSubtype\": \"STATE_SUMMARY\",\n        \"primaryObjectType\": \"ACTIVITY\",\n        \"category\":\"ENGAGEMENT\",\n        \"primaryObjectAltKey\": activityNumber\n      },\n      \"$operation\": \"MERGE\",\n      \"outcomeType\": \"SUMMARY\",\n      \"outcomeSubtype\": \"STATE_SUMMARY\",\n      \"primaryObjectType\": \"ACTIVITY\",\n      \"primaryObjectKey\": activityId,\n      \"primaryObjectAltKey\": activityNumber,\n      \"status\": \"ACTIVE\",\n      \"urgency\": criticalFlag ,\n      \"generatedBy\": \"agent:Pre-meetingBriefAgent\",\n      \"payload\": JSON.stringify(container)\n    }\n  ]\n};\n\nreturn result ;"
+          },
+          "outcomes": {
+            "success": "1774878439454"
+          },
+          "code": "CONVERT_PMB_OUTPUT_FOR_OUTCOME_STORE",
+          "id": "1774875172159",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_AIOUTCOMESTORE",
+            "errorNodeId": "1775672042264",
+            "functionName": "createOutcome",
+            "name": "Add PMB output in Outcome Store"
+          },
+          "outcomes": {
+            "success": "1775672042264"
+          },
+          "code": "ADD_PMB_OUTPUT_IN_OUTCOME_STORE",
+          "id": "1774878439454",
+          "inputs": [
+            {
+              "id": "1775682233237_1",
+              "name": "outcomes_payload",
+              "type": "string",
+              "value": "{{$context.$nodes.CONVERT_PMB_OUTPUT_FOR_OUTCOME_STORE.$output.result?.items}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "return LLM Output",
+            "returnType": "object",
+            "sourceCode": "const insightId = $context.$variables.engagementinsightid ;\nlet factsObject = {}\n\nif (insightId){\nfactsObject = $context.$nodes.GENERATE_BRIEF_WITH_ORCHESTRATION.$output;\n} else {\nfactsObject = $context.$nodes.GENERATE_PREMEETING_BRIEF.$output ;\n}\n\nfactsObject.meetingDetails = $context.$nodes.ADD_MEETING_DETAILS.$output.meetingDetails ;\nfactsObject.footer= $context.$nodes.ADD_MEETING_DETAILS.$output.footer;\n\nif( $context.$triggers.REST.$input.action.config.scheduler !== \"Y\" ) {\n      return factsObject ;\n} else {\n      return {\"action\":\"success\"};\n}"
+          },
+          "outcomes": {
+            "success": "1775672361120"
+          },
+          "code": "RETURN_LLM_OUTPUT",
+          "id": "1774879527757",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "IS Check Outcome"
+          },
+          "outcomes": {
+            "true": "1775656813635",
+            "false": "add_false_1775656737819"
+          },
+          "code": "IS_CHECK_OUTCOME",
+          "convergenceTargetId": "1773752361339",
+          "id": "1775656737819",
+          "inputs": [
+            {
+              "id": "1775656737819_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PARSE_INPUT.$output.result.CheckOutcome == \"Y\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1773752361339"
+          },
+          "id": "add_false_1775656737819",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_AIOUTCOMESTORE",
+            "functionName": "getOutcomeBy_AltKey_SubType",
+            "name": "Get Outcome"
+          },
+          "outcomes": {
+            "success": "1775657867477"
+          },
+          "code": "GET_OUTCOME",
+          "id": "1775656813635",
+          "inputs": [
+            {
+              "id": "1775656854055_1",
+              "name": "ObjectType",
+              "type": "string",
+              "value": "ACTIVITY"
+            },
+            {
+              "id": "1775656854056_2",
+              "name": "ObjectAltKey",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_MEETING_DETAILS_ELASTIC.$output?.[0]?.ActivityNumber}}"
+            },
+            {
+              "id": "1775656854057_3",
+              "name": "OutcomeType",
+              "type": "string",
+              "value": "SUMMARY"
+            },
+            {
+              "id": "1775656854059_4",
+              "name": "OutcomeSubType",
+              "type": "string",
+              "value": "STATE_SUMMARY"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Is Outcome Availabe"
+          },
+          "outcomes": {
+            "true": "1775658487416",
+            "false": "add_false_1775657867477"
+          },
+          "code": "IS_OUTCOME_AVAILABE",
+          "convergenceTargetId": "1773752361339",
+          "id": "1775657867477",
+          "inputs": [
+            {
+              "id": "1775657867479_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_OUTCOME.$output?.items?.[0].id !==\"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1773752361339"
+          },
+          "id": "add_false_1775657867477",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "Get Meeting Contact Details"
+          },
+          "outcomes": {
+            "success": "1775661012913"
+          },
+          "code": "GET_MEETING_CONTACT_DETAILS",
+          "id": "1775658487416",
+          "inputs": [
+            {
+              "id": "1775658612869_1",
+              "name": "object",
+              "type": "string",
+              "value": "Contact"
+            },
+            {
+              "id": "1775658612873_2",
+              "name": "q",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_COMMON_CONTEXT.$output.result.QExpressionContact}}"
+            },
+            {
+              "id": "1775658612877_3",
+              "name": "sort",
+              "type": "string"
+            },
+            {
+              "id": "1775658612881_4",
+              "name": "limit",
+              "type": "integer"
+            },
+            {
+              "id": "1775658612886_5",
+              "name": "fields",
+              "type": "string",
+              "value": "['PartyId','PersonName','PrimaryAccount','JobTitle','AffinityLevel','ContactRollup','FormattedAddress', 'SalesBuyingRoleCode', 'SalesAffinityCode']"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "return"
+          },
+          "outcomes": {},
+          "code": "RETURN",
+          "convergenceTargetId": "1773752361339",
+          "id": "1775659325618",
+          "inputs": [
+            {
+              "id": "1775659325619_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_FINAL_OUTCOME.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Modify Outcome Content"
+          },
+          "outcomes": {
+            "success": "1775667392223"
+          },
+          "code": "MODIFY_OUTCOME_CONTENT",
+          "id": "1775661012913",
+          "inputs": [
+            {
+              "id": "1775661012915_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Instructions:\nYou will receive two blocks of information:\n\nContact Details: {{$context.$nodes.GET_MEETING_CONTACT_DETAILS.$output}}\nMeeting Details: {{$context.$nodes.GET_MEETING_DETAILS_ELASTIC.$output}}\nPlease generate an output in the following JSON format:\n\n\"meetingDetails\": {\n    \"activityId\": \"\",        // Use 'activity' from Meeting Details\n    \"title\": \"\",             // Use 'Subject' from Meeting Details\n    \"dateTime\": \"\",          // Use 'date' from Meeting Details. Format: MMM DD, YYYY, h:mm–h:mm AM/PM TZ\n    \"location\": \"\",          // Use 'location' from Meeting Details. If blank, try to extract meeting location info (Zoom, Teams, Meeting room, etc.) from Activity description. If virtual location add the exact link of the meeting. If not found, leave blank. \n    \"contacts\": \"\",          // From Contact Details, For each Contact concatenate 'Name' and 'Job Title' for each contact, separated by commas.If not able to identify the Job title then mention only the name.\n    \"salesTeam\": \"\"          // From Meeting Details, concatenate Sales Resource 'name' and 'designation', separated by commas. If not able to identify the designation, mention only then name.\n  },\n\"footer\": \"\"\n\nProcessing Notes:\n\nExtract information as specifically as possible from the given data blocks.\nFor contacts and salesTeam, each entry should be presented as \"Name (Job Title)\" or \"Name (Designation)\".\nIf any field cannot be found or extracted, leave it as an empty string.\nFor contacts, process each contact in the list and don't leave any contact \n\nFor footer :\n\"footer\": \"Generated on <MMM DD, YYYY, hh:mm AM/PM TZ> by Agentic AI.\" \nUse today's datetime to stamp into Footer:\n{{$context.$system.$currentDateTime}} (UTC)"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Get Final Outcome",
+            "returnType": "object",
+            "sourceCode": "const payload= $context.$nodes.GET_OUTCOME.$output?.items?.[0].payload;\nlet facts = JSON.parse(payload).what.facts;\n\nfacts.meetingDetails = $context.$nodes.MODIFY_OUTCOME_CONTENT.$output.meetingDetails;\nfacts.footer = $context.$nodes.MODIFY_OUTCOME_CONTENT.$output.footer;\n\nreturn facts;"
+          },
+          "outcomes": {
+            "success": "1775659325618"
+          },
+          "code": "GET_FINAL_OUTCOME",
+          "id": "1775667392223",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Add Meeting Details"
+          },
+          "outcomes": {
+            "success": "1774879527757"
+          },
+          "code": "ADD_MEETING_DETAILS",
+          "id": "1775672042264",
+          "inputs": [
+            {
+              "id": "1775672042269_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Instructions:\nYou will receive two blocks of information:\n\nContact Details: {{$context.$nodes.GET_CONTACT_DETAILS.$output[0]}}\nMeeting Details: {{$context.$nodes.GET_MEETING_DETAILS_ELASTIC.$output}}\nPlease generate an output in the following JSON format:\n\n\"meetingDetails\": {\n    \"activityId\": \"\",        // Use 'activity' from Meeting Details\n    \"title\": \"\",             // Use 'Subject' from Meeting Details\n    \"dateTime\": \"\",          // Use 'date' from Meeting Details. Format: MMM DD, YYYY, h:mm–h:mm AM/PM TZ\n    \"location\": \"\",          // Use 'location' from Meeting Details. If blank, try to extract meeting location info (Zoom, Teams, Meeting room, etc.) from Activity description. If virtual location add the exact link of the meeting. If not found, leave blank. \n    \"contacts\": \"\",          // From Contact Details, For each Contact concatenate 'Name' and 'Job Title' for each contact, separated by commas.If not able to identify the Job title then mention only the name.\n    \"salesTeam\": \"\"          // From Meeting Details, concatenate Sales Resource 'name' and 'designation', separated by commas. If not able to identify the designation, mention only then name.\n  },\n\"footer\": \"\"\n\nProcessing Notes:\n\nExtract information as specifically as possible from the given data blocks.\nFor contacts and salesTeam, each entry should be presented as \"Name (Job Title)\" or \"Name (Designation)\".\nIf any field cannot be found or extracted, leave it as an empty string.\nFor contacts, process each contact in the list and don't leave any contact \n\nFor footer :\n\"footer\": \"Generated on <MMM DD, YYYY, hh:mm AM/PM TZ> by Agentic AI.\" \nUse today's datetime to stamp into Footer:\n{{$context.$system.$currentDateTime}} (UTC)"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "return PMB Output"
+          },
+          "outcomes": {},
+          "code": "RETURN_PMB_OUTPUT",
+          "convergenceTargetId": "end",
+          "id": "1775672361120",
+          "inputs": [
+            {
+              "id": "1775672361123_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.RETURN_LLM_OUTPUT.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Is Internal Meeting"
+          },
+          "outcomes": {
+            "true": "1775805447591",
+            "false": "add_false_1775805360527"
+          },
+          "code": "IS_INTERNAL_MEETING",
+          "convergenceTargetId": "1775656737819",
+          "id": "1775805360527",
+          "inputs": [
+            {
+              "id": "1775805360533_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_COMMON_CONTEXT.$output.result.ActivityContactPartyIdsString == \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1775656737819"
+          },
+          "id": "add_false_1775805360527",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Return Without PMB"
+          },
+          "outcomes": {},
+          "code": "RETURN_WITHOUT_PMB",
+          "convergenceTargetId": "1775656737819",
+          "id": "1775805447591",
+          "inputs": [
+            {
+              "id": "1775805447593_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{\"message\":\"Internal Meeting. Meeting Brief not generated\"}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Is Account primary object"
+          },
+          "outcomes": {
+            "true": "1775813292905",
+            "false": "add_false_1775813104560"
+          },
+          "code": "IS_ACCOUNT_PRIMARY_OBJECT",
+          "convergenceTargetId": "1770715102966",
+          "id": "1775813104560",
+          "inputs": [
+            {
+              "id": "1775813104563_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_PMB_CONTEXT.$output.result.primaryTypeWrapups == \"HZ_ORGANIZATION_PROFILES\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1770715102966"
+          },
+          "id": "add_false_1775813104560",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CALLNOTES",
+            "functionName": "get_wrapups_by_account",
+            "name": "Get Account Wrapups"
+          },
+          "outcomes": {
+            "success": "1770715102966"
+          },
+          "code": "GET_ACCOUNT_WRAPUPS",
+          "id": "1775813292905",
+          "inputs": [
+            {
+              "id": "1775813323902_1",
+              "name": "ListOfAccountPartyId",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_PMB_CONTEXT.$output.result.primaryId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "account"
+          },
+          "outcomes": {
+            "success": "1775805360527"
+          },
+          "code": "ACCOUNT",
+          "id": "1775983094850",
+          "inputs": [
+            {
+              "id": "1775983120011_1",
+              "name": "object",
+              "type": "string",
+              "value": "Account"
+            },
+            {
+              "id": "1775983120013_2",
+              "name": "q",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_COMMON_CONTEXT.$output.result.QExpressionAccount}}"
+            },
+            {
+              "id": "1775983120014_3",
+              "name": "sort",
+              "type": "string"
+            },
+            {
+              "id": "1775983120015_4",
+              "name": "limit",
+              "type": "integer"
+            },
+            {
+              "id": "1775983120017_5",
+              "name": "fields",
+              "type": "string",
+              "value": "['PartyNumber','PartyId','PartyUniqueName','OrganizationName','PrimaryIndustry','AccountRollup.SumOfActiveSubscriptionsTCV','AccountRollup.SumOfOpenOpportunitiesRevenue','AccountRollup.SumOfWonOpportunitiesRevenue','AccountRollup.NumberOfOpenCriticalServiceRequests','AccountRollup.NumberOfDecisionMakerContacts','AccountRollup.CurrencyCode','AccountRollup.LastTouchDate','PrimaryContact.PartyName','PrimaryContact.PrimaryEmail.EmailAddress','PrimaryAddress.FormattedAddress','PrimaryPhone.FormattedPhone','PrimaryEmail.EmailAddress','Owner.PartyName','Owner.PrimaryEmail.EmailAddress','AccountHierarchySummary.TotalChildAccounts','AccountHierarchySummary.UltimateParent.PartyNumber']"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_INSTALLEDBASEASSET",
+            "functionName": "GetInstalledBaseAssetByCustomer",
+            "name": "Get IB Assets"
+          },
+          "outcomes": {
+            "success": "1770715102966"
+          },
+          "code": "GET_IB_ASSETS",
+          "id": "1776018173770",
+          "inputs": [
+            {
+              "id": "1776018200354_1",
+              "name": "CurrentDate",
+              "type": "string",
+              "value": "{{$context.$system.$currentDate}}"
+            },
+            {
+              "id": "1776018200356_2",
+              "name": "CustomerId",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERY_FOR_PMB_CONTEXT.$output.result.CustomerPartyIdsString}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Get meeting Criticality"
+          },
+          "outcomes": {
+            "success": "1770715102966"
+          },
+          "code": "GET_MEETING_CRITICALITY",
+          "id": "1778495931790",
+          "inputs": [
+            {
+              "id": "1778495931791_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "### ROLE\nYou are a high-precision classification engine. Your task is to analyze sales appointment metadata and classify the meeting into a binary criticality flag.\n\n### CONTEXT & INTENT\nRoute each meeting into one of two outcomes:\n1. Critical = meetings that are strategically important, leadership-facing, governance-oriented, or likely to require executive participation\n2. NotCritical = all other meetings\n\n### CLASSIFICATION HIERARCHY (Strict Order of Operations)\n\n--------------------------------------------------\nSTAGE 1: STRATEGIC INTENT CHECK\n--------------------------------------------------\n\nFirst inspect these fields in priority order:\n- Title\n- Subject\n- Description\n\nIf ANY of these fields indicates strategic, governance, executive-alignment, leadership-review, or high-level planning intent, classify as Critical.\n\nTreat the following as strong Critical indicators:\n\nStrategic / Governance Terms:\n- QBR\n- MBR\n- SteerCo\n- Steering Committee\n- Business Review\n- Executive Review\n- Executive Alignment\n- Leadership Review\n- Quarterly Review\n- Monthly Review\n- Governance Review\n- Strategic Roadmap\n- Strategic Planning\n- Account Planning\n- Transformation Review\n- Value Realization\n- ROI Review\n- Budget Review\n- Forecast Review\n- Renewal Review\n- Contract Review\n- Escalation Review\n- Decision Review\n- Operating Review\n- Roadmap Review\n\nExecutive / Leadership Intent:\n- leadership sync\n- executive sync\n- leadership alignment\n- executive alignment\n- leadership planning\n- board review\n- sponsor review\n- stakeholder alignment\n- strategic discussion\n- strategic workshop\n- executive checkpoint\n\nArchitecture / Risk / Enterprise-Level Reviews:\n- architecture review\n- enterprise architecture review\n- security review\n- compliance review\n- transformation workshop\n- enterprise planning\n- operating model review\n\nImportant Instructions:\n- Treat QBR, MBR, and SteerCo as explicit trigger terms.\n- Do NOT rely only on exact keyword matching.\n- Detect semantic intent and close variations such as:\n  - “quarterly business review”\n  - “exec alignment session”\n  - “leadership roadmap discussion”\n  - “monthly governance review”\n  - “strategic planning workshop”\n- If Agenda contains a clear strategic/governance intent, that alone is sufficient for Critical classification.\n\n--------------------------------------------------\nSTAGE 2: EXECUTIVE PRESENCE CHECK\n--------------------------------------------------\n\nIf Stage 1 is NOT satisfied, inspect attendee job titles from BOTH:\n- Internal Attendees\n- External Attendees\n\nIf ANY attendee has an executive or senior leadership title, classify as Critical.\n\nTreat the following as executive leadership indicators:\n\nExecutive Titles:\n- CEO\n- CIO\n- CTO\n- CFO\n- COO\n- CDO\n- CMO\n- CRO\n- CHRO\n- CISO\n- President\n- Vice President\n- VP\n- SVP\n- EVP\n- Managing Director\n- Partner\n- General Manager\n- Founder\n- Co-Founder\n- Chief\n- Head of\n\nTitle Matching Rules:\n- Treat “Vice President” exactly the same as “VP”.\n- Treat titles like:\n  - “Vice President of Product”\n  - “VP Product”\n  - “VP, Product”\n  - “VP - Product”\n  - “Product Vice President”\n  as executive leadership.\n- Treat “Executive Vice President” and “Senior Vice President” as executive leadership.\n- Do NOT automatically treat:\n  - AVP\n  - Associate VP\n  - Assistant VP\n  as executive unless the context clearly indicates senior leadership.\n- Treat titles containing “Chief” as executive.\n- Treat titles containing “Head of” as executive.\n\nDirector Handling:\n- Treat Director-level titles as executive ONLY if the context suggests strategic ownership, enterprise responsibility, or leadership participation.\n- Examples:\n  - “Director of Enterprise Architecture” → Critical\n  - “Director of Product Strategy” → Critical\n  - “Director of Operations” → Not automatically Critical\n\n--------------------------------------------------\nSTAGE 3: DEFAULT CATEGORY\n--------------------------------------------------\n\nIf neither Stage 1 nor Stage 2 conditions are satisfied:\n- classify as NotCritical \n\nTypical NotCritical examples:\n- Demo\n- PoC\n- Trial\n- Sizing\n- Discovery\n- Implementation\n- Technical Workshop\n- Intro Call\n- Sync\n- Touchpoint\n- Follow-up\n- Status Update\n- Discussion\n- Working Session\n\n--------------------------------------------------\nBIAS & TIE-BREAKER\n--------------------------------------------------\n\n- NotCritical is the baseline.\n- Critical is selective.\n- If signals conflict and there is no strong strategic intent or executive leadership indicator, output NotCritical.\n- Strategic intent has higher priority than attendee titles.\n- If QBR, MBR, SteerCo, or Executive Review appears anywhere in the meeting metadata, always classify as Critical.\n\n--------------------------------------------------\nOUTPUT FORMAT\n--------------------------------------------------\n\nReturn ONLY valid JSON.\nNo markdown.\nNo explanation.\n\n{\"critical\":\"Y\"}\nOR\n{\"critical\":\"N\"}\n\n--------------------------------------------------\nACTUAL INPUT DATA\n--------------------------------------------------\n\n {{$context.$nodes.COMPILE_ROUTER_CONTEXT.$output.result}}"
+            }
+          ],
+          "type": "LLM"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1770230263640",
+          "name": "engagementinsightid",
+          "scope": "JOB",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_completion_tokens": 32000,
+        "reasoning_effort": "low"
+      },
+      "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+      "model": "OCI_GPT_5_MINI",
+      "modelName": "Gpt-5 Mini",
+      "provider": "CERT_PREMIUM"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1775656429991",
+            "name": "action",
+            "scope": "JOB",
+            "type": "object",
+            "typeSpecification": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"config\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"activityId\": {\n          \"type\": \"integer\"\n        },\n        \"checkOutcome\": {\n          \"type\": \"string\",\n          \"enum\": [\"N\", \"Y\"]\n        },\n        \"scheduler\": {\n          \"type\": \"string\",\n          \"enum\": [\"Y\", \"N\"]\n        }\n      },\n      \"required\": [\"activityId\"],\n      \"additionalProperties\": false\n    }\n  },\n  \"required\": [\"config\"],\n  \"additionalProperties\": false\n}"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": [
+      "2327657"
+    ]
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "SALES_FORCE_AUTOMATION",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "seededRoles": [
+    {
+      "role": "ORA_ZBS_SALES_ADMINISTRATOR_JOB",
+      "id": "300000331067875"
+    },
+    {
+      "role": "ORA_ZBS_SALES_MANAGER_JOB",
+      "id": "300000331067876"
+    },
+    {
+      "role": "ORA_ZBS_SALES_REPRESENTATIVE_JOB",
+      "id": "300000331067877"
+    },
+    {
+      "role": "ORA_ZBS_SALES_VP_JOB",
+      "id": "300000331067878"
+    }
+  ],
+  "header": {
+    "ETag": "\"1\""
+  }
+}

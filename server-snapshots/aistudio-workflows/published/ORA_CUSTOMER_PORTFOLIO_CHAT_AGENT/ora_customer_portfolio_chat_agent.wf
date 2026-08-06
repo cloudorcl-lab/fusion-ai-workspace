@@ -1,0 +1,1137 @@
+{
+  "workflowId": "100002355226923",
+  "workflowCode": "ORA_CUSTOMER_PORTFOLIO_CHAT_AGENT",
+  "name": "Customer Insights Chat Agent",
+  "description": "Provides conversational access to insights across a seller’s entire customer portfolio, enabling quick answers and summarization.",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1900000000001"
+          },
+          "diagram": {
+            "x": 5825,
+            "y": 5000
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "name": "Route by Filter Configuration"
+          },
+          "outcomes": {
+            "CX_UNITY": "1766589839792",
+            "DEFAULT": "1900000000002"
+          },
+          "diagram": {
+            "x": 5825,
+            "y": 5246
+          },
+          "code": "ROUTE_BY_FILTER_CONFIGURATION",
+          "convergenceTargetId": "end",
+          "id": "1900000000001",
+          "inputs": [
+            {
+              "id": "1900000000001_caseExpression",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input?.action?.config?.dataSource == \"CX_UNITY\" ? \"CX_UNITY\" : \"DEFAULT\"}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "constructMYFilter",
+            "returnType": "string",
+            "sourceCode": "// Resolve my account filter\nvar accountFilterClause = \"\";\n\nvar accountRecordset =\n  $context.$triggers.REST.$input.filterConfiguration.accountRecordSet;\n\nif (accountRecordset != null) {\n  const accountRecordSets = {\n    MYACCTS:\n      \"ownerResource.partyId = @faContext.partyId\",\n\n    MYSALESTEAMACCTS:\n      \"salesTeam[resource.partyId = @faContext.partyId]\",\n\n    MYSUBORDINATESACCTS:\n      \"ownerResource[partyId = @faContext.partyId or managers[resourceManager.partyId = @faContext.partyId]]\",\n\n    MYSUBORDSSALESTEAMACCTS:\n      \"salesTeam[resource[partyId = @faContext.partyId or managers[resourceManager.partyId = @faContext.partyId]]]\",\n\n    MYASSGTERRACCTS:\n      \"salesTerritories[territory[territoryResources[resource.partyId = @faContext.partyId]]]\",\n\n    MYASSGDESCTERRACCTS:\n      \"salesTerritories[territory[territoryResources[resource.partyId = @faContext.partyId] or ancestorTerritories[territory[territoryResources[resource.partyId = @faContext.partyId]]]]]\",\n\n    MYSALESTEAMTERRACCTS:\n      \"salesTeam[resource.partyId = @faContext.partyId] or salesTerritories[territory[territoryResources[resource.partyId = @faContext.partyId]]]\",\n\n    MYSUBORDTEAMTERRACCTS:\n      \"salesTeam[resource[partyId = @faContext.partyId or managers[resourceManager.partyId = @faContext.partyId]]] or \" +\n      \"salesTerritories[territory[territoryResources[resource.partyId = @faContext.partyId] or \" +\n      \"ancestorTerritories[territory[territoryResources[resource.partyId = @faContext.partyId]]]]]\"\n  };\n\n  if (accountRecordSets[accountRecordset] != null) {\n    accountFilterClause =\n      \"(fusionAccount[\" + accountRecordSets[accountRecordset] + \"])\";\n  }\n}\n\nif ($context.$triggers.REST.$input.filterConfiguration.accountFilter) {\n  accountFilterClause =\n    $context.$triggers.REST.$input.filterConfiguration.accountFilter;\n}\n\n// Resolve my product filter\nvar productFilter = \"\";\n\n// Product filter-by-territory is enabled and user territories cover products\nif ($context.$triggers.REST.$input.filterConfiguration.filterProductByTerritory==null || $context.$triggers.REST.$input.filterConfiguration.filterProductByTerritory) {\n  productFilter =\n    \"((productType = 'PRODUCT_GROUP' and \" +\n    \"fusionProductGroup[parentProductGroupHierarchies[\" +\n    \"baseUsageFlag = true and firstProductGroup[\" +\n    \"territoryCoverages[territory[territoryResources[resource.partyId=@faContext.partyId]]]]]]) \" +\n    \"or (productType = 'Item' and fusionProduct[\" +\n    \"territoryCoverages[territory[territoryResources[resource.partyId=@faContext.partyId]]] \" +\n    \"or parentProductGroups[activeFlag = true and startDate < @currentDateTime \" +\n    \"and endDate > @currentDateTime and productGroup[\" +\n    \"parentProductGroupHierarchies[baseUsageFlag = true and firstProductGroup[\" +\n    \"territoryCoverages[territory[territoryResources[resource.partyId=@faContext.partyId]]]]]]]]))\";\n}\n\n// Construct MY filter\nvar MYFilter = accountFilterClause;\n\nif (MYFilter !== \"\" && productFilter !== \"\") {\n  MYFilter += \" and \";\n}\n\nif (productFilter !== \"\") {\n  MYFilter += productFilter;\n}\n\nif (MYFilter === \"\") {\n  MYFilter = \"1=1\";\n}\n\nreturn MYFilter;"
+          },
+          "outcomes": {
+            "success": "1771798665988"
+          },
+          "diagram": {
+            "x": 5600,
+            "y": 5468
+          },
+          "code": "CONSTRUCTMYFILTER",
+          "id": "1766589839792",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "GPT-5 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Classify Collection or Individual"
+          },
+          "outcomes": {
+            "success": "1900000000007"
+          },
+          "diagram": {
+            "x": 6050,
+            "y": 5468
+          },
+          "code": "CLASSIFY_COLLECTION_OR_INDIVIDUAL",
+          "id": "1900000000002",
+          "inputs": [
+            {
+              "id": "1900000000002_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "ROLE:\n  Classify the user's question for the Customer Insights chat agent.\n\n  USER QUESTION:\n  {{$context.$system.$inputMessage}}\n\n  Return valid JSON only with exactly this structure:\n  {\n    \"type\": \"COLLECTION\"\n  }\n\n  Return exactly one classified value for `type`.\n  Allowed values:\n  - `COLLECTION`\n  - `INDIVIDUAL`\n  - `OUT_OF_SCOPE`\n\n  Do not return multiple values, combined values, arrays, explanations, or any keys other than `type`.\n\n  CLASSIFICATION TYPES:\n\n  1. COLLECTION\n  Use COLLECTION when the user asks across multiple accounts/customers.\n\n  Examples:\n  - Lists, rankings, top N, portfolio views\n  - Expansion accounts, risk accounts, renewal accounts\n  - Accounts by ARR, MRR, revenue, renewal date, health, engagement, or other metrics\n  - Any comparison, aggregation, filtering, or search across multiple accounts\n  - Ambiguous wording that asks for accounts plural\n\n  2. INDIVIDUAL\n  Use INDIVIDUAL when the user asks about one specific account/customer.\n\n  Examples:\n  - One named account or customer\n  - Account-specific owner, opportunities, contacts, summary, engagement, risks, renewal, ARR, or details\n  - A question that names a company/customer and asks for details about it\n\n  3. OUT_OF_SCOPE\n  Use OUT_OF_SCOPE when the question is not about CRM/account/business data and cannot be answered using CRM data.\n\n  Objects or concepts:\n  - General knowledge, trivia, education\n  - Politics, celebrities, entertainment, sports\n  - Non-CRM technical issues\n  - Casual or unrelated queries\n\n  Behavioral signals:\n  - No reference to CRM, account, customer, opportunity, renewal, revenue, engagement, contact, or business entities\n  - Cannot be answered using CRM data\n\n  Trigger examples:\n  - \"who is the president\"\n  - \"tell me a joke\"\n  - \"capital of\"\n  - \"movie recommendations\"\n  - \"who is taylor swift\"\n\n  DECISION RULES:\n  - If the question is unrelated to CRM/account/business data, return OUT_OF_SCOPE.\n  - If the question names a company/customer and asks for details about it, return INDIVIDUAL.\n  - If the question asks for multiple accounts/customers or a filtered/ranked/aggregated account list, return COLLECTION.\n  - If the wording is ambiguous but asks for accounts plural, return COLLECTION.\n\n  Do not include explanation, markdown, or any keys other than `type`."
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"type\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"type\"\n  ]\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "ConstructInputForIntentQueryAgent",
+            "returnType": "object",
+            "sourceCode": "const filterValue = $context.$nodes.CONSTRUCTMYFILTER?.$output.result;\n\nvar output1 = {\n    name: \"EXECUTE_EXTRACTION_QUERY_ACCOUNTS\",\n    config: {\n      myFilterCriteria: filterValue\n    }\n};\n\nreturn output1;"
+          },
+          "outcomes": {
+            "success": "1771803640290"
+          },
+          "diagram": {
+            "x": 5600,
+            "y": 5690
+          },
+          "code": "CONSTRUCTINPUTFORINTENTQUERYAGENT",
+          "id": "1771798665988",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Route by Question Intent"
+          },
+          "outcomes": {
+            "INDIVIDUAL": "19000000000233",
+            "COLLECTION": "19000000000238",
+            "OUT_OF_SCOPE": "1779954583354"
+          },
+          "diagram": {
+            "x": 6290.472447811568,
+            "y": 5646.067533572887
+          },
+          "code": "ROUTE_BY_QUESTION_INTENT",
+          "convergenceTargetId": "end",
+          "id": "1900000000007",
+          "inputs": [
+            {
+              "id": "1900000000007_caseExpression",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.CLASSIFY_COLLECTION_OR_INDIVIDUAL.$output.type}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "Invoke Customer Intent Intelligence Agent",
+            "workflowCode": "ORA_CUSTOMER_INTENT_INTELLIGENCE_AGENT"
+          },
+          "outcomes": {
+            "success": "1765328523317"
+          },
+          "diagram": {
+            "x": 5375,
+            "y": 5912
+          },
+          "code": "INVOKE_CUSTOMER_INTENT_INTELLIGENCE_AGENT",
+          "id": "1771803640290",
+          "inputs": [
+            {
+              "id": "1771803652136_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            },
+            {
+              "id": "1771803652138_2",
+              "name": "action",
+              "type": "object",
+              "value": "{{$context.$nodes.CONSTRUCTINPUTFORINTENTQUERYAGENT.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "GPT-5 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Extract Account Search Terms"
+          },
+          "outcomes": {
+            "success": "19000000000235"
+          },
+          "diagram": {
+            "x": 5825,
+            "y": 5912
+          },
+          "id": "19000000000233",
+          "code": "EXTRACT_ACCOUNT_SEARCH_TERMS",
+          "type": "LLM",
+          "inputs": [
+            {
+              "id": "19000000000233_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "ROLE:\nExtract account search terms for an individual-account question.\n\nUSER QUESTION:\n{{$context.$system.$inputMessage}}\n\nCHAT HISTORY:\n{{$context.$system.$chatHistory}}\n\nTASK:\nReturn account identifiers and search terms needed to find the account.\n\nSOURCE PRIORITY:\n1. First use the current USER QUESTION.\n2. If the current USER QUESTION explicitly names an account, email, address, PartyId, or PartyNumber, use that and ignore conflicting older chat history.\n3. If the current USER QUESTION says \"this account\", \"that account\", \"the account\", \"same account\", \"current account\", or similar, resolve it from the most recent relevant CHAT HISTORY only when exactly one account is clearly referenced.\n4. If the current USER QUESTION uses those referential phrases and CHAT HISTORY contains multiple possible accounts or multiple PartyNumbers, do not guess. Set ambiguousHistoryReference to true and leave PartyNumber empty.\n\nFIELDS TO EXTRACT:\n- PartyId\n- PartyNumber\n- PartyUniqueName\n- PrimaryEmail\n- PrimaryAddress\n- candidatePartyNumbers\n- ambiguousHistoryReference\n\nEXTRACTION RULES:\n- PartyId should be returned only when explicitly available.\n- PartyNumber should be returned only when explicitly available or when one clear prior account is referenced by the current question. Party numbers may look like CDRM_12345, ORCL-0001, DACC_001, or similar account identifiers.\n- PartyUniqueName should be the company, customer, or account name.\n- PrimaryEmail should be returned only when an email address is explicitly available.\n- PrimaryAddress should be an address, city, state, country, postal code, or location phrase only if explicitly available.\n- candidatePartyNumbers should contain all distinct possible PartyNumbers from relevant CHAT HISTORY when the current question refers to a prior account ambiguously.\n- ambiguousHistoryReference must be true only when the user refers to a prior account and multiple possible accounts are present in CHAT HISTORY.\n- Do not put generic words such as account, owner, opportunity, opportunities, open, show, tell, who, this, that, same, or customer into PartyUniqueName.\n- If a string value is not present, return an empty string for that field.\n- Return valid JSON only.\n- Do not include markdown or explanation.\n- Preserve all extracted values exactly as they appear in the current USER QUESTION or CHAT HISTORY. Do not normalize, title-case, lowercase, uppercase, trim internal spacing, correct spelling, expand abbreviations, or otherwise rewrite extracted values.\n\nSTRICT OUTPUT FORMAT:\n{\n  \"PartyId\": \"string\",\n  \"PartyNumber\": \"string\",\n  \"PartyUniqueName\": \"string\",\n  \"PrimaryEmail\": \"string\",\n  \"PrimaryAddress\": \"string\",\n  \"candidatePartyNumbers\": [\"string\"],\n  \"ambiguousHistoryReference\": false\n}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"PartyId\": {\n      \"type\": \"string\"\n    },\n    \"PartyNumber\": {\n      \"type\": \"string\"\n    },\n    \"PartyUniqueName\": {\n      \"type\": \"string\"\n    },\n    \"PrimaryEmail\": {\n      \"type\": \"string\"\n    },\n    \"PrimaryAddress\": {\n      \"type\": \"string\"\n    },\n    \"candidatePartyNumbers\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      }\n    },\n    \"ambiguousHistoryReference\": {\n      \"type\": \"boolean\"\n    }\n  },\n  \"required\": [\n    \"PartyId\",\n    \"PartyNumber\",\n    \"PartyUniqueName\",\n    \"PrimaryEmail\",\n    \"PrimaryAddress\",\n    \"candidatePartyNumbers\",\n    \"ambiguousHistoryReference\"\n  ]\n}"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Account Collection Query",
+            "sourceCode": "function toPositiveInteger(value) {\n  if (value == null) {\n    return 0;\n  }\n\n  var raw = String(value).trim();\n  if (raw === \"\") {\n    return 0;\n  }\n\n  var numberValue = Number(raw);\n  if (!isFinite(numberValue) || numberValue <= 0) {\n    return 0;\n  }\n\n  return Math.floor(numberValue);\n}\n\nvar restInput = $context.$triggers.REST.$input || {};\nvar action = restInput.action || {};\nvar config = action.config || {};\nvar maxAccounts = toPositiveInteger(config.maxAccounts);\nvar limit = maxAccounts > 0 ? maxAccounts : 50;\n\n var filterConfiguration = action.filterConfiguration || {};\n var accountRecordset = filterConfiguration.accountRecordSet || \"MYSALESTEAMTERRACCTS\";\n\nreturn {\n  object: \"Account\",\n  query: JSON.stringify({\n    op: \"$and\",\n    criteria: [\n      {\n        op: \"$eq\",\n        attribute: \"PartyRecordSet\",\n        value: accountRecordset\n      }\n    ]\n  }),\n  sort: JSON.stringify([\n    {\n      attribute: \"AccountRollup.NextAppointmentDate\",\n      direction: \"descending\"\n    }\n  ]),\n  fields: JSON.stringify([\n    \"PartyId\",\n    \"PartyNumber\",\n    \"PartyUniqueName\",\n    \"AccountRollup\"\n  ]),\n  limit: String(limit)\n};",
+            "returnType": "object"
+          },
+          "outcomes": {
+            "success": "1778294692054"
+          },
+          "diagram": {
+            "x": 6275,
+            "y": 5912
+          },
+          "id": "19000000000238",
+          "code": "PREPARE_ACCOUNT_COLLECTION_QUERY",
+          "type": "CODE",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "GPT-5 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "FinalOutput"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "diagram": {
+            "x": 5375,
+            "y": 6134
+          },
+          "code": "FINALOUTPUT",
+          "id": "1765328523317",
+          "inputs": [
+            {
+              "id": "1765328523320_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "INPUT SOURCES\n\nAccount Data from Agent:\n{{$context.$nodes.INVOKE_CUSTOMER_INTENT_INTELLIGENCE_AGENT.$output.output}}\n\nUser Query:\n{{$context.$system.$inputMessage}}\n\n\nOUTPUT FORMAT (STRICT)\n\nheaderText ? Create a short, crisp header Text based on the Input Question\nprimaryText ? A very short phrase describing the output. For example if Input is \"Show me top 10 accounts by ARR\" , then primaryText can be \"Top 10 Customers\"\nsecondaryText ? Another very short phrase describing the context. For example if Input is \"Show me top 10 accounts by ARR\" , then secondaryText can be \"Based on ARR\"\n\n\nThe items array is derived from Account Data from Agent. \nDefault Attributes to display are accountName,accountId,registryIdentifier,annualRecurringRevenue,ownedProducts,suggestedProducts,engagementTrend,renewalDate,currencyCode\nThe renewalDate should not have a time component.\nFor suggestedProducts and ownedProducts - Add a space between each element in the list\nFor engagementTrend is positive, then return \"High\", if negative then \"Low\" . Else return \"Stable\"\nIf user is requesting specific attributes in the question, then it should be added to this list\n\n\n\nThe summary must:\nBe 3?4 lines, concise and insightful. Summaries should provide interpretation, not duplication of the raw data.\nNot repeat information that is already explicitly present in the output data (e.g., highest ARR account, numeric ranges, metrics that are already displayed).\nInstead, provide interpretive insight, such as:\npatterns\ntrends\nanomalies\nconcentration observations\nengagement signals\nrisk indicators\nmeaningful groupings\nExample of acceptable insight (NOT repeating data):\n\n?Most accounts in this list show stable ARR with a few outliers that contribute disproportionately to total revenue.?\n?Several accounts have declining engagement trends, which may impact renewals.?\n?The accounts span multiple industries, suggesting diversified revenue sources.?\n?A cluster of accounts shows open P1 issues, indicating potential churn risk.?\n\n\n\n\n\nicon MUST always be: oj-ux-ico-table\ntype MUST always be: chip\nIf Account Data is empty ? items MUST be an empty array.\n\nRETURN THE RESPONSE IN EXACTLY THIS STRUCTURE\n{\n  \"type\": \"\",\n  \"headerText\": \"\",\n  \"primaryText\": \"\",\n  \"secondaryText\": \"\",\n  \"icon\": \"\",\n  \"postback\": {\n    \"summary\": \"\",\n    \"items\": [\n      {\n        \"ATTRIBUTE\": \"VALUE\"\n      }\n    ]\n  }\n}"
+            }
+          ],
+          "outputSpecification": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"type\": { \"type\": \"string\" },\n    \"headerText\": { \"type\": \"string\" },\n    \"primaryText\": { \"type\": \"string\" },\n    \"secondaryText\": { \"type\": \"string\" },\n    \"icon\": { \"type\": \"string\" },\n    \"postback\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"summary\": { \"type\": \"string\" },\n        \"items\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {}\n          }\n        }\n      }\n    }\n  }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Resolve Extracted Account Reference",
+            "returnType": "object",
+            "sourceCode": "function parseJsonIfNeeded(value) {\n    if (typeof value !== \"string\") {\n      return value || {};\n    }\n\n    var trimmed = value.trim();\n    if (trimmed === \"\") {\n      return {};\n    }\n\n    try {\n      return JSON.parse(trimmed);\n    } catch (e) {\n      return {};\n    }\n  }\n\n  function clean(value) {\n    if (value == null) {\n      return \"\";\n    }\n\n    return String(value).trim();\n  }\n\n  function readBoolean(value) {\n    if (typeof value === \"boolean\") {\n      return value;\n    }\n\n    if (typeof value === \"string\") {\n      return value.toLowerCase() === \"true\";\n    }\n\n    return false;\n  }\n\n  var extracted = parseJsonIfNeeded($context.$nodes.EXTRACT_ACCOUNT_SEARCH_TERMS.$output);\n\n  var partyId = clean(extracted.PartyId || extracted.partyId);\n  var partyNumber = clean(extracted.PartyNumber || extracted.partyNumber || extracted.accountNumber || extracted.AccountNumber);\n  var partyUniqueName = clean(extracted.PartyUniqueName || extracted.partyUniqueName || extracted.accountName || extracted.AccountName);\n  var ambiguousHistoryReference = readBoolean(extracted.ambiguousHistoryReference || extracted.AmbiguousHistoryReference);\n\n  var route = \"SEARCH\";\n  var partyNumbers = [];\n  var reason = \"Search by account attributes.\";\n\n  if (ambiguousHistoryReference) {\n    route = \"CLARIFY\";\n    reason = \"The account reference is ambiguous in chat history.\";\n  } else if (partyNumber !== \"\") {\n    route = \"DIRECT\";\n    partyNumbers = [partyNumber];\n    reason = \"PartyNumber was extracted.\";\n  } else if (partyId !== \"\") {\n    route = \"DIRECT\";\n    partyNumbers = [partyId];\n    reason = \"PartyId was extracted.\";\n  } else if (partyUniqueName !== \"\") {\n    route = \"SEARCH\";\n    reason = \"PartyUniqueName was extracted.\";\n  }\n\n  var result = {\n    route: route,\n    partyNumbers: partyNumbers,\n    candidatePartyNumbers: extracted.candidatePartyNumbers || extracted.CandidatePartyNumbers || [],\n    reason: reason,\n    extracted: extracted\n  };\n\n  return result;"
+          },
+          "outcomes": {
+            "success": "19000000000236"
+          },
+          "diagram": {
+            "x": 5825,
+            "y": 6134
+          },
+          "id": "19000000000235",
+          "code": "RESOLVE_EXTRACTED_ACCOUNT_REFERENCE",
+          "type": "CODE",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "metadata": {
+            "name": "Fetch Account Collection",
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS"
+          },
+          "diagram": {
+            "x": 6275,
+            "y": 6134
+          },
+          "outcomes": {
+            "success": "1778286020801"
+          },
+          "id": "1778294692054",
+          "code": "FETCH_ACCOUNT_COLLECTION",
+          "type": "BO_FUNCTION",
+          "inputs": [
+            {
+              "id": "1778294692054_object",
+              "name": "object",
+              "value": "{{$context.$nodes.PREPARE_ACCOUNT_COLLECTION_QUERY.$output.result.object}}",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "id": "1778294692054_q",
+              "name": "q",
+              "value": "{{$context.$nodes.PREPARE_ACCOUNT_COLLECTION_QUERY.$output.result.query}}",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "id": "1778294692054_sort",
+              "name": "sort",
+              "value": "{{$context.$nodes.PREPARE_ACCOUNT_COLLECTION_QUERY.$output.result.sort}}",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "id": "1778294692054_limit",
+              "name": "limit",
+              "value": "{{$context.$nodes.PREPARE_ACCOUNT_COLLECTION_QUERY.$output.result.limit}}",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "id": "1778294692054_fields",
+              "name": "fields",
+              "value": "{{$context.$nodes.PREPARE_ACCOUNT_COLLECTION_QUERY.$output.result.fields}}",
+              "required": false,
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "name": "Route Extracted Account Reference"
+          },
+          "outcomes": {
+            "SEARCH": "19000000000234",
+            "CLARIFY": "19000000000237",
+            "DIRECT": "1900000000020"
+          },
+          "diagram": {
+            "x": 5600,
+            "y": 6356
+          },
+          "id": "19000000000236",
+          "code": "ROUTE_EXTRACTED_ACCOUNT_REFERENCE",
+          "type": "SWITCH",
+          "inputs": [
+            {
+              "id": "19000000000236_caseExpression",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.RESOLVE_EXTRACTED_ACCOUNT_REFERENCE.$output.result.route}}"
+            }
+          ],
+          "convergenceTargetId": "end"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Account Outcome Batches",
+            "returnType": "object",
+            "sourceCode": "function parseJson(value) {\n  if (typeof value !== \"string\") {\n    return value;\n  }\n\n  return JSON.parse(value.trim());\n}\n\nvar accounts = parseJson($context.$nodes.FETCH_ACCOUNT_COLLECTION.$output);\n\nif (!Array.isArray(accounts)) {\n  accounts = parseJson(accounts.result || accounts.output || accounts.items || accounts.accounts || []);\n}\n\nvar partyNumbers = accounts\n  .map(function(account) {\n    return String(account.PartyNumber).trim();\n  })\n  .filter(function(partyNumber) {\n    return partyNumber !== \"\";\n  });\n\nvar batches = [];\n\nfor (var i = 0; i < partyNumbers.length; i += 25) {\n  batches.push(partyNumbers.slice(i, i + 25).join(\",\"));\n}\n\nreturn {\n  batches: batches\n};"
+          },
+          "outcomes": {
+            "success": "1900000000102"
+          },
+          "diagram": {
+            "x": 6263.776824920617,
+            "y": 6362.680525778769
+          },
+          "code": "PREPARE_ACCOUNT_OUTCOME_BATCHES",
+          "id": "1778286020801",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Prepare User Account Search Query",
+            "returnType": "string",
+            "sourceCode": "function parseJsonIfNeeded(value) {\n  if (typeof value !== \"string\") {\n    return value;\n  }\n\n  var trimmed = value.trim();\n  if (trimmed === \"\") {\n    return {};\n  }\n\n  try {\n    return JSON.parse(trimmed);\n  } catch (e) {\n    return {};\n  }\n}\n\nfunction clean(value) {\n  if (value == null) {\n    return \"\";\n  }\n\n  return String(value).trim();\n}\n\nvar extracted = parseJsonIfNeeded($context.$nodes.EXTRACT_ACCOUNT_SEARCH_TERMS.$output);\nvar partyId = clean(extracted.PartyId || extracted.partyId);\nvar partyNumber = clean(extracted.PartyNumber || extracted.partyNumber || extracted.accountNumber || extracted.AccountNumber);\nvar partyUniqueName = clean(extracted.PartyUniqueName || extracted.partyUniqueName || extracted.accountName || extracted.AccountName || extracted.name || extracted.account);\nvar primaryEmail = clean(extracted.PrimaryEmail || extracted.primaryEmail || extracted.email || extracted.EmailAddress || extracted.emailAddress);\nvar primaryAddress = clean(extracted.PrimaryAddress || extracted.primaryAddress || extracted.accountAddress || extracted.AccountAddress || extracted.address || extracted.FormattedAddress || extracted.formattedAddress);\n\nvar criteria = [\n  {\n    op: \"$eq\",\n    attribute: \"PartyRecordSet\",\n    value: \"MYSALESTEAMTERRACCTS\"\n  }\n];\n\nif (partyId !== \"\") {\n  criteria.push({\n    op: \"$eq\",\n    attribute: \"PartyId\",\n    value: partyId\n  });\n}\n\nif (partyNumber !== \"\") {\n  criteria.push({\n    op: \"$eq\",\n    attribute: \"PartyNumber\",\n    value: partyNumber\n  });\n}\n\nif (partyUniqueName !== \"\") {\n  criteria.push({\n    op: \"$co\",\n    attribute: \"PartyUniqueName\",\n    value: partyUniqueName\n  });\n}\n\nif (primaryEmail !== \"\") {\n  criteria.push({\n    op: \"$co\",\n    attribute: \"PrimaryEmail.EmailAddress\",\n    value: primaryEmail\n  });\n}\n\nif (primaryAddress !== \"\") {\n  criteria.push({\n    op: \"$co\",\n    attribute: \"PrimaryAddress.FormattedAddress\",\n    value: primaryAddress\n  });\n}\n\nvar query = {\n  op: \"$and\",\n  criteria: criteria\n};\n\nreturn JSON.stringify(query);"
+          },
+          "outcomes": {
+            "success": "1900000000026"
+          },
+          "diagram": {
+            "x": 5225,
+            "y": 6578
+          },
+          "id": "19000000000234",
+          "code": "PREPARE_USER_ACCOUNT_SEARCH_QUERY",
+          "type": "CODE",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "metadata": {
+            "name": "Return Account Clarification"
+          },
+          "outcomes": {},
+          "diagram": {
+            "x": 5788.578529956568,
+            "y": 6569.465942942597
+          },
+          "id": "19000000000237",
+          "code": "RETURN_ACCOUNT_CLARIFICATION",
+          "type": "RETURN",
+          "inputs": [
+            {
+              "id": "19000000000237_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "Please clarify which account you mean."
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "rootNode": "start_1900000000102",
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1900000000104"
+                  },
+                  "diagram": {
+                    "x": 6292.0617984338505,
+                    "y": 6668.392808424518
+                  },
+                  "id": "start_1900000000102",
+                  "code": "START_1900000000102",
+                  "inputs": [],
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "Prepare Outcome Store IN Clause",
+                    "returnType": "object",
+                    "sourceCode": "function parseJsonIfNeeded(value) {\n  if (typeof value !== \"string\") {\n    return value;\n  }\n\n  var trimmed = value.trim();\n  if (trimmed === \"\") {\n    return value;\n  }\n\n  try {\n    return JSON.parse(trimmed);\n  } catch (e) {\n    return value;\n  }\n}\n\nfunction clean(value) {\n  if (value == null) {\n    return \"\";\n  }\n\n  return String(value).trim();\n}\n\nfunction quote(value) {\n  return \"'\" + String(value).replace(/'/g, \"''\") + \"'\";\n}\n\nfunction readPartyNumber(account) {\n  if (!account || typeof account !== \"object\") {\n    return clean(account);\n  }\n\n  return clean(account.PartyNumber || account.partyNumber || account.AccountNumber || account.accountNumber || account.primaryObjectAltKey || account.PrimaryObjectAltKey);\n}\n\nvar raw = parseJsonIfNeeded($context.$nodes.PAGE_ACCOUNTS_AND_OUTCOMES.$currentItem);\nvar objectAltKeys = [];\n\nif (Array.isArray(raw)) {\n  objectAltKeys = raw.map(readPartyNumber);\n} else if (raw && typeof raw === \"object\" && Array.isArray(raw.partyNumbers)) {\n  objectAltKeys = raw.partyNumbers;\n} else if (raw && typeof raw === \"object\" && Array.isArray(raw.accounts)) {\n  objectAltKeys = raw.accounts.map(readPartyNumber);\n} else {\n  objectAltKeys = String(raw || \"\").split(\",\");\n}\n\nobjectAltKeys = objectAltKeys\n  .map(clean)\n  .filter(function(value) {\n    return value !== \"\";\n  });\n\nvar accountInClause = objectAltKeys.length > 0\n  ? \"primaryObjectAltKey IN(\" + objectAltKeys.map(quote).join(\",\") + \")\"\n  : \"primaryObjectAltKey IN('__NO_ACCOUNT__')\";\n\nreturn {\n  objectAltKeys: objectAltKeys,\n  batchSize: objectAltKeys.length,\n  standardParameters: JSON.stringify({\n    objectType: \"ACCOUNT\",\n    objectAltKeys: objectAltKeys\n  }),\n  optionalParameters: \"outcomeType IN('SUMMARY', 'INSIGHT') and outcomeReferences[primaryRef='Y']\"\n};"
+                  },
+                  "outcomes": {
+                    "success": "1900000000105"
+                  },
+                  "diagram": {
+                    "x": 6272.345115853278,
+                    "y": 6755.313590037656
+                  },
+                  "id": "1900000000104",
+                  "code": "PREPARE_OUTCOME_STORE_IN_CLAUSE",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "name": "Get Account Outcomes",
+                    "businessObjectCode": "ORA_CX_SALESFORCE_AIOUTCOMESTORE",
+                    "functionName": "getOutcomes"
+                  },
+                  "outcomes": {
+                    "success": "end_1900000000102"
+                  },
+                  "diagram": {
+                    "x": 6289.597213111279,
+                    "y": 6930.486468908794
+                  },
+                  "id": "1900000000105",
+                  "code": "GET_ACCOUNT_OUTCOMES",
+                  "type": "BO_FUNCTION",
+                  "inputs": [
+                    {
+                      "id": "1900000000105_Outcome_Standard_Parameters",
+                      "name": "Outcome_Standard_Parameters",
+                      "type": "string",
+                      "value": "{{$context.$nodes.PAGE_ACCOUNTS_AND_OUTCOMES.PREPARE_OUTCOME_STORE_IN_CLAUSE.$output.result.standardParameters}}",
+                      "required": false
+                    },
+                    {
+                      "id": "1900000000105_Outcome_Optional_Parameters",
+                      "name": "Outcome_Optional_Parameters",
+                      "type": "string",
+                      "value": "{{$context.$nodes.PAGE_ACCOUNTS_AND_OUTCOMES.PREPARE_OUTCOME_STORE_IN_CLAUSE.$output.result.optionalParameters}}",
+                      "required": false
+                    }
+                  ],
+                  "outputSpecification": ""
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "id": "end_1900000000102",
+                  "code": "END_1900000000102",
+                  "inputs": [],
+                  "type": "END"
+                }
+              ]
+            },
+            "name": "Batch Account Outcomes",
+            "loopType": "PARALLEL"
+          },
+          "outcomes": {
+            "success": "1900000000014"
+          },
+          "diagram": {
+            "x": 6142.0617984338505,
+            "y": 6578.392808424518,
+            "width": 600,
+            "height": 528
+          },
+          "code": "PAGE_ACCOUNTS_AND_OUTCOMES",
+          "id": "1900000000102",
+          "inputs": [
+            {
+              "id": "1900000000102_collection",
+              "name": "collection",
+              "type": "array",
+              "value": "{{$context.$nodes.PREPARE_ACCOUNT_OUTCOME_BATCHES.$output.result.batches}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "processJson": true,
+            "name": "Search User Accounts"
+          },
+          "outcomes": {
+            "success": "1900000000018"
+          },
+          "diagram": {
+            "x": 5253.562065264369,
+            "y": 6778.0938419130825
+          },
+          "code": "SEARCH_USER_ACCOUNTS",
+          "id": "1900000000026",
+          "inputs": [
+            {
+              "id": "1900000000026_object",
+              "name": "object",
+              "value": "Account"
+            },
+            {
+              "id": "1900000000026_q",
+              "name": "q",
+              "value": "{{$context.$nodes.PREPARE_USER_ACCOUNT_SEARCH_QUERY.$output.result}}",
+              "type": "string"
+            },
+            {
+              "id": "1900000000026_sort",
+              "name": "sort",
+              "value": "[{\"attribute\":\"LastUpdateDate\",\"direction\":\"descending\"}]"
+            },
+            {
+              "id": "1900000000026_limit",
+              "name": "limit",
+              "value": "",
+              "type": "integer"
+            },
+            {
+              "id": "1900000000026_fields",
+              "name": "fields",
+              "type": "string",
+              "value": "[\"PartyId\",\"PartyNumber\",\"PartyUniqueName\",\"PrimaryEmail\",\"PrimaryAddress\"]"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Collection Response Data",
+            "returnType": "object",
+            "sourceCode": "function parseJsonIfNeeded(value) {\n  if (typeof value !== \"string\") {\n    return value;\n  }\n\n  var trimmed = value.trim();\n  if (trimmed === \"\") {\n    return value;\n  }\n\n  try {\n    return JSON.parse(trimmed);\n  } catch (e) {\n    return value;\n  }\n}\n\nfunction hasOutcomeData(value) {\n  var parsed = parseJsonIfNeeded(value);\n\n  if (parsed == null) {\n    return false;\n  }\n\n  if (Array.isArray(parsed)) {\n    return parsed.some(function(item) {\n      return hasOutcomeData(item);\n    });\n  }\n\n  if (typeof parsed !== \"object\") {\n    return false;\n  }\n\n  if (parsed.outcomeType || parsed.OutcomeType || parsed.outcomeSubtype || parsed.OutcomeSubtype || parsed.primaryObjectAltKey || parsed.PrimaryObjectAltKey || parsed.payload || parsed.Payload || parsed.outcomeReferences || parsed.OutcomeReferences) {\n    return true;\n  }\n\n  return Object.keys(parsed).some(function(key) {\n    return hasOutcomeData(parsed[key]);\n  });\n}\n\nvar rawAIOutcomeBatches = $context.$nodes.PAGE_ACCOUNTS_AND_OUTCOMES.$output;\n\nreturn {\n  hasData: hasOutcomeData(rawAIOutcomeBatches),\n  rawAIOutcomeBatches: rawAIOutcomeBatches\n};"
+          },
+          "outcomes": {
+            "success": "1900000000015"
+          },
+          "diagram": {
+            "x": 6512.285472622183,
+            "y": 7284.157793837056
+          },
+          "code": "PREPARE_COLLECTION_RESPONSE_DATA",
+          "id": "1900000000014",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Has Individual Account Matches"
+          },
+          "outcomes": {
+            "true": "1900000000023",
+            "false": "1900000000022"
+          },
+          "diagram": {
+            "x": 5451.080068748093,
+            "y": 7524.222623390914
+          },
+          "code": "HAS_INDIVIDUAL_ACCOUNT_MATCHES",
+          "convergenceTargetId": "end",
+          "id": "1900000000021",
+          "inputs": [
+            {
+              "id": "1900000000021_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_ACCOUNT_ADVISOR_PARTY_NUMBERS.$output.result.length > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Account Match Input",
+            "returnType": "object",
+            "sourceCode": "var accounts = $context.$nodes.SEARCH_USER_ACCOUNTS.$output;\n\nif (!Array.isArray(accounts)) {\n  if (accounts && Array.isArray(accounts.items)) {\n    accounts = accounts.items;\n  } else if (accounts && Array.isArray(accounts.result)) {\n    accounts = accounts.result;\n  } else if (accounts && accounts.result && Array.isArray(accounts.result.items)) {\n    accounts = accounts.result.items;\n  } else {\n    accounts = [];\n  }\n}\n\nreturn {\n  accounts: accounts\n};"
+          },
+          "outcomes": {
+            "success": "1900000000019"
+          },
+          "diagram": {
+            "x": 5246.670804931749,
+            "y": 6950.759680926733
+          },
+          "code": "PREPARE_ACCOUNT_MATCH_INPUT",
+          "id": "1900000000018",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Has Collection Outcome Data"
+          },
+          "outcomes": {
+            "false": "1900000000016",
+            "true": "1778522570473"
+          },
+          "diagram": {
+            "x": 6533.584581273358,
+            "y": 7486.451096155724
+          },
+          "id": "1900000000015",
+          "code": "HAS_COLLECTION_OUTCOME_DATA",
+          "type": "CONDITION",
+          "inputs": [
+            {
+              "id": "1900000000015_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_COLLECTION_RESPONSE_DATA.$output.result.hasData}}"
+            }
+          ],
+          "convergenceTargetId": "end"
+        },
+        {
+          "metadata": {
+            "name": "Return Individual No Data"
+          },
+          "outcomes": {},
+          "diagram": {
+            "x": 4790.4013944446715,
+            "y": 7875.82387595482
+          },
+          "code": "RETURN_INDIVIDUAL_NO_DATA",
+          "convergenceTargetId": "end",
+          "id": "1900000000022",
+          "inputs": [
+            {
+              "id": "1900000000022_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "No data found"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "rootNode": "start_1900000000023",
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "19000000000231"
+                  },
+                  "diagram": {
+                    "x": 5578.780991888226,
+                    "y": 8033.298866140667
+                  },
+                  "id": "start_1900000000023",
+                  "code": "START_1900000000023",
+                  "inputs": [],
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "Prepare Account Advisor Action",
+                    "returnType": "object",
+                    "sourceCode": "var accountNumber = $context.$nodes.LOOP_ACCOUNT_ADVISOR_RESPONSES.$currentItem;\n\nreturn {\n  action: {\n    config: {\n      accountNumber: String(accountNumber)\n    }\n  }\n};"
+                  },
+                  "outcomes": {
+                    "success": "19000000000232"
+                  },
+                  "diagram": {
+                    "x": 5578.780991888226,
+                    "y": 8184.298866140667
+                  },
+                  "id": "19000000000231",
+                  "code": "PREPARE_ACCOUNT_ADVISOR_ACTION",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "name": "Invoke Account Advisor Team",
+                    "workflowCode": "ORA_ACCOUNT_ADVISOR_TEAM"
+                  },
+                  "outcomes": {
+                    "success": "end_1900000000023"
+                  },
+                  "diagram": {
+                    "x": 5578.780991888226,
+                    "y": 8406.298866140667
+                  },
+                  "id": "19000000000232",
+                  "code": "INVOKE_ACCOUNT_ADVISOR_TEAM",
+                  "type": "WORKFLOW",
+                  "inputs": [
+                    {
+                      "id": "19000000000232_action",
+                      "name": "action",
+                      "type": "object",
+                      "value": "{{$context.$nodes.LOOP_ACCOUNT_ADVISOR_RESPONSES.PREPARE_ACCOUNT_ADVISOR_ACTION.$output.result.action}}"
+                    },
+                    {
+                      "id": "19000000000232_message",
+                      "name": "message",
+                      "type": "string",
+                      "value": "{{$context.$system.$inputMessage}}"
+                    }
+                  ],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "id": "end_1900000000023",
+                  "code": "END_1900000000023",
+                  "type": "END",
+                  "inputs": []
+                }
+              ]
+            },
+            "loopType": "PARALLEL",
+            "name": "Loop Account Advisor Responses"
+          },
+          "outcomes": {
+            "success": "1778275893415"
+          },
+          "diagram": {
+            "x": 5428.780991888227,
+            "y": 7943.298866140667,
+            "width": 600,
+            "height": 570
+          },
+          "code": "LOOP_ACCOUNT_ADVISOR_RESPONSES",
+          "id": "1900000000023",
+          "inputs": [
+            {
+              "id": "1900000000023_collection",
+              "name": "collection",
+              "type": "array",
+              "value": "{{$context.$nodes.PREPARE_ACCOUNT_ADVISOR_PARTY_NUMBERS.$output.result}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "GPT-5 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Match Individual Accounts"
+          },
+          "outcomes": {
+            "success": "1900000000020"
+          },
+          "diagram": {
+            "x": 5241.078451051723,
+            "y": 7131.878845537374
+          },
+          "code": "MATCH_INDIVIDUAL_ACCOUNTS",
+          "id": "1900000000019",
+          "inputs": [
+            {
+              "id": "1900000000019_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "ROLE:\nFind the account or accounts referenced by the user.\n\nUSER QUESTION:\n{{$context.$system.$inputMessage}}\n\nAVAILABLE ACCOUNTS:\n{{$context.$nodes.PREPARE_ACCOUNT_MATCH_INPUT.$output.result.accounts}}\n\nTASK:\n1. Identify the account name mentioned or implied in the user question.\n2. Match it to the closest account name from AVAILABLE ACCOUNTS.\n3. If there are duplicate closest matches or equally strong matches, return all of them.\n4. Return only accounts from AVAILABLE ACCOUNTS.\n5. Return the PartyNumber for each selected account.\n\nOUTPUT RULES:\n- Return valid JSON only.\n- Do not answer the user's business question.\n- Do not include markdown.\n- If no reasonable account match exists, return an empty matches array.\n\nOUTPUT FORMAT:\n{\n  \"matches\": [\n    {\n      \"accountName\": \"string\",\n      \"partyNumber\": \"string\",\n      \"matchReason\": \"string\"\n    }\n  ]\n}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"matches\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"accountName\": {\n            \"type\": \"string\"\n          },\n          \"partyNumber\": {\n            \"type\": \"string\"\n          },\n          \"matchReason\": {\n            \"type\": \"string\"\n          }\n        }\n      }\n    }\n  },\n  \"required\": [\n    \"matches\"\n  ]\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "GPT-5 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Answer Collection Query"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "diagram": {
+            "x": 6839.910781840679,
+            "y": 7807.14197709157
+          },
+          "code": "ANSWER_COLLECTION_QUERY",
+          "id": "1900000000017",
+          "inputs": [
+            {
+              "id": "1900000000017_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "INPUT DATA SOURCES\n\n  INPUT DATA 1 - CHAT HISTORY:\n  {{$context.$system.$chatHistory}}\n\n  INPUT DATA 2 - AI OUTCOME STORE: RAW AI OUTCOME STORE RESPONSE FOR SUMMARY AND INSIGHT:\n  {{$context.$nodes.PAGE_ACCOUNTS_AND_OUTCOMES.$output}}\n\n  INPUT DATA 3 - ACCOUNT METADATA:\n  {{$context.$nodes.GET_ACCOUNT_METADATA.$output}}\n\n  INPUT DATA 4 - ACCOUNT DATA:\n  {{$context.$nodes.FETCH_ACCOUNT_COLLECTION.$output}}\n\n  USER QUESTION:\n  {{$context.$system.$inputMessage}}\n\n  TASK:\n  Answer the user's collection-level question using only the provided input data sources and return UI-ready account card data requested by the user.\n  Use only the provided input data sources.\n  Create one JSON object only for each account that matches the user's requested filters, thresholds, ranking, or signal intent.\n  Do not return every fetched account unless the user asks for all accounts or gives no filter, threshold, ranking, or signal constraint.\n  Each returned object must contain the exact key-value pairs required by the UI: expansion/readiness signal, account name, ARR, renewal date, insight summary, and account summary.\n\n  FIELD MAPPING:\n  - accountId:\n    Use `PartyId` from ACCOUNT DATA.\n\n  - accountNumber:\n    Use `PartyNumber` from ACCOUNT DATA.\n\n  - accountName:\n    Use `PartyUniqueName` from ACCOUNT DATA.\n\n  - signalBucket:\n    Use INSIGHT outcomes from AI OUTCOME STORE.\n    Derive from `OutcomeType=INSIGHT`, using `payload.what` and `payload.why`.\n    Allowed values only: `RISK`, `EXPANSION`, `RENEWAL`, `NONE`.\n\n  - signalExplainer:\n    Return only the final signalExplainer string in this exact format:\n    <one of the allowed signal texts>:<short title>\n    Output example:\n        Risk signal:strong base, clear upsell path\n    Derive the text before the colon from signalBucket. It must be exactly one of:\n      - Risk signal\n      - Expansion readiness\n      - Renewal signal\n      - Account signal\n    Derive the text after the colon by consolidating from `OutcomeType=INSIGHT`, using `payload.what` and `payload.why` into a short title.\n      Rules:\n      - Output only the signalExplainer string.\n      - Do not include labels, field names, markdown, quotes, or explanation.\n      - Use exactly one colon with no space after it.\n      - Keep the title short.\n\n  - currentARR:\n    Use `AccountRollup.SumOfActiveSubscriptionsMRR * 12`.\n    Treat MRR as Monthly Recurring Revenue.\n    Treat ARR as Annual Recurring Revenue.\n    Format as display text: `$36.0M`, `$850K`.\n\n  - renewalDate:\n    Use `AccountRollup.NextSubsRenewalDate`.\n    If renewal date is missing, return `null`.\n\n  - insightSummary:\n    Use INSIGHT `payload.what` and `payload.why`.\n    Summarize why this account has the displayed signal.\n    Include renewal context when renewal data exists.\n\n  - accountSummary:\n    Use SUMMARY outcomes from AI OUTCOME STORE.\n    Derive only from `OutcomeType=SUMMARY`.\n    Use SUMMARY payload fields such as `payload.what`, `payload.why`, `payload.summary`, `payload.description`, `payload.text`, or equivalent summary fields when present.\n    Do not use INSIGHT payloads to generate `accountSummary`.\n    Summarize the account-level business context, including concrete supported metrics such as open opportunity revenue, upcoming renewal MRR, active subscriptions, service issues, or engagement only if present in the SUMMARY outcome.\n    If no matching SUMMARY outcome exists for the account, return `null`.\n\n  CRITICAL USER INTENT FILTERING RULES:\n  - First determine whether the USER QUESTION asks for:\n    - a signal type such as risk, expansion, or renewal;\n    - a numeric threshold such as greater than, over, above, less than, under, below, at least, more than, or equal to;\n    - a ranking such as top N, highest, largest, lowest, or sorted by a metric;\n    - a general account-card list with no specific filter.\n  - Apply all requested filters before creating `accountData`.\n  - Never return accounts that do not satisfy the user's requested filters.\n  - If no accounts satisfy the requested filters, return exactly:\n  {\n    \"accountData\": []\n  }\n\n  FILTERING AND SIGNAL BUCKETING ORDER:\n    - First identify candidate accounts by applying the USER QUESTION across all available input data sources.\n    - Do not use `signalBucket` as the first-stage filter.\n    - Use ACCOUNT DATA for factual filters such as renewal date, ARR, MRR, open opportunities, service requests, contacts, activity dates, and other account rollup attributes.\n    - Use AI OUTCOME STORE SUMMARY and INSIGHT data for semantic filters such as risk, expansion, churn, engagement, opportunity momentum, service concerns, renewal readiness, and renewal risk.\n    - After candidate accounts are selected, assign `signalBucket` for each returned account.\n    - If multiple signal themes match an account, choose the highest-priority bucket in this order:\n      `RISK`, then `EXPANSION`, then `RENEWAL`, then `NONE`.\n    - Do not exclude an account only because the final `signalBucket` is different from one word in the USER QUESTION, if the account satisfies the full requested intent using available ACCOUNT DATA, SUMMARY, or INSIGHT evidence.\n\n    COMBINED INTENT FILTERING RULES:\n    - When the USER QUESTION contains multiple intent words, apply them as combined search criteria across all data sources before assigning the final `signalBucket`.\n    - Example: `renewal risk` means find accounts with renewal-related factual or semantic evidence and risk-related factual or semantic evidence. It does not mean only accounts whose final bucket is `RENEWAL`.\n    - Example: `renewal risk by next year in April` means:\n      - Use ACCOUNT DATA to find accounts with `AccountRollup.NextSubsRenewalDate` in April of next year.\n      - Use ACCOUNT DATA, SUMMARY, and INSIGHT data to find risk evidence such as critical service requests, churn risk, unresolved issues, escalations, stale engagement, missing decision makers, stalled opportunities, or renewal danger.\n      - Return accounts that satisfy both the renewal timing and risk evidence.\n      - Assign the final `signalBucket` after filtering. Since risk has higher priority than renewal, returned accounts with risk evidence must use `RISK`.\n    - If the USER QUESTION mentions both risk and renewal, do not require the account's final signalBucket to be `RENEWAL`; use `RISK` when risk evidence exists.\n    - If the USER QUESTION mentions both expansion and renewal, return accounts matching the combined intent and assign `EXPANSION` when expansion evidence is stronger or higher priority than renewal.\n    - If no accounts satisfy the combined criteria, return exactly:\n    {\n      \"accountData\": []\n    }\n\n    DATE AND RENEWAL FILTERING RULES:\n    - Detect date constraints in the USER QUESTION, including month names, quarters, years, relative years, and phrases such as `next year`, `this year`, `by next year`, `in April`, `next April`, or `by April`.\n    - Use the current date from {{$context.$system.$currentDate}} to resolve relative dates.\n    - If the current date is in 2026, then `next year in April` means April 2027.\n    - For renewal timing filters, use `AccountRollup.NextSubsRenewalDate` from ACCOUNT DATA.\n    - For `in April`, include accounts whose renewal date falls anywhere in April of the resolved year.\n    - For `by April`, include accounts whose renewal date is on or before the end of April of the resolved year, unless the USER QUESTION clearly means only the month of April.\n    - Exclude accounts whose renewal date is missing or cannot be resolved when the user asks for a renewal timing filter.\n\n  NUMERIC THRESHOLD FILTERING RULES:\n  - Detect numeric threshold requests such as:\n    - `greater than 1 million`\n    - `over 1M`\n    - `above $1M`\n    - `less than 500K`\n    - `under 1 million ARR`\n    - `ARR greater than 1 million`\n  - Normalize numeric shorthand:\n    - `1M`, `1 million`, `$1M`, and `$1 million` mean `1000000`.\n    - `500K`, `500 thousand`, and `$500K` mean `500000`.\n  - If the user mentions ARR, annual recurring revenue, recurring revenue, subscription ARR, or does not specify a monetary metric, use calculated ARR as the default metric.\n  - Calculate ARR as `AccountRollup.SumOfActiveSubscriptionsMRR * 12`.\n  - For ARR threshold comparisons, compare the raw calculated numeric ARR, not the formatted display value.\n  - For `greater than`, `more than`, or `above`, include only accounts where the metric is strictly greater than the threshold.\n  - For `at least`, `minimum`, or `>=`, include only accounts where the metric is greater than or equal to the threshold.\n  - For `less than`, `under`, or `below`, include only accounts where the metric is strictly less than the threshold.\n  - Exclude accounts where the requested metric is missing, null, empty, non-numeric, or cannot be directly calculated.\n  - Example: for `accounts greater than 1 million`, default to ARR and include only accounts where `AccountRollup.SumOfActiveSubscriptionsMRR * 12 > 1000000`.\n  - If no accounts match the numeric threshold, return exactly:\n  {\n    \"accountData\": []\n  }\n\n  TOP N AND SORTING RULES:\n  - For any top N, highest, largest, or sorted-by-ARR question, sort matching accounts by calculated ARR descending unless the user requested another metric.\n  - For any lowest or smallest question, sort matching accounts by the requested metric ascending.\n  - For any top N question, return at most N accounts after applying all requested filters.\n  - Never include accounts with `signalBucket` of `NONE` when the user asks for expansion, risk, or renewal accounts.\n  - Never include accounts from another signal bucket to fill the requested count.\n  - If the user asks for top 5 expansion accounts and only 1 expansion account exists, return only 1 account.\n  - If no accounts match the requested signal bucket, return exactly:\n  {\n    \"accountData\": []\n  }\n\n  OUTPUT JSON STRUCTURE:\n  Return strictly valid JSON only.\n\n  {\n    \"accountData\": [\n      {\n        \"accountId\": \"\",\n        \"accountNumber\": \"\",\n        \"accountName\": \"\",\n        \"signalBucket\": \"\",\n        \"signalExplainer\": \"\",\n        \"currentARR\": \"\",\n        \"renewalDate\": \"\",\n        \"insightSummary\": \"\",\n        \"accountSummary\": \"\"\n      }\n    ]\n  }\n\n  LENGTH AND STYLE RULES:\n  - `accountName`: exact account name from data; do not rewrite.\n  - `signalBucket`: one uppercase enum value only.\n  - `signalExplainer`: 7 to 10 words only.\n  - `currentARR`: 1 token only, for example `$36.0M`.\n  - `renewalDate`: Date format.\n  - `insightSummary`: 2 sentences maximum, 25 to 45 words total.\n  - `accountSummary`: 2 sentences maximum, 25 to 45 words total.\n  - Keep all text concise and suitable for a compact account card UI.\n  - Do not use markdown, bullets, explanations, or source notes inside the JSON.\n\n  DATE FORMAT RULES:\n  - For relative timing, use the current date from {{$context.$system.$currentDate}}.\n\n  CURRENCY FORMAT RULES:\n  - Use the currency symbol corresponding to `AccountRollup.CorpCurrencyCode` for ARR or other currency data when recognized, such as USD -> $, EUR -> €, GBP -> £, JPY -> ¥.\n  - If CurrencyCode is missing or unrecognized, output plain numbers without a symbol.\n\n  SIGNAL BUCKET RULES:\n  - Use `RISK` when insights mention elevated service issues, churn risk, unresolved issues, escalations, declining usage, health concerns, or renewal danger.\n  - Use `EXPANSION` when insights mention upsell potential, open opportunities, active engagement, strong commercial momentum, product growth, or qualified expansion.\n  - Use `RENEWAL` when the main insight is upcoming renewal, expiring subscriptions, renewal MRR, renewal timing, or asset/subscription renewal.\n  - Use `NONE` only when no meaningful insight exists.\n  - If multiple themes exist, choose the strongest customer-facing signal:\n    `RISK` first, then `EXPANSION`, then `RENEWAL`, then `NONE`.\n\n  DATA RULES:\n  - Use CHAT HISTORY only for follow-up context, previously mentioned accounts, or prior constraints.\n  - Use AI OUTCOME STORE only for SUMMARY and INSIGHT information.\n  - Use AI OUTCOME STORE INSIGHT outcomes for `signalBucket` and `insightSummary`.\n  - Use AI OUTCOME STORE SUMMARY outcomes for `accountSummary`.\n  - Use ACCOUNT METADATA only to understand field meanings; never treat metadata descriptions as account values.\n  - Use ACCOUNT DATA for account records, attributes, ARR calculation, renewal dates, numeric threshold filtering, and ranking.\n  - The AI Outcome Store response may contain loop wrappers, batch wrappers, nested node outputs, or arrays. Inspect nested content before deciding data is missing.\n  - Match outcomes to accounts using available identifiers such as account ID, party ID, party number, account name, or `PartyUniqueName`.\n  - Do not invent account attributes, metrics, insight details, account summaries, rankings, renewal dates, or monetary values.\n  - If ARR is not directly available but `SumOfActiveSubscriptionsMRR` is available, calculate ARR as `MRR * 12`.\n  - When ARR is calculated from MRR, present only the ARR display value. Do not explain the calculation.\n  - If a specific field is missing for an otherwise valid matching account, return `null` for that key.\n  - If no requested accounts can be found, return exactly:\n  {\n    \"accountData\": []\n  }\n\n  NULL AND DEFAULT VALUE RULES:\n  - Never output placeholder, default, inferred, or convenience values for missing data.\n  - If a value is missing, unavailable, empty, not numeric, or cannot be directly calculated from provided source fields, return `null`.\n  - Do not output zero values such as `$0`, `0`, `0K`, `0M`, `$0`, or empty strings unless the provided source data explicitly contains numeric zero.\n  - Do not use formatting examples as fallback values.\n\n  NONE RULE:\n  - Use `NONE` only for general account-card requests where no specific signal type was requested.\n  - If the USER QUESTION requests expansion, risk, or renewal accounts, exclude `NONE` accounts from the output.\n\n  FINAL OUTPUT RULES:\n  - Return only the final JSON object.\n  - Do not mention input data source names.\n  - Do not explain which source was used.\n  - Do not include internal reasoning, validation commentary, or ranking explanations.\n  - Do not include keys other than the keys defined in OUTPUT JSON STRUCTURE."
+            },
+            {
+              "id": "1900000000017_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": ""
+            }
+          ],
+          "outputSpecification": "{\n  \"type\": \"string\"\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Return Collection No Data"
+          },
+          "outcomes": {},
+          "diagram": {
+            "x": 6179.857103448062,
+            "y": 7794.775645320931
+          },
+          "id": "1900000000016",
+          "code": "RETURN_COLLECTION_NO_DATA",
+          "type": "RETURN",
+          "inputs": [
+            {
+              "id": "1900000000016_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "No data found"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "name": "Individual Account Final Response"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "diagram": {
+            "x": 5526.222562732035,
+            "y": 8714.669845636503
+          },
+          "code": "INDIVIDUAL_ACCOUNT_FINAL_RESPONSE",
+          "id": "1778275893415",
+          "inputs": [
+            {
+              "id": "1778275893415_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": "You role is to take multiple already-generated HTML outputs and stitch them together into one final HTML response without altering content."
+            },
+            {
+              "id": "1778275893415_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are given a list of workflow outputs for multiple account party numbers.\n\nSource:\n{{$context.$nodes.LOOP_ACCOUNT_ADVISOR_RESPONSES.$output}}\n\nEach item contains an HTML response for one account inside the output section.\n\nYour task:\n- Consolidate the responses for all accounts.\n- Preserve each account?s content exactly as provided.\n- Preserve the HTML structure and formatting for each account exactly as provided.\n- Only sequence the HTML blocks one after another, account by account.\n- Do not summarize, rewrite, paraphrase, translate, reorder, merge, or remove any content.\n- Do not change any data values.\n- You may fix only invalid HTML syntax if necessary, and only to make the HTML valid.\n- Do not alter the meaning, wording, tags, attributes, or visible content of any account response.\n\nFinal Output requirements:\n- Return a single combined HTML result.\n- Keep each account response intact.\n- Separate account sections clearly, but do not modify the account content itself.\n- If there is more than one account, place the HTML blocks in the same order as the input.\n\nImportant:\n- Strictly no content changes.\n- Strictly no data changes.\n- Strictly preserve HTML format for each account.\n- Only concatenate the account HTML responses."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Account Advisor Party Numbers",
+            "returnType": "object",
+            "sourceCode": "function parseJsonIfNeeded(value) {\n  if (typeof value !== \"string\") {\n    return value;\n  }\n\n  var trimmed = value.trim();\n  if (trimmed === \"\") {\n    return {};\n  }\n\n  try {\n    return JSON.parse(trimmed);\n  } catch (e) {\n    return {};\n  }\n}\n\nfunction addPartyNumber(value, target, seen) {\n  var item = value == null ? \"\" : String(value).trim();\n  if (item !== \"\" && !seen[item]) {\n    seen[item] = true;\n    target.push(item);\n  }\n}\n\nvar partyNumbers = [];\nvar seen = {};\nvar direct = parseJsonIfNeeded($context.$nodes.RESOLVE_EXTRACTED_ACCOUNT_REFERENCE.$output);\nvar directResult = direct && direct.result ? direct.result : direct;\n\nif (directResult && directResult.route === \"DIRECT\" && Array.isArray(directResult.partyNumbers)) {\n  directResult.partyNumbers.forEach(function(value) {\n    addPartyNumber(value, partyNumbers, seen);\n  });\n}\n\nif (partyNumbers.length === 0) {\n  var raw = $context.$nodes.MATCH_INDIVIDUAL_ACCOUNTS.$output;\n  var parsed = parseJsonIfNeeded(raw);\n  var matches = [];\n\n  if (parsed && Array.isArray(parsed.matches)) {\n    matches = parsed.matches;\n  } else if (Array.isArray(parsed)) {\n    matches = parsed;\n  }\n\n  matches.forEach(function(match) {\n    var value = match;\n    if (match && typeof match === \"object\") {\n      value = match.partyNumber || match.PartyNumber || match.accountNumber || match.AccountNumber;\n    }\n\n    addPartyNumber(value, partyNumbers, seen);\n  });\n}\n\nreturn partyNumbers;"
+          },
+          "outcomes": {
+            "success": "1900000000021"
+          },
+          "diagram": {
+            "x": 5446.279342144096,
+            "y": 7324.499428402251
+          },
+          "code": "PREPARE_ACCOUNT_ADVISOR_PARTY_NUMBERS",
+          "id": "1900000000020",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Get Account Metadata",
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "GET_OBJECT_METADATA"
+          },
+          "diagram": {
+            "x": 6836.904954463783,
+            "y": 7642.922811982394
+          },
+          "outcomes": {
+            "success": "1900000000017"
+          },
+          "id": "1778522570473",
+          "code": "GET_ACCOUNT_METADATA",
+          "type": "BO_FUNCTION",
+          "inputs": [
+            {
+              "id": "1778522570473_object",
+              "name": "object",
+              "value": "Account",
+              "required": false,
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "name": "Return Out Of Scope"
+          },
+          "diagram": {
+            "x": 6770.095080235224,
+            "y": 5911.452067530044
+          },
+          "outcomes": {},
+          "id": "1779954583354",
+          "code": "RETURN_OUT_OF_SCOPE",
+          "type": "RETURN",
+          "inputs": [
+            {
+              "id": "1779954583354_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "I'm here to help with questions related to Accounts. This question seems to be outside my scope."
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_completion_tokens": 32000,
+        "reasoning_effort": "low"
+      },
+      "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+      "model": "OCI_GPT_5_MINI",
+      "modelName": "GPT-5 mini",
+      "provider": "CERT_PREMIUM"
+    },
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    },
+    "dtRunProfiles": {
+      "activeProfileId": "d88bb03a-e4f7-4f42-a851-d183b4366bda",
+      "profiles": [
+        {
+          "id": "d88bb03a-e4f7-4f42-a851-d183b4366bda",
+          "name": "New run profile 1",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"action\": {\n    \"filterConfiguration\": {\n    \"accountRecordSet\": \"MYACCTS\"\n    },\n    \"config\": {\n      \"maxAccounts\": 50\n    }\n  }\n}",
+          "inputMessage": "Top 5 accounts by ARR"
+        }
+      ]
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": "",
+    "agentsValueMappings": [],
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1766589786018",
+            "name": "action",
+            "type": "object"
+          },
+          {
+            "id": "1766589741343",
+            "name": "filterConfiguration",
+            "type": "object"
+          }
+        ]
+      }
+    ],
+    "deletedTriggerTypes": [],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "SALES_FORCE_AUTOMATION",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": true,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "seededRoles": [
+    {
+      "role": "ORA_ZBS_SALES_ADMINISTRATOR_JOB",
+      "id": "100002355227334"
+    },
+    {
+      "role": "ORA_ZBS_SALES_MANAGER_JOB",
+      "id": "100002355227335"
+    },
+    {
+      "role": "ORA_ZBS_SALES_REPRESENTATIVE_JOB",
+      "id": "100002355227336"
+    },
+    {
+      "role": "ORA_ZBS_SALES_VP_JOB",
+      "id": "100002355227337"
+    }
+  ],
+  "header": {
+    "ETag": "\"2\""
+  }
+}

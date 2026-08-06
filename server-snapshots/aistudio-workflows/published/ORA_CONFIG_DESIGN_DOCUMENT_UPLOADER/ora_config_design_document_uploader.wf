@@ -1,0 +1,367 @@
+{
+  "workflowId": "300000331058265",
+  "workflowCode": "ORA_CONFIG_DESIGN_DOCUMENT_UPLOADER",
+  "name": "Configuration Design Document Upload",
+  "description": "This agent is used by admins to upload documents for product specifications. This will be saved in vector db.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1770829507127"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "If Input Message is empty"
+          },
+          "outcomes": {
+            "true": "1770831255473",
+            "false": "1770819768021"
+          },
+          "code": "IF_INPUT_MESSAGE_IS_EMPTY",
+          "convergenceTargetId": "end",
+          "id": "1770829507127",
+          "inputs": [
+            {
+              "id": "1770829507128_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{!$context.$system.$inputMessage}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Upload documents",
+            "toolCode": "ORA_MULTI_FILE_PROCESSOR_TOOL"
+          },
+          "outcomes": {
+            "success": "1770819792249"
+          },
+          "code": "UPLOAD_DOCUMENTS",
+          "convergenceTargetId": "1770830456669",
+          "id": "1770819768021",
+          "inputs": [
+            {
+              "id": "1770819776062",
+              "name": "conversationId",
+              "type": "string",
+              "value": "{{$context.$workflow.$conversationId}}"
+            }
+          ],
+          "type": "TOOL"
+        },
+        {
+          "metadata": {
+            "name": "Get Index Name",
+            "returnType": "string",
+            "sourceCode": "const productFamName = $context.$triggers.REST.$input.productFamName;\nconst productLineName = $context.$triggers.REST.$input.productLineName;\nconst modelName = $context.$triggers.REST.$input.modelName;\n\nlet resultString;\n\nif (productFamName == null) {\n  resultString = \"_allProductFamilies\";\n} else if (productLineName == null) {\n  resultString = `_allProductFamilies_${productFamName}`;\n} else if (modelName == null) {\n  resultString = `_allProductFamilies_${productFamName}_${productLineName}`;\n} else {\n  resultString = `_allProductFamilies_${productFamName}_${productLineName}_${modelName}`;\n}\n\nreturn resultString;"
+          },
+          "outcomes": {
+            "success": "1770833363295"
+          },
+          "code": "GET_INDEX_NAME",
+          "convergenceTargetId": "1770830456669",
+          "id": "1770819792249",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Extract metadata"
+          },
+          "outcomes": {
+            "success": "1770819863459"
+          },
+          "code": "EXTRACT_METADATA",
+          "convergenceTargetId": "1770830456669",
+          "id": "1770819831865",
+          "inputs": [
+            {
+              "id": "1770819831868_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are preparing content for a vector database used for semantic search and Q&A.\nYour output will be embedded and retrieved later to answer user questions.\nTherefore, produce clean, concise semantic capsules and remove noise. \nInput \n\nThe input is a JSON object where keys are filenames and values are extracted document text. It may include noise keys like ORA_CHAT_ATTACHMENTS_RAW_FILECONTENT that should be ignored. \n\nINPUT:\n{{$context.$nodes.UPLOAD_DOCUMENTS.$output}} \nTask \n\n     Select only the real file text entries (ignore empty objects and noise keys).\n     Clean and standardize the text:\n        fix common OCR artifacts like o=ering→offering, e=icient→efficient, di=erent→different, o=-peak→off-peak\n        remove repeated whitespace and excessive line breaks\n        remove irrelevant boilerplate or non-informative fragments\n         \n     Do NOT output the full raw text. Instead, convert it into semantic capsules suitable for retrieval.\n     \n\nOutput format (IMPORTANT) \n\nOutput plain text only (no JSON, no markdown).\nStructure your output as a list of capsules. Each capsule must be 2–5 sentences and should be self-contained. \n\nFor each capsule: \n\n    Start with: CAPSULE: <short title>\n    Then include the cleaned, normalized text.\n     \n\nCapsule writing rules (critical for good retrieval) \n\n    Each capsule must restate facts in a way that directly answers likely questions.\n    Prefer “If <customer scenario>, recommend <option>, because <reasons>” style.\n    Include key identifiers (e.g., “80kW natural gas generator”, “100kW natural gas generator”, “650kW hybrid fuel generator”) and what they’re best for.\n    If the source compares options, keep the comparison explicit (why one is better than another for a scenario).\n    Deduplicate: do not repeat the same recommendation across multiple capsules.\n     \n\nInclude capsules for (if present in the document) \n\n    Generator model selection guidance for small retail / light commercial vs larger facilities vs industrial\n    Commercial Power as a Service summary (who it’s for, capacity range, key features)\n    Industrial Power as a Service summary (who it’s for, capacity range, key features)\n    Key differences between commercial vs industrial\n    Mobile app capabilities + any constraints (e.g., iOS/Android licenses must be >= 0)\n     \n\nQuality bar \n\nReturn 5–10 capsules total. Keep the output under ~1,500 words. "
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Write design spec"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "WRITE_DESIGN_SPEC",
+          "convergenceTargetId": "1770830456669",
+          "id": "1770819863459",
+          "inputs": [
+            {
+              "id": "1770819863466_1",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{$context.$variables.indexName}}"
+            },
+            {
+              "id": "1770819863467_2",
+              "name": "content",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_METADATA.$output}}"
+            },
+            {
+              "id": "1770819863468_3",
+              "name": "contentType",
+              "type": "string",
+              "value": "text"
+            },
+            {
+              "id": "1770819863471_4",
+              "name": "operation",
+              "type": "string",
+              "value": "UPSERT"
+            },
+            {
+              "id": "1770819863473_5",
+              "name": "documentId",
+              "type": "string",
+              "value": "{{$context.$variables.indexName}}"
+            },
+            {
+              "id": "1770819863473_6",
+              "name": "metaData",
+              "type": "array",
+              "value": []
+            }
+          ],
+          "type": "VECTOR_DB_WRITER"
+        },
+        {
+          "metadata": {
+            "name": "set catalog variables"
+          },
+          "outcomes": {
+            "success": "1770831641968"
+          },
+          "code": "SET_CATALOG_VARIABLES",
+          "id": "1770831255473",
+          "inputs": [
+            {
+              "id": "1770831355089",
+              "name": "productFamVarName",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.productFamName}}"
+            },
+            {
+              "id": "1770831336850",
+              "name": "productLineVarName",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.productLineName}}"
+            },
+            {
+              "id": "1770831264552",
+              "name": "modelName",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.modelName}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "return upload",
+            "returnType": "string",
+            "sourceCode": "return \"Please upload the file\";"
+          },
+          "outcomes": {
+            "success": "1770839128946"
+          },
+          "code": "RETURN_UPLOAD",
+          "id": "1770831641968",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "set index name variable"
+          },
+          "outcomes": {
+            "success": "1770819831865"
+          },
+          "code": "SET_INDEX_NAME_VARIABLE",
+          "id": "1770833363295",
+          "inputs": [
+            {
+              "id": "1770833372522",
+              "name": "indexName",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_INDEX_NAME.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "set chat history"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SET_CHAT_HISTORY",
+          "id": "1770839128946",
+          "inputs": [
+            {
+              "id": "1770839136694",
+              "name": "chatHistory",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$system.$chatHistory}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1770839010484",
+          "name": "chatHistory",
+          "scope": "CONVERSATION",
+          "type": "string"
+        },
+        {
+          "id": "1770833337595",
+          "name": "indexName",
+          "scope": "CONVERSATION",
+          "type": "string"
+        },
+        {
+          "id": "1770831240188",
+          "name": "modelName",
+          "scope": "CONVERSATION",
+          "type": "string"
+        },
+        {
+          "id": "1770831227552",
+          "name": "productLineVarName",
+          "scope": "CONVERSATION",
+          "type": "string"
+        },
+        {
+          "id": "1770831206707",
+          "name": "productFamVarName",
+          "scope": "CONVERSATION",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1770819735466",
+            "name": "modelName",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1770819727440",
+            "name": "productLineName",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1770819719384",
+            "name": "productFamName",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpLocalFileUploadEnabledFlag": true,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "CPQ_COMMERCE",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

@@ -1,0 +1,1341 @@
+{
+  "workflowId": "100002355226988",
+  "workflowCode": "ORA_PROGRAM_TACTICS_WORKFLOW",
+  "name": "Program Tactics Workflow",
+  "description": "Workflow that returns the Program Tactics for the marketing program and its current performance",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1765680105947"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START",
+          "diagram": {
+            "x": 6063,
+            "y": 5000
+          }
+        },
+        {
+          "metadata": {
+            "name": "Retrieve Program Data from Context",
+            "returnType": "string",
+            "sourceCode": "let result = \"\";\ntry {\n  const appInput = $context.$triggers?.REST?.$input?.OraAppContext || \"\";\n  const pairs = appInput.split(\",\");\n  const data = pairs.reduce((acc, pair) => {\n    const [key, value] = pair.split(\"=\");\n    if (key && value) {\n      acc[key.trim()] = value.trim();\n    }\n    return acc;\n  }, {});\n\n  // Get programId from parsed data, default to null if not present\n  const programId = data.programId ?? null;\n\n  // Convert object to JSON string to satisfy string return type\n  result = JSON.stringify({ programId });\n} catch (error) {\n  result = \"\";\n}\n\nreturn result;",
+            "errorNodeId": "1781163643333"
+          },
+          "outcomes": {
+            "success": "1781071481014"
+          },
+          "code": "RETRIEVE_PROGRAM_DATA_FROM_CONTEXT",
+          "id": "1765680105947",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 5908,
+            "y": 5206
+          }
+        },
+        {
+          "id": "1781071481014",
+          "code": "SET_PROGRAM_ID",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set Program Id",
+            "errorNodeId": "1781163643333"
+          },
+          "diagram": {
+            "x": 5941,
+            "y": 5428
+          },
+          "outcomes": {
+            "success": "1779246568522"
+          },
+          "inputs": [
+            {
+              "id": "1781071481014_programId",
+              "name": "programId",
+              "value": "{{$context.$nodes.RETRIEVE_PROGRAM_DATA_FROM_CONTEXT.$output.result.programId}}"
+            }
+          ]
+        },
+        {
+          "id": "1779246568522",
+          "code": "GET_PROGRAM_DETAILS",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "businessObjectCode": "ORA_CX_MARKETING_DATAOBJECTS",
+            "name": "Get Program Details",
+            "functionName": "getProgramById",
+            "errorNodeId": "1781163643333"
+          },
+          "diagram": {
+            "x": 5941,
+            "y": 5650
+          },
+          "outcomes": {
+            "success": "1779246553108"
+          },
+          "inputs": [
+            {
+              "id": "1779246568522_id",
+              "name": "id",
+              "value": "{{$context.$variables.programId}}",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "id": "1779246553108",
+          "code": "REFINE_PROGRAM_DATA",
+          "type": "CODE",
+          "metadata": {
+            "name": "Refine Program Data",
+            "returnType": "object",
+            "sourceCode": "let result = {};\ntry {\n  // Access the first program item safely\n  const firstProgram = $context.$nodes?.GET_PROGRAM_DETAILS?.$output?.items?.[0] || null;\n\n  if (firstProgram) {\n    // Find attribute with key 'product'\n    const targetProductAttr = firstProgram.programAttributes?.items?.find(attr => attr.key === \"product\");\n    // Find attribute with key 'ownedproduct'\n    const ownedProductAttr = firstProgram.programAttributes?.items?.find(attr => attr.key === \"ownedproduct\");\n // Find attribute with key 'programType'\n    const programTypeAttr = firstProgram.programAttributes?.items?.find(attr => attr.key === \"programType\");\n\n    result = {\n      ProgramId: firstProgram.id || null,\n      ProgramName: firstProgram.name || null,\n      ProgramObjective: firstProgram.objective || null,\n      ProgramType: programTypeAttr ? programTypeAttr.value :\"\",\n      TargetProductId: targetProductAttr ? targetProductAttr.value : null,\n      TargetProductName: targetProductAttr ? targetProductAttr.displayValue : null,\n      OwnedProductId: ownedProductAttr ? ownedProductAttr.value : null,\n      OwnedProductName: ownedProductAttr ? ownedProductAttr.displayValue : null\n    };\n  } else {\n    // No program found, return empty object\n    result = {};\n  }\n} catch (error) {\n  // On error, return empty object\n  result = {};\n}\n\nresult.Action=\"launchTactic\";\n\nreturn result;"
+          },
+          "diagram": {
+            "x": 5941,
+            "y": 5872
+          },
+          "outcomes": {
+            "success": "1780989300191"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1780989300191",
+          "code": "SET_PROGRAM_DATA",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set Program Data"
+          },
+          "diagram": {
+            "x": 5941,
+            "y": 6094
+          },
+          "outcomes": {
+            "success": "1781151585677"
+          },
+          "inputs": [
+            {
+              "id": "1780989300191_programType",
+              "name": "programType",
+              "value": "{{$context.$nodes.REFINE_PROGRAM_DATA.$output.result.ProgramType}}"
+            }
+          ]
+        },
+        {
+          "id": "1781151585677",
+          "code": "GET_AGENT_TACTIC_TEMPLATES",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get Agent Tactic Templates",
+            "businessObjectCode": "ORA_CX_MARKETING_DATAOBJECTS",
+            "functionName": "getTacticTemplates"
+          },
+          "diagram": {
+            "x": 5941,
+            "y": 6316
+          },
+          "outcomes": {
+            "success": "1781151585678"
+          },
+          "inputs": []
+        },
+        {
+          "id": "1781151585678",
+          "code": "REFINE_THE_AI_TEMPLATES",
+          "type": "CODE",
+          "metadata": {
+            "name": "Refine the AI Templates",
+            "sourceCode": "let result = [];\ntry {\n  const items = $context.$nodes.GET_AGENT_TACTIC_TEMPLATES?.$output?.items || [];\n  const programTypeResult = $context.$nodes.REFINE_PROGRAM_DATA.$output.result.ProgramType || \"\";\n\n  const normalizedProgramType = (typeof programTypeResult === \"string\" ? programTypeResult : \"\").toLowerCase();\n  let normalizedProgramTypeFinal = \"\";\n  if (normalizedProgramType === \"cross sell\" || normalizedProgramType === \"cross-sell\") {\n    normalizedProgramTypeFinal = \"cross-sell\";\n  } else if (normalizedProgramType === \"renewal\") {\n    normalizedProgramTypeFinal = \"renewal\";\n  } else {\n    normalizedProgramTypeFinal = normalizedProgramType;\n  }\n\n  result = items.filter(item => {\n    let contentJson = item.contentJson || {};\n    // Check if contentJson is a string (stringified JSON), parse it\n    if (typeof contentJson === \"string\") {\n      try {\n        contentJson = JSON.parse(contentJson);\n      } catch (e) {\n        contentJson = {};\n      }\n    }\n\n    const itemProgramTypeRaw = contentJson.programType || \"\";\n    const itemProgramTypeLower = (typeof itemProgramTypeRaw === \"string\" ? itemProgramTypeRaw : \"\").toLowerCase();\n\n    let itemProgramTypeNormalized = \"\";\n    if (itemProgramTypeLower === \"cross sell\" || itemProgramTypeLower === \"cross-sell\") {\n      itemProgramTypeNormalized = \"cross-sell\";\n    } else if (itemProgramTypeLower === \"renewal\" || itemProgramTypeLower === \"renewal return\") {\n      itemProgramTypeNormalized = \"renewal\";\n    } else {\n      itemProgramTypeNormalized = itemProgramTypeLower;\n    }\n\n    return itemProgramTypeNormalized === normalizedProgramTypeFinal;\n  }).map(item => ({\n    id: item.id,\n    contentJson: item.contentJson\n  }));\n\n} catch (error) {\n  result = [];\n}\n\nreturn result;\n",
+            "returnType": "array"
+          },
+          "diagram": {
+            "x": 5941,
+            "y": 6538
+          },
+          "outcomes": {
+            "success": "1765695187925"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "metadata": {
+            "name": "App Switch Node"
+          },
+          "outcomes": {
+            "InvokeAction": "1765697606446",
+            "InitDisplay": "1778567658606"
+          },
+          "code": "APP_SWITCH_NODE",
+          "convergenceTargetId": "end",
+          "id": "1765695187925",
+          "inputs": [
+            {
+              "id": "1765695187927_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.OraMessageHint}}"
+            }
+          ],
+          "type": "SWITCH",
+          "diagram": {
+            "x": 5941,
+            "y": 6760
+          }
+        },
+        {
+          "metadata": {
+            "name": "Determine Action",
+            "returnType": "string",
+            "sourceCode": "let action = undefined;\nif ($context.$triggers.REST.$input.OraAction.includes(\"createTactic\"))\n  action = \"createTactic\";\nelse if ($context.$triggers.REST.$input.OraAction.includes(\"addAlltactics\"))\n  action = \"addAlltactics\";\nelse if ($context.$triggers.REST.$input.OraAction.includes(\"oraFormSubmit\"))\n  action = \"oraFormSubmit\";\n\n\nreturn action;"
+          },
+          "outcomes": {
+            "success": "1765697655434"
+          },
+          "code": "DETERMINE_ACTION",
+          "id": "1765697606446",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 5716,
+            "y": 6982
+          }
+        },
+        {
+          "metadata": {
+            "name": "Retrieve Action Parameters",
+            "returnType": "object",
+            "sourceCode": "let result = {};\ntry {\n  const payload = $context.$triggers?.REST?.$input?.OraAction || \"\";\n  const paramMatch = payload.match(/\\(([^)]*)\\)/);\n\n  if (paramMatch && paramMatch.length > 1) {\n    const paramString = paramMatch[1];\n    const params = {};\n    paramString.split(',').forEach(pair => {\n      const [key, value] = pair.split('=');\n      if (key && value !== undefined) {\n        params[key.trim()] = value.trim();\n      }\n    });\n    // Extract only templateId and source\n    result = {\n      templateId: params.templateId || \"\"\n    };\n  } else {\n    result = { templateId: \"\"};\n  }\n} catch (error) {\n  result = { templateId: \"\"};\n}\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1765697684614"
+          },
+          "code": "RETRIEVE_ACTION_PARAMETERS",
+          "id": "1765697655434",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 5716,
+            "y": 7204
+          }
+        },
+        {
+          "metadata": {
+            "name": "Invoke Action"
+          },
+          "outcomes": {
+            "oraFormSubmit": "1765702609764",
+            "createTactic": "1778568298293"
+          },
+          "code": "INVOKE_ACTION",
+          "convergenceTargetId": "end",
+          "id": "1765697684614",
+          "inputs": [
+            {
+              "id": "1765697684615_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.DETERMINE_ACTION.$output.result}}"
+            }
+          ],
+          "type": "SWITCH",
+          "diagram": {
+            "x": 5716,
+            "y": 7426
+          }
+        },
+        {
+          "metadata": {
+            "name": "Build Create Tactic Payload",
+            "returnType": "object",
+            "sourceCode": "let result = {};\ntry {\n  const rawInput = $context.$triggers.REST?.$input?.OraAction || \"\";\n\n  const match = rawInput.match(/<oraFormSubmit\\s+id=[\"']([^\"']*)[\"'][^>]*>(.*?)<\\/oraFormSubmit>/s);\n  if (!match) {\n    result = {};\n  } else {\n    const id = match[1];\n    const jsonString = match[2];\n    let templateId = null;\n    if (id.includes(\"templateId_\")) {\n      const templateIdMatch = id.match(/templateId_(\\d+)/);\n      if (templateIdMatch) {\n        templateId = templateIdMatch[1];\n      }\n    }\n\n    let attributes = {};\n    try {\n      const parsedArray = JSON.parse(jsonString);\n      attributes = parsedArray.reduce((acc, item) => {\n        acc[item.id] = item.value;\n        return acc;\n      }, {});\n    } catch (e) {\n    }\n\n    result = {\n      TacticName: attributes.TacticName || null,\n      TacticObjective: attributes.TacticObjective || null,\n      TemplateId: templateId\n    };\n  }\n} catch (error) {\n  result = {};\n}\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1780825884775"
+          },
+          "code": "BUILD_CREATE_TACTIC_PAYLOAD",
+          "id": "1765702609764",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 5474.5,
+            "y": 7648
+          }
+        },
+        {
+          "id": "1780825884775",
+          "code": "RETRIEVE_TACTIC_TEMPLATE",
+          "type": "CODE",
+          "metadata": {
+            "name": "Retrieve Tactic Template",
+            "sourceCode": "let result = null;\ntry {\n  // Get the TemplateId from BUILD_CREATE_TACTIC_PAYLOAD node output\n  const buildPayloadResult = $context.$nodes?.BUILD_CREATE_TACTIC_PAYLOAD?.$output?.result || {};\n  const templateId = buildPayloadResult.TemplateId;\n\n  // Get the agent tactic templates from GET_AGENT_TACTIC_TEMPLATES node output\n  const agentTemplates = $context.$nodes?.GET_AGENT_TACTIC_TEMPLATES?.$output?.items || [];\n\n  // Find the template matching the TemplateId\n  if (templateId && Array.isArray(agentTemplates)) {\n    const foundTemplate = agentTemplates.find(template => template.id === templateId);\n    if (foundTemplate) {\n      // Parse contentJson field safely\n      let parsedContentJson = null;\n      try {\n        parsedContentJson = foundTemplate.contentJson ? JSON.parse(foundTemplate.contentJson) : null;\n      } catch (parseError) {\n        parsedContentJson = null; // fallback if JSON parsing fails\n      }\n      // Return the template with contentJson parsed\n      result = { ...foundTemplate, contentJson: parsedContentJson };\n    } else {\n      result = null;\n    }\n  } else {\n    result = null;\n  }\n} catch (error) {\n  result = null;\n}\n\nreturn result;",
+            "returnType": "object"
+          },
+          "diagram": {
+            "x": 5476,
+            "y": 7870
+          },
+          "outcomes": {
+            "success": "1781019291620"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1781019291620",
+          "code": "SET_AUTOMATIONJSONMODELBUILDER",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set AutomationJsonModelBuilder"
+          },
+          "diagram": {
+            "x": 5461,
+            "y": 8092
+          },
+          "outcomes": {
+            "success": "1781008338678"
+          },
+          "inputs": [
+            {
+              "id": "1781019291620_automationContentJsonModel",
+              "name": "automationContentJsonModel",
+              "value": "{{$context.$nodes.RETRIEVE_TACTIC_TEMPLATE.$output.result.contentJson}}"
+            }
+          ]
+        },
+        {
+          "id": "1781008338678",
+          "code": "AUTOMATION_JSON_MODEL_BUILDER",
+          "type": "LOOP",
+          "metadata": {
+            "name": "Automation Json Model Builder",
+            "dataPipeline": {
+              "rootNode": "start_1781008338678",
+              "pipelineNodes": [
+                {
+                  "id": "start_1781008338678",
+                  "code": "START",
+                  "type": "START",
+                  "metadata": {
+                    "description": "Start of data pipeline",
+                    "name": "Start"
+                  },
+                  "diagram": {
+                    "x": 5397.5,
+                    "y": 8404
+                  },
+                  "outcomes": {
+                    "success": "1781011700798"
+                  },
+                  "inputs": []
+                },
+                {
+                  "id": "1781011700798",
+                  "code": "STAGE_PROCESSING",
+                  "type": "SWITCH",
+                  "convergenceTargetId": "end",
+                  "metadata": {
+                    "name": "Stage Processing"
+                  },
+                  "diagram": {
+                    "x": 5248,
+                    "y": 8555
+                  },
+                  "outcomes": {
+                    "message": "1783000000008",
+                    "segment": "1781087954683"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1781011700798_caseExpression",
+                      "name": "caseExpression",
+                      "type": "string",
+                      "value": "{{$context.$nodes.AUTOMATION_JSON_MODEL_BUILDER.$currentItem.type}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "1783000000008",
+                  "code": "MESSAGE_TYPE_SWITCH",
+                  "type": "SWITCH",
+                  "convergenceTargetId": "1783000000001",
+                  "metadata": {
+                    "name": "Message Type Switch"
+                  },
+                  "outcomes": {
+                    "email": "1783000000004",
+                    "followUpEmail": "1783000000004",
+                    "landingPage": "1783000000006"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1783000000008_caseExpression",
+                      "name": "caseExpression",
+                      "type": "string",
+                      "value": "{{$context.$nodes.AUTOMATION_JSON_MODEL_BUILDER.$currentItem.name}}"
+                    }
+                  ],
+                  "diagram": {
+                    "x": 5023,
+                    "y": 8777
+                  }
+                },
+                {
+                  "id": "1783000000004",
+                  "code": "GET_EMAIL_TEMPLATES",
+                  "type": "BO_FUNCTION",
+                  "metadata": {
+                    "name": "Get Email Templates",
+                    "businessObjectCode": "ORA_CX_MARKETING_DATAOBJECTS",
+                    "functionName": "getEmailTemplateMessages"
+                  },
+                  "outcomes": {
+                    "success": "1783000000005"
+                  },
+                  "inputs": [],
+                  "diagram": {
+                    "x": 5026,
+                    "y": 8999
+                  }
+                },
+                {
+                  "id": "1783000000005",
+                  "code": "REFINE_EMAIL_TEMPLATES",
+                  "type": "CODE",
+                  "metadata": {
+                    "name": "Refine Email Templates",
+                    "returnType": "object",
+                    "sourceCode": "let result = \"\";\ntry {\n  const emailTemplates = $context.$nodes?.GET_EMAIL_TEMPLATES?.$output?.items || [];\n  if (emailTemplates.length > 0) {\n    const firstTemplate = emailTemplates[0];\n    let contentJson = firstTemplate.contentJson;\n    if (typeof contentJson === \"string\") {\n      try {\n        contentJson = JSON.parse(contentJson);\n      } catch (parseError) {\n        contentJson = {};\n      }\n    }\n    result = contentJson?.sampleOutput?.message?.canvases?.rawHtml?.content || \"\";\n  }\n} catch (error) {\n  result = \"\";\n}\n\nreturn result;"
+                  },
+                  "outcomes": {
+                    "success": "1783000000001"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"string\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "diagram": {
+                    "x": 5020,
+                    "y": 9221
+                  }
+                },
+                {
+                  "id": "1783000000006",
+                  "code": "GET_LANDINGPAGE_TEMPLATES",
+                  "type": "BO_FUNCTION",
+                  "metadata": {
+                    "name": "Get LandingPage Templates",
+                    "businessObjectCode": "ORA_CX_MARKETING_DATAOBJECTS",
+                    "functionName": "getLandingPageMessages"
+                  },
+                  "outcomes": {
+                    "success": "1783000000007"
+                  },
+                  "inputs": [],
+                  "diagram": {
+                    "x": 5476,
+                    "y": 8999
+                  }
+                },
+                {
+                  "id": "1783000000007",
+                  "code": "REFINE_LANDINGPAGE_TEMPLATES",
+                  "type": "CODE",
+                  "metadata": {
+                    "name": "Refine LandingPage Templates",
+                    "returnType": "object",
+                    "sourceCode": "let result = \"\";\ntry {\n  const landingPageTemplates = $context.$nodes?.GET_LANDINGPAGE_TEMPLATES?.$output?.items || [];\n  if (landingPageTemplates.length > 0) {\n    const firstTemplate = landingPageTemplates[0];\n    let contentJson = firstTemplate.contentJson;\n    if (typeof contentJson === \"string\") {\n      try {\n        contentJson = JSON.parse(contentJson);\n      } catch (parseError) {\n        contentJson = {};\n      }\n    }\n    result = contentJson?.sampleOutput?.message?.canvases?.rawHtml?.content || \"\";\n  }\n} catch (error) {\n  result = \"\";\n}\n\nreturn result;"
+                  },
+                  "outcomes": {
+                    "success": "1783000000001"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "diagram": {
+                    "x": 5470,
+                    "y": 9221
+                  }
+                },
+                {
+                  "id": "1783000000001",
+                  "code": "SET_ASSET_GENERATION_CONTEXT",
+                  "type": "SET_FIELDS",
+                  "metadata": {
+                    "name": "Set Asset Generation Context",
+                    "description": ""
+                  },
+                  "diagram": {
+                    "x": 5245,
+                    "y": 9443
+                  },
+                  "outcomes": {
+                    "success": "1783000000002"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1781267026624_Constraints",
+                      "name": "Constraints",
+                      "value": "Fill template placeholders during initial generation and keep styles email-safe.\nRules:\n- Do not leave visible template placeholders such as __headline_text__, __subheading_text__, __cta_text__, __section_heading_text__, __section_intro_text__, __body_bullet_1__, or angle-bracket placeholder labels in the generated asset.\n- Treat placeholder names as semantic hints. Replace heading, subheading, CTA, body, bullet, image-alt, and support-text placeholders with customer-ready copy based on the user message, seeded Content, Audience, and sandbox configuration.\n- CTA text must be a real 2-5 word action-oriented label with sufficient contrast and padding.\n- CTA href/link placeholders must be replaced with the most relevant real URL from seeded content or the user message. If no real URL is available, use # for the href and remove tracking-parameter placeholders instead of displaying them.\n- Image URL placeholders should be replaced by a real supplied image URL when available; otherwise preserve the existing real template image URL or use the configured content image URL when supplied.\n- Preserve intentional runtime personalization tokens only when they use valid merge-token syntax such as {{FirstName}}. Do not preserve template scaffolding placeholders as visible copy.\n- Headline should be visually H1-like but implemented with email-safe <td> or <div> styling.\n- Subheading should be one short sentence that supports the headline.\n- Body copy should support 1-3 short paragraphs or bullets with comfortable line-height and padding.\n- Keep the main message above the CTA.\n- Use only one primary CTA.\n- Quote styling must remain readable in dark mode.\n- Avoid JavaScript, unsupported CSS, or image-only CTAs."
+                    },
+                    {
+                      "id": "1781267026624_Template",
+                      "name": "Template",
+                      "value": "{{$context.$nodes.REFINE_EMAIL_TEMPLATES.$output.result || $context.$nodes.REFINE_LANDINGPAGE_TEMPLATES.$output.result}}"
+                    },
+                    {
+                      "id": "1781267026624_MandatoryConstraints",
+                      "name": "MandatoryConstraints",
+                      "value": "Use the following constraints as mandatory rules when converting or generating email HTML.\nPreserve the existing email structure and compatibility. Do not alter the core table structure, layout containers, widths, or critical inline CSS unless explicitly instructed.\nOn first generation, replace template placeholder tokens with generated customer-ready content. Do not leave visible placeholder tokens such as __...__, <..._text>, or placeholder button labels in the rendered asset.\nFor personalization, preserve only valid runtime merge tokens such as {{FirstName}} when they are intentionally needed. Do not fabricate user data.\nRequired constraints:\n- Preserve table-based email layout.\n- Use inline CSS only.\n- Do not rely on external CSS, JavaScript, modern JS, or unsupported HTML features.\n- Target Outlook desktop, Gmail, Apple Mail, and mobile email clients.\n- Use web-safe fonts unless brand-approved fallbacks are provided.\n- Use UTF-8 encoding.\n- Keep total HTML weight lightweight; aim for under 100-150KB where feasible.\n- Avoid CSS background images unless supported with safe fallbacks.\n- Use bulletproof button patterns for CTAs.\n- Ensure CTAs are real <a href=\"...\"> links, not image-only buttons.\n- Include required legal disclaimers, terms, unsubscribe links, and preference-management links exactly as specified.\n- Preserve accessibility attributes, including meaningful alt text for images.\n- Do not embed critical text only inside images.\n- Do not invent tracking URLs, user attributes, offer details, legal copy, or personalization values.\n- Remove unresolved tracking parameter placeholders from URLs instead of showing placeholder text.\nReturn final HTML only unless asked to explain changes."
+                    },
+                    {
+                      "id": "1781267026624_Audience",
+                      "name": "Audience",
+                      "value": "Buyer Role: Decision Maker, Persona: CIO, CHRO"
+                    },
+                    {
+                      "id": "1781267026624_Content",
+                      "name": "Content",
+                      "value": "Oracle Cloud EPM helps Kraft Heinz master big market shiftsTitleOracle Cloud EPM helps Kraft Heinz master big market shiftsSubtitleThe food and beverage giant uses Oracle Cloud EPM to guide faster decision-making to stay on top of a changing market.Main Quote“We started with Oracle Cloud EPM Planning in North America with zero-based budgeting and expanded the planning footprint to link our global operations. We wanted to better incorporate financial reports and forecasts, do strategic planning, and implement proper processes. It gave us a better vision as to how we can increase revenue, reduce costs within the plants, look more deeply into our industrial costs, and see where we could make innovations.”Frank TagoeSenior Manager of IT Finance, The Kraft Heinz CompanyStorySince the 2015 merger of the Kraft and Heinz businesses, Kraft Heinz has gone on to become one of the world’s largest food and beverage companies. The $26 billion-a-year behemoth includes famed household products such as Kraft Macaroni & Cheese, Heinz Tomato Ketchup, Oscar Mayer meats, Maxwell House coffee, and Grey Poupon mustard.To better understand business performance, the Kraft Heinz finance team needed better and faster insights. It struggled with 10 different, decentralized tools that performed more or less the same tasks. The insights into the effectiveness of the company’s trade promotions and marketing spend would provide visibility into what products they should be selling and which products customers are drawn to. Kraft Heinz looked to Oracle Fusion Cloud EPM to gain this strong understanding of how the market was changing and reacting.Competitive AdvantageOracle Cloud EPM gave the Kraft Heinz finance team swift access to much-needed insights on sales forecasts, actual results, plus the costs of logistics and manufacturing. This crucial information allows the company to understand product-level profitability and cost management in ways it never knew before.ResultsMoving to Oracle Cloud EPM helped the finance team attain a single source of truth. In addition, the team was also able to achieve standardized processes. “It gave us a better vision as to how we can increase revenue, reduce costs within the plants, look more deeply into our industrial costs, and see where we could make innovations,” says Frank Tagoe, Kraft Heinz senior manager of IT finance.ChannelsEmail, Landing page, WebTagsOracle Cloud CPMCustomer NameThe Kraft Heinz CompanyIndustryFood ProductsFeatured Buyer RoleInfluencerLinkhttps://www.oracle.com/customers/kraft-heinz/"
+                    }
+                  ]
+                },
+                {
+                  "id": "1783000000002",
+                  "code": "PREPARE_ASSET_GENERATION_DATA",
+                  "type": "CODE",
+                  "metadata": {
+                    "name": "Prepare Asset Generation Data",
+                    "returnType": "object",
+                    "sourceCode": "const currentTacticItem = ($context.$nodes?.AUTOMATION_JSON_MODEL_BUILDER?.$currentItem) || {};\nconst automationModel = ($context.$variables && $context.$variables.automationContentJsonModel) || {};\nconst tacticObjective = automationModel.tacticObjective || currentTacticItem.objective || currentTacticItem.description || currentTacticItem.name || \"Create a customer-ready marketing asset.\";\n\nfunction asText(value) {\n  return value === null || value === undefined ? \"\" : String(value).trim();\n}\n\nfunction inferAssetType(item) {\n  const text = [item.type, item.name, item.channel, item.assetType].map(asText).join(\" \").toLowerCase();\n  if (/landing/.test(text)) return \"Landing Page\";\n  return \"Email\";\n}\n\nfunction inferProgramType(value) {\n  const text = asText(value).toLowerCase();\n  if (/renewal/.test(text)) return \"Renewal\";\n  if (/cross[-\\s]?sell/.test(text)) return \"Cross-sell\";\n  return \"Cross-sell\";\n}\n\nfunction inferProduct(value) {\n  const text = asText(value).toLowerCase();\n  if (/\\berp\\b|enterprise resource planning/.test(text)) return \"Oracle Fusion Cloud ERP\";\n  if (/\\bhcm\\b|human capital/.test(text)) return \"Oracle Fusion Cloud HCM\";\n  if (/\\bscm\\b|supply chain/.test(text)) return \"Oracle Fusion Cloud SCM\";\n  if (/epm|enterprise performance management/.test(text)) return \"Oracle Cloud EPM\";\n  if (/fusion marketing|marketing/.test(text)) return \"Fusion Marketing\";\n  return \"Fusion Marketing\";\n}\n\nconst sourceText = [\n  tacticObjective,\n  currentTacticItem.name,\n  currentTacticItem.description,\n  currentTacticItem.type,\n  currentTacticItem.channel,\n  $context.$system && $context.$system.$inputMessage\n].map(asText).filter(Boolean).join(\" \");\n\nconst result = {\n  inputMessage: asText($context.$system && $context.$system.$inputMessage),\n  tacticObjective: asText(tacticObjective),\n  currentTacticItem,\n  sandboxConfig: {\n    programType: inferProgramType(sourceText),\n    product: inferProduct(sourceText),\n    assetType: inferAssetType(currentTacticItem),\n    objective: asText(tacticObjective),\n    audience: \"Business decision makers\",\n    tone: \"Professional, concise, and brand-aligned\",\n    cta: /demo|request/.test(sourceText.toLowerCase()) ? \"Request a demo\" : \"Learn more\"\n  }\n};\n\nreturn result;"
+                  },
+                  "outcomes": {
+                    "success": "1783000000003"
+                  },
+                  "inputs": [],
+                  "diagram": {
+                    "x": 5240.5,
+                    "y": 9665
+                  },
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "id": "1783000000003",
+                  "code": "GENERATE_ASSET_RESPONSE",
+                  "type": "LLM",
+                  "metadata": {
+                    "name": "Generate Asset Response",
+                    "chatHistoryEnabled": false
+                  },
+                  "outcomes": {
+                    "success": "1781515639783"
+                  },
+                  "inputs": [
+                    {
+                      "id": "n330_prompt",
+                      "name": "prompt",
+                      "type": "string",
+                      "value": "DATA:\n{{$context.$nodes.PREPARE_ASSET_GENERATION_DATA.$output.result}}\n\nUSER MESSAGE:\n{{$context.$system.$inputMessage}}\n\nTACTIC OBJECTIVE:\n{{$context.$variables.automationContentJsonModel.tacticObjective}}\n\nCURRENT TACTIC ITEM:\n{{$context.$nodes.AUTOMATION_JSON_MODEL_BUILDER.$currentItem}}\n\nSEEDED CONTENT:\n{{$context.$variables.Content}}\n\nSEEDED TEMPLATE:\n{{$context.$variables.Template}}\n\nCONSTRAINTS:\n{{$context.$variables.MandatoryConstraints}}\n{{$context.$variables.Constraints}}\n\nTASK:\nGenerate a customer-ready marketing asset message in the same structured format used by the previous message content node, wrapped in the workflow output object.\n\nReturn a JSON object with exactly these top-level fields:\n- result: an object with exactly title and content\n- timeout: false\n- error: \"\"\n\nIf CURRENT TACTIC ITEM name or type is \"landingPage\":\n1. result.title must be an empty string.\n2. result.content must be complete simple HTML for the landing page as a string in this format: \"<html><body>Html Content</body></html>\".\n\nIf CURRENT TACTIC ITEM name or type is \"email\" or \"followUpEmail\":\n1. result.title must be a concise email subject line based on the tactic objective, no more than 15 words.\n2. result.content must be the email body as complete simple HTML as a string in this format: \"<html><body>Message Content</body></html>\".\n\nUse DATA.sandboxConfig, seeded content, seeded template, constraints, user message, and tactic objective to make the copy specific and customer-ready. Replace visible template placeholders with real generated content. Preserve only intentional runtime personalization tokens such as {{FirstName}} when useful.\n\nValidation:\n- result.content must be plain HTML in a string.\n- result.content must not contain JavaScript, functions, unresolved placeholder labels, or markdown fences.\n- timeout must always be false.\n- error must always be an empty string.\n- Return only the final JSON object and nothing else.\n\nRequired JSON shape:\n{\n  \"result\": {\n    \"title\": \"Protect Your Investment: Maintenance Packages for Expiring Warranties\",\n    \"content\": \"<html><body>Dear Purchasing Manager,<br><br>Your account's warranty is about to expire. We invite you to visit our webpage to explore exclusive maintenance packages designed to keep your solar systems running efficiently.<br><br><a href=\"http://www.supremosolar.com/maintenance\">View Maintenance Packages</a><br><br>Best regards,<br>Supremo Solar Marketer</body></html>\"\n  },\n  \"timeout\": false,\n  \"error\": \"\"\n}"
+                    },
+                    {
+                      "id": "n330_systemPrompt",
+                      "name": "systemPrompt",
+                      "type": "string",
+                      "value": "Return only a valid JSON object with exactly three top-level fields: result, timeout, and error. result must contain exactly title and content. timeout must be false. error must be an empty string. Do not return markdown, an artifact preview widget, oraInfoDisplay, explanatory prose, or any additional fields."
+                    }
+                  ],
+                  "diagram": {
+                    "x": 5251,
+                    "y": 9887
+                  },
+                  "aiAppOutputSpecification": {
+                    "dataDisplay": {
+                      "layouts": [],
+                      "enableActions": false,
+                      "enableCommunications": false,
+                      "enablePowerPoints": false,
+                      "customNotes": ""
+                    }
+                  },
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"title\": {\n          \"type\": \"string\"\n        },\n        \"content\": {\n          \"type\": \"string\"\n        }\n      },\n      \"additionalProperties\": false,\n      \"required\": [\n        \"title\",\n        \"content\"\n      ]\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "id": "1781013203047",
+                  "code": "CREATE_MESSAGE",
+                  "type": "BO_FUNCTION",
+                  "metadata": {
+                    "description": "Email Creation Process",
+                    "name": "Create Message",
+                    "businessObjectCode": "ORA_CX_MARKETING_MARKETINGCOMMONCONTENT",
+                    "errorNodeId": "1781173469542",
+                    "functionName": "createMessage"
+                  },
+                  "diagram": {
+                    "x": 5251,
+                    "y": 10331
+                  },
+                  "outcomes": {
+                    "success": "1781017618012"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1781013203047_payload",
+                      "name": "payload",
+                      "value": "{{$context.$nodes.MESSAGE_PAYLOAD_BUILDER.$output.result}}",
+                      "required": true,
+                      "type": "string"
+                    }
+                  ]
+                },
+                {
+                  "id": "1781013283801",
+                  "code": "CREATE_SEGMENT",
+                  "type": "BO_FUNCTION",
+                  "metadata": {
+                    "name": "Create Segment",
+                    "businessObjectCode": "ORA_CX_MARKETING_DATAOBJECTS",
+                    "errorNodeId": "1781173469542",
+                    "functionName": "createSegment"
+                  },
+                  "diagram": {
+                    "x": 5926,
+                    "y": 8999
+                  },
+                  "outcomes": {
+                    "success": "1781017923940"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1781013283801_payload",
+                      "name": "payload",
+                      "value": "{{$context.$nodes.AUTOMATION_JSON_MODEL_BUILDER.BUILD_SEGMENT_DATA.$output.result}}",
+                      "required": true,
+                      "type": "string"
+                    }
+                  ]
+                },
+                {
+                  "id": "1781017618012",
+                  "code": "SETTING_MESSAGE_ID",
+                  "type": "CODE",
+                  "metadata": {
+                    "name": "Setting Message Id",
+                    "returnType": "object",
+                    "sourceCode": "let result = {};\ntry {\n  // Access the entire automationContentJsonModel from workflow variables\n  const automationContentJsonModel = $context.$variables?.automationContentJsonModel || {};\n\n  // Access the sampleAutomationJson from automationContentJsonModel\n  const sampleAutomationJson = automationContentJsonModel?.sampleAutomationJsonModel || {};\n\n  // Access the placeholder string from the current item of AUTOMATION_JSON_MODEL_BUILDER node\n  const placeholder = $context.$nodes?.AUTOMATION_JSON_MODEL_BUILDER?.$currentItem?.placeholder;\n\n  // Access the message ID from the CREATE_MESSAGE node output\n  const messageIdValue = $context.$nodes?.CREATE_MESSAGE?.$output?.id;\n\n  // Convert sampleAutomationJson to string for replacement\n  let templateString = JSON.stringify(sampleAutomationJson);\n\n  // If placeholder is a string and messageIdValue is defined, replace all occurrences of placeholder with messageIdValue\n  if (typeof placeholder === 'string' && messageIdValue !== undefined) {\n    // Escape special characters in placeholder for RegExp\n    const escapedPlaceholder = placeholder.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n    const regex = new RegExp(escapedPlaceholder, 'g');\n    templateString = templateString.replace(regex, messageIdValue);\n  }\n\n  // Parse the modified string back to object\n  const modifiedSampleAutomationJson = JSON.parse(templateString);\n\n  // Create a shallow copy of automationContentJsonModel to avoid mutating original\n  result = { ...automationContentJsonModel };\n\n  // Replace sampleAutomationJson with the modified version\n  result.sampleAutomationJsonModel = modifiedSampleAutomationJson;\n} catch (error) {\n  // On error, return empty object as required by return type\n  result = {};\n}\n\nreturn result;",
+                    "errorNodeId": "1781173469542"
+                  },
+                  "diagram": {
+                    "x": 5251,
+                    "y": 10553
+                  },
+                  "outcomes": {
+                    "success": "1781019837704"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "id": "1781017923940",
+                  "code": "SETTING_SEGMENT_ID",
+                  "type": "CODE",
+                  "metadata": {
+                    "name": "Setting Segment Id",
+                    "returnType": "object",
+                    "sourceCode": "let result = [];\ntry {\n  // Access the tacticAutomationJsonModelBuilder array safely\n  const tacticModels = $context.$variables?.tacticAutomationJsonModelBuilder || [];\n\nconst placeholder = $context.$nodes?.AUTOMATION_JSON_MODEL_BUILDER?.$currentItem?.placeholder;\n  // Extract segmentId from CREATE_SEGMENT node response headers\n  let segmentId = null;\n  const responseHeaders = $context.$nodes?.CREATE_SEGMENT?.$responseHeaders;\n  if (responseHeaders) {\n    const location = responseHeaders['location'];\n    if (location && Array.isArray(location) && location.length > 0) {\n      segmentId = location[0].split(\"/\").pop();\n    }\n  }\n\n  // Access the entire automationContentJsonModel from workflow variables\n  const automationContentJsonModel = $context.$variables?.automationContentJsonModel || {};\n\n  // Access the sampleAutomationJson from automationContentJsonModel\n  const sampleAutomationJson = automationContentJsonModel?.sampleAutomationJsonModel || {};\n\n\n  // Convert sampleAutomationJson to string for replacement\n  let templateString = JSON.stringify(sampleAutomationJson);\n\n  // If placeholder is a string and messageIdValue is defined, replace all occurrences of placeholder with messageIdValue\n  if (typeof placeholder === 'string' && segmentId !== undefined) {\n    // Escape special characters in placeholder for RegExp\n    const escapedPlaceholder = placeholder.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n    const regex = new RegExp(escapedPlaceholder, 'g');\n    templateString = templateString.replace(regex, segmentId);\n  }\n\n  // Parse the modified string back to object\n  const modifiedSampleAutomationJson = JSON.parse(templateString);\n\n  // Create a shallow copy of automationContentJsonModel to avoid mutating original\n  result = { ...automationContentJsonModel };\n\n  // Replace sampleAutomationJson with the modified version\n  result.sampleAutomationJsonModel = modifiedSampleAutomationJson;\n\n\n} catch (error) {\n  // On error, return empty array as per return type\n  result = {};\n}\n\nreturn result;",
+                    "errorNodeId": "1781173469542"
+                  },
+                  "diagram": {
+                    "x": 5932,
+                    "y": 9221
+                  },
+                  "outcomes": {
+                    "success": "1781019882874"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "id": "1781019837704",
+                  "code": "ASSOCIATE_MESSAGE_PAYLOAD",
+                  "type": "SET_FIELDS",
+                  "metadata": {
+                    "name": "Associate Message  Payload",
+                    "errorNodeId": "1781173469542"
+                  },
+                  "diagram": {
+                    "x": 5251,
+                    "y": 10775
+                  },
+                  "outcomes": {
+                    "success": "end_1781008338678"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1781019837704_automationContentJsonModel",
+                      "name": "automationContentJsonModel",
+                      "value": "{{$context.$nodes.AUTOMATION_JSON_MODEL_BUILDER.SETTING_MESSAGE_ID.$output.result}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "1781019882874",
+                  "code": "ASSOCIATE_SEGMENT_PAYLOAD",
+                  "type": "SET_FIELDS",
+                  "metadata": {
+                    "name": "Associate Segment  Payload",
+                    "errorNodeId": "1781173469542"
+                  },
+                  "diagram": {
+                    "x": 5932,
+                    "y": 9443
+                  },
+                  "outcomes": {
+                    "success": "end_1781008338678"
+                  },
+                  "inputs": [
+                    {
+                      "id": "1781019882874_automationContentJsonModel",
+                      "name": "automationContentJsonModel",
+                      "value": "{{$context.$nodes.SETTING_SEGMENT_ID.$output.result}}"
+                    }
+                  ]
+                },
+                {
+                  "id": "1781087954683",
+                  "code": "BUILD_SEGMENT_DATA",
+                  "type": "CODE",
+                  "metadata": {
+                    "name": "Build Segment Data",
+                    "sourceCode": "let result = {};\ntry {\n  // Access programId from variables\n  const programId = $context.$variables?.programId || \"\";\n  const timestamp = Date.now();\n  const name = `Program_Advisior_${programId}_${timestamp}`;\n\n  // Access TargetProductId and ProgramType from REFINE_PROGRAM_DATA node result\n  const refineProgramDataResult = $context.$nodes?.REFINE_PROGRAM_DATA?.$output?.result || {};\n  const targetProductName = refineProgramDataResult.TargetProductName || \"\";\n  const ownedProductName = refineProgramDataResult.OwnedProductName || \"\";\n  const programType = refineProgramDataResult.ProgramType || \"\";\n\n  // Escape single quotes for SQL string literals\n  const escapeSqlValue = (value) => {\n    return String(value || \"\").split(\"'\").join(\"''\");\n  };\n\n  let sqlTemplate = \"\";\n\n  if (programType.toLowerCase() === \"renewal\") {\n    // SQL template for renewal programType\n    sqlTemplate = `SELECT DISTINCT \"C2\".\"Contacts_ID\" AS \"Contacts_ID\"\nFROM (\n  SELECT \"C0\".\"Contacts_ID\" AS \"Contacts_ID\"\n  FROM (\n    SELECT \"C0\".\"ID\" AS \"Contacts_ID\"\n    FROM \"Default.Contacts\" \"C0\"\n    JOIN (\n      SELECT DISTINCT \"B0\".\"ContactID\" AS \"BuyingGroupMember_ContactID\"\n      FROM \"Default.BuyingGroupMember\" \"B0\"\n      WHERE (\n        \"B0\".\"ProductLevel4Name\" IN (\n          '<targetProductName>'\n        )\n      )\n    ) \"B0\" ON \"C0\".\"ContactID\" = \"B0\".\"BuyingGroupMember_ContactID\"\n  ) \"C0\"\n  JOIN (\n    SELECT \"C1\".\"ID\" AS \"Contacts_ID\"\n    FROM \"Default.Contacts\" \"C1\"\n    JOIN (\n      SELECT \"A0\".\"AccountID\" AS \"Accounts_AccountID\"\n      FROM \"Default.Accounts\" \"A0\"\n      JOIN (\n        SELECT DISTINCT \"A0\".\"Accounts_ID\" AS \"Accounts_ID\"\n        FROM (\n          (\n            SELECT \"A0\".\"ID\" AS \"Accounts_ID\"\n            FROM \"Default.Accounts\" \"A0\"\n            JOIN (\n              SELECT DISTINCT \"A1\".\"AccountID\" AS \"AccountProductIntelligence_AccountID\"\n              FROM \"Default.AccountProductIntelligence\" \"A1\"\n              WHERE (\n                TRUNC(\"A1\".\"RenewalDate\") BETWEEN TRUNC(SYSDATE) AND TRUNC(SYSDATE) + 180\n              )\n            ) \"A1\" ON \"A0\".\"AccountID\" = \"A1\".\"AccountProductIntelligence_AccountID\"\n          ) \"A0\"\n        )\n      ) \"ref_0\" ON \"A0\".\"ID\" = \"ref_0\".\"Accounts_ID\"\n    ) \"A0\" ON \"C1\".\"AccountID\" = \"A0\".\"Accounts_AccountID\"\n  ) \"C1\" ON \"C0\".\"Contacts_ID\" = \"C1\".\"Contacts_ID\"\n) \"C2\"`;\n  } else {\n    // Default SQL template\n    sqlTemplate = `SELECT DISTINCT \"C2\".\"Contacts_ID\" AS \"Contacts_ID\"\nFROM (\n  SELECT \"C0\".\"Contacts_ID\" AS \"Contacts_ID\"\n  FROM (\n    SELECT \"C0\".\"ID\" AS \"Contacts_ID\"\n    FROM \"Default.Contacts\" \"C0\"\n    JOIN (\n      SELECT DISTINCT \"B0\".\"ContactID\" AS \"BuyingGroupMember_ContactID\"\n      FROM \"Default.BuyingGroupMember\" \"B0\"\n      WHERE (\n        \"B0\".\"ProductLevel7Name\" IN (\n          '<targetProductName>'\n        )\n      )\n    ) \"B0\" ON \"C0\".\"ContactID\" = \"B0\".\"BuyingGroupMember_ContactID\"\n  ) \"C0\"\n  JOIN (\n    SELECT \"C1\".\"ID\" AS \"Contacts_ID\"\n    FROM \"Default.Contacts\" \"C1\"\n    JOIN (\n      SELECT \"A0\".\"AccountID\" AS \"Accounts_AccountID\"\n      FROM \"Default.Accounts\" \"A0\"\n      JOIN (\n         -- ACCOUNT SEGMENT STARTS HERE\n        SELECT DISTINCT \"A0\".\"Accounts_ID\" AS \"Accounts_ID\"\n        FROM (\n          (\n            SELECT \"A0\".\"ID\" AS \"Accounts_ID\"\n            FROM \"Default.Accounts\" \"A0\"\n            JOIN (\n              SELECT DISTINCT \"A1\".\"AccountID\" AS \"AccountProductIntelligence_AccountID\"\n              FROM \"Default.AccountProductIntelligence\" \"A1\"\n              WHERE (\n                (\n                  \"A1\".\"ProductLevel7Name\" IN (\n                    '<ownedProductName>'\n                  )\n                ) AND (\n                  \"A1\".\"OwnershipStatus\" IN (\n                    'Owns'\n                  )\n                )\n              )\n            ) \"A1\" ON \"A0\".\"AccountID\" = \"A1\".\"AccountProductIntelligence_AccountID\"\n          ) \"A0\"\n          JOIN (\n            SELECT \"A2\".\"ID\" AS \"Accounts_ID\"\n            FROM \"Default.Accounts\" \"A2\"\n            JOIN (\n              SELECT DISTINCT \"A3\".\"AccountID\" AS \"AccountProductIntelligence_AccountID\"\n              FROM \"Default.AccountProductIntelligence\" \"A3\"\n              WHERE (\n                (\n                  \"A3\".\"ProductLevel7Name\" IN (\n                    '<targetProductName>'\n                  )\n                ) AND (\n                  \"A3\".\"BuyingGroupPersonaCoveragePct\" > '40'\n                ) AND (\n                  \"A3\".\"BuyingGroupPersonaEngagementPct\" > '40'\n                ) AND (\n                  (\n                    \"A3\".\"OwnershipStatus\" NOT IN (\n                      'Owns'\n                    )\n                  ) OR (\n                    \"A3\".\"OwnershipStatus\" IS NULL\n                  )\n                )\n              )\n            ) \"A3\" ON \"A2\".\"AccountID\" = \"A3\".\"AccountProductIntelligence_AccountID\"\n          ) \"A2\" ON \"A0\".\"Accounts_ID\" = \"A2\".\"Accounts_ID\"\n        )\n        -- ACCOUNT SEGMENT ENDS HERE\n      ) \"ref_0\" ON \"A0\".\"ID\" = \"ref_0\".\"Accounts_ID\"\n    ) \"A0\" ON \"C1\".\"AccountID\" = \"A0\".\"Accounts_AccountID\"\n  ) \"C1\" ON \"C0\".\"Contacts_ID\" = \"C1\".\"Contacts_ID\"\n) \"C2\"`;\n  }\n\n  // Replace placeholders with escaped values\n  let sqlData = sqlTemplate.replaceAll(\"<targetProductName>\", escapeSqlValue(targetProductName));\n\n  // For default template, also replace <ownedProductName>\n  if (programType.toLowerCase() !== \"renewal\") {\n    sqlData = sqlData.replaceAll(\"<ownedProductName>\", escapeSqlValue(ownedProductName));\n  }\n\n  const jsonModelObj = {\n    canvases: {\n      sqlQuery: {\n        sql: sqlData\n      }\n    }\n  };\n\n  // Compose final result object\n  result = {\n    name: name,\n    description: \"\",\n    explanation: \"\",\n    jsonModel: JSON.stringify(jsonModelObj),\n    type: \"SQLQUERY\",\n    baseObject: \"Contacts\",\n    model: \"Default\",\n    context: \"tactic\",\n    count: null\n  };\n} catch (error) {\n  result = {};\n}\n\nreturn result;\n",
+                    "returnType": "object",
+                    "errorNodeId": "1781173469542",
+                    "sourceType": "code"
+                  },
+                  "diagram": {
+                    "x": 5479,
+                    "y": 8777
+                  },
+                  "outcomes": {
+                    "success": "1781013283801"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "id": "1781515639783",
+                  "code": "MESSAGE_PAYLOAD_BUILDER",
+                  "type": "CODE",
+                  "metadata": {
+                    "name": "Message Payload Builder",
+                    "sourceCode": "let result = {};\ntry {\n  const currentItemType = $context.$nodes?.AUTOMATION_JSON_MODEL_BUILDER?.$currentItem?.name || \"\";\n\n  if (currentItemType === \"email\" || currentItemType === \"followUpEmail\") {\n    // For email or followUpEmail type, return with subjectLine and channel email\n    result = {\n      message: {\n        channel: \"email\",\n        context: \"TACTIC\",\n        designMode: \"AGENT_PROGRAM_ADVISOR\",\n        canvases: {\n          subjectLine: {\n            content: $context.$nodes?.GENERATE_ASSET_RESPONSE?.$output?.result?.title || \"\"\n          },\n          rawHtml: {\n            content: $context.$nodes?.GENERATE_ASSET_RESPONSE?.$output?.result?.content || \"\"\n          }\n        }\n      }\n    };\n  } else {\n    // For other types, channel is landingPage and remove subjectLine\n    result = {\n      message: {\n        channel: \"landingPage\",\n        context: \"TACTIC\",\n        designMode: \"AGENT_PROGRAM_ADVISOR\",\n        canvases: {\n          rawHtml: {\n            content: $context.$nodes?.GENERATE_ASSET_RESPONSE?.$output?.result?.content || \"\"\n          }\n        }\n      }\n    };\n  }\n} catch (error) {\n  // Fallback safe return\n  result = {\n    message: {\n      channel: \"landingPage\",\n      context: \"TACTIC\",\n      designMode: \"AGENT_PROGRAM_ADVISOR\",\n      canvases: {\n        rawHtml: {\n          content: \"\"\n        }\n      }\n    }\n  };\n}\n\nreturn result;",
+                    "sourceType": "code",
+                    "returnType": "object",
+                    "errorNodeId": "1781173469542"
+                  },
+                  "diagram": {
+                    "x": 5251,
+                    "y": 10109
+                  },
+                  "outcomes": {
+                    "success": "1781013203047"
+                  },
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "id": "end_1781008338678",
+                  "code": "END",
+                  "type": "END",
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "inputs": []
+                }
+              ]
+            },
+            "loopType": "SEQUENTIAL"
+          },
+          "diagram": {
+            "x": 5000,
+            "y": 8314,
+            "width": 1252,
+            "height": 2568
+          },
+          "outcomes": {
+            "success": "1781063372252"
+          },
+          "inputs": [
+            {
+              "id": "1781008338678_collection",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$variables.automationContentJsonModel.automationJsonModelPlaceholders}}"
+            }
+          ]
+        },
+        {
+          "id": "1781063372252",
+          "code": "TACTIC_JSON_BUILDER",
+          "type": "CODE",
+          "metadata": {
+            "name": "Tactic Json Builder",
+            "sourceCode": "let result = \"\";\ntry {\n  // Access the automationContentJsonModel variable from workflow variables\n  const automationContentJsonModel = $context.$variables?.automationContentJsonModel?.sampleAutomationJsonModel || {};\n\n  // Convert the object to a JSON string\n  result = JSON.stringify(automationContentJsonModel);\n} catch (error) {\n  // Return empty string on error\n  result = \"\";\n}\n\nreturn result;",
+            "returnType": "string"
+          },
+          "diagram": {
+            "x": 5476,
+            "y": 11032
+          },
+          "outcomes": {
+            "success": "1781002246315"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1781002246315",
+          "code": "CREATE_AGENTIC_TACTIC",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "description": "",
+            "name": "Create Agentic Tactic",
+            "businessObjectCode": "ORA_CX_MARKETING_DATAOBJECTS",
+            "functionName": "createAgentTacticForAProgram",
+            "errorNodeId": "1782135634929"
+          },
+          "diagram": {
+            "x": 5476,
+            "y": 11254
+          },
+          "outcomes": {
+            "success": "1778398609717"
+          },
+          "inputs": [
+            {
+              "id": "1781002246315_programId",
+              "name": "programId",
+              "value": "{{$context.$variables.programId}}",
+              "required": true
+            },
+            {
+              "id": "1781002246315_TacticName",
+              "name": "TacticName",
+              "value": "{{$context.$nodes.BUILD_CREATE_TACTIC_PAYLOAD.$output.result.TacticName}}",
+              "required": true
+            },
+            {
+              "id": "1781002246315_TacticObjective",
+              "name": "TacticObjective",
+              "value": "{{$context.$nodes.BUILD_CREATE_TACTIC_PAYLOAD.$output.result.TacticObjective}}",
+              "required": true
+            },
+            {
+              "id": "1781002246315_TacticJson",
+              "name": "TacticJson",
+              "value": "{{$context.$nodes.TACTIC_JSON_BUILDER.$output.result}}",
+              "required": true
+            }
+          ]
+        },
+        {
+          "id": "1778398609717",
+          "code": "GET_TACTIC_ID",
+          "type": "CODE",
+          "metadata": {
+            "name": "Get Tactic Id",
+            "sourceCode": "var response = $context.$nodes.CREATE_AGENTIC_TACTIC.$responseHeaders; \nconst location =  response['location'];\nconst tacticId =  location[0].split(\"/\").pop();\n\nreturn tacticId;",
+            "returnType": "string"
+          },
+          "diagram": {
+            "x": 5476,
+            "y": 11476
+          },
+          "outcomes": {
+            "success": "1765703405640"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_CARD"
+              ],
+              "enableActions": true,
+              "enableCommunications": false,
+              "customNotes": ""
+            }
+          },
+          "metadata": {
+            "name": "Confirm Tactic Creation",
+            "errorNodeId": "1781163643333"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "CONFIRM_TACTIC_CREATION",
+          "id": "1765703405640",
+          "inputs": [
+            {
+              "id": "1765703405641_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Generate the final response for a successful tactic creation.\n\n  Context:\n  - Tactic name: {{$context.$nodes.BUILD_CREATE_TACTIC_PAYLOAD.$output.result.TacticName}}\n  - Tactic id: {{$context.$nodes.GET_TACTIC_ID.$output.result}}\n  - Program id: {{$context.$variables.programId}}\n  - Launch action: {{$context.$nodes.REFINE_PROGRAM_DATA.$output.result.Action}}\n\n  Output exactly one <oraInfoDisplay> block followed by one <oraImmediateInsight> block.\n\n  Use this exact structure, replacing only the context values:\n\n  <oraInfoDisplay key=\"unique-{{$context.$nodes.GET_TACTIC_ID.$output.result}}\">\n  {\n    \"title\": \"Tactic {{$context.$nodes.BUILD_CREATE_TACTIC_PAYLOAD.$output.result.TacticName}} Created\",\n    \"patternId\": \"cardWidget\",\n    \"description\": \"Notification of tactic creation\",\n    \"properties\": {\n      \"subject\": \"Tactic {{$context.$nodes.BUILD_CREATE_TACTIC_PAYLOAD.$output.result.TacticName}} created.\",\n      \"summary\": \"Tactic {{$context.$nodes.BUILD_CREATE_TACTIC_PAYLOAD.$output.result.TacticName}} created.\",\n      \"badgeText\": \"Success\",\n      \"variant\": \"success\",\n      \"link\": {\n        \"text\": \"Configure Tactic\",\n        \"action\": \"ora.Invoke(\\\"{{$context.$nodes.REFINE_PROGRAM_DATA.$output.result.Action}}\\\", {\\\"TacticId\\\":\\\"{{$context.$nodes.GET_TACTIC_ID.$output.result}}\\\", \\\"ProgramId\\\":\\\"{{$context.$variables.programId}}\\\"})\"\n      }\n    }\n  }\n  </oraInfoDisplay>\n  <oraImmediateInsight>\n  { \"followUpCommand\": \"ora.Invoke(\\\"refresh\\\")\" }\n  </oraImmediateInsight>\n\n  Hard constraints:\n  - Output only the <oraInfoDisplay> block and the <oraImmediateInsight> block.\n  - Do not output markdown, bullets, explanations, or any text outside the two blocks.\n  - Do not change the link text.\n  - Do not change the action parameter names: \"TacticId\" and \"ProgramId\".\n  - Use the launch action from {{$context.$nodes.REFINE_PROGRAM_DATA.$output.result.Action}} exactly.\n"
+            },
+            {
+              "id": "1765703405640_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": ""
+            }
+          ],
+          "type": "LLM",
+          "diagram": {
+            "x": 5476,
+            "y": 11698
+          }
+        },
+        {
+          "id": "1778568298293",
+          "code": "GET_AGENT_TEMPLATE_DETAILS",
+          "type": "CODE",
+          "metadata": {
+            "name": "Get Agent Template Details",
+            "sourceCode": "// to do remove\nlet result = null;\ntry {\n  const templates = $context.$nodes?.REFINE_THE_AI_TEMPLATES?.$output?.result || [];\n  const templateId = $context.$nodes?.RETRIEVE_ACTION_PARAMETERS?.$output?.result?.templateId;\n\n  const matchedTemplate = templates.find(t => t?.id === templateId);\n\n  function removeIdRecursively(obj) {\n    if (obj && typeof obj === 'object') {\n      if (Array.isArray(obj)) {\n        obj.forEach(item => removeIdRecursively(item));\n      } else {\n        Object.keys(obj).forEach(key => {\n          if (key === 'id') {\n            delete obj[key];\n          } else {\n            removeIdRecursively(obj[key]);\n          }\n        });\n      }\n    }\n  }\n\n  if (matchedTemplate) {\n    const templateClone = JSON.parse(JSON.stringify(matchedTemplate));\n    if (templateClone.contentJson) {\n      try {\n        templateClone.contentJson = JSON.parse(templateClone.contentJson);\n      } catch (e) {\n      }\n      removeIdRecursively(templateClone.contentJson);\n    }\n    result = templateClone;\n  } else {\n    result = null;\n  }\n} catch (error) {\n  result = null;\n}\n\nreturn result;",
+            "returnType": "object"
+          },
+          "diagram": {
+            "x": 6417,
+            "y": 7648
+          },
+          "outcomes": {
+            "success": "1778568705373"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1778568705373",
+          "code": "AGENTIC_TEMPLATE_CREATE_WIDGET",
+          "type": "LLM",
+          "metadata": {
+            "name": "Agentic Template Create Widget"
+          },
+          "diagram": {
+            "x": 6402,
+            "y": 7870
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [
+            {
+              "id": "1778568705373_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "1778568705373_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "### 1) Generate recordWidget\nGenerate an editable recordWidget with id as the concatenation of: \"templateId_\",\n{{$context.$nodes.RETRIEVE_ACTION_PARAMETERS.$output.result.templateId}}, and fields as:\nfields: [\n  {\n    id: \"TacticName\",\n    label: \"Tactic Name\",\n    value: \"{{Generate a random text value close to but different from\n    {{$context.$nodes.GET_AGENT_TEMPLATE_DETAILS.$output.result.contentJson.templateName}} by the LLM}}\",\n    type: \"text\"\n  },\n  {\n    id: \"TacticObjective\",\n    label: \"Tactic Objective\",\n    value: \"{{Generate a precise, one-line sentence that is a reasoned summary\n    based on the content of {{$context.$nodes.GET_AGENT_TEMPLATE_DETAILS.$output.result.contentJson.whenToUse}}.\n    Do not simply repeat or copy the 'whenToUse' text but infer and synthesize a clear,\n    concise objective from it.}}\",\n    type: \"text\"\n  }\n]\nGenerate title as: Create Tactic based on {{$context.$nodes.GET_AGENT_TEMPLATE_DETAILS.$output.result.contentJson.templateName}}\nGenerate description as: \"{{Generate a precise, one-line sentence that is a reasoned summary\n    based on the content of {{$context.$nodes.GET_AGENT_TEMPLATE_DETAILS.$output.result.contentJson.whenToUse}}.\n    Do not simply repeat or copy the 'whenToUse' text but infer and synthesize a clear,\n    concise objective from it.}}\"\nHard Constraints:\n- Do not include any additional fields.\n- Do not omit any of the listed fields.\n- Do not change field names, labels, or types.\n- Do not add comments, explanations, or formatting outside this structure."
+            }
+          ],
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "enableActions": true,
+              "layouts": [
+                "ORA_LAYOUT_RECORD"
+              ]
+            }
+          }
+        },
+        {
+          "id": "1778567658606",
+          "code": "TOP_FIT_ROWS",
+          "type": "CODE",
+          "metadata": {
+            "name": "Top Fit Rows",
+            "sourceCode": "let result = [];\ntry {\n  // Retrieve the objective from GET_PROGRAM_DETAILS node output\n  const objective = $context.$nodes?.GET_PROGRAM_DETAILS?.$output?.[0]?.objective || \"\";\n\n  // Retrieve the templates data from REFINE_THE_AI_TEMPLATES node output\n  const templatesData = $context.$nodes?.REFINE_THE_AI_TEMPLATES?.$output || {};\n\n  // Retrieve ProgramType from RETRIEVE_PROGRAM_TYPE node output\n  const programType = $context.$nodes.REFINE_PROGRAM_DATA.$output.result.ProgramType || \"\";\n\n  // Normalize text: lowercase, remove non-alphanumeric except spaces and hyphens, collapse spaces\n  const normalize = (text = \"\") =>\n    String(text)\n      .toLowerCase()\n      .replace(/[^a-z0-9\\s-]/g, \" \")\n      .replace(/\\s+/g, \" \")\n      .trim();\n\n  // Stop words set\n  const STOP_WORDS = new Set([\n    \"the\", \"and\", \"or\", \"to\", \"of\", \"a\", \"an\", \"for\", \"with\", \"on\", \"in\", \"by\", \"from\", \"that\", \"this\", \"is\", \"are\", \"be\", \"as\", \"at\", \"it\", \"you\", \"your\", \"using\", \"use\", \"want\", \"when\", \"who\", \"which\", \"will\", \"into\", \"via\", \"than\", \"only\", \"more\", \"less\"\n  ]);\n\n  // Tokenize text by normalizing, splitting, filtering stop words\n  const tokenize = (text = \"\") =>\n    normalize(text)\n      .split(\" \")\n      .filter(Boolean)\n      .filter(token => !STOP_WORDS.has(token));\n\n  // Calculate Jaccard similarity score between two texts\n  const jaccardScore = (aText, bText) => {\n    const a = new Set(tokenize(aText));\n    const b = new Set(tokenize(bText));\n    if (!a.size || !b.size) return 0;\n    let intersection = 0;\n    for (const token of a) {\n      if (b.has(token)) intersection++;\n    }\n    const union = new Set([...a, ...b]).size;\n    return intersection / union;\n  };\n\n  // Calculate phrase boost score based on presence of key phrases in objective and whenToUse\n  const phraseBoost = (objectiveText, whenToUseText) => {\n    const obj = normalize(objectiveText);\n    const use = normalize(whenToUseText);\n    const boosts = [\n      [\"cross sell\", 12],\n      [\"cpq\", 18],\n      [\"erp cloud service\", 15],\n      [\"industries\", 6],\n      [\"regions\", 6],\n      [\"segment\", 8],\n      [\"email\", 4],\n      [\"landing page\", 4],\n      [\"follow up\", 4],\n      [\"drip\", 4],\n      [\"offer\", 3]\n    ];\n    let score = 0;\n    for (const [phrase, boost] of boosts) {\n      if (obj.includes(phrase) && use.includes(phrase)) {\n        score += boost;\n      }\n    }\n    return score;\n  };\n\n  // Score a single template row based on objective and row content\n  const scoreTemplate = (objectiveText, row) => {\n    // TODO: Inferred 'contentJson' from user text 'contentJson'\n    const whenToUse = row?.contentJson?.whenToUse || \"\";\n    let score = 0;\n    score += jaccardScore(objectiveText, whenToUse) * 100;\n    score += phraseBoost(objectiveText, whenToUse);\n\n    // Add conditional bonus based on ProgramType for 'cross sell' or 'renewal'\n    const normalizedWhenToUse = normalize(whenToUse);\n    const normalizedProgramType = normalize(programType);\n    if (programType && (normalizedWhenToUse.includes(\"cross sell\") || normalizedWhenToUse.includes(\"renewal\")) &&\n        (normalizedProgramType.includes(\"cross sell\") || normalizedProgramType.includes(\"renewal\"))) {\n      score += 8;\n    }\n\n    // Other bonuses\n    if (normalizedWhenToUse.includes(\"segment\")) score += 6;\n    if (normalizedWhenToUse.includes(\"email\")) score += 3;\n    if (normalizedWhenToUse.includes(\"landing page\")) score += 3;\n    return score;\n  };\n\n  // Get top N fit rows sorted by score descending\n  const getTopFitRows = (objectiveText, templates, topN = 6) => {\n    const rows = Array.isArray(templates?.result) ? templates.result : Array.isArray(templates) ? templates : [];\n    return rows\n      .map(row => ({ ...row, _score: scoreTemplate(objectiveText, row) }))\n      .sort((a, b) => b._score - a._score)\n      .slice(0, topN)\n      .map(({ _score, ...row }) => row);\n  };\n\n  // Compute the top fit rows\n  result = getTopFitRows(objective, templatesData, 6);\n} catch (error) {\n  result = [];\n}\n\nreturn result;\n",
+            "returnType": "array"
+          },
+          "diagram": {
+            "x": 6421,
+            "y": 6982
+          },
+          "outcomes": {
+            "success": "1778561999067"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1778561999067",
+          "code": "COMBINE_TACTIC_TEMPLATES",
+          "type": "CODE",
+          "metadata": {
+            "name": "Combine Tactic Templates",
+            "sourceCode": "let result = [];\ntry {\n\n  const aiTemplatesRaw = $context.$nodes.TOP_FIT_ROWS.$output.result || [];\n  const combined = [];\n\n  for (let j = 0; j < aiTemplatesRaw.length && combined.length < 6; j++) {\n    const tmpl = aiTemplatesRaw[j];\n    let contentJson = {};\n    if (tmpl.contentJson) {\n      if (typeof tmpl.contentJson === 'string') {\n        try {\n          contentJson = JSON.parse(tmpl.contentJson);\n        } catch (e) {\n          contentJson = {};\n        }\n      } else {\n        contentJson = tmpl.contentJson;\n      }\n    }\n    combined.push({\n      id: tmpl.id || \"\",\n      name: contentJson.templateName || \"\",\n      description: contentJson.whenToUse || \"\"\n    });\n  }\n result = combined.slice(0, 6);\n} catch (error) {\n  result = [];\n}\n\nreturn result;",
+            "returnType": "array"
+          },
+          "diagram": {
+            "x": 6421,
+            "y": 7204
+          },
+          "outcomes": {
+            "success": "1765695234364"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MESSAGES_LIST"
+              ],
+              "enableActions": true,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "name": "Return Tactic Templates"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURN_TACTIC_TEMPLATES",
+          "id": "1765695234364",
+          "inputs": [
+            {
+              "id": "1765695234366_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Program details (use program name + description): `{{$context.$nodes.GET_PROGRAM_DETAILS.$output}}`\n\n\nGenerate a messageListWidget using below combined tactic templates data `{{$context.$nodes.COMBINE_TACTIC_TEMPLATES.$output.result}}`\n \ntitle: template name\nsummary: <templateDescription>\nbadgeText: \"Add to Program\" (must be exactly this value)\npriority: \"medium\" (must be exactly this value)\naction: ora.Invoke(createTactic, createTactic(templateId=<templateId>))\n\nWhere:\n\n<templateId> = Use the Id from the tactic template data for each item.\n<templateDescription> - Generate a precise one line sentence based on the description attribute for the current row\n\n\n\nWidget title: Generate a short title directing end user to create tactic based on recommendations. Provide one line description on how these tactic are recommendation and how it can help in achieving the program objective. For title and description make sure these are recommendation for tactic not for tactic template."
+            }
+          ],
+          "type": "LLM",
+          "diagram": {
+            "x": 6421,
+            "y": 7426
+          }
+        },
+        {
+          "id": "1781163643333",
+          "code": "ERROR_HANDLING_NODE",
+          "type": "LLM",
+          "metadata": {
+            "name": "Error Handling node"
+          },
+          "diagram": {
+            "x": 6832,
+            "y": 5000
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [
+            {
+              "id": "1781163643333_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Generate a clear and informative message to the user indicating that the Tactic Creation has failed.\nExplain that a possible cause could be the presence of duplicate tactic attributes already existing in the system.\nAdvise the user to recreate the tactic with correct and unique tactic details to avoid this issue.\nEnsure the message is polite, concise, and guides the user on the next steps to resolve the problem."
+            }
+          ]
+        },
+        {
+          "id": "1781173469542",
+          "code": "ERROR_HANDLING_NODE_BUILDING_STAGES",
+          "type": "LLM",
+          "metadata": {
+            "name": "Error Handling node building stages"
+          },
+          "diagram": {
+            "x": 7232,
+            "y": 5000
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [
+            {
+              "id": "1781163643333_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Generate a clear and informative message to the user indicating that the Tactic Creation has failed during the stage processing.\nExplain that a possible cause could be the presence issue in the stage data.\nAdvise the user to recreate the tactic with correct data.\nEnsure the message is polite, concise, and guides the user on the next steps to resolve the problem."
+            }
+          ]
+        },
+        {
+          "id": "1782135634929",
+          "code": "TACTIC_NAME_NOT_UNIQUE_ERROR",
+          "type": "LLM",
+          "metadata": {
+            "name": "Tactic Name Not Unique Error"
+          },
+          "diagram": {
+            "x": 7707,
+            "y": 5000
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [
+            {
+              "id": "1782135634929_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": "Render one error cardWidget followed by one editable recordWidget so the user can correct the tactic name and resubmit."
+            },
+            {
+              "id": "1782135634929_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Generate the final response for a failed tactic creation attempt.\n\n  Context:\n  - The tactic creation BO call failed.\n  - Most likely cause: the tactic name is not unique.\n  - Tactic name: {{$context.$nodes.BUILD_CREATE_TACTIC_PAYLOAD.$output.result.TacticName}}\n  - Tactic objective: {{$context.$nodes.BUILD_CREATE_TACTIC_PAYLOAD.$output.result.TacticObjective}}\n  - Template id: {{$context.$nodes.BUILD_CREATE_TACTIC_PAYLOAD.$output.result.TemplateId}}\n\n  Output exactly two <oraInfoDisplay> blocks and nothing else.\n\n  Block 1: error card\n  Use this exact structure:\n  <oraInfoDisplay key=\"error-unique-tactic-name\">\n  {\n    \"title\": \"Resubmit Tactic Details\",\n    \"patternId\": \"cardWidget\",\n    \"description\": \"The chosen tactic name is already in use. Please use a different tactic name.\",\n    \"properties\": {\n      \"subject\": \"Tactic name already exists\",\n      \"summary\": <leave empty>,\n      \"badgeText\": \"Action Required\",\n      \"statusPriority\": \"alert\",\n      \"variant\": \"error\"\n    }\n  }\n  </oraInfoDisplay>\n\n  Block 2: editable resubmit form\n  Use this exact structure, replacing only the context values:\n  <oraInfoDisplay key=\"templateId_<TemplateId>\">\n  {\n    \"title\": <leave empty>,\n    \"patternId\": \"recordWidget\",\n    \"description\": <leave empty>,\n    \"properties\": {\n      \"id\": \"templateId_<TemplateId>\",\n      \"readOnly\": false,\n      \"fields\": [\n        {\n          \"id\": \"TacticName\",\n          \"type\": \"text\",\n          \"label\": \"Tactic Name\",\n          \"value\": \"<TacticName>\"\n        },\n        {\n          \"id\": \"TacticObjective\",\n          \"type\": \"text\",\n          \"label\": \"Tactic Objective\",\n          \"value\": \"<TacticObjective>\"\n        }\n      ]\n    }\n  }\n  </oraInfoDisplay>\n\n  Replacement rules:\n  - Replace <TemplateId> with {{$context.$nodes.BUILD_CREATE_TACTIC_PAYLOAD.$output.result.TemplateId}}\n  - Replace <TacticName> with {{$context.$nodes.BUILD_CREATE_TACTIC_PAYLOAD.$output.result.TacticName}}\n  - Replace <TacticObjective> with {{$context.$nodes.BUILD_CREATE_TACTIC_PAYLOAD.$output.result.TacticObjective}}\n  - The key and properties.id in Block 2 must both be exactly \"templateId_<TemplateId>\" after replacement.\n\n  Hard constraints:\n  - Output only the two <oraInfoDisplay> blocks.\n  - Do not output markdown, bullets, explanations, or any text outside the two blocks.\n  - Do not change the field ids: they must remain exactly \"TacticName\" and \"TacticObjective\".\n  - Do not add or remove fields.\n"
+            }
+          ],
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "enableActions": true,
+              "layouts": [
+                "ORA_LAYOUT_CARD",
+                "ORA_LAYOUT_RECORD"
+              ]
+            }
+          }
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "51d5833a-9355-4572-96af-e129d17d83a0",
+          "name": "automationContentJsonModel",
+          "type": "object",
+          "scope": "JOB"
+        },
+        {
+          "id": "1cdeb9ce-9f93-4d16-9c69-77e151b79888",
+          "name": "programType",
+          "type": "string",
+          "scope": "JOB"
+        },
+        {
+          "id": "1765680005379",
+          "name": "programId",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "7891ad33-2ef4-47bb-b1e3-822c3de9989a",
+          "name": "Content",
+          "type": "string",
+          "scope": "JOB"
+        },
+        {
+          "id": "d58705f4-1b9d-4933-b95e-278c94ed338c",
+          "name": "Audience",
+          "type": "string",
+          "scope": "JOB"
+        },
+        {
+          "id": "e2e36d0e-6888-4c0e-a16a-1e78109bed49",
+          "name": "Constraints",
+          "type": "string",
+          "scope": "JOB"
+        },
+        {
+          "id": "04af7e80-9b06-4ad9-8079-be85a254ad58",
+          "name": "Template",
+          "type": "string",
+          "scope": "JOB"
+        },
+        {
+          "id": "aa2623b3-b6f2-4a3c-883b-9d7755f02ae8",
+          "name": "MandatoryConstraints",
+          "type": "string",
+          "scope": "JOB"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": "",
+    "agentsValueMappings": [],
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1765701350143",
+            "name": "OraAction",
+            "type": "string"
+          },
+          {
+            "id": "1765679278246",
+            "name": "OraAppContext",
+            "type": "string"
+          },
+          {
+            "id": "1765679109239",
+            "name": "OraMessageHint",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": [],
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+    "dtRunProfiles": {
+      "activeProfileId": "74ac92e2-7a6e-463a-91a4-4a1c6daeb975",
+      "profiles": [
+        {
+          "id": "ed3cfd81-78bd-4175-938b-f6a87f2021e5",
+          "name": "Action",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n    \"OraAppContext\": \"programId=300100647539754,programType=Renewal\",\n    \"OraAction\": \"<oraFormSubmit id=\\\"templateId_300100647160607_source_AGENT\\\">[{\\\"id\\\":\\\"TacticName\\\",\\\"value\\\":\\\"Segment Entry + Email + Event (Exclusive Renewal Invitation)\\\"},{\\\"id\\\":\\\"TacticObjective\\\",\\\"value\\\":\\\"Engage key buying group members with a targeted event invitation to drive renewal registrations.\\\"}]</oraFormSubmit>\",\n    \"OraMessageHint\": \"InvokeAction\",\n    \"OraUserContext\": \"{\\\"userId\\\":\\\"\\\",\\\"guId\\\":\\\"69EBF5E274CD4ADC94F76CE42C6C13D2\\\",\\\"fullName\\\":\\\"fmk user\\\",\\\"userName\\\":\\\"fmk_user\\\",\\\"isAuthenticated\\\":true,\\\"loginUrl\\\":\\\"https://cpdcfvnqy.fusionappspreprod.ocs.oc-test.com:443/fscmUI/faces/FuseWelcome\\\",\\\"idcsTimeOut\\\":30,\\\"locale\\\":\\\"en\\\"}\",\n    \"triggerType\": \"REST\",\n    \"aiAppOutputSpecification\": \"[\\\"infoDisplay\\\",\\\"actions\\\",\\\"enableCommunications\\\"]\"\n}"
+        },
+        {
+          "id": "7393112f-9598-410b-8b63-593ecc711675",
+          "name": "Init Display",
+          "type": "rest",
+          "agenticAppMode": "initDisplay",
+          "agenticAppAppContext": "programId=300100649912841",
+          "agenticAppUserContext": "{\"userId\":\"\",\"guId\":\"FA71ABC8E78A43F3A3025AE8E6E61FAC\",\"fullName\":\"Kapil Sharma\",\"userName\":\"kapil.y.sharma@oracle.com\",\"isAuthenticated\":true,\"loginUrl\":\"https://cpdcfvnqy.fusionappspreprod.ocs.oc-test.com:443/fscmUI/faces/FuseWelcome\",\"isAdmin\":true,\"idcsTimeOut\":30,\"locale\":\"en\"}",
+          "restConfigJson": "{\n    \"OraAppContext\": \"programId=300100654578990, programType=\\\"\\\"\",\n    \"OraMessageHint\": \"InitDisplay\",\n    \"OraUserContext\": \"{\\\"userId\\\":\\\"\\\",\\\"guId\\\":\\\"69EBF5E274CD4ADC94F76CE42C6C13D2\\\",\\\"fullName\\\":\\\"fmk user\\\",\\\"userName\\\":\\\"fmk_user\\\",\\\"isAuthenticated\\\":true,\\\"loginUrl\\\":\\\"https://cpdcfvnqy.fusionappspreprod.ocs.oc-test.com:443/fscmUI/faces/FuseWelcome\\\",\\\"isAdmin\\\":true,\\\"idcsTimeOut\\\":30,\\\"locale\\\":\\\"en\\\"}\",\n    \"triggerType\": \"REST\",\n    \"aiAppOutputSpecification\": \"[\\\"infoDisplay\\\",\\\"actions\\\",\\\"enableCommunications\\\"]\"\n}"
+        },
+        {
+          "id": "7ac88f96-0de9-4ad1-b051-7fed5ca6759d",
+          "name": "Invoke Action",
+          "type": "agentic-app",
+          "agenticAppMode": "initActions",
+          "invokeActionPayload": "",
+          "agenticAppAppContext": "programId=300100647463296,programType=Renewal"
+        },
+        {
+          "id": "49c3b649-71f6-4808-92c5-e03d3a0ba245",
+          "name": "Without ProgramType",
+          "type": "agentic-app",
+          "agenticAppMode": "initDisplay",
+          "agenticAppAppContext": "programId=300100648535000,programType="
+        },
+        {
+          "id": "9d214f87-9868-4a34-91e2-1b81959e26c5",
+          "name": "create tactic",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n    \"OraAppContext\": \"programId=300100649912841\",\n    \"OraAction\": \"createTactic(templateId=300100647000056,source=LEGACY)\",\n    \"OraMessageHint\": \"InvokeAction\",\n    \"OraUserContext\": \"{\\\"userId\\\":\\\"\\\",\\\"guId\\\":\\\"FA71ABC8E78A43F3A3025AE8E6E61FAC\\\",\\\"fullName\\\":\\\"Kapil Sharma\\\",\\\"userName\\\":\\\"kapil.y.sharma@oracle.com\\\",\\\"isAuthenticated\\\":true,\\\"loginUrl\\\":\\\"https://cpdcfvnqy.fusionappspreprod.ocs.oc-test.com:443/fscmUI/faces/FuseWelcome\\\",\\\"isAdmin\\\":true,\\\"idcsTimeOut\\\":30,\\\"locale\\\":\\\"en\\\"}\",\n    \"triggerType\": \"REST\",\n    \"aiAppOutputSpecification\": \"[\\\"infoDisplay\\\",\\\"actions\\\",\\\"enableCommunications\\\"]\"\n}"
+        },
+        {
+          "id": "74ac92e2-7a6e-463a-91a4-4a1c6daeb975",
+          "name": "submit",
+          "type": "rest",
+          "agenticAppMode": "invokeAction",
+          "invokeActionPayload": "{\n    \"OraAppContext\": \"programId=300100649912841\",\n    \"OraAction\": \"<oraFormSubmit id=\\\"templateId_300100647000056_source_LEGACY\\\">[{\\\"id\\\":\\\"TacticName\\\",\\\"value\\\":\\\"Fusion HCM In-App Self-Service Banner kpl test 0002\\\"},{\\\"id\\\":\\\"TacticObjective\\\",\\\"value\\\":\\\"Oracle Fusion app banner targets  buying group users with a self-service automation story and drives them to a landing page promoting an optimization offer.\\\"}]</oraFormSubmit>\",\n    \"OraMessageHint\": \"InvokeAction\",\n    \"OraUserContext\": \"{\\\"userId\\\":\\\"\\\",\\\"guId\\\":\\\"FA71ABC8E78A43F3A3025AE8E6E61FAC\\\",\\\"fullName\\\":\\\"Kapil Sharma\\\",\\\"userName\\\":\\\"kapil.y.sharma@oracle.com\\\",\\\"isAuthenticated\\\":true,\\\"loginUrl\\\":\\\"https://cpdcfvnqy.fusionappspreprod.ocs.oc-test.com:443/fscmUI/faces/FuseWelcome\\\",\\\"isAdmin\\\":true,\\\"idcsTimeOut\\\":30,\\\"locale\\\":\\\"en\\\"}\",\n    \"triggerType\": \"REST\",\n    \"aiAppOutputSpecification\": \"[\\\"infoDisplay\\\",\\\"actions\\\",\\\"enableCommunications\\\"]\"\n}",
+          "restConfigJson": "{\n    \"OraAppContext\": \"programId=300100654520144\",\n    \"OraAction\": \"<oraFormSubmit id=\\\"templateId_300100647160605\\\">[{\\\"id\\\":\\\"TacticName\\\",\\\"value\\\":\\\"Targeted Promotional Email 5\\\"},{\\\"id\\\":\\\"TacticObjective\\\",\\\"value\\\":\\\"Drive engagement by sending a single email to a CDP segment, encouraging clicks and visits to a designated webpage.\\\"}]</oraFormSubmit>\",\n    \"OraMessageHint\": \"InvokeAction\",\n    \"triggerType\": \"REST\",\n    \"aiAppOutputSpecification\": \"[\\\"infoDisplay\\\",\\\"actions\\\",\\\"enableCommunications\\\"]\"\n}"
+        },
+        {
+          "id": "d7cd7dbc-383e-4bf2-b907-e85b94f79f87",
+          "name": "submit app",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"OraAction\": \"<oraFormSubmit id=\\\"templateId_300100647306382_source_null\\\">[{\\\"id\\\":\\\"TacticName\\\",\\\"value\\\":\\\"Strategic Engagement Plan01\\\"},{\\\"id\\\":\\\"TacticObjective\\\",\\\"value\\\":\\\"To design targeted actions that effectively address identified needs and optimize outcomes.\\\"}]</oraFormSubmit>\",\n  \"OraAppContext\": \"programId=300100649912841\",\n  \"OraMessageHint\": \"InvokeAction\"\n}"
+        },
+        {
+          "id": "6fb5f91f-acf4-4dbb-86f6-545504086219",
+          "name": "test submit issue",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n    \"OraAppContext\": \"programId=300100649912841\",\n    \"OraAction\": \"<oraFormSubmit id=\\\"templateId_300100647160605_source_LEGACY\\\">[{\\\"id\\\":\\\"TacticName\\\",\\\"value\\\":\\\"Educational Email Series kpltestemail00013\\\"},{\\\"id\\\":\\\"TacticObjective\\\",\\\"value\\\":\\\"A short email series explains use cases, customer outcomes, and next steps.\\\"}]</oraFormSubmit>\",\n    \"OraMessageHint\": \"InvokeAction\",\n    \"OraUserContext\": \"{\\\"userId\\\":\\\"\\\",\\\"guId\\\":\\\"FA71ABC8E78A43F3A3025AE8E6E61FAC\\\",\\\"fullName\\\":\\\"Kapil Sharma\\\",\\\"userName\\\":\\\"kapil.y.sharma@oracle.com\\\",\\\"isAuthenticated\\\":true,\\\"loginUrl\\\":\\\"https://cpdcfvnqy.fusionappspreprod.ocs.oc-test.com:443/fscmUI/faces/FuseWelcome\\\",\\\"isAdmin\\\":true,\\\"idcsTimeOut\\\":30,\\\"locale\\\":\\\"en\\\"}\",\n    \"triggerType\": \"REST\",\n    \"aiAppOutputSpecification\": \"[\\\"infoDisplay\\\",\\\"actions\\\",\\\"enableCommunications\\\"]\"\n}"
+        }
+      ]
+    },
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    },
+    "deletedTriggerTypes": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "MARKETING",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": true,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"5\""
+  }
+}

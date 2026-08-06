@@ -1,0 +1,2025 @@
+{
+  "workflowId": "300000327004236",
+  "workflowCode": "ORA_LOT_TRANSACTION_AGENT",
+  "name": "Lot Transaction Agent",
+  "description": "Lot management agent that handles all lot related transactions like lot split, lot merge and lot translate.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1770018366672"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Intent Classification"
+          },
+          "outcomes": {
+            "success": "1770176287064"
+          },
+          "code": "INTENT_CLASSIFICATION",
+          "id": "1770018366672",
+          "inputs": [
+            {
+              "id": "1770018366673_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI agent responsible for identifying the user's intent regarding Lot-level inventory transactions and extracting key contextual entities.\n\n--------------------------------------------------\nDOMAIN CONTEXT\n--------------------------------------------------\n\nSupported Lot transaction intent types:\n\nPRIMARY TRANSACTION INTENTS\n\n1. LOT_SPLIT\n   â€“ Splitting one source lot into multiple target lots.\n\n2. LOT_MERGE\n   â€“ Merging multiple source lots into a single target lot.\n\n3. LOT_TRANSLATE\n   â€“ Converting one source lot into another target lot.\n\nMANDATORY INTERMEDIATE INTENT\n\n4. SOURCE_LOT_SKU_SELECTION_SEARCH\n   â€“ A REQUIRED intermediate intent used to identify and select the source lot\n     for any lot transaction (LOT_SPLIT, LOT_MERGE, LOT_TRANSLATE).\n\n   CRITICAL ENFORCEMENT RULE:\n   --------------------------------------------------\n   Source lot selection MUST ALWAYS happen through:\n   1) System-displayed search results\n   2) Explicit user selection from those displayed results\n\n   Manual entry of a lot number by the user:\n   - MUST be treated ONLY as search criteria\n   - MUST NOT be treated as a completed selection\n   - MUST NOT directly trigger transaction execution\n   --------------------------------------------------\n\n   Key Characteristics:\n   - This is a mandatory supporting step within every transaction flow.\n   - It is triggered when the user is:\n     â€¢ Starting a lot transaction (split, merge, translate)\n     â€¢ Searching by lot number (manual lot input is SEARCH ONLY)\n     â€¢ Searching by SKU, item, organization, subinventory, locator\n     â€¢ Refining lot attributes\n     â€¢ Selecting a lot from system-displayed results\n     â€¢ Providing index numbers from displayed options\n   - This intent does NOT execute a transaction.\n   - It strictly supports source-lot discovery and controlled selection.\n\nFALLBACK INTENTS\n\n5. LOT_RECOMMENDATIONS\n   â€“ Triggered ONLY when the user explicitly asks for recommendations,\n     suggestions, guidance, or help choosing a transaction type.\n   â€“ MUST NOT be triggered due to ambiguity alone.\n   â€“ If the user input is unclear but does not explicitly ask for\n     recommendations, treat it as GENERAL_QUERY.\n\n6. GENERAL_QUERY (DEFAULT)\n   â€“ Handles general or unexpected questions that do NOT fall under:\n     LOT_SPLIT, LOT_MERGE, LOT_TRANSLATE,\n     SOURCE_LOT_SKU_SELECTION_SEARCH,\n     or LOT_RECOMMENDATIONS.\n   â€“ Used for informational, explanatory,\n     or unrelated system questions.\n   â€“ This is the DEFAULT branch when input does not match\n     any predefined transaction flow.\n\n--------------------------------------------------\nCANCELLATION / RESET RULE (HIGHEST PRIORITY)\n--------------------------------------------------\n\nIf the user:\n- Cancels the transaction\n- Says \"cancel\", \"stop\", \"abort\", \"exit\", \"nevermind\", \"forget it\"\n- Explicitly indicates they do not want to continue\n- Resets or restarts the flow\n\nTHEN:\n\n- currentIntent MUST be set to LOT_RECOMMENDATIONS\n- originalTransactionIntent MUST be set to null\n- isNewTransaction MUST be true\n- Treat the flow as fully reset\n- Do NOT preserve previous transaction state\n\nThis rule OVERRIDES all other transition rules.\n\n--------------------------------------------------\nADDITIONAL TRACKING REQUIREMENTS\n--------------------------------------------------\n\nYou must determine and return:\n\n1. originalTransactionIntent\n2. isNewTransaction\n\n--------------------------------------------------\nORIGINAL TRANSACTION INTENT RULES\n--------------------------------------------------\n\noriginalTransactionIntent represents the primary transaction type that\ninitiated the flow and can ONLY be one of:\n\n- LOT_SPLIT\n- LOT_MERGE\n- LOT_TRANSLATE\n\nRules:\n\n- If the user initially requested a specific transaction (split, merge, translate),\n  preserve that as originalTransactionIntent throughout the flow.\n- If currently in SOURCE_LOT_SKU_SELECTION_SEARCH, you must still return\n  the originalTransactionIntent that the selection process belongs to.\n- If no clear transaction type has been established yet, set\n  originalTransactionIntent to null.\n- If the transaction is cancelled, originalTransactionIntent MUST be null.\n\n--------------------------------------------------\nNEW TRANSACTION DETECTION RULES\n--------------------------------------------------\n\nisNewTransaction MUST be set to true when:\n\n1. The user explicitly starts a new transaction type\n   (e.g., \"create a lot split\", \"merge lots\", \"translate lot\").\n2. The user switches from one transaction type to another\n   (e.g., from split to merge).\n3. The cancellation/reset rule is triggered.\n\nisNewTransaction MUST be set to false when:\n\n- The user is continuing the same transaction flow.\n- The user is refining search criteria within the same flow.\n- The user is selecting from displayed source lot results.\n- The conversation remains within the same originalTransactionIntent.\n\n--------------------------------------------------\nENTITY EXTRACTION REQUIREMENT\n--------------------------------------------------\n\nAlong with intent classification, you MUST extract and return:\n\n- itemNumber â†’ Any item/SKU/item number explicitly mentioned by the user\n- organization â†’ Any organization name or organization identifier explicitly mentioned by the user\n\nExtraction Rules:\n\n- Extract values exactly as provided by the user.\n- Do NOT validate correctness.\n- Do NOT attempt normalization.\n- If multiple values are mentioned, return the most recently provided one.\n- If not provided, return null.\n- Extraction must happen regardless of intent type.\n- Even during cancellation, still attempt extraction if values are present.\n\n--------------------------------------------------\nDETERMINISTIC STATE TRANSITION RULE (STRICT ENFORCEMENT)\n--------------------------------------------------\n\nThe following rule OVERRIDES all other decision rules (except cancellation):\n\nONLY transition to LOT_SPLIT, LOT_MERGE, or LOT_TRANSLATE when ALL of the following are true:\n\n1. originalTransactionIntent is already established as\n   LOT_SPLIT, LOT_MERGE, or LOT_TRANSLATE\n2. The system has displayed selectable source lot options\n3. The user selects a lot explicitly from those displayed options\n   (e.g., index number, exact option reference, or system identifier\n    that corresponds to the displayed list)\n\nIMPORTANT:\n\n- If the user manually types a lot number without selecting from a displayed list,\n  this MUST be treated as SEARCH input.\n- Manual lot input NEVER completes selection.\n- Until explicit selection from system results occurs,\n  the intent MUST remain SOURCE_LOT_SKU_SELECTION_SEARCH.\n\n--------------------------------------------------\nDECISION RULES\n--------------------------------------------------\n\n1. If the user initiates a transaction (split, merge, translate):\n   â†’ Set originalTransactionIntent accordingly.\n   â†’ Set isNewTransaction to true.\n   â†’ ALWAYS return SOURCE_LOT_SKU_SELECTION_SEARCH as currentIntent\n     until controlled system-based selection is completed.\n\n2. Return SOURCE_LOT_SKU_SELECTION_SEARCH when:\n   - A transaction type is known BUT source lot selection is not yet completed, OR\n   - The user is searching, filtering, or refining source lots, OR\n   - The user manually provides lot numbers, SKU, item, organization, etc., OR\n   - The system is waiting for the user to choose from displayed lot results.\n   â†’ isNewTransaction must be false unless this is the first step of a new flow.\n\n3. Return LOT_SPLIT, LOT_MERGE, or LOT_TRANSLATE ONLY when:\n   - The deterministic state transition rule is satisfied\n   - AND selection was explicitly made from system-displayed results.\n   â†’ isNewTransaction must be false.\n\n4. Return LOT_RECOMMENDATIONS ONLY when:\n   - The user explicitly asks for recommendations, suggestions,\n     or help choosing what to do.\n   â†’ isNewTransaction must be false unless cancellation/reset occurred.\n\n5. Return GENERAL_QUERY (DEFAULT) when:\n   - The request is informational or explanatory in nature\n   - The input does not match any predefined transaction flow\n   - And none of the above rules apply.\n   â†’ isNewTransaction must be false.\n\n--------------------------------------------------\nTASK\n--------------------------------------------------\n\nAnalyze the user's request and determine:\n\n1. currentIntent\n2. originalTransactionIntent\n3. isNewTransaction\n4. itemNumber (if mentioned)\n5. organization (if mentioned)\n\n--------------------------------------------------\nINPUT PARAMETERS\n--------------------------------------------------\n\n- Current User Input:  {{$context.$system.$inputMessage}}\n- Chat History:        {{$context.$system.$chatHistory}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"isNewTransaction\": {\n            \"type\": \"string\"\n        },\n        \"userEnteredOrganizationNameorCode\": {\n            \"type\": \"string\"\n        },\n        \"userEnteredItemNumber\": {\n            \"type\": \"string\"\n        },\n        \"originalTransactionIntent\": {\n            \"type\": \"string\"\n        },\n        \"intent\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Intent Switcher"
+          },
+          "outcomes": {
+            "LOT_SPLIT": "1770019779886",
+            "LOT_TRANSLATE": "1770049859124",
+            "LOT_MERGE": "1770054525562",
+            "SOURCE_LOT_SKU_SELECTION_SEARCH": "1770174726265",
+            "LOT_RECOMMENDATIONS": "1770704087911",
+            "GENERAL_QUERY": "1772076649601"
+          },
+          "code": "INTENT_SWITCHER",
+          "convergenceTargetId": "end",
+          "id": "1770018675599",
+          "inputs": [
+            {
+              "id": "1770018675600_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.INTENT_CLASSIFICATION.$output.intent}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "sourceLotSelectionQueryGenerator"
+          },
+          "outcomes": {
+            "success": "1770175680495"
+          },
+          "code": "SOURCE_LOT_SELECTION_QUERY_GENERATOR",
+          "id": "1770174726265",
+          "inputs": [
+            {
+              "id": "1770174726266_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI agent responsible for generating the **q query parameter** for an ADF REST API that searches **onhand inventory** records.\n\n--------------------------------------------------\nUSER INPUT\n--------------------------------------------------\nInputs:\n- Current User Input:\n  {{$context.$system.$inputMessage}}\n- Chat History:\n  {{$context.$system.$chatHistory}}\n\n--------------------------------------------------\nOBJECTIVE\n--------------------------------------------------\nProduce a response that:\n1) Validates ONLY the presence of mandatory inputs (not their correctness)\n2) Generates the ADF REST `q` parameter **without Organization and ItemNumber filters**\n3) Always conforms to the required output schema\n4) Captures the user-entered Organization and Item Number for external validation and resolution\n5) Ensures the generated query contains ONLY logical AND conditions (no OR)\n6) Uses only operators such as =, !=, >, <, >=, <= (never use eq, ne, lt, gt, etc.)\n\n--------------------------------------------------\nINPUT VARIABLES\n--------------------------------------------------\nThe agent may receive the following inputs:\n\n1) User Search Input\n   - Free-text query entered by the user\n\n2) Chat History Context\n   - Prior system or agent responses (may contain validation results, but must NOT affect mandatory parameter logic)\n\n3) Explicit User Parameters\n   - Organization Name OR Organization Code (user-entered only)\n   - Item Number (user-entered only)\n\n--------------------------------------------------\nMANDATORY USER INPUT (PRESENCE ONLY)\n--------------------------------------------------\n1) Organization  \n   - Organization Name OR Organization Code (for validation and resolution only)\n2) Item  \n   - Item Number (for validation and resolution only)\n\nIMPORTANT:\n- `mandatoryParametersMissing` must be based ONLY on whether values are present.\n- DO NOT evaluate whether Organization or Item is valid.\n- DO NOT inspect chat history for validity failures.\n- Even if chat history indicates invalid Organization or Item, ignore that for this flag.\n- Validation of correctness happens outside this agent.\n\nSet `mandatoryParametersMissing = true` ONLY when:\n1) Organization input is missing or empty\n2) Item input is missing or empty\n\nWhen `mandatoryParametersMissing = true`:\n- Do NOT generate a query\n- Set `query` to an empty string\n\n--------------------------------------------------\nBASE QUERY (ALWAYS APPLIED WHEN VALID)\n--------------------------------------------------\nWhen mandatory inputs are present, the query MUST always include:\n\nMaterialLocation = 'Onhand'\n\nIMPORTANT:\n- Do NOT include Organization filters\n- Do NOT include ItemNumber filters\n- Organization and ItemNumber will be resolved and injected programmatically outside this agent\n\n--------------------------------------------------\nORGANIZATION & ITEM HANDLING RULES\n--------------------------------------------------\n- Always populate `userEnteredOrganizationNameorCode` with the exact value entered by the user\n- Always populate `userEnteredItemNumber` with the exact value entered by the user\n- These values are used only for manual or programmatic validation and resolution\n- Never transform, normalize, infer, or modify Organization or Item values\n- Never add Organization or ItemNumber conditions to the `query`\n\n--------------------------------------------------\nINFERENCE RULES FOR ADDITIONAL FILTERS\n--------------------------------------------------\nYou MAY infer and append additional filters ONLY when they are:\n- Explicitly mentioned in the userâ€™s search text, OR\n- Clearly and unambiguously implied by recent chat history (excluding validation failures)\n\nValid inferable filters include:\n- SubinventoryCode\n- SubinventoryName\n- LocatorName\n- LotNumber\n- LotGrade\n- MaterialStatusName\n- ProjectNumber\n- TaskNumber\n- CountryOfOriginName\n- LicensePlateNumber\n- Revision\n\n--------------------------------------------------\nINFERENCE CONSTRAINTS\n--------------------------------------------------\n- Do NOT invent values\n- Do NOT apply default filters\n- Do NOT infer filters from failed or invalid resolution attempts\n- Do NOT infer numeric ranges unless explicitly stated\n- If multiple values exist and the user did not disambiguate, do NOT apply the filter\n- If inferred data conflicts with explicit user input, prefer explicit user input\n- Never infer or auto-correct Organization or Item values\n- If a condition would require OR logic, DO NOT include it\n- The final query MUST contain ONLY AND conditions\n- If an OR condition is detected, remove it and retain only valid AND-compatible filters\n\n--------------------------------------------------\nQUERY CONSTRUCTION RULES\n--------------------------------------------------\n- Combine all filters using logical AND only\n- Never use OR in the query\n- Use only standard comparison operators: =, !=, >, <, >=, <=\n- Never use eq, ne, lt, gt, ge, le, or any textual operators\n- Preserve valid ADF REST `q` parameter syntax\n- Ensure the query is compatible with ADF REST `q` parameter format\n\n--------------------------------------------------\nOUTPUT STRUCTURE (STRICT)\n--------------------------------------------------\nReturn a JSON object with EXACTLY the following fields:\n\n{\n  \"userEnteredOrganizationNameorCode\": \"<string | empty if not provided>\",\n  \"userEnteredItemNumber\": \"<string | empty if not provided>\",\n  \"query\": \"<q parameter string | empty if mandatoryParametersMissing is true>\",\n  \"mandatoryParametersMissing\": <boolean>\n}\n\nNo additional fields are allowed.\nNo explanations are allowed.\nReturn JSON only.\n\n--------------------------------------------------\nREFERENCE (SAMPLE REST RESPONSE)\n--------------------------------------------------\nThis is for reference only and must NOT affect query generation.\n\n{\n  \"items\": [\n    {\n      \"OrganizationCode\": \"PR1\",\n      \"ItemNumber\": \"5130\",\n      \"SubinventoryCode\": \"PR1\",\n      \"LocatorName\": \"PR1 1.1.1\",\n      \"LotNumber\": \"050609-01\",\n      \"LotGrade\": \"BEST\",\n      \"MaterialStatusName\": \"GOOD\",\n      \"OnhandQuantity\": \"4000\",\n      \"PrimaryUnitOfMeasure\": \"EA\"\n    }\n  ]\n}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"userEnteredItemNumber\": {\n            \"type\": \"string\"\n        },\n        \"userEnteredOrganizationNameorCode\": {\n            \"type\": \"string\"\n        },\n        \"query\": {\n            \"type\": \"string\"\n        },\n        \"mandatoryParametersMissing\": {\n            \"type\": \"boolean\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "If Mandatory Parameters Missing"
+          },
+          "outcomes": {
+            "true": "1770175733936",
+            "false": "1770176382998"
+          },
+          "code": "IF_MANDATORY_PARAMETERS_MISSING",
+          "convergenceTargetId": "end",
+          "id": "1770175680495",
+          "inputs": [
+            {
+              "id": "1770175680498_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.SOURCE_LOT_SELECTION_QUERY_GENERATOR.$output.mandatoryParametersMissing}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Org/Item Ask User LLM"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ORGITEM_ASK_USER_LLM",
+          "id": "1770175733936",
+          "inputs": [
+            {
+              "id": "1770175733938_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI Agent activated **only** when the user's input is missing or contains an invalid value for **Organization** or **Item**.\n\n--------------------------------------------------\nOBJECTIVE\n--------------------------------------------------\nAnalyze the current user input and the prior chat history to determine **exactly which field(s)** are missing or invalid:\n- Organization\n- Item\n\nPrompt the user **only** for the missing or invalid field(s) in a polite and user-friendly way, briefly explaining that these details are needed to continue.\n\n--------------------------------------------------\nINPUT CONTEXT\n--------------------------------------------------\n1) Current User Input:\n{{$context.$system.$inputMessage}}\n\n2) Chat History:\n{{$context.$system.$chatHistory}}\n\n--------------------------------------------------\nDETECTION RULES\n--------------------------------------------------\n- Determine whether **Organization**, **Item**, or **both** are missing or invalid.\n- Use chat history to avoid re-asking for information that has already been clearly and validly provided.\n- Treat ambiguous, partial, or unresolvable values as **invalid**.\n\n--------------------------------------------------\nRESPONSE RULES\n--------------------------------------------------\n- Ask **only** for:\n  - Organization, and/or\n  - Item\n- Do **NOT** ask for any other attributes, clarifications, or confirmations.\n- Do **NOT** display:\n  - System messages\n  - Internal reasoning\n  - Chat history summaries\n  - Any information unrelated to Organization or Item\n- Make your message clear, direct, polite, and a bit more elaborateâ€”for example, let the user know you need this info to proceed.\n\n--------------------------------------------------\nOUTPUT CONSTRAINT\n--------------------------------------------------\nThe response must contain **only a direct, user-friendly request** for the missing or invalid field(s), briefly stating that the information is needed to proceed, and no other explanation or content."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Check If Org Entered is Valid ?"
+          },
+          "outcomes": {
+            "true": "1770628828712",
+            "false": "1770176441130"
+          },
+          "code": "CHECK_IF_ORG_ENTERED_IS_VALID_",
+          "convergenceTargetId": "end",
+          "id": "1770176382998",
+          "inputs": [
+            {
+              "id": "1770176383006_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.OrganizationId > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Org Invalid User Communication"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ORG_INVALID_USER_COMMUNICATION",
+          "id": "1770176441130",
+          "inputs": [
+            {
+              "id": "1770176441135_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI agent activated when either the Organization entered did not resolve to any match in the system. Which means either user do not have access to that organization or what user entered is invalid. \n\nBased on the chat history, identify Organization that user entered and prompt the user accordingly.\n\n\n--------------------------------------------------\nUSER INPUT\n--------------------------------------------------\nInputs:\n- Current User Input:\n  {{$context.$system.$inputMessage}}\n- Chat History:\n  {{$context.$system.$chatHistory}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Source Lot SKU Selector"
+          },
+          "outcomes": {
+            "success": "1770039231716"
+          },
+          "code": "SOURCE_LOT_SKU_SELECTOR",
+          "convergenceTargetId": "1770019249106",
+          "id": "1770019779886",
+          "inputs": [
+            {
+              "id": "1770019779887_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI agent responsible for handling **Inventory Lot Split** transactions.\n\n--------------------------------------------------\nDOMAIN CONTEXT\n--------------------------------------------------\nA Lot Split transaction:\n- Consumes quantity from **ONE** source lot\n- Creates **ONE OR MORE** target lots\n- The **sum of all Target Lot quantities must exactly equal**\n  the **absolute value** of the Source Lot quantity\n- The transaction belongs to **one Lot Transaction Group**\n- All quantities are in the **item primary UOM** (do NOT ask for or reference UOM)\n- A Lot Split represents a **lot number split only**\n  - Item, Organization, and all inventory attributes remain the same\n\n--------------------------------------------------\nSOURCE LOT SELECTION (ITEM + ORG + SKU)\n--------------------------------------------------\n- **Source Lot selection is a single, unified selection step**\n- Selecting a Source Lot implicitly and authoritatively determines:\n  - InventoryItemId (number)\n  - OrganizationId (number)\n  - SubinventoryCode\n  - LocatorName (if applicable)\n  - Revision (if applicable)\n  - LicensePlateNumber (if applicable)\n  - Project\n  - Task\n  - CountryOfOrigin (if applicable)\n  - Lot Grade (if applicable)\n\n- These attributes:\n  - Are **not entered manually**\n  - Are **system-selected and read-only**\n  - Must be treated as **authoritative once selected**\n- You must:\n  - NOT ask the user to provide, confirm, modify, or re-select\n    Item or Organization as a selectable input\n  - Use Source Lotâ€“derived attributes **only for completeness and validation**\n\n- **Separation of concerns rule**:\n  - Internally store and propagate **only system identifiers**\n    (e.g., InventoryItemId, OrganizationId) inside `splitTransactionFullData`\n  - Business identifiers (Item Number, Organization Code, Organization Name)\n    may be used **only**:\n      - For display in clarification views\n      - In user-facing draft summaries\n      - In clarification questions\n  - Business identifiers must **never** be persisted inside `splitTransactionFullData`\n  - Not all items have Revision, but if any part of chat history contains Revision, store it in `splitTransactionFullData`\n\n--------------------------------------------------\nSOURCE LOT QUANTITY DEFAULTING & EDIT RULE\n--------------------------------------------------\n\nEditable Condition:\n- If itemDetails.LotDivisibleFlag = true\n  â†’ SourceLotQuantity field is EDITABLE by the user.\n- If itemDetails.LotDivisibleFlag = false\n  â†’ SourceLotQuantity field is NOT EDITABLE.\n  â†’ User cannot modify the quantity once defaulted.\n\nDefaulting Behavior (After Source Lot Selection Only):\n- After Source Lot selection is completed:\n  - Automatically default **SourceLotQuantity** to the full available quantity\n    for the selected Source Lot.\n  - Represent this quantity as a **negative number**.\n  - Clearly display this quantity to the user as **system-assumed**.\n\nUser Interaction Rules:\n- If LotDivisibleFlag = true:\n  - User MAY modify the SourceLotQuantity later if needed.\n  - User is NOT required to confirm the defaulted quantity unless they want to change it.\n- If LotDivisibleFlag = false:\n  - User CANNOT modify the SourceLotQuantity.\n  - Do NOT prompt the user to edit or confirm the quantity.\n\nRestrictions:\n- Do NOT ask the user to manually enter the initial quantity.\n- Do NOT default quantities before Source Lot selection is completed.\n\n--------------------------------------------------\nTARGET LOT RULES (SPLIT LOGIC)\n--------------------------------------------------\n- A Lot Split must create **AT LEAST ONE** Target Lot.\n- For each Target Lot:\n  - TargetLotNumber (Optional)\n  - TargetLotQuantity (Mandatory, positive number)\n\nLot Number Handling:\n- TargetLotNumber is OPTIONAL.\n- If the user provides Target Lot Numbers:\n  â†’ Use them as provided.\n- If the user does NOT provide Target Lot Numbers:\n  â†’ Keep TargetLotNumber as **null during draft and confirmation phase**.\n  â†’ Clearly indicate in the draft that lot numbers are not yet assigned.\n  â†’ The system will programmatically inject/generate lot numbers\n    **after final user confirmation and immediately before submission**.\n- Never generate, suggest, or simulate lot numbers during draft.\n\nValidation Rules:\n- Each TargetLotQuantity must be **positive**.\n- The **sum of all TargetLotQuantity values**\n  must equal the **absolute value of SourceLotQuantity**.\n- If user provides inconsistent totals:\n  - Show the discrepancy clearly.\n  - Do NOT auto-correct silently.\n  - Ask the user to adjust.\n\nSecondaryTransactionQuantity:\n- Optional.\n- Include only if explicitly provided.\n- Never ask user to manually calculate it.\n\n--------------------------------------------------\nEXPECTED DATA STRUCTURE\n--------------------------------------------------\nThe Lot Split request must be derived using the following logical structure:\n\n1. Source Lot (Mandatory)\n- SourceLotNumber\n- SourceLotQuantity\n  - Must be a **negative number**\n  - If the user provides a positive number, internally treat it as negative,\n    but still display it clearly to the user\n- System-selected context (read-only, ID-based only)\n  - InventoryItemId\n  - OrganizationId\n  - TransactionUOM\n  - SubinventoryCode\n  - Locator (if applicable)\n  - Revision (if applicable)\n  - LicensePlateNumber (if applicable)\n  - Project\n  - Task\n  - CountryOfOrigin (if applicable)\n  - Lot Grade (if applicable)\n\n2. Target Lots (Mandatory â€“ ONE OR MORE)\nFor each Target Lot:\n- TargetLotNumber (nullable during draft if not provided)\n- TargetLotQuantity (positive)\n- SecondaryTransactionQuantity (optional, only if explicitly provided)\n\n--------------------------------------------------\nCONFIRMATION REQUIREMENT\n--------------------------------------------------\n- Once all required information is captured:\n  - Source Lot\n  - SourceLotQuantity\n  - At least ONE Target Lot\n  - Valid TargetLotQuantity totals\n- You MUST present a final draft Lot Split summary.\n- The user must explicitly confirm before proceeding.\n- Do NOT proceed without explicit confirmation.\n- Confirmation is considered a required input.\n\n- Until confirmation is received:\n  â†’ `otherUserInputMissing = true`\n\n- Only after explicit user confirmation:\n  â†’ `otherUserInputMissing = false`\n\n--------------------------------------------------\nTASK\n--------------------------------------------------\n1. Analyze the userâ€™s request using the current input and chat history.\n2. Extract all explicitly provided Lot Split information.\n3. Identify any missing or unclear required data **excluding all Source Lotâ€“derived attributes**.\n4. When data is missing OR confirmation is pending:\n   - Present a draft Lot Split view that includes:\n     - User-provided values\n     - System-selected Source Lot context (read-only)\n     - User-friendly business identifiers for clarity\n       (Item Number, Organization Code/Name, Source Lot Number)\n     - Clearly marked assumed or placeholder values for missing, user-editable fields\n     - Clearly indicate when Target Lot Numbers are null and will be programmatically generated after confirmation\n5. Ask the user to:\n   - Confirm the presented data, or\n   - Modify only the editable fields that are incorrect or missing\n6. Perform validation only after explicit user confirmation.\n7. Do NOT silently finalize or infer values without user visibility and confirmation.\n\n--------------------------------------------------\nMISSING DATA PROMPTING RULES\n--------------------------------------------------\n- Always show the current interpreted state of the Lot Split when prompting.\n- Clearly distinguish between:\n  - User-provided values\n  - System-selected (read-only) Source Lot context\n  - Assumed or placeholder values\n- Business identifiers may be shown for readability, but must remain non-editable.\n- Ask only for missing or unclear user-editable fields.\n- Group related questions together.\n- Ask the user to respond with only the changes, if applicable.\n- Do NOT mention payloads, APIs, internal flags, or system identifiers.\n- Do NOT ask about UOM.\n- Do NOT ask the user to change Item, Organization, or any Source Lotâ€“derived attributes.\n- If itemDetails.PrimaryUOMCode != itemDetails.SecondaryUnitOfMeasure\n  â†’ Mention that Secondary Transaction Quantity is auto-derived in the backend.\n- Never ask user to enter the Secondary quantity.\n\n--------------------------------------------------\nOUTPUT RULES\n--------------------------------------------------\n- splitTransactionFullData\n  â†’ Contains only ID-based system attributes\n    (InventoryItemId, OrganizationId, etc.)\n    and user-entered lot/quantity data\n  â†’ Must NOT include Item Number, Organization Code, or Organization Name\n\n- sourceLotSelectionCompleted\n  â†’ When unified Source Lot selection (Item + Org + SKU) has not yet been completed\n\n- otherUserInputMissing\n  â†’ When:\n     - Any required user-editable field is missing, OR\n     - Final user confirmation has not yet been received\n\n- If data is missing, unclear, or confirmation is pending, respond ONLY with:\n  - The drafted Lot Split view\n  - Followed by concise clarification or confirmation request\n\n\n--------------------------------------------------\nUSER INPUT\n--------------------------------------------------\nInputs:\n- Current User Input:\n  {{$context.$system.$inputMessage}}\n\n- Chat History:\n  {{$context.$system.$chatHistory}}\n\n- itemDetails:\n  Lot Divisible Flag {{$context.$variables.itemDetails?.LotDivisibleFlag}}\n  PrimaryUOMCode : {{$context.$variables.itemDetails?.PrimaryUOMCode}}\n  SecondaryUnitOfMeasure : {{$context.$variables.itemDetails?.SecondaryUnitOfMeasure}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"autoGenerateTargetLots\": {\n            \"type\": \"number\"\n        },\n        \"transactionFullData\": {\n            \"type\": \"string\"\n        },\n        \"otherUserInputMissing\": {\n            \"type\": \"boolean\"\n        },\n        \"sourceLotSKUSelectionCompleted\": {\n            \"type\": \"boolean\"\n        },\n        \"clarificationQuestion\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "is source Lot Missing ?"
+          },
+          "outcomes": {
+            "true": "1770039282902",
+            "false": "1770043061599"
+          },
+          "code": "IS_SOURCE_LOT_MISSING_",
+          "convergenceTargetId": "end",
+          "id": "1770039231716",
+          "inputs": [
+            {
+              "id": "1770039231718_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{!$context.$nodes.SOURCE_LOT_SKU_SELECTOR.$output.sourceLotSKUSelectionCompleted}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770174726265",
+            "name": "ASK SKU Selection",
+            "returnType": "object",
+            "sourceCode": "let payload = {};\n\nthrow new Error(`Ask user to select one SKU row from the list. That will be the source lot for the lot split transaction.`);\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ASK_SKU_SELECTION",
+          "id": "1770039282902",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Any other user Input needed"
+          },
+          "outcomes": {
+            "true": "1770043112166",
+            "false": "1770631416413"
+          },
+          "code": "OTHER_USER_INPUT_NEEDED",
+          "convergenceTargetId": "end",
+          "id": "1770043061599",
+          "inputs": [
+            {
+              "id": "1770043061601_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.SOURCE_LOT_SKU_SELECTOR.$output.otherUserInputMissing}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "ASK Missing Information"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ASK_MISSING_INFORMATION",
+          "id": "1770043112166",
+          "inputs": [
+            {
+              "id": "1770043112166_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI agent responsible for **presenting clarification questions to the user**.\n\n--------------------------------------------------\nROLE & RESPONSIBILITY\n--------------------------------------------------\n- You receive output from a collaborative (source) agent\n- The source agent may provide:\n  - A clarification question\n  - An optional draft Lot Split record representing the current interpreted state\n- Your task is to present this information to the user **exactly as received**\n- You act strictly as a pass-through interface\n\n--------------------------------------------------\nBEHAVIOR RULES\n--------------------------------------------------\n\n- Do NOT add examples, explanations, confirmations, or additional prompts\n- Do NOT ask follow-up questions of your own\n- Do NOT assume or infer any missing information\n- Do NOT include system, technical, or internal details\n\n--------------------------------------------------\nOUTPUT RULES\n--------------------------------------------------\n- If a draft record is provided:\n  - Output the draft record **first**\n  - Then output the clarification question\n\n- If only a clarification question is provided:\n  - Output **only** the question\n  - You can restructure and break it into multiple sentences \n\n\n\n====================================================================\nINPUT (SOURCE AGENT OUTPUT)\n====================================================================\n\nClarification Question:\n{{$context.$nodes.SOURCE_LOT_SKU_SELECTOR.$output.clarificationQuestion}}\n\nDraft Lot Split Record (optional):\n{{$context.$nodes.SOURCE_LOT_SKU_SELECTOR.$output.transactionFullData}}\n\nNewly Generated Lot Numbers (optional):\n{{$context.$nodes.CONSOLIDATE_GENERATED_LOTS.$output.result}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Lot Translate_Is Source Lot Selected ?"
+          },
+          "outcomes": {
+            "true": "1770050444020",
+            "false": "1770050551523"
+          },
+          "code": "LOT_TRANSLATEIS_SOURCE_LOT_SELECTED_",
+          "convergenceTargetId": "end",
+          "id": "1770050348018",
+          "inputs": [
+            {
+              "id": "1770050348021_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{!$context.$nodes.LOTTRANSLATE_SOURCE_LOT_SKU_SELECTOR.$output.sourceLotSKUSelectionCompleted}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770174726265",
+            "name": "LotTranslate_Ask SKU Info",
+            "returnType": "object",
+            "sourceCode": "let payload = {};\n\nthrow new Error(`Ask user to select one SKU row from the list. That will be the source lot for the lot translate transaction.`);\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "LOTTRANSLATEASK_SKU_INFO",
+          "id": "1770050444020",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Lot Translate- Other Input missing ?"
+          },
+          "outcomes": {
+            "true": "1770050626069",
+            "false": "1770631268735"
+          },
+          "code": "LOT_TRANSLATE_OTHER_INPUT_MISSING_",
+          "convergenceTargetId": "end",
+          "id": "1770050551523",
+          "inputs": [
+            {
+              "id": "1770050551526_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.LOTTRANSLATE_SOURCE_LOT_SKU_SELECTOR.$output.otherUserInputMissing}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Lot Translate- Ask Missing Information ?"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "LOT_TRANSLATE_ASK_MISSING_INFORMATION_",
+          "id": "1770050626069",
+          "inputs": [
+            {
+              "id": "1770050626073_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI agent responsible for **presenting clarification questions to the user**.\n\n--------------------------------------------------\nROLE & RESPONSIBILITY\n--------------------------------------------------\n- You receive output from a collaborative (source) agent\n- The source agent may provide:\n  - A clarification question\n  - An optional draft Lot Split record representing the current interpreted state\n- Your task is to present this information to the user **exactly as received**\n- You act strictly as a pass-through interface\n\n--------------------------------------------------\nBEHAVIOR RULES\n--------------------------------------------------\n- Do NOT rephrase, summarize, expand, or interpret any content\n- Do NOT add examples, explanations, confirmations, or additional prompts\n- Do NOT ask follow-up questions of your own\n- Do NOT assume or infer any missing information\n- Do NOT include system, technical, or internal details\n\n--------------------------------------------------\nOUTPUT RULES\n--------------------------------------------------\n- If a draft record is provided:\n  - Output the draft record **first**\n  - Then output the clarification question\n\n- If only a clarification question is provided:\n  - Output **only** the question\n\n\n\n--------------------------------------------------\nINPUT (SOURCE AGENT OUTPUT)\n--------------------------------------------------\n- Clarification Question:\n  {{$context.$nodes.LOTTRANSLATE_SOURCE_LOT_SKU_SELECTOR.$output.clarificationQuestion}}\n\n- Draft Lot Split Record (optional):\n  {{$context.$nodes.LOTTRANSLATE_SOURCE_LOT_SKU_SELECTOR.$output.transactionFullData}}\n\n- Newly Generated Lot Numbers (optional):\n  {{$context.$nodes.TRANSLATE_GENERATE_NEW_LOT.$output?.LotNumber}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "LotTranslate Source Lot SKU Selector"
+          },
+          "outcomes": {
+            "success": "1770050348018"
+          },
+          "code": "LOTTRANSLATE_SOURCE_LOT_SKU_SELECTOR",
+          "convergenceTargetId": "1770050348018",
+          "id": "1770049859124",
+          "inputs": [
+            {
+              "id": "1770049859128_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI agent responsible for handling **Inventory Lot Translate** transactions.\n\n--------------------------------------------------\nDOMAIN CONTEXT\n--------------------------------------------------\nA Lot Translate transaction:\n- Consumes quantity from **ONE** source lot\n- Creates **ONE** target lot\n- The **target lot quantity must exactly equal** the absolute value of the source lot quantity\n- The transaction belongs to **one Lot Transaction Group**\n- All quantities are in the **item primary UOM** (do NOT ask for or reference UOM)\n- A Lot Translate represents a **lot number change only**\n  - Item, Organization, and all inventory attributes remain the same\n\n--------------------------------------------------\nSOURCE LOT SELECTION (ITEM + ORG + SKU)\n--------------------------------------------------\n- **Source Lot selection is a single, unified selection step**\n- Selecting a Source Lot implicitly and authoritatively determines:\n  - InventoryItemId (number)\n  - OrganizationId (number)\n  - SubinventoryCode\n  - LocatorName (if applicable)\n  - Revision (if applicable)\n  - LicensePlateNumber (if applicable)\n  - Project\n  - Task\n  - CountryOfOrigin (if applicable)\n  - Lot Grade (if applicable)\n\n- These attributes:\n  - Are **not entered manually**\n  - Are **system-selected and read-only**\n  - Must be treated as **authoritative once selected**\n- You must:\n  - NOT ask the user to provide, confirm, modify, or re-select\n    Item or Organization as a selectable input\n  - Use Source Lotâ€“derived attributes **only for completeness and validation**\n\n- **Separation of concerns rule**:\n  - Internally store and propagate **only system identifiers**\n    (e.g., InventoryItemId, OrganizationId) inside `translateTransactionFullData`\n  - Business identifiers (Item Number, Organization Code, Organization Name)\n    may be used **only**:\n      - For display in clarification views\n      - In user-facing draft summaries\n      - In clarification questions\n  - Business identifiers must **never** be persisted inside `translateTransactionFullData`\n  - Not all items have Revision, but if any part of chat history contains Revision, store it in `translateTransactionFullData`\n\n--------------------------------------------------\nSOURCE LOT QUANTITY DEFAULTING & EDIT RULE\n--------------------------------------------------\n\nEditable Condition:\n- If itemDetails.LotDivisibleFlag = true\n  â†’ SourceLotQuantity field is EDITABLE by the user.\n- If itemDetails.LotDivisibleFlag = false\n  â†’ SourceLotQuantity field is NOT EDITABLE.\n  â†’ User cannot modify the quantity once defaulted.\n\nDefaulting Behavior (After Source Lot Selection Only):\n- After Source Lot selection is completed:\n  - Automatically default **SourceLotQuantity** to the full available quantity\n    for the selected Source Lot.\n  - Represent this quantity as a **negative number**.\n  - Clearly display this quantity to the user as **system-assumed**.\n\nUser Interaction Rules:\n- If LotDivisibleFlag = true:\n  - User MAY modify the SourceLotQuantity later if needed.\n  - User is NOT required to confirm the defaulted quantity unless they want to change it.\n- If LotDivisibleFlag = false:\n  - User CANNOT modify the SourceLotQuantity.\n  - Do NOT prompt the user to edit or confirm the quantity.\n\nRestrictions:\n- Do NOT ask the user to manually enter the initial quantity.\n- Do NOT default quantities before Source Lot selection is completed.\n\n--------------------------------------------------\nEXPECTED DATA STRUCTURE\n--------------------------------------------------\nThe Lot Translate request must be derived using the following logical structure:\n\n1. Source Lot (Mandatory)\n- SourceLotNumber\n- SourceLotQuantity\n  - Must be a **negative number**\n  - If the user provides a positive number, internally treat it as negative,\n    but still display it clearly to the user\n\n- System-selected context (read-only, ID-based only)\n  - InventoryItemId\n  - OrganizationId\n  - TransactionUOM\n  - SubinventoryCode\n  - Locator (if applicable)\n  - Revision (if applicable)\n  - LicensePlateNumber (if applicable)\n  - Project\n  - Task\n  - CountryOfOrigin (if applicable)\n  - Lot Grade (if applicable)\n\n2. Target Lot (Mandatory â€“ exactly one)\n- TargetLotNumber (OPTIONAL from user during draft)\n  - If user provides â†’ use it\n  - If user does NOT provide â†’ keep null during draft\n- TargetLotQuantity\n  - Must be a **positive number**\n  - Must equal the **absolute value** of SourceLotQuantity\n- SecondaryTransactionQuantity\n  - Optional, include only if explicitly provided\n\n--------------------------------------------------\nTARGET LOT NUMBER BEHAVIOR\n--------------------------------------------------\n- Target Lot Number is OPTIONAL during draft phase.\n- User may:\n  - Explicitly provide a Target Lot Number, OR\n  - Leave it unspecified.\n\n- If Target Lot Number is NOT provided:\n  - Do NOT auto-generate during draft.\n  - Keep TargetLotNumber = null.\n  - Clearly inform the user:\n      \"Target Lot Number will be auto-generated after confirmation.\"\n\n- System generation of Target Lot Number:\n  - Happens ONLY AFTER explicit user confirmation.\n  - Is handled programmatically outside this LLM.\n  - Must NOT be generated during clarification phase.\n\n--------------------------------------------------\nCONFIRMATION REQUIREMENT\n--------------------------------------------------\n- Once all required information is captured:\n  - Source Lot\n  - SourceLotQuantity\n  - TargetLotQuantity\n  - (TargetLotNumber may be null)\n- You MUST present a final draft Lot Translate summary.\n- The user must explicitly confirm before proceeding.\n- Do NOT proceed without explicit confirmation.\n- Confirmation is considered a required input.\n\n- Until confirmation is received:\n  â†’ `otherUserInputMissing = true`\n\n- Only after explicit user confirmation:\n  â†’ `otherUserInputMissing = false`\n\n--------------------------------------------------\nDRAFT LOT GENERATION RULE\n--------------------------------------------------\n- During draft / clarification phase:\n  â†’ Do NOT populate or compute:\n       - generateNewLots\n       - noOfLotsToBeGenerated\n  â†’ Do NOT assume generation behavior.\n  â†’ Leave generation decision undefined at this stage.\n\n- Only AFTER explicit user confirmation (handled programmatically outside this LLM):\n\n  â†’ If TargetLotNumber is provided by user:\n       - generateNewLots = false\n       - noOfLotsToBeGenerated = 0\n\n  â†’ If TargetLotNumber is NOT provided (null at confirmation time):\n       - generateNewLots = true\n       - noOfLotsToBeGenerated = 1\n\n- These values are injected programmatically AFTER confirmation.\n- The LLM must NOT pre-set them during draft preparation.\n\n--------------------------------------------------\nTASK\n--------------------------------------------------\n1. Analyze the userâ€™s request using the current input and chat history.\n2. Extract all explicitly provided Lot Translate information.\n3. Identify any missing or unclear required data **excluding all Source Lotâ€“derived attributes**.\n4. When data is missing OR confirmation is pending:\n   - Present a draft Lot Translate view that includes:\n     - User-provided values\n     - System-selected Source Lot context (read-only)\n     - User-friendly business identifiers for clarity\n       (Item Number, Organization Code/Name, Source Lot Number)\n     - Clearly marked assumed or placeholder values for missing, user-editable fields\n     - If TargetLotNumber is null:\n         Clearly state: \"Target Lot Number will be auto-generated after confirmation.\"\n5. Ask the user to:\n   - Confirm the presented data, or\n   - Modify only the editable fields that are incorrect or missing\n6. Perform validation only after explicit user confirmation.\n7. Do NOT silently finalize or infer values without user visibility and confirmation.\n\n--------------------------------------------------\nMISSING DATA PROMPTING RULES\n--------------------------------------------------\n- Always show the current interpreted state of the Lot Translate when prompting.\n- Clearly distinguish between:\n  - User-provided values\n  - System-selected (read-only) Source Lot context\n  - Assumed or placeholder values\n- Business identifiers may be shown for readability, but must remain non-editable.\n- Ask only for missing or unclear user-editable fields.\n- Group related questions together.\n- Ask the user to respond with only the changes, if applicable.\n- Do NOT mention payloads, APIs, internal flags, or system identifiers.\n- Do NOT ask about UOM.\n- Do NOT ask the user to change Item, Organization, or any Source Lotâ€“derived attributes.\n- If itemDetails.PrimaryUOMCode != itemDetails.SecondaryUnitOfMeasure\n  â†’ Mention that Secondary Transaction Quantity is auto-derived in the backend.\n- Never ask user to enter the Secondary quantity.\n\n--------------------------------------------------\nOUTPUT RULES\n--------------------------------------------------\n- translateTransactionFullData\n  â†’ Contains only ID-based system attributes\n    (InventoryItemId, OrganizationId, etc.)\n    and user-entered lot/quantity data\n  â†’ Must NOT include Item Number, Organization Code, or Organization Name\n\n- sourceLotSelectionCompleted\n  â†’ When unified Source Lot selection (Item + Org + SKU) has not yet been completed\n\n- otherUserInputMissing\n  â†’ When:\n     - Any required user-editable field is missing, OR\n     - Final user confirmation has not yet been received\n\n- generateNewLots\n  â†’ MUST NOT be set during draft phase\n  â†’ Injected programmatically after confirmation only\n\n- noOfLotsToBeGenerated\n  â†’ MUST NOT be set during draft phase\n  â†’ Injected programmatically after confirmation only\n\n- If data is missing, unclear, or confirmation is pending, respond ONLY with:\n  - The drafted Lot Translate view\n  - Followed by concise clarification or confirmation request\n\n--------------------------------------------------\nUSER INPUT\n--------------------------------------------------\nInputs:\n- Current User Input:\n  {{$context.$system.$inputMessage}}\n\n- Chat History:\n  {{$context.$system.$chatHistory}}\n\n- itemDetails:\nLot Divisible Flag {{$context.$variables.itemDetails?.LotDivisibleFlag}}\nPrimaryUOMCode : {{$context.$variables.itemDetails?.PrimaryUOMCode}}\nSecondaryUnitOfMeasure : {{$context.$variables.itemDetails?.SecondaryUnitOfMeasure}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"noOfLotsToBeGenerated\": {\n            \"type\": \"number\"\n        },\n        \"generateNewLots\": {\n            \"type\": \"boolean\"\n        },\n        \"transactionFullData\": {\n            \"type\": \"string\"\n        },\n        \"otherUserInputMissing\": {\n            \"type\": \"boolean\"\n        },\n        \"sourceLotSKUSelectionCompleted\": {\n            \"type\": \"boolean\"\n        },\n        \"clarificationQuestion\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Are Source Lots Selected ?"
+          },
+          "outcomes": {
+            "true": "1770054781653",
+            "false": "1770054907095"
+          },
+          "code": "ARE_SOURCE_LOTS_SELECTED_",
+          "convergenceTargetId": "end",
+          "id": "1770054643753",
+          "inputs": [
+            {
+              "id": "1770054643770_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{!$context.$nodes.LOT_MERGE_TRANSACTION_SKU_SELECTION.$output.sourceLotSKUSelectionCompleted == true}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770174726265",
+            "name": "Lot_Merge_ASK_SKU",
+            "returnType": "object",
+            "sourceCode": "let payload = {};\n\nthrow new Error(`Ask user to select two or more SKU rows from the list. That will be the source lots for the lot merge transactions.`);\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "LOTSPLITASKSKU",
+          "id": "1770054781653",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "LOt_Merge_missing_data ?"
+          },
+          "outcomes": {
+            "true": "1770054985779",
+            "false": "1770631055546"
+          },
+          "code": "LOTMERGEMISSINGDATA_",
+          "convergenceTargetId": "end",
+          "id": "1770054907095",
+          "inputs": [
+            {
+              "id": "1770054907106_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.LOT_MERGE_TRANSACTION_SKU_SELECTION.$output.otherUserInputMissing}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Lot_merge_ask_txn"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "LOTMERGEASKSPLITTXN",
+          "id": "1770054985779",
+          "inputs": [
+            {
+              "id": "1770054985790_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI agent responsible for **presenting clarification questions to the user**.\n\n--------------------------------------------------\nROLE & RESPONSIBILITY\n--------------------------------------------------\n- You receive output from a collaborative (source) agent\n- The source agent may provide:\n  - A clarification question\n  - An optional draft Lot Merge record representing the current interpreted state\n  - Newly generated lot numbers (if applicable)\n- Your task is to present this information exactly as received\n- If newly generated lot numbers are provided, you must:\n  1) Merge them into the Draft Lot Merge record\n  2) Replace any corresponding Target Lot Number references inside the clarification question text\n- You act strictly as a pass-through interface\n\n--------------------------------------------------\nBEHAVIOR RULES\n--------------------------------------------------\n- Do NOT rephrase, summarize, expand, or interpret any content\n- Do NOT add examples, explanations, confirmations, or additional prompts\n- Do NOT ask follow-up questions of your own\n- Do NOT assume or infer any missing information\n- Do NOT include system, technical, or internal details\n- You may ONLY:\n  - Structurally merge newly generated lot numbers into the draft record\n  - Replace the Target Lot Number value in the clarification question text if it appears\n\n--------------------------------------------------\nOUTPUT RULES\n--------------------------------------------------\n- If a draft record is provided:\n  - Merge the newly generated lot numbers into:\n      a) DraftLot.TargetLot.TargetLotNumber\n      b) Any matching \"Target Lot Number:\" line inside the clarification question text\n  - Output the updated draft record first\n  - Then output the updated clarification question\n\n- If only a clarification question is provided:\n  - If newly generated lot numbers exist:\n      - Replace the Target Lot Number inside the clarification question text\n  - Output only the updated question\n\n--------------------------------------------------\nSTRICT REPLACEMENT RULE\n--------------------------------------------------\n- If Newly Generated Lot Numbers contains:\n    ReturnStatus = SUCCESS\n    AND LotNumber is not null\n  THEN:\n    - Replace DraftLot.TargetLot.TargetLotNumber with LotNumber\n    - Replace any literal value shown after:\n        \"Target Lot Number:\"\n      inside the clarification question\n    - Do NOT modify any other fields\n\n--------------------------------------------------\nINPUT (SOURCE AGENT OUTPUT)\n--------------------------------------------------\n- Clarification Question:\n  {{$context.$nodes.LOT_MERGE_TRANSACTION_SKU_SELECTION.$output.clarificationQuestion}}\n\n- Draft Lot Merge Record (optional):\n  {{$context.$nodes.LOT_MERGE_TRANSACTION_SKU_SELECTION.$output.transactionFullData}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Lot Merge Transaction SKU Selection"
+          },
+          "outcomes": {
+            "success": "1770054643753"
+          },
+          "code": "LOT_MERGE_TRANSACTION_SKU_SELECTION",
+          "convergenceTargetId": "1770054643753",
+          "id": "1770054525562",
+          "inputs": [
+            {
+              "id": "1770054525572_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI agent responsible for handling **Inventory Lot Merge** transactions.\n\n--------------------------------------------------\nDOMAIN CONTEXT\n--------------------------------------------------\nA Lot Merge transaction:\n- Consumes quantity from **ONE OR MORE** source lots\n- Creates **ONE** target lot\n- The **target lot quantity must exactly equal** the total absolute quantity consumed from all source lots\n- All transactions belong to the **same Lot Transaction Group**\n- All quantities are in the **item primary UOM** (do NOT ask for or reference UOM)\n\n--------------------------------------------------\nSOURCE LOT SELECTION (ITEM + ORG + SKU)\n--------------------------------------------------\n- All Source Lots must belong to the **same Item and Organization**\n- Source Lot selection is performed as:\n  - A unified Item + Organization context\n  - Followed by selection of **one or more Source Lots** under that same context\n\n- Selecting Source Lots implicitly and authoritatively determines:\n  - InventoryItemId (number)\n  - OrganizationId (number)\n  - SubinventoryCode (per lot)\n  - Locator (if applicable, per lot)\n  - Revision (if applicable)\n  - LicensePlateNumber (if applicable, per lot)\n  - Project\n  - Task\n  - CountryOfOrigin (if applicable)\n  - Lot Grade (if applicable)\n\n- These attributes:\n  - Are **not entered manually**\n  - Are **system-selected and read-only**\n  - Must be treated as **authoritative once selected**\n\n- You must:\n  - NOT ask the user to provide, confirm, modify, or re-select\n    Item or Organization as a selectable input\n  - Ensure all selected Source Lots belong to the same Item and Organization\n  - Use Source Lotâ€“derived attributes only for completeness and validation\n\n- Separation of concerns rule:\n  - Internally store and propagate **only system identifiers**\n    (e.g., InventoryItemId, OrganizationId) inside `mergeTransactionFullData`\n  - Business identifiers (Item Number, Organization Code, Organization Name)\n    may be used only:\n      - For display in clarification views\n      - In user-facing draft summaries\n      - In clarification questions\n  - Business identifiers must never be persisted inside `mergeTransactionFullData`\n  - Not all items have Revision, but if any part of chat history contains Revision, store it in `mergeTransactionFullData`\n\n--------------------------------------------------\nSOURCE LOT QUANTITY DEFAULTING & EDIT RULE\n--------------------------------------------------\n\nEditable Condition (applies per source lot):\n- If itemDetails.LotDivisibleFlag = true\n  â†’ Each SourceLotQuantity field is EDITABLE by the user.\n- If itemDetails.LotDivisibleFlag = false\n  â†’ SourceLotQuantity fields are NOT EDITABLE.\n  â†’ User cannot modify quantities once defaulted.\n\nDefaulting Behavior (After each Source Lot Selection):\n- After each Source Lot is selected:\n  - Automatically default SourceLotQuantity to the full available quantity\n    for that lot.\n  - Represent this quantity as a negative number.\n  - Clearly display this quantity to the user as system-assumed.\n\nUser Interaction Rules:\n- If LotDivisibleFlag = true:\n  - User MAY modify individual SourceLotQuantity values.\n  - User is NOT required to confirm defaulted quantities unless they want to change them.\n- If LotDivisibleFlag = false:\n  - User CANNOT modify the SourceLotQuantity values.\n  - Do NOT prompt the user to edit or confirm the quantities.\n\nRestrictions:\n- Do NOT ask the user to manually enter initial quantities.\n- Do NOT default quantities before Source Lot selection is completed.\n\n--------------------------------------------------\nTARGET LOT LOCATION DEFAULTING & EDIT RULE\n--------------------------------------------------\n\nTarget Lot Attributes:\nFor the target lot, user may optionally provide:\n- Subinventory\n- Locator\n- LicensePlateNumber (LPN)\n- ExpirationDate\n\nDefaulting Behavior:\n- When the Target Lot is prepared:\n  - Default SubinventoryCode and Locator from:\n    - The first selected Source Lot (system rule), unless user overrides\n  - Default LicensePlateNumber only if applicable and consistent\n  - These defaults must be clearly shown in the draft view.\n\nUser Interaction Rules:\n- Do NOT explicitly ask the user to provide Subinventory, Locator, LPN, or ExpirationDate.\n- These attributes are optional and user-editable.\n- If the user provides any of these attributes:\n  - Use the user-provided value.\n- If the user does NOT provide them:\n  - Retain the system-defaulted values.\n- If necessary, the user may modify these attributes later.\n- Never force confirmation of defaulted location attributes.\n\n--------------------------------------------------\nEXPECTED DATA STRUCTURE\n--------------------------------------------------\nThe Lot Merge request must be derived using the following logical structure:\n\n1. Source Lots (Minimum ONE required)\nFor each Source Lot:\n- SourceLotNumber\n- SourceLotQuantity\n  - Must be a negative number\n  - If the user provides a positive number, internally treat it as negative,\n    but clearly display it to the user\n- System-selected context (read-only, ID-based only)\n  - InventoryItemId\n  - OrganizationId\n  - SubinventoryCode\n  - LocatorName (if applicable)\n  - Revision (if applicable)\n  - LicensePlateNumber (if applicable)\n  - Project\n  - Task\n  - CountryOfOrigin (if applicable)\n  - Lot Grade (if applicable)\n\n2. Target Lot (Mandatory â€“ exactly one)\n- TargetLotNumber (OPTIONAL during draft)\n  - If user provides â†’ use it\n  - If user does NOT provide â†’ keep null during draft\n- TargetLotQuantity\n  - Must be a positive number\n  - Must exactly equal the total absolute quantity\n    of all SourceLotQuantity values\n- SecondaryTransactionQuantity\n  - Optional, include only if explicitly provided\n- SubinventoryCode (defaulted, editable)\n- LocatorName (defaulted, editable)\n- LicensePlateNumber (defaulted, editable)\n- ExpirationDate (optional, user-editable)\n\n--------------------------------------------------\nTARGET LOT NUMBER BEHAVIOR\n--------------------------------------------------\n- Target Lot Number is OPTIONAL during draft phase.\n- User may:\n  - Explicitly provide a Target Lot Number, OR\n  - Leave it unspecified.\n\n- If Target Lot Number is NOT provided:\n  - Do NOT auto-generate during draft.\n  - Keep TargetLotNumber = null.\n  - Clearly inform the user:\n      \"Target Lot Number will be auto-generated after confirmation.\"\n\n- System generation of Target Lot Number:\n  - Happens ONLY AFTER explicit user confirmation.\n  - Is handled programmatically outside this LLM.\n  - Must NOT be generated during clarification phase.\n\n--------------------------------------------------\nCONFIRMATION REQUIREMENT\n--------------------------------------------------\n- Once all required information is captured:\n  - At least one Source Lot\n  - SourceLotQuantity for each\n  - TargetLotQuantity\n  - (TargetLotNumber may be null)\n- You MUST present a final draft Lot Merge summary.\n- The user must explicitly confirm before proceeding.\n- Do NOT proceed without explicit confirmation.\n- Confirmation is considered a required input.\n\n- Until confirmation is received:\n  â†’ `otherUserInputMissing = true`\n\n- Only after explicit user confirmation:\n  â†’ `otherUserInputMissing = false`\n\n--------------------------------------------------\nVALIDATION RULES\n--------------------------------------------------\n- At least ONE source lot must be provided.\n- Target lot quantity must equal the total absolute quantity\n  of all source lot quantities.\n- Validation is performed only after explicit user confirmation.\n\n--------------------------------------------------\nDRAFT LOT GENERATION RULE\n--------------------------------------------------\n- During draft / clarification phase:\n  â†’ Do NOT populate or compute:\n       - generateNewLots\n       - noOfLotsToBeGenerated\n  â†’ Do NOT assume generation behavior.\n  â†’ Leave generation decision undefined at this stage.\n\n- Only AFTER explicit user confirmation (handled programmatically outside this LLM):\n\n  â†’ If TargetLotNumber is provided by user:\n       - generateNewLots = false\n       - noOfLotsToBeGenerated = 0\n\n  â†’ If TargetLotNumber is NOT provided (null at confirmation time):\n       - generateNewLots = true\n       - noOfLotsToBeGenerated = 1\n\n- These values are injected programmatically AFTER confirmation.\n- The LLM must NOT pre-set them during draft preparation.\n\n--------------------------------------------------\nTASK\n--------------------------------------------------\n1. Analyze the userâ€™s request using the current input and chat history.\n2. Extract all explicitly provided Lot Merge information.\n3. Identify any missing or unclear required data excluding all Source Lotâ€“derived attributes.\n4. When data is missing OR confirmation is pending:\n   - Present a draft Lot Merge view that includes:\n     - User-provided values\n     - System-selected Source Lot context (read-only)\n     - Defaulted Target Lot location values (clearly marked as system-defaulted)\n     - User-friendly business identifiers for clarity\n       (Item Number, Organization Code/Name, Lot Numbers)\n     - Clearly marked assumed or placeholder values for missing fields\n     - If TargetLotNumber is null:\n         Clearly state: \"Target Lot Number will be auto-generated after confirmation.\"\n5. Ask the user to:\n   - Confirm the presented data, or\n   - Modify only the editable fields that are incorrect or missing\n6. Perform validation only after explicit user confirmation.\n7. Do NOT silently finalize or infer values without user visibility and confirmation.\n\n--------------------------------------------------\nMISSING DATA PROMPTING RULES\n--------------------------------------------------\n- Always show the current interpreted state of the Lot Merge when prompting.\n- Clearly distinguish between:\n  - User-provided values\n  - System-selected (read-only) Source Lot context\n  - System-defaulted target location attributes\n  - Assumed or placeholder values\n- Business identifiers may be shown for readability, but must remain non-editable.\n- Ask only for missing or unclear user-editable fields.\n- Group related questions together.\n- Ask the user to respond with only the changes, if applicable.\n- Do NOT mention payloads, APIs, internal flags, or system identifiers.\n- Do NOT ask about UOM.\n- Do NOT ask the user to change Item, Organization, or any Source Lotâ€“derived attributes.\n- If itemDetails.PrimaryUOMCode != itemDetails.SecondaryUnitOfMeasure\n  â†’ Mention that Secondary Transaction Quantity is auto derived in the backend.\n- Never ask user to enter the Secondary quantity.\n\n\n--------------------------------------------------\nUSER INPUT\n--------------------------------------------------\nInputs:\n- Current User Input:\n  {{$context.$system.$inputMessage}}\n\n- Chat History:\n  {{$context.$system.$chatHistory}}\n\n- itemDetails:\nLot Divisible Flag {{$context.$variables.itemDetails?.LotDivisibleFlag}}\nPrimaryUOMCode : {{$context.$variables.itemDetails?.PrimaryUOMCode}}\nSecondaryUnitOfMeasure : {{$context.$variables.itemDetails?.SecondaryUnitOfMeasure}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"noOfLotsToBeGenerated\": {\n            \"type\": \"number\"\n        },\n        \"generateNewLots\": {\n            \"type\": \"boolean\"\n        },\n        \"transactionFullData\": {\n            \"type\": \"string\"\n        },\n        \"otherUserInputMissing\": {\n            \"type\": \"boolean\"\n        },\n        \"sourceLotSKUSelectionCompleted\": {\n            \"type\": \"boolean\"\n        },\n        \"clarificationQuestion\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Lot Transaction Checker",
+            "returnType": "boolean",
+            "sourceCode": "const { itemDetails } = $context.$variables;\nconst intent = $context.$nodes.INTENT_CLASSIFICATION.$output?.originalTransactionIntent;\n\nlet isAllowed = false;\n\nif(itemDetails?.SerialNumberControlCode!=1){\n   return false;\n}\n\n\nif (itemDetails?.ItemId) {\n  const intentFlagMap = {\n    LOT_SPLIT: itemDetails?.LotSplitEnabledFlag,\n    LOT_MERGE: itemDetails?.LotMergeEnabledFlag,\n    LOT_TRANSLATE: itemDetails?.LotTranslateEnabledFlag\n  };\n\n  if (intent in intentFlagMap) {\n    isAllowed = !!intentFlagMap[intent];\n  } else {\n    // Allow if intent is not one of the mapped transaction types\n    isAllowed = true;\n  }\n}\n\nreturn isAllowed;"
+          },
+          "outcomes": {
+            "success": "1770629021093"
+          },
+          "code": "LOT_TRANSACTION_CHECKER",
+          "id": "1770628828712",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Item Validity Check"
+          },
+          "outcomes": {
+            "true": "1770665097130",
+            "false": "1770629781653"
+          },
+          "code": "ITEM_VALIDITY_CHECK",
+          "convergenceTargetId": "end",
+          "id": "1770629021093",
+          "inputs": [
+            {
+              "id": "1770629021095_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.LOT_TRANSACTION_CHECKER.$output.result}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Item Invalid User Communication"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ITEM_INVALID_USER_COMMUNICATION",
+          "id": "1770629781653",
+          "inputs": [
+            {
+              "id": "1770629781654_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI agent activated when either:\n\n1) The Item entered by the user did not resolve to any match in the system, OR  \n2) The Item exists but is not enabled for the lot transaction being attempted, OR\n3) The Item is serial-controlled (not supported by this agent).\n\nYour responsibility is to analyze the chat history, identify the exact Item value entered by the user, and prompt the user accordingly.\n\nDo NOT suggest alternative items.  \nDo NOT provide additional troubleshooting steps.  \nDo NOT explain internal system logic.  \nDo NOT recommend any further actions beyond asking for a valid item.\n\n--------------------------------------------------\nVALIDATION LOGIC\n--------------------------------------------------\n\n1) Identify the exact Item value from chat history.\n\n2) If no match found in Item Search Result:\n   â†’ Inform user the item is not available in the system.\n\n3) If itemDetails.SerialNumberControlCode != 1:\n   â†’ Inform user that serial-controlled items are not supported by this agent.\n\n4) Based on Transaction Intent:\n   - If originalTransactionIntent = LOT_MERGE  \n     â†’ itemDetails.LotMergeEnabledFlag must be true\n\n   - If originalTransactionIntent = LOT_SPLIT  \n     â†’ itemDetails.LotSplitEnabledFlag must be true\n\n   - If originalTransactionIntent = LOT_TRANSLATE  \n     â†’ itemDetails.LotTranslateEnabledFlag must be true\n\n   If the required flag is not true:\n   â†’ Inform user that the item is not enabled for the requested transaction.\n\n--------------------------------------------------\nUSER INPUT\n--------------------------------------------------\nInputs:\nItem Search Result \n{{$context.$variables.itemDetails}} \n\nLast Input Message \n{{$context.$system.$inputMessage}} \n\nTransaction Intent\n{{$context.$nodes.INTENT_CLASSIFICATION.$output.originalTransactionIntent}} \n\nChat History\n{{$context.$system.$chatHistory}}\n\n--------------------------------------------------\nRESPONSE RULES\n--------------------------------------------------\n\n1) Identify and extract the exact Item value entered by the user from chat history.\n2) Explicitly reference that Item value in your response.\n3) Clearly state ONE of the following reasons:\n   - Item is not available in the system, OR\n   - Item is serial-controlled and not supported, OR\n   - Item is not enabled for the requested transaction.\n4) Ask the user to enter a valid item.\n5) Keep the response concise and direct.\n6) Do NOT include technical explanations or system details.\n7) Do NOT mention flags, codes, or internal field names in the response."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Check if Item is Mergeable"
+          },
+          "outcomes": {
+            "true": "1772101426919",
+            "false": "1770631160457"
+          },
+          "code": "CHECK_IF_ITEM_IS_MERGEABLE",
+          "convergenceTargetId": "end",
+          "id": "1770631055546",
+          "inputs": [
+            {
+              "id": "1770631055548_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.itemDetails?.LotMergeEnabledFlag == true}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_BATCHEXECUTOR",
+            "functionName": "executeBatch",
+            "name": "Let Merge Batch Executor"
+          },
+          "outcomes": {
+            "success": "1772084825987"
+          },
+          "code": "LET_MERGE_BATCH_EXECUTOR",
+          "convergenceTargetId": "1770631110729",
+          "id": "1770091647828",
+          "inputs": [
+            {
+              "id": "1770091705309_1",
+              "name": "batchPayload",
+              "type": "string",
+              "value": "{{$context.$nodes.INSERT_SERIAL_IN_MERGE_PAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Lot Merge Summarizer LLM"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "LOT_MERGE_SUMMARIZER_LLM",
+          "convergenceTargetId": "1770631110729",
+          "id": "1770093855686",
+          "inputs": [
+            {
+              "id": "1770093855690_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI agent responsible for summarizing the execution result of an\n**Inventory Lot Merge** transaction and determining its final status.\n\n--------------------------------------------------\nINPUT\n--------------------------------------------------\n- Transaction Response:\n  {{$context.$nodes.LET_MERGE_BATCH_EXECUTOR.$output}}\n\n- Transaction Request:\n  {{$context.$nodes.LET_MERGE_BATCH_EXECUTOR.$input}}\n\n\n--------------------------------------------------\nINPUT\n--------------------------------------------------\n- Transaction Response\n- Transaction Request\n- Item Number (separate input)\n- Organization Code (separate input)\n\n--------------------------------------------------\nOBJECTIVE\n--------------------------------------------------\n1. Analyze the transaction Response in the context of the submitted Request.\n2. Derive a clear, business-friendly transaction status.\n3. Provide a structured summary suitable for end-user visibility.\n4. Clearly separate:\n   - Source Lot details (consumed)\n   - Target Lot details (created)\n5. Use Item Number and Organization Code instead of any internal IDs.\n6. Display lot details in row-by-row format (NOT table format).\n7. Do NOT hardcode column headers â€” dynamically display relevant attributes.\n\n--------------------------------------------------\nSTATUS DETERMINATION RULES\n--------------------------------------------------\n- If the Response is null or empty:\n  â†’ Assume the transaction is COMPLETED successfully.\n- If the Response explicitly indicates success:\n  â†’ Mark status as COMPLETED.\n- If the Response or payload is null but contains no errors:\n  â†’ Assume the transaction is COMPLETED successfully.\n- If the Response indicates errors or failures:\n  â†’ Mark status as FAILED.\n- Do NOT infer technical states beyond what is visible in the Response.\n\n--------------------------------------------------\nOUTPUT FORMAT (STRICT)\n--------------------------------------------------\n\nTransaction Status: <COMPLETED or FAILED>\n\nSummary:\n<Concise business-friendly summary derived from the Response.\nIf payloads are null and no errors are present, clearly state that the service\nreturned empty/null payloads indicating successful completion.>\n\n--------------------------------------------------\nSource Lot (Consumed)\n--------------------------------------------------\n- Display details in row-by-row attribute format.\n- Include:\n   - Item Number : {{$context.$variables.itemDetails?.ItemNumber}}\n  - Organization Code  : {{$context.$variables.organizationDetails?.OrganizationCode}}\n  - Subinventory\n  - Unit of Measure\n  - Lot Number\n  - Quantity (must be negative)\n- Do NOT display any internal IDs.\n- Only one source lot is expected.\n\nExample structure (format style only, do not hardcode labels):\nAttribute Name: Value\nAttribute Name: Value\n...\n\n--------------------------------------------------\nTarget Lots (Created)\n--------------------------------------------------\n- Display each target lot separately.\n- For each lot, show details in row-by-row attribute format.\n- Include:\n  - Item Number : {{$context.$variables.itemDetails?.ItemNumber}}\n  - Organization Code  : {{$context.$variables.organizationDetails?.OrganizationCode}}\n  - Subinventory\n  - Unit of Measure\n  - Lot Number\n  - Quantity (must be positive)\n- Do NOT display any internal IDs.\n\nEach lot should be clearly separated visually.\n\n--------------------------------------------------\nVALIDATION SECTION (MANDATORY)\n--------------------------------------------------\n- Calculate total created quantity.\n- Calculate total consumed quantity (absolute value).\n- Confirm whether quantities are balanced.\n- Display validation result clearly in business-friendly wording.\n\n--------------------------------------------------\nADDITIONAL RULES\n--------------------------------------------------\n- Use business-friendly language.\n- Do NOT expose raw payloads, API paths, internal node names, or system identifiers.\n- Do NOT display InventoryItemId, OrganizationId, SourceHeaderId, or any internal system IDs.\n- Do NOT include technical diagnostics unless explicitly present in the Response.\n- Keep the output concise and outcome-focused.\n- Always follow the defined section structure exactly.\n- Only use <h6></h6> tags for headings\n- Do not ask any questions. You are just a summary node"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770629781653",
+            "name": "Item is not mergeable",
+            "returnType": "object",
+            "sourceCode": "let payload = {};\n\nthrow new Error(`Inform user that lots of selected item cannot be merged.`);\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ITEM_IS_NOT_MERGEABLE",
+          "id": "1770631160457",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check if Item is Translatable"
+          },
+          "outcomes": {
+            "true": "1772110259725",
+            "false": "1770631359564"
+          },
+          "code": "CHECK_IF_ITEM_IS_TRANSLATABLE",
+          "convergenceTargetId": "end",
+          "id": "1770631268735",
+          "inputs": [
+            {
+              "id": "1770631268737_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.itemDetails?.LotTranslateEnabledFlag ==true}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_BATCHEXECUTOR",
+            "functionName": "executeBatch",
+            "name": "TTL- Execute Batch"
+          },
+          "outcomes": {
+            "success": "1772084081444"
+          },
+          "code": "TTL_EXECUTE_BATCH",
+          "convergenceTargetId": "1770631311011",
+          "id": "1770103775853",
+          "inputs": [
+            {
+              "id": "1770103821560_1",
+              "name": "batchPayload",
+              "type": "string",
+              "value": "{{$context.$nodes.INSERT_SERIAL_IN_TRANSLATE_PAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770629781653",
+            "name": "Item is not translatable",
+            "returnType": "object",
+            "sourceCode": "let payload = {};\n\nthrow new Error(`Inform user that lots of selected item cannot be translated.`);\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ITEM_IS_NOTTRANSLATABLE",
+          "id": "1770631359564",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check if Item is splitable"
+          },
+          "outcomes": {
+            "true": "1772119018581",
+            "false": "1770631516398"
+          },
+          "code": "CHECK_IF_ITEM_IS_SPLITABLE",
+          "convergenceTargetId": "end",
+          "id": "1770631416413",
+          "inputs": [
+            {
+              "id": "1770631416414_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.itemDetails?.LotSplitEnabledFlag == true}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770629781653",
+            "name": "Item is not splitable",
+            "returnType": "object",
+            "sourceCode": "let payload = {};\n\nthrow new Error(`Inform user that lots of selected item cannot be split.`);\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ITEM_IS_NOT_SPLITABLE",
+          "id": "1770631516398",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check Intent Type"
+          },
+          "outcomes": {
+            "true": "1770176718531",
+            "false": "1770665482476"
+          },
+          "code": "CHECK_INTENT_TYPE",
+          "convergenceTargetId": "end",
+          "id": "1770665097130",
+          "inputs": [
+            {
+              "id": "1770665097132_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.INTENT_CLASSIFICATION.$output.originalTransactionIntent == 'LOT_SPLIT' || $context.$nodes.INTENT_CLASSIFICATION.$output.originalTransactionIntent  == 'LOT_MERGE' || $context.$nodes.INTENT_CLASSIFICATION.$output.originalTransactionIntent == 'LOT_TRANSLATE'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "queryParameterEnhancer",
+            "returnType": "string",
+            "sourceCode": "let query = $context.$nodes.SOURCE_LOT_SELECTION_QUERY_GENERATOR.$output.query;\n\n\nquery = query+=` and OrganizationId = ${ $context.$variables.OrganizationId } and InventoryItemId = ${ $context.$variables.InventoryItemId} `;\n\nreturn query;"
+          },
+          "outcomes": {
+            "success": "1770039532032"
+          },
+          "code": "QUERYPARAMETERENHANCER",
+          "convergenceTargetId": "1770665170448",
+          "id": "1770176718531",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_ITEMQUANTITYLOTSLOTMANAGEMENT",
+            "functionName": "findItemQuantityLotsByRawQuery",
+            "name": "Query Item Quantity Lots"
+          },
+          "outcomes": {
+            "success": "1771991250484"
+          },
+          "code": "QUERY_ITEM_QUANTITY_LOTS",
+          "convergenceTargetId": "1770665170448",
+          "id": "1770039532032",
+          "inputs": [
+            {
+              "id": "1770177070758_1",
+              "name": "queryParameter",
+              "type": "string",
+              "value": "{{$context.$nodes.QUERYPARAMETERENHANCER.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "SKU Selection LLM"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SKU_SELECTION_LLM",
+          "convergenceTargetId": "1770665170448",
+          "id": "1770040056888",
+          "inputs": [
+            {
+              "id": "1770040056891_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI Agent responsible for helping the user select the correct **Lot / SKU** when multiple options are available.\n\n--------------------------------------------------\nOBJECTIVE\n--------------------------------------------------\nPresent the available SKU / Lot information clearly in HTML TABLE FORMAT (HTML FRAGMENT ONLY), display the **current search criteria used**, and request an explicit selection from the user.\n\nâš ï¸� Selection behavior depends on Transaction Type.\n\nTransactionType = LOT_SPLIT | LOT_MERGE | LOT_TRANSLATE\n\n--------------------------------------------------\nSELECTION RULES (STRICT)\n--------------------------------------------------\n\n1) LOT_SPLIT\n- User MUST select EXACTLY ONE source lot.\n- Single selection required.\n\n2) LOT_TRANSLATE\n- User MUST select EXACTLY ONE source lot.\n- Single selection required.\n\n3) LOT_MERGE\n- User MUST select ONE OR MORE source lots.\n- Multiple selection allowed.\n- At least one selection required.\n\nThe selection instruction MUST dynamically adapt based on TransactionType.\n\n--------------------------------------------------\nCRITICAL RULES\n--------------------------------------------------\n\n1) Response MUST be a valid HTML fragment only.\n2) DO NOT include:\n   - <html>, <head>, <body>\n   - <style>, <script>\n   - Markdown\n   - JSON\n   - Any explanations outside HTML\n\n3) Allowed tags only:\n<div>, <h4>, <h5>, <h6>, <table>, <thead>, <tbody>, <tr>, <th>, <td>, <p>, <strong>, <br>\n\n4) The values **InventoryItemId** and **OrganizationId** MUST:\n   - Be included as HTML comments\n   - NOT be displayed as visible fields\n\n5) The table structure MUST be DYNAMIC:\n   - Add a column ONLY if at least ONE row contains a non-null / non-empty value for that field.\n   - If ALL rows have null/empty value for a column â†’ DO NOT render that column.\n   - This applies to BOTH header (<th>) and row cells (<td>).\n\n6) Index column MUST always be present and start from 1.\n\n--------------------------------------------------\n1) CURRENT SEARCH CRITERIA SECTION\n--------------------------------------------------\n\n<h4>CURRENT SEARCH CRITERIA</h4>\n\n<!-- InventoryItemId: {{InventoryItemId}} -->\n<!-- OrganizationId: {{OrganizationId}} -->\n\n<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\">\n  <thead>\n    <tr>\n      <th>Attribute</th>\n      <th>Value</th>\n    </tr>\n  </thead>\n  <tbody>\n    <tr>\n      <td>Organization Code</td>\n      <td>{{OrganizationCode}}</td>\n    </tr>\n    <tr>\n      <td>Item Number</td>\n      <td>{{ItemNumber}}</td>\n    </tr>\n    <tr>\n      <td>Transaction UOM</td>\n      <td>{{TransactionUOM}}</td>\n    </tr>\n    <tr>\n      <td>Transaction Type</td>\n      <td>{{TransactionType}}</td>\n    </tr>\n    <!-- Dynamically include additional non-null query parameters from Current Search Criteria -->\n  </tbody>\n</table>\n\n--------------------------------------------------\n2) AVAILABLE SKU / LOT OPTIONS SECTION\n--------------------------------------------------\n\n<h4>AVAILABLE SKU / LOT OPTIONS</h4>\n\n<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\">\n  <thead>\n    <tr>\n      <th>Index</th>\n\n      <!-- Include below columns ONLY if at least one row has a value -->\n\n      <!-- LotNumber -->\n      <!-- Revision -->\n      <!-- AvailableQuantity -->\n      <!-- TransactionUOM -->\n      <!-- SubinventoryCode -->\n      <!-- Locator -->\n      <!-- Project -->\n      <!-- Task -->\n      <!-- CountryOfOrigin -->\n      <!-- LotGrade -->\n      <!-- LicensePlateNumber -->\n      <!-- MaterialStatus -->\n\n    </tr>\n  </thead>\n  <tbody>\n\n    <!-- For each lot record in Available SKU / Lot details -->\n\n    <tr>\n\n      <!-- ProjectId: {{ProjectId}} -->\n      <!-- TaskId: {{TaskId}} -->\n\n      <td>1</td>\n\n      <!-- Render <td> only if corresponding column is included -->\n\n      <!-- Example dynamic cells -->\n      <!-- <td>{{LotNumber}}</td> -->\n      <!-- <td>{{Revision}}</td> -->\n      <!-- <td>{{AvailableQuantity}}</td> -->\n      <!-- etc... -->\n\n    </tr>\n\n    <!-- Dynamically generate rows with Index incrementing from 1 -->\n\n  </tbody>\n</table>\n\n--------------------------------------------------\nDYNAMIC COLUMN INCLUSION LOGIC (MANDATORY)\n--------------------------------------------------\n\nAlways Include Lot number, AvailableToTransact as Quantity, Subinventory\n\n--------------------------------------------------\n3) SELECTION INSTRUCTION (DYNAMIC)\n--------------------------------------------------\n\nIF TransactionType = LOT_SPLIT OR LOT_TRANSLATE:\n\n<p>\nPlease select <strong>ONE</strong> option by providing the <strong>Index</strong> number.<br>\nOnly a single selection is allowed for this transaction type.\n</p>\n\nIF TransactionType = LOT_MERGE:\n\n<p>\nPlease select <strong>ONE OR MORE</strong> options by providing the <strong>Index numbers</strong> separated by commas.<br>\nAt least one selection is required for merge transactions.\n</p>\n\n<br>\n\n<p>\nIf the desired lot is not listed, you may refine or change the search criteria.\n</p>\n\n<br>\n\n<p>\n<strong>Supported refinement attributes:</strong><br>\nSubinventoryCode, SubinventoryName, LocatorName, LotNumber, LotGrade, MaterialStatusName, ProjectNumber, TaskNumber, CountryOfOriginName, LicensePlateNumber, Revision\n</p>\n\n--------------------------------------------------\nINPUT VARIABLES\n--------------------------------------------------\n\nInventoryItemId - {{$context.$variables.InventoryItemId}}\n\nTransactionUOM - {{$context.$variables.itemDetails?.PrimaryUOMCode}}\n\nItemNumber - {{$context.$variables.itemDetails?.ItemNumber}}\n\nOrganizationCode - {{$context.$variables.organizationDetails?.OrganizationCode}}\n\nOrganizationId - {{$context.$variables.OrganizationId}}\n\nTransactionType - {{$context.$nodes.INTENT_CLASSIFICATION.$output.originalTransactionIntent}}\n\nAvailable SKU / Lot details:\n {{$context.$nodes.SIMPLIFY_ITEM_QUANTITIES_DATA_FOR_LLM.$output.result}} \n\nCurrent Search Criteria (Query Parameters):\n {{$context.$nodes.SOURCE_LOT_SELECTION_QUERY_GENERATOR.$output.query}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770666268798",
+            "name": "Get recommendations",
+            "returnType": "object",
+            "sourceCode": "let payload = {};\n\nthrow new Error(`Recommend Lot Transactions to the user.`);\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "GET_RECOMMENDATIONS",
+          "id": "1770665482476",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check if Item ID and Org ID are set"
+          },
+          "outcomes": {
+            "true": "1770666268798",
+            "false": "1770704144307"
+          },
+          "code": "CHECK_IF_ITEM_ID_AND_ORG_ID_ARE_SET",
+          "convergenceTargetId": "end",
+          "id": "1770704087911",
+          "inputs": [
+            {
+              "id": "1770704087913_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.InventoryItemId && $context.$variables.OrganizationId}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770174726265",
+            "name": "Invalid Item ID and Organization ID",
+            "returnType": "object",
+            "sourceCode": "let payload = {};\n\nthrow new Error(`Ask user to enter item or organization.`);\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "INVALID_ITEM_ID_AND_ORGANIZATION_ID",
+          "id": "1770704144307",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_LOTTRANSACTIONRECOMMENDATION",
+            "functionName": "RecommendTransaction",
+            "name": "Lot Recommendations"
+          },
+          "outcomes": {
+            "success": "1770812959242"
+          },
+          "code": "LOT_RECOMMENDATIONS",
+          "convergenceTargetId": "1770704202982",
+          "id": "1770666268798",
+          "inputs": [
+            {
+              "id": "1770712998044_1",
+              "name": "InventoryItemId",
+              "type": "string",
+              "value": "{{$context.$variables.InventoryItemId}}"
+            },
+            {
+              "id": "1770712998045_2",
+              "name": "OrganizationId",
+              "type": "string",
+              "value": "{{$context.$variables.OrganizationId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Check if Recommendations errored out"
+          },
+          "outcomes": {
+            "true": "1770813032957",
+            "false": "1770666322127"
+          },
+          "code": "CHECK_IF_RECOMMENDATIONS_ERRORED_OUT",
+          "convergenceTargetId": "end",
+          "id": "1770812959242",
+          "inputs": [
+            {
+              "id": "1770812959244_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.LOT_RECOMMENDATIONS.$output?.result?.status == 'E'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Summarize error message"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SUMMARIZE_ERROR_MESSAGE",
+          "id": "1770813032957",
+          "inputs": [
+            {
+              "id": "1770813032959_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI agent whose job is to summarize and display an error message to the user. Just display the error message. Do not suggest anything to the user. Filter out any numeric IDs. Message should be clear and simple.\n\nInput Message:\n {{$context.$nodes.LOT_RECOMMENDATIONS.$output}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Summarize recommendation"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SUMMARIZE_RECOMMENDATION",
+          "convergenceTargetId": "1770813401354",
+          "id": "1770666322127",
+          "inputs": [
+            {
+              "id": "1770666322128_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI Agent responsible for helping the user select the correct **Lot / SKU** from the recommendations when multiple options are available.\n\n--------------------------------------------------\nOBJECTIVE\n--------------------------------------------------\nPresent the available SKU / Lot information clearly, show the **current search criteria used**, and request a **single, explicit selection** from the user.\n\nImportant:\nThe values **InventoryItemId**, **OrganizationId**, and **TransactionUOM** MUST be explicitly shown to the user in chat.\nThis chat history will be reused for downstream processing, so these values must be visible and unambiguous.\n\n--------------------------------------------------\nINPUT DATA\n--------------------------------------------------\n\n1) InventoryItemId - {{$context.$variables.InventoryItemId}}\n\n2) TransactionUOM - {{$context.$nodes.SEARCHITEMIDFINDER.$output?.items[0].PrimaryUOMCode}}\n\n3) OrganizationId -  {{$context.$variables.OrganizationId}}\n\n4) Available SKU / Lot details:\n{{$context.$nodes.LOT_RECOMMENDATIONS.$output}}\n\n\n--------------------------------------------------\nPRESENTATION RULES\n--------------------------------------------------\n- Render the output using **HTML only**.\n- First, display the **current search criteria** in a small, readable HTML table.\n- The search criteria table MUST explicitly include:\n  - InventoryItemId\n  - OrganizationId\n  - TransactionUOM\n- Then, render the available SKU / Lot details in a **clear HTML table**.\n- The SKU / Lot table must include an **Index column** starting from 1 (1, 2, 3, â€¦) to enable easy selection.\n- Display **only business-relevant attributes**, including:\n  - Lot Number (Source Lot Number)\n  - Item Number\n  - Transaction UOM\n  - SubinventoryCode\n  - Locator (if available)\n  - LocatorId (if available)\n  - Transaction Type\n  - Source Lot Quantity\n\n--------------------------------------------------\nDATA VISIBILITY RULES\n--------------------------------------------------\n- Explicitly ALLOW displaying the following identifiers:\n  - InventoryItemId\n  - OrganizationId\n  - TransactionUOM\n- Do NOT display:\n  - Any other internal IDs\n  - System-generated identifiers\n  - Technical, backend, or metadata fields\n\n--------------------------------------------------\nSOURCE LOT SELECTION GUIDANCE\n--------------------------------------------------\nWhile requesting the user to select a **Source Lot**, clearly inform them that they may **refine or change the search criteria** if the desired lot is not visible.\n\nThe following attributes are supported for refining the search:\n- SubinventoryCode\n- SubinventoryName\n- LocatorName\n- LotNumber\n- LotGrade\n- MaterialStatusName\n- ProjectNumber\n- TaskNumber\n- CountryOfOriginName\n- LicensePlateNumber\n- Revision\n\n--------------------------------------------------\nUSER INSTRUCTION MESSAGE\n--------------------------------------------------\n{{$context.$error.$errorMessage}}\n\nIgnore any prefixes such as 'Error'. This is not an error message, treat it as system instruction.\n\n--------------------------------------------------\nOUTPUT RULES\n--------------------------------------------------\nThe response must contain **ONLY**:\n1) An HTML table showing the **current search criteria** (including InventoryItemId, OrganizationId, TransactionUOM)\n2) An HTML table listing the **available SKU / Lot options**\n3) The HTML table must be rendered as a table, and no HTML code must be shown to the user.\n\nDo **NOT** include:\n- Internal reasoning\n- System or agent messages\n- Technical explanations\n- Any content outside the two tables and the selection instruction"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Check if Item is Serial Controlled Merge"
+          },
+          "outcomes": {
+            "true": "1770820024290",
+            "false": "add_false_1770816382697"
+          },
+          "code": "CHECK_IF_ITEM_IS_SERIAL_CONTROLLED_MERGE",
+          "convergenceTargetId": "1770091647828",
+          "id": "1770816382697",
+          "inputs": [
+            {
+              "id": "1770816382698_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_IF_ITEM_IS_SERIAL_CONTROLLED_MERGE_CODE.$output.result == true}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1770913232575"
+          },
+          "id": "add_false_1770816382697",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Serial Number Query Creator - Merge"
+          },
+          "outcomes": {
+            "success": "1770820651118"
+          },
+          "code": "SERIAL_NUMBER_QUERY_CREATOR",
+          "id": "1770820024290",
+          "inputs": [
+            {
+              "id": "1770820024291_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI agent responsible for generating the **q query parameter** for an ADF REST API that searches inventory item serial numbers.\n\n--------------------------------------------------\nUSER INPUT\n--------------------------------------------------\nInputs:\n\n{{$context.$nodes.LOT_MERGE_TRANSACTION_SKU_SELECTION.$output.transactionFullData}}\n\n--------------------------------------------------\nOBJECTIVE\n--------------------------------------------------\nProduce a response that:\n1) Generates a valid ADF REST `q` parameter\n2) Includes Organization and Item filters directly in the query when provided\n3) Treats ALL attributes as optional other than the ones mentioned here - AllocatedFlag AND UsageCode\n4) Always conforms to the required output schema\n\n--------------------------------------------------\nINPUT VARIABLES\n--------------------------------------------------\nThe agent may receive the following inputs:\n\n1) Free-text search text\n2) Explicit parameters such as:\n   - Organization Name\n   - Organization Code\n   - OrganizationId\n   - Item Number\n   - InventoryItemId\n   - LotNumbers\n   - Status\n   - Grade\n   - Dates\n   - Other lot attributes\n\n--------------------------------------------------\nMANDATORY INPUT RULE\n--------------------------------------------------\nThere are NO mandatory parameters.\n\n- All attributes are optional.\n- If no valid filters are identified, return an empty query string.\n\n--------------------------------------------------\nQUERY GENERATION RULES\n--------------------------------------------------\n\n1) Include filters ONLY when explicitly mentioned or clearly implied.\n2) Never invent values.\n3) Never auto-correct values.\n4) Never infer missing Organization or Item values.\n5) Combine all conditions using logical AND.\n6) Use proper ADF REST `q` syntax.\n7) Properly quote string fields using single quotes only.\n8) Preserve exact user-entered values.\n9) For lot numbers, use an array of lot numbers. Use the IN operator as shown in the example.\n10) Use source lot numbers. **NOT** Target Lot Number. There will always be **TWO OR MORE source lots**.\n\n--------------------------------------------------\nQUOTING RULE (MANDATORY)\n--------------------------------------------------\n\n- All string values MUST be enclosed in single quotes (' ').\n- NEVER use double quotes (\") in the query.\n- Do NOT escape using backslashes.\n- Numeric values must NOT be quoted.\n- Date values must be enclosed in single quotes.\n- Boolean values must NOT be quoted unless provided as literal strings by the user.\n- Preserve exact user-entered values inside single quotes.\n\nCorrect:\nOrganizationCode='PDSCV1'\nItemNumber='500 GB Internal Memory'\nLotNumber IN ('LIM100','LIM101')\n\nIncorrect:\nOrganizationCode=\"PDSCV1\"\nOrganizationCode=\\\"PDSCV1\\\"\n\n--------------------------------------------------\nSUPPORTED FILTERABLE ATTRIBUTES\n--------------------------------------------------\n\nOrganization-level:\n- OrganizationId\n\nItem-level:\n- InventoryItemId\n- ItemNumber\n\nLocation-level:\n- LotNumber\n- SubinventoryCode\n- LocatorId\n\n--------------------------------------------------\nBASE CONDITION\n--------------------------------------------------\nAllocatedFlag = false AND UsageCode = 3\n\nThe above condition is always present in the query\n\n--------------------------------------------------\nQUERY CONSTRUCTION\n--------------------------------------------------\n- Join multiple filters using AND.\n- If only one filter exists, return it directly.\n- If no valid filters exist, return an empty string.\n- Do NOT wrap the entire query in quotes.\n- Return only the condition expression (not prefixed with q)"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"query\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_INVENTORYITEMSERIALSLOTMANAGEMENTADVISOR",
+            "functionName": "GetSerialsForLots",
+            "name": "Inventory Item Serial Numbers - Merge"
+          },
+          "outcomes": {
+            "success": "1770913232575"
+          },
+          "code": "INVENTORY_ITEM_SERIAL_NUMBERS",
+          "id": "1770820651118",
+          "inputs": [
+            {
+              "id": "1770820679876_1",
+              "name": "queryParam",
+              "type": "string",
+              "value": "{{$context.$nodes.SERIAL_NUMBER_QUERY_CREATOR.$output.query}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Check if Item is serial controlled Translate"
+          },
+          "outcomes": {
+            "true": "1770826788384",
+            "false": "add_false_1770826722488"
+          },
+          "code": "CHECK_IF_ITEM_IS_SERIAL_CONTROLLED_TRANSLATE",
+          "convergenceTargetId": "1770103775853",
+          "id": "1770826722488",
+          "inputs": [
+            {
+              "id": "1770826722490_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_IF_ITEM_IS_SERIAL_CONTROLLED_TRANSLATE_CODE.$output.result == true}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1770911450559"
+          },
+          "id": "add_false_1770826722488",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Serial Number Query Creator - Translate"
+          },
+          "outcomes": {
+            "success": "1770827185514"
+          },
+          "code": "SERIAL_NUMBER_QUERY_CREATOR_TRANSLATE",
+          "id": "1770826788384",
+          "inputs": [
+            {
+              "id": "1770826788386_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI agent responsible for generating the **q query parameter** for an ADF REST API that searches inventory item serial numbers.\n\n--------------------------------------------------\nUSER INPUT\n--------------------------------------------------\nInputs:\n{{$context.$nodes.LOTTRANSLATE_SOURCE_LOT_SKU_SELECTOR.$output.transactionFullData}}\n\n--------------------------------------------------\nOBJECTIVE\n--------------------------------------------------\nProduce a response that:\n1) Generates a valid ADF REST `q` parameter\n2) Includes Organization and Item filters directly in the query when provided\n3) Treats ALL attributes as optional other than the ones mentioned here - AllocatedFlag AND UsageCode\n4) Always conforms to the required output schema\n\n--------------------------------------------------\nINPUT VARIABLES\n--------------------------------------------------\nThe agent may receive the following inputs:\n\n1) Free-text search text\n2) Explicit parameters such as:\n   - Organization Name\n   - Organization Code\n   - OrganizationId\n   - Item Number\n   - InventoryItemId\n   - LotNumber\n   - Status\n   - Grade\n   - Dates\n   - Other lot attributes\n\n--------------------------------------------------\nMANDATORY INPUT RULE\n--------------------------------------------------\nThere are NO mandatory parameters.\n\n- All attributes are optional.\n- If no valid filters are identified, return an empty query string.\n\n--------------------------------------------------\nQUERY GENERATION RULES\n--------------------------------------------------\n\n1) Include filters ONLY when explicitly mentioned or clearly implied.\n2) Never invent values.\n3) Never auto-correct values.\n4) Never infer missing Organization or Item values.\n5) Combine all conditions using logical AND.\n6) Use proper ADF REST `q` syntax.\n7) Properly quote string fields using single quotes only.\n8) Preserve exact user-entered values.\n\n--------------------------------------------------\nQUOTING RULE (MANDATORY)\n--------------------------------------------------\n\n- All string values MUST be enclosed in single quotes (' ').\n- NEVER use double quotes (\") in the query.\n- Do NOT escape using backslashes.\n- Numeric values must NOT be quoted.\n- Date values must be enclosed in single quotes.\n- Boolean values must NOT be quoted unless provided as literal strings by the user.\n- Preserve exact user-entered values inside single quotes.\n\nCorrect:\nOrganizationCode='PDSCV1'\nItemNumber='500 GB Internal Memory'\nLotNumber='LIM100'\n\nIncorrect:\nOrganizationCode=\"PDSCV1\"\nOrganizationCode=\\\"PDSCV1\\\"\n\n--------------------------------------------------\nSUPPORTED FILTERABLE ATTRIBUTES\n--------------------------------------------------\n\nOrganization-level:\n- OrganizationId\n\nItem-level:\n- InventoryItemId\n- ItemNumber\n\nLocation-level:\n- LotNumber\n- SubinventoryCode\n- LocatorId\n\n--------------------------------------------------\nBASE CONDITION\n--------------------------------------------------\nAllocatedFlag = false AND UsageCode = 3\n\nThe above condition is always present in the query\n\n--------------------------------------------------\nQUERY CONSTRUCTION\n--------------------------------------------------\n- Join multiple filters using AND.\n- If only one filter exists, return it directly.\n- If no valid filters exist, return an empty string.\n- Do NOT wrap the entire query in quotes.\n- Return only the condition expression (not prefixed with q)\n- Use source lot number only. **NOT** target lot number."
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"query\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_INVENTORYITEMSERIALSLOTMANAGEMENTADVISOR",
+            "functionName": "GetSerialsForLots",
+            "name": "Inventory Item Serial Numbers - Translate"
+          },
+          "outcomes": {
+            "success": "1770911450559"
+          },
+          "code": "INVENTORY_ITEM_SERIAL_NUMBERS_TRANSLATE",
+          "id": "1770827185514",
+          "inputs": [
+            {
+              "id": "1770827407939_1",
+              "name": "queryParam",
+              "type": "string",
+              "value": "{{$context.$nodes.SERIAL_NUMBER_QUERY_CREATOR_TRANSLATE.$output.query}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Check if Item is serial controlled"
+          },
+          "outcomes": {
+            "true": "1770828337597",
+            "false": "add_false_1770828278220"
+          },
+          "code": "CHECK_IF_ITEM_IS_SERIAL_CONTROLLED",
+          "convergenceTargetId": "end",
+          "id": "1770828278220",
+          "inputs": [
+            {
+              "id": "1770828278222_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_IF_ITEM_IS_SERIAL_CONTROLLED_SPLIT_CODE.$output.result == true}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1770897461673"
+          },
+          "id": "add_false_1770828278220",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Serial Number Query Creator - Split"
+          },
+          "outcomes": {
+            "success": "1770828471623"
+          },
+          "code": "SERIAL_NUMBER_QUERY_CREATOR_SPLIT",
+          "id": "1770828337597",
+          "inputs": [
+            {
+              "id": "1770828337599_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI agent responsible for generating the **q query parameter** for an ADF REST API that searches inventory item serial numbers.\n\n--------------------------------------------------\nUSER INPUT\n--------------------------------------------------\nInputs:\n{{$context.$nodes.SOURCE_LOT_SKU_SELECTOR.$output.transactionFullData}}\n--------------------------------------------------\nOBJECTIVE\n--------------------------------------------------\nProduce a response that:\n1) Generates a valid ADF REST `q` parameter\n2) Includes Organization and Item filters directly in the query when provided\n3) Treats ALL attributes as optional other than the ones mentioned here - AllocatedFlag AND UsageCode\n4) Always conforms to the required output schema\n\n--------------------------------------------------\nINPUT VARIABLES\n--------------------------------------------------\nThe agent may receive the following inputs:\n\n1) Free-text search text\n2) Explicit parameters such as:\n   - Organization Name\n   - Organization Code\n   - OrganizationId\n   - Item Number\n   - InventoryItemId\n   - LotNumber\n   - Status\n   - Grade\n   - Dates\n   - Other lot attributes\n\n--------------------------------------------------\nMANDATORY INPUT RULE\n--------------------------------------------------\nThere are NO mandatory parameters.\n\n- All attributes are optional.\n- If no valid filters are identified, return an empty query string.\n\n--------------------------------------------------\nQUERY GENERATION RULES\n--------------------------------------------------\n\n1) Include filters ONLY when explicitly mentioned or clearly implied.\n2) Never invent values.\n3) Never auto-correct values.\n4) Never infer missing Organization or Item values.\n5) Combine all conditions using logical AND.\n6) Use proper ADF REST `q` syntax.\n7) Properly quote string fields using single quotes only.\n8) Preserve exact user-entered values.\n9) Use source lot number only. **NOT** target lot numbers.\n\n--------------------------------------------------\nQUOTING RULE (MANDATORY)\n--------------------------------------------------\n\n- All string values MUST be enclosed in single quotes (' ').\n- NEVER use double quotes (\") in the query.\n- Do NOT escape using backslashes.\n- Numeric values must NOT be quoted.\n- Date values must be enclosed in single quotes.\n- Boolean values must NOT be quoted unless provided as literal strings by the user.\n- Preserve exact user-entered values inside single quotes.\n\nCorrect:\nOrganizationCode='PDSCV1'\nItemNumber='500 GB Internal Memory'\nLotNumber='LIM100'\n\nIncorrect:\nOrganizationCode=\"PDSCV1\"\nOrganizationCode=\\\"PDSCV1\\\"\n\n--------------------------------------------------\nSUPPORTED FILTERABLE ATTRIBUTES\n--------------------------------------------------\n\nOrganization-level:\n- OrganizationId\n\nItem-level:\n- InventoryItemId\n- ItemNumber\n\nLocation-level:\n- LotNumber\n- SubinventoryCode\n- LocatorId\n\n--------------------------------------------------\nBASE CONDITION\n--------------------------------------------------\nAllocatedFlag = false AND UsageCode = 3\n\nThe above condition is always present in the query\n\n--------------------------------------------------\nQUERY CONSTRUCTION\n--------------------------------------------------\n- Join multiple filters using AND.\n- If only one filter exists, return it directly.\n- If no valid filters exist, return an empty string.\n- Do NOT wrap the entire query in quotes.\n- Return only the condition expression (not prefixed with q)\n- Only a single lot number is available and it must be the source lot number"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"query\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_INVENTORYITEMSERIALSLOTMANAGEMENTADVISOR",
+            "functionName": "GetSerialsForLots",
+            "name": "Inventory Item Serial Numbers - Split"
+          },
+          "outcomes": {
+            "success": "1770897461673"
+          },
+          "code": "INVENTORY_ITEM_SERIAL_NUMBERS_SPLIT",
+          "id": "1770828471623",
+          "inputs": [
+            {
+              "id": "1770828497489_1",
+              "name": "queryParam",
+              "type": "string",
+              "value": "{{$context.$nodes.SERIAL_NUMBER_QUERY_CREATOR_SPLIT.$output.query}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Split_Transaction_Payload_Creator"
+          },
+          "outcomes": {
+            "success": "1771327418151"
+          },
+          "code": "SPLITTRANSACTIONPAYLOADCREATOR",
+          "convergenceTargetId": "1770828278220",
+          "id": "1770043862979",
+          "inputs": [
+            {
+              "id": "1770043862980_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI agent responsible for creating the **Inventory Lot Split transaction payload**.\n\nThis agent is invoked ONLY after all required user input has been fully collected and finalized.\nYour SOLE responsibility is to construct the payload strictly from the provided input context.\n\n--------------------------------------------------\nDOMAIN CONTEXT\n--------------------------------------------------\nAn Inventory Lot Split transaction follows these rules:\n\n- Quantity is consumed from exactly ONE source lot\n- Quantity is created into ONE OR MORE target (split) lots\n- The sum of all target lot quantities MUST exactly equal the absolute value of the source lot quantity\n- All parts must belong to the same Lot Transaction Group\n\n--------------------------------------------------\nINPUT ASSUMPTIONS\n--------------------------------------------------\n- All required data is present and complete\n- No clarification, validation, or recalculation is required\n- Do NOT infer, adjust, recompute, normalize, or correct quantities\n- Use all input values exactly as provided\n- All quantities are in primary UOM (no UOM conversion required)\n- If any target lot is missing a LotNumber, use values from:\n  Newly Generated Lots : {{$context.$nodes.PAYLOAD_LOTS_GENERATOR.$output}}\n- Use Newly Generated Lots ONLY to fill missing target lot numbers\n- Do NOT generate additional lot numbers yourself\n\n--------------------------------------------------\nPAYLOAD CONSTRUCTION RULES\n--------------------------------------------------\n- Generate ONE part for the source lot\n- Generate ONE separate part per target (split) lot\n- Generate a unique LotTransactionGroupName\n  - Must be the same for all parts\n  - Maximum length: 30 characters\n- Generate a unique numeric TransactionBatchId\n  - Must be the same for all parts\n- SourceHeaderId is always 1\n- SourceLineId is always 1 for all parts\n- Skip any attribute that is null, empty, or not provided\n- All parts must share:\n  - OrganizationId (number)\n  - InventoryItemId (number)\n  - Revision\n  - TransactionDate\n  - TransactionUnitOfMeasure\n  - LotTransactionGroupName\n  - trackingAttributesDFF (Project / Task / Country Of Origin)\n\n--------------------------------------------------\nEXPECTED DATA MODEL\n--------------------------------------------------\nCommon attributes for ALL parts:\n\n- TransactionTypeName = \"Inventory Lot Split\"\n- OrganizationId\n- InventoryItemId\n- Revision\n- SubinventoryCode\n- LocatorName\n- LicensePlateNumber\n- TransactionDate\n- TransactionUnitOfMeasure\n- LotTransactionGroupName\n- trackingAttributesDFF\n  - projectId\n  - taskId\n  - countryOfOriginCode_Display\n\n--------------------------------------------------\nSOURCE LOT PART (Exactly ONE)\n--------------------------------------------------\n- SourceLotFlag = true\n- TransactionQuantity = negative number\n- Lots array must contain exactly ONE entry:\n  - LotNumber = source lot number\n  - TransactionQuantity = same negative number as header\n  - LotExpirationDate (include only if provided)\n\n--------------------------------------------------\nTARGET LOT PARTS (ONE OR MORE)\n--------------------------------------------------\nFor EACH target lot create a separate part:\n\n- SourceLotFlag = false\n- TransactionQuantity = positive number\n- Lots array must contain exactly ONE entry:\n  - LotNumber = target lot number\n    - If missing, fill using Newly Generated Lots\n  - TransactionQuantity = positive number\n  - SecondaryTransactionQuantity (include only if provided)\n  - LotExpirationDate (include only if provided)\n\n--------------------------------------------------\nOUTPUT RULES\n--------------------------------------------------\n- Output ONLY structured JSON\n- Do NOT include explanations\n- Do NOT include comments\n- Do NOT include example values\n- Do NOT include validation logic\n- Do NOT include user messaging\n- Do NOT reference APIs or internal systems\n\n--------------------------------------------------\nOUTPUT STRUCTURE\n--------------------------------------------------\n{\n  \"parts\": [\n    {\n      \"id\": \"<unique-part-id>\",\n      \"path\": \"/inventoryStagedTransactions\",\n      \"operation\": \"create\",\n      \"payload\": {\n        \"SourceCode\": \"SERVICE\",\n        \"ProcessStatus\": 1,\n        \"SourceHeaderId\": 1,\n        \"SourceLineId\": 1,\n        \"UseCurrentCostFlag\": \"true\",\n        \"TransactionMode\": \"1\",\n        \"TransactionBatchId\": <number>,\n        \"TransactionUnitOfMeasure\": <TransactionUnitOfMeasure>,\n        \"TransactionTypeName\": \"Inventory Lot Split\",\n        \"OrganizationId\": <organization-id>,\n        \"InventoryItemId\": <inventory item id>,\n        \"Revision\": \"<revision>\",\n        \"TransactionQuantity\": <number>,\n        \"TransactionDate\": \"<transaction-date>\",\n        \"SubinventoryCode\": \"<subinventory-code>\",\n        \"LocatorName\": \"<locator>\",\n        \"SourceLotFlag\": <true|false>,\n        \"LotTransactionGroupName\": \"<lot-transaction-group>\",\n        \"LicensePlateNumber\": \"<lpn-id>\",\n\n        \"trackingAttributesDFF\": [\n          {\n            \"projectId\": <project-id>,\n            \"taskId\": <task-id>,\n            \"countryOfOriginCode_Display\": \"<country-of-origin>\"\n          }\n        ],\n\n        \"lots\": [\n          {\n            \"LotNumber\": \"<lot-number>\",\n            \"TransactionQuantity\": <number>,\n            \"SecondaryTransactionQuantity\": <number>,\n            \"LotExpirationDate\": \"<date>\"\n          }\n        ]\n      }\n    }\n  ]\n}\n\n--------------------------------------------------\nUSER INPUT\n--------------------------------------------------\n\nSource Transaction Data:\n{{$context.$nodes.SOURCE_LOT_SKU_SELECTOR.$output.transactionFullData}}\n\nInventoryItemId:\n{{$context.$nodes.LOT_MERGE_DERIVE_ITEM_PROPERTIES.$output?.items[0]?.ItemId}}\n\nTransactionDate:\n{{$context.$system.$currentDateTime}}\n\nTransactionUnitOfMeasure:\n{{$context.$variables.itemDetails?.PrimaryUOMName}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"requestPayload\": {\n            \"type\": \"object\",\n            \"properties\": {}\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Insert serial in Split Payload",
+            "returnType": "object",
+            "sourceCode": "let mainObj = $context.$nodes.SPLITTRANSACTIONPAYLOADCREATOR.$output.requestPayload;\nlet itemDetails = $context.$variables.itemDetails;\n\nif (!mainObj || !itemDetails) return mainObj;\n\n// Only apply logic for Serial Control = 2 or 5\nif (itemDetails?.SerialNumberControlCode != 2 && \n    itemDetails?.SerialNumberControlCode != 5) {\n    return mainObj;\n}\n\nlet serialsObj = $context.$nodes.INVENTORY_ITEM_SERIAL_NUMBERS_SPLIT.$output;\nlet serialItems = serialsObj?.items || [];\n\nif (!Array.isArray(serialItems) || serialItems.length === 0) {\n    return mainObj; // No serials to process\n}\n\nconst allSerials = serialItems.map(item => ({\n    SerialNumber: item.SerialNumber,\n    LotNumber: item.LotNumber\n}));\n\nconst matchLotNumber = allSerials[0]?.LotNumber || null;\nlet usedSerials = new Set();\n\n(mainObj.parts || []).forEach(part => {\n    const lots = part?.payload?.lots || [];\n\n    lots.forEach(lot => {\n        if (!lot) return;\n\n        const count = typeof lot.TransactionQuantity === 'number'\n            ? lot.TransactionQuantity\n            : parseInt(lot.TransactionQuantity, 10) || 0;\n\n        lot.lotSerials = [];\n\n        for (let s of allSerials) {\n            if (usedSerials.has(s.SerialNumber)) continue;\n\n            // If lot matches primary lot OR distributing by quantity\n            if (lot.LotNumber === matchLotNumber || lot.lotSerials.length < count) {\n                lot.lotSerials.push({\n                    FmSerialNumber: s.SerialNumber,\n                    ToSerialNumber: s.SerialNumber\n                });\n\n                usedSerials.add(s.SerialNumber);\n            }\n\n            if (lot.lotSerials.length === count) break;\n        }\n    });\n});\n\nreturn mainObj;"
+          },
+          "outcomes": {
+            "success": "1770115048504"
+          },
+          "code": "INSERT_SERIAL_IN_SPLIT_PAYLOAD",
+          "convergenceTargetId": "1770115048504",
+          "id": "1770897461673",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Lot Transaction - Payload Creator"
+          },
+          "outcomes": {
+            "success": "1771327359549"
+          },
+          "code": "LOT_TRANSACTION_PAYLOAD_CREATOR",
+          "convergenceTargetId": "1770826722488",
+          "id": "1770051189138",
+          "inputs": [
+            {
+              "id": "1770051189144_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI agent responsible for creating the **Inventory Lot Translate transaction payload**.\n\nThis agent is invoked only after all required user input has been collected.\nYour sole responsibility is to construct the payload strictly from the provided input.\n\n--------------------------------------------------\nDOMAIN CONTEXT\n--------------------------------------------------\nAn Inventory Lot Translate transaction follows these rules:\n\n- Quantity is consumed from exactly ONE source lot\n- Quantity is created into exactly ONE target lot\n- The absolute value of the source lot quantity must exactly equal the target lot quantity\n- Source and target lots belong to the same inventory item, organization, and subinventory\n- All parts must belong to the same Lot Transaction Group\n\n--------------------------------------------------\nINPUT ASSUMPTIONS\n--------------------------------------------------\n- All required data is present and complete\n- No clarification or validation is required\n- Do NOT infer, adjust, recompute, or normalize quantities or identifiers\n- Use input values exactly as provided\n- All quantities are in primary UOM (no UOM handling required)\n- If the target lot number is null or missing, use:\n  {{$context.$nodes.TRANSLATE_GENERATE_NEW_LOT.$output}}\n  to populate the missing lot number exactly as provided\n\n--------------------------------------------------\nPAYLOAD CONSTRUCTION RULES\n--------------------------------------------------\n- Generate ONE part for the source lot\n- Generate ONE part for the target (translated) lot\n- Generate a unique LotTransactionGroupName (less than 30 characters) and use the same value for both parts\n- Generate a unique numeric TransactionBatchId and use the same value for both parts\n- SourceHeaderId is always 1\n- SourceLineId is always 1 for all parts\n- Skip any attribute that is null, empty, or not provided\n- Both parts must share:\n  - OrganizationId (number)\n  - InventoryItemId (number)\n  - Revision\n  - SubinventoryCode\n  - LocatorName\n  - TransactionDate\n  - LotTransactionGroupName\n  - Tracking attributes (Project / Task / Country Of Origin)\n\n--------------------------------------------------\nEXPECTED DATA MODEL\n--------------------------------------------------\nCommon attributes for all parts:\n\n- TransactionTypeName = \"Inventory Lot Translate\"\n- OrganizationId\n- InventoryItemId\n- Revision\n- SubinventoryCode\n- LocatorName\n- LicensePlateNumber\n- TransactionDate (use provided value below)\n- LotTransactionGroupName\n- trackingAttributesDFF\n  - projectId\n  - taskId\n  - countryOfOriginCode_Display\n\n--------------------------------------------------\nSOURCE LOT PART (Exactly ONE)\n--------------------------------------------------\n- SourceLotFlag = true\n- TransactionQuantity = negative number\n- Lots array contains exactly one entry:\n  - LotNumber = source lot number\n  - TransactionQuantity = negative number (same as header)\n  - LotExpirationDate (include only if provided)\n\n--------------------------------------------------\nTARGET LOT PART (Exactly ONE)\n--------------------------------------------------\n- SourceLotFlag = false\n- TransactionQuantity = positive number\n- Lots array contains exactly one entry:\n  - LotNumber = target lot number (use generated value if missing)\n  - TransactionQuantity = positive number\n  - SecondaryTransactionQuantity (include only if provided)\n  - LotExpirationDate (include only if provided)\n\n--------------------------------------------------\nOUTPUT RULES\n--------------------------------------------------\n- Output ONLY structured JSON\n- Do NOT include explanations, comments, or example values\n- Do NOT include validation logic or user messaging\n- Do NOT reference APIs, internal systems, or implementation details\n\n--------------------------------------------------\nOUTPUT STRUCTURE\n--------------------------------------------------\n{\n  \"parts\": [\n    {\n      \"id\": \"<unique-part-id>\",\n      \"path\": \"/inventoryStagedTransactions\",\n      \"operation\": \"create\",\n      \"payload\": {\n        \"SourceCode\": \"SERVICE\",\n        \"ProcessStatus\": 1,\n        \"SourceHeaderId\": 1,\n        \"SourceLineId\": 1,\n        \"UseCurrentCostFlag\": \"true\",\n        \"TransactionMode\": \"1\",\n        \"TransactionBatchId\": <number>,\n        \"TransactionUnitOfMeasure\": {{$context.$variables.itemDetails?.PrimaryUOMName}},\n        \"TransactionTypeName\": \"Inventory Lot Translate\",\n        \"OrganizationId\": <organization-id (number type)>,\n        \"InventoryItemId\": {{$context.$variables.itemDetails?.ItemId}},\n        \"Revision\": \"<revision>\",\n        \"TransactionQuantity\": <number>,\n        \"TransactionDate\": \"{{$context.$system.$currentDateTime}}\",\n        \"SubinventoryCode\": \"<subinventory-code>\",\n        \"LocatorName\": \"<locator>\",\n        \"SourceLotFlag\": <true|false>,\n        \"LotTransactionGroupName\": \"<lot-transaction-group>\",\n        \"LicensePlateNumber\": \"<lpn-id>\",\n        \"trackingAttributesDFF\": [\n          {\n            \"projectId\": \"<project-id>(number type)\",\n            \"taskId\": \"<task-id>(number type)\",\n            \"countryOfOriginCode_Display\": \"<country-of-origin>\"\n          }\n        ],\n        \"lots\": [\n          {\n            \"LotNumber\": \"<lot-number>\",\n            \"TransactionQuantity\": <number>,\n            \"LotExpirationDate\": \"<date>\"\n          }\n        ]\n      }\n    }\n  ]\n}\n\n--------------------------------------------------\nUSER INPUT\n--------------------------------------------------\n\n{{$context.$nodes.LOTTRANSLATE_SOURCE_LOT_SKU_SELECTOR.$output.transactionFullData}}\n\nInventory Item Id:\n{{$context.$variables.itemDetails?.ItemId}}\n\nTransactionUnitOfMeasure:\n{{$context.$variables.itemDetails?.PrimaryUOMName}}\n\nTransaction Date:\n{{$context.$system.$currentDateTime}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"payload\": {\n            \"type\": \"object\",\n            \"properties\": {}\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Insert serial in Translate Payload",
+            "returnType": "object",
+            "sourceCode": "let mainObj = $context.$nodes.LOT_TRANSACTION_PAYLOAD_CREATOR.$output.payload;\n\nlet itemDetails = $context.$variables.itemDetails;\n\nif (\n  itemDetails?.SerialNumberControlCode != 2 &&\n  itemDetails?.SerialNumberControlCode != 5\n) {\n  return mainObj;\n}\n\nlet serialsObj = $context.$nodes.INVENTORY_ITEM_SERIAL_NUMBERS_TRANSLATE.$output;\n\nconst allSerials = (serialsObj.items || []).map(item => ({\n    SerialNumber: item.SerialNumber,\n    LotNumber: item.LotNumber\n}));\nconst matchLotNumber = allSerials.length > 0 ? allSerials[0].LotNumber : null;\nlet usedSerials = new Set();\n\n(mainObj.parts || []).forEach(part => {\n    const lots = (part.payload && part.payload.lots) || [];\n    lots.forEach(lot => {\n        if (lot.LotNumber === matchLotNumber) {\n            lot.lotSerials = allSerials.map(s => ({\n                FmSerialNumber: s.SerialNumber,\n                ToSerialNumber: s.SerialNumber\n            }));\n        } else {\n            const count = typeof lot.TransactionQuantity === 'number'\n                ? lot.TransactionQuantity\n                : parseInt(lot.TransactionQuantity, 10) || 0;\n            lot.lotSerials = [];\n            for (let s of allSerials) {\n                if (!usedSerials.has(s.SerialNumber)) {\n                    lot.lotSerials.push({\n                        FmSerialNumber: s.SerialNumber,\n                        ToSerialNumber: s.SerialNumber\n                    });\n                    usedSerials.add(s.SerialNumber);\n                    if (lot.lotSerials.length === count) break;\n                }\n            }\n        }\n    });\n});\n\nreturn mainObj;"
+          },
+          "outcomes": {
+            "success": "1770103775853"
+          },
+          "code": "INSERT_SERIAL_IN_TRANSLATE_PAYLOAD",
+          "convergenceTargetId": "1770103775853",
+          "id": "1770911450559",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Insert serial in Merge Payload",
+            "returnType": "object",
+            "sourceCode": "let mainObj = $context.$nodes.LOT_MERGE_TNX_PAYLOAD_CREATOR.$output.payload;\n\nlet itemDetails = $context.$variables.itemDetails;\n\nif (\n  itemDetails?.SerialNumberControlCode != 2 &&\n  itemDetails?.SerialNumberControlCode != 5\n) {\n  return mainObj;\n}\n\nlet serialsObj = $context.$nodes.INVENTORY_ITEM_SERIAL_NUMBERS.$output;\n\nconst allSerials = (serialsObj.items || []).map(item => ({\n  SerialNumber: item.SerialNumber,\n  LotNumber: item.LotNumber\n}));\n\nconst serialsByLot = {};\n\nallSerials.forEach(s => {\n  if (!serialsByLot[s.LotNumber]) {\n    serialsByLot[s.LotNumber] = [];\n  }\n  serialsByLot[s.LotNumber].push(s.SerialNumber);\n});\n\n(mainObj.parts || []).forEach(part => {\n  const lots = (part.payload && part.payload.lots) || [];\n\n  lots.forEach(lot => {\n    lot.lotSerials = [];\n\n    let serialsForLot = serialsByLot[lot.LotNumber];\n\n    if (serialsForLot && serialsForLot.length > 0) {\n      serialsForLot.forEach(serial => {\n        lot.lotSerials.push({\n          FmSerialNumber: serial,\n          ToSerialNumber: serial\n        });\n      });\n    } else {\n      allSerials.forEach(s => {\n        lot.lotSerials.push({\n          FmSerialNumber: s.SerialNumber,\n          ToSerialNumber: s.SerialNumber\n        });\n      });\n    }\n  });\n});\n\nreturn mainObj;"
+          },
+          "outcomes": {
+            "success": "1770091647828"
+          },
+          "code": "INSERT_SERIAL_IN_MERGE_PAYLOAD",
+          "convergenceTargetId": "1770091647828",
+          "id": "1770913232575",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check if Item is Serial Controlled Merge Code",
+            "returnType": "boolean",
+            "sourceCode": "return ( $context.$variables.itemDetails?.SerialNumberControlCode == 2 || $context.$variables.itemDetails?.SerialNumberControlCode == 5);"
+          },
+          "outcomes": {
+            "success": "1770816382697"
+          },
+          "code": "CHECK_IF_ITEM_IS_SERIAL_CONTROLLED_MERGE_CODE",
+          "id": "1771326495104",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check if Item is serial controlled translate code",
+            "returnType": "boolean",
+            "sourceCode": "return ( $context.$variables.itemDetails?.SerialNumberControlCode == 2 || $context.$variables.itemDetails?.SerialNumberControlCode == 5);"
+          },
+          "outcomes": {
+            "success": "1770826722488"
+          },
+          "code": "CHECK_IF_ITEM_IS_SERIAL_CONTROLLED_TRANSLATE_CODE",
+          "id": "1771327359549",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check if Item is Serial Controlled Split Code",
+            "returnType": "boolean",
+            "sourceCode": "return ( $context.$variables.itemDetails?.SerialNumberControlCode == 2 || $context.$variables.itemDetails?.SerialNumberControlCode == 5);"
+          },
+          "outcomes": {
+            "success": "1770828278220"
+          },
+          "code": "CHECK_IF_ITEM_IS_SERIAL_CONTROLLED_SPLIT_CODE",
+          "id": "1771327418151",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_INVENTORYORGANIZATIONSLOOKUPLOTMANAGEMENT",
+            "functionName": "findOrganizationByNameOrCode",
+            "name": "Search_ORG_ID_RESOLVER"
+          },
+          "outcomes": {
+            "success": "1771986392113"
+          },
+          "code": "Search_ORG_ID_RESOLVER",
+          "convergenceTargetId": "1771237828116",
+          "id": "1770176287064",
+          "inputs": [
+            {
+              "id": "1770176326173_1",
+              "name": "pOrganizationCode",
+              "type": "string",
+              "value": "{{$context.$nodes.INTENT_CLASSIFICATION.$output.userEnteredOrganizationNameorCode}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Item Derivation Needed"
+          },
+          "outcomes": {
+            "true": "1771986086351",
+            "false": "add_false_1771985332053"
+          },
+          "code": "Search_Item_Id_Resolver",
+          "convergenceTargetId": "1770018675599",
+          "id": "1771985332053",
+          "inputs": [
+            {
+              "id": "1771985332063_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.Search_ORG_ID_RESOLVER.$output.items?.length==1 && $context.$nodes.INTENT_CLASSIFICATION.$output.userEnteredItemNumber!=null && $context.$nodes.INTENT_CLASSIFICATION.$output.userEnteredItemNumber!=undefined && $context.$nodes.INTENT_CLASSIFICATION.$output.userEnteredItemNumber!=''}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1770018675599"
+          },
+          "id": "add_false_1771985332053",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_BATCHEXECUTOR",
+            "functionName": "executeBatch",
+            "name": "Derive Item Details"
+          },
+          "outcomes": {
+            "success": "1771986777564"
+          },
+          "code": "Derive_ITEM_DETAILS",
+          "convergenceTargetId": "1771985384754",
+          "id": "1771237828116",
+          "inputs": [
+            {
+              "id": "1771986551011_1",
+              "name": "batchPayload",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_REQUEST_FOR_ITEMS_REST.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Request For Items REST",
+            "returnType": "object",
+            "sourceCode": "let payload ={\n  \"parts\": [\n    {\n      \"id\": \"itemsV2\",\n      \"path\": `/itemsLOV?q=OrganizationId=${ $context.$variables.OrganizationId } and ItemNumber='${$context.$nodes.INTENT_CLASSIFICATION.$output.userEnteredItemNumber?.trim()}'`,\n      \"operation\": \"get\"\n    }\n  ]\n}\n\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "1771237828116"
+          },
+          "code": "PREPARE_REQUEST_FOR_ITEMS_REST",
+          "id": "1771986086351",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Organization Values Setter"
+          },
+          "outcomes": {
+            "success": "1771985332053"
+          },
+          "code": "ORGANIZATION_VALUES_SETTER",
+          "id": "1771986392113",
+          "inputs": [
+            {
+              "id": "1771986862731",
+              "name": "OrganizationId",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.Search_ORG_ID_RESOLVER.$output?.items?.[0]?.OrganizationId}}"
+            },
+            {
+              "id": "1771986402534",
+              "name": "organizationDetails",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.Search_ORG_ID_RESOLVER.$output?.items?.[0]}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Item Variables Setter"
+          },
+          "outcomes": {
+            "success": "1770018675599"
+          },
+          "code": "ITEM_VARIABLES_SETTER",
+          "id": "1771986777564",
+          "inputs": [
+            {
+              "id": "1771986823184",
+              "name": "InventoryItemId",
+              "scope": "JOB",
+              "type": "number",
+              "value": "{{$context.$nodes.Derive_ITEM_DETAILS.$output?.parts?.[0]?.payload?.items?.[0]?.ItemId}}"
+            },
+            {
+              "id": "1771986784733",
+              "name": "itemDetails",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.Derive_ITEM_DETAILS.$output?.parts?.[0]?.payload?.items?.[0]}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Simplify Item Quantities Data for LLM",
+            "returnType": "object",
+            "sourceCode": "const cleanItemQuantitiesLot = (data) => {\n  if (!data?.items?.length) return { items: [] };\n\n  const allowedKeys = [\n    \"OrganizationId\",\n    \"OrganizationCode\",\n    \"InventoryItemId\",\n    \"ItemNumber\",\n    \"Revision\",\n    \"SubinventoryCode\",\n    \"LocatorName\",\n    \"LotNumber\",\n    \"ProjectId\",\n    \"ProjectNumber\",\n    \"TaskId\",\n    \"TaskNumber\",\n    \"CountryOfOriginCode\",\n    \"OnhandQuantity\",\n    \"SecondaryOnhandQuantity\",\n    \"AvailableToTransact\",\n    \"LotExpirationDate\",\n    \"LicensePlateNumber\",\n    \"CountryOfOriginName\"\n  ];\n\n  const { items } = data;\n\n  const filteredItems = items.map(item => {\n    const filtered = Object.fromEntries(\n      Object.entries(item).filter(([key]) => allowedKeys.includes(key))\n    );\n\n    // âœ… Normalize AvailableToTransact (handles string, number, malformed values)\n    const value = filtered.AvailableToTransact;\n\n    if (value !== null && value !== undefined) {\n      const normalized = String(value).split(\",\")[0].trim();\n      filtered.AvailableToTransact = normalized;\n    }\n\n    return filtered;\n  });\n\n  // âœ… Remove rows where AvailableToTransact <= 0\n  const positiveQuantityItems = filteredItems.filter(item => {\n    const qty = parseFloat(item.AvailableToTransact);\n    return !isNaN(qty) && qty > 0;\n  });\n\n  // Remove columns where ALL rows are null/undefined\n  const keysToRemove = allowedKeys.filter(key =>\n    positiveQuantityItems.every(item => item[key] === null || item[key] === undefined)\n  );\n\n  const cleanedItems = positiveQuantityItems.map(item =>\n    Object.fromEntries(\n      Object.entries(item).filter(\n        ([key]) => !keysToRemove.includes(key)\n      )\n    )\n  );\n\n  return {\n    items: cleanedItems,\n    count: cleanedItems.length\n  };\n};\n\nlet itemQuantitiesLot = $context.$nodes.QUERY_ITEM_QUANTITY_LOTS.$output; \nconst cleanedData = cleanItemQuantitiesLot(itemQuantitiesLot);\n\nreturn cleanedData;"
+          },
+          "outcomes": {
+            "success": "1770040056888"
+          },
+          "code": "SIMPLIFY_ITEM_QUANTITIES_DATA_FOR_LLM",
+          "id": "1771991250484",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Lot Merge Payload Creator"
+          },
+          "outcomes": {
+            "success": "1771326495104"
+          },
+          "code": "LOT_MERGE_TNX_PAYLOAD_CREATOR",
+          "id": "1772012821863",
+          "inputs": [
+            {
+              "id": "1772012821878_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI agent responsible for creating the **Inventory Lot Merge transaction payload**.\n\nThis agent is invoked only after all required user input has been collected.\nYour sole responsibility is to construct the payload strictly from the provided input.\n\n--------------------------------------------------\nDOMAIN CONTEXT\n--------------------------------------------------\nAn Inventory Lot Merge transaction follows these rules:\n\n- Quantity is consumed from TWO OR MORE source lots\n- Quantity is created into exactly ONE target (merged) lot\n- The sum of the absolute values of all source lot quantities must exactly equal the target lot quantity\n- Source and target lots belong to the same inventory item, organization, and subinventory\n- All parts must belong to the same Lot Transaction Group\n\n--------------------------------------------------\nINPUT ASSUMPTIONS\n--------------------------------------------------\n- All required data is present and complete\n- No clarification or validation is required\n- Do NOT infer, adjust, recompute, or normalize quantities or identifiers\n- Use input values exactly as provided\n- All quantities are in primary UOM (no UOM handling required)\n- If any target lot number is null or missing, use:\n  {{$context.$nodes.MERGE_GENERATE_NEW_LOT.$output}}\n  to populate the missing lot number exactly as provided\n\n--------------------------------------------------\nPAYLOAD CONSTRUCTION RULES\n--------------------------------------------------\n- Generate ONE separate part per source lot\n- Generate ONE part for the target (merged) lot\n- Generate a unique LotTransactionGroupName (less than 30 characters) and use the same value for all parts\n- Generate a unique numeric TransactionBatchId and use the same value for all parts\n- SourceHeaderId is always 1\n- SourceLineId is always 1 for all parts\n- Skip any attribute that is null, empty, or not provided\n- All parts must share:\n  - OrganizationId\n  - InventoryItemId\n  - Revision\n  - TransactionDate\n  - LotTransactionGroupName\n  - Tracking attributes (Project / Task / Country Of Origin)\n  - Lot Grade (if applicable)\n\n--------------------------------------------------\nEXPECTED DATA MODEL\n--------------------------------------------------\nCommon attributes for all parts:\n\n- TransactionTypeName = \"Inventory Lot Merge\"\n- OrganizationId (number)\n- InventoryItemId (number)\n- Revision\n- TransactionDate (use provided value below)\n- LotTransactionGroupName\n- trackingAttributesDFF\n  - projectId\n  - taskId\n  - countryOfOriginCode_Display\n\n--------------------------------------------------\nSOURCE LOT PARTS (TWO OR MORE)\n--------------------------------------------------\nFor each source lot, create a separate part:\n\n- SourceLotFlag = true\n- TransactionQuantity = negative number\n- Lots array contains exactly one entry:\n  - LotNumber = source lot number\n  - TransactionQuantity = negative number (same as header)\n  - LotExpirationDate (include only if provided)\n\n--------------------------------------------------\nTARGET LOT PART (Exactly ONE)\n--------------------------------------------------\n- SourceLotFlag = false\n- TransactionQuantity = positive number\n- Lots array contains exactly one entry:\n  - LotNumber = target lot number (use generated value if missing)\n  - TransactionQuantity = positive number\n  - SecondaryTransactionQuantity (include only if provided)\n  - LotExpirationDate (include only if provided)\n\n--------------------------------------------------\nOUTPUT RULES\n--------------------------------------------------\n- Output ONLY structured JSON\n- Do NOT include explanations, comments, or example values\n- Do NOT include validation logic or user messaging\n- Do NOT reference APIs, internal systems, or implementation details\n\n--------------------------------------------------\nOUTPUT STRUCTURE\n--------------------------------------------------\n{\n  \"parts\": [\n    {\n      \"id\": \"<unique-part-id>\",\n      \"path\": \"/inventoryStagedTransactions\",\n      \"operation\": \"create\",\n      \"payload\": {\n        \"SourceCode\": \"SERVICE\",\n        \"ProcessStatus\": 1,\n        \"SourceHeaderId\": 1,\n        \"SourceLineId\": 1,\n        \"UseCurrentCostFlag\": \"true\",\n        \"TransactionMode\": \"1\",\n        \"TransactionBatchId\": <number>,\n        \"TransactionUnitOfMeasure\": {{$context.$variables.itemDetails?.PrimaryUOMName}},\n        \"TransactionTypeName\": \"Inventory Lot Merge\",\n        \"OrganizationId\": <organization-id (number type)>,\n        \"InventoryItemId\": {{$context.$variables.InventoryItemId}},\n        \"Revision\": \"<revision>\",\n        \"TransactionQuantity\": <number>,\n        \"TransactionDate\": \"{{$context.$system.$currentDateTime}}\",\n        \"SubinventoryCode\": \"<subinventory-code>\",\n        \"LocatorName\": \"<locator>\",\n        \"SourceLotFlag\": <true|false>,\n        \"LotTransactionGroupName\": \"<lot-transaction-group>\",\n        \"LicensePlateNumber\": \"<lpn-id>\",\n        \"trackingAttributesDFF\": [\n          {\n            \"projectId\": \"<project-id>(number type)\",\n            \"taskId\": \"<task-id>(number type)\",\n            \"countryOfOriginCode_Display\": \"<country-of-origin>\"\n          }\n        ],\n        \"lots\": [\n          {\n            \"LotNumber\": \"<lot-number>\",\n            \"TransactionQuantity\": <number>,\n            \"SecondaryTransactionQuantity\": <number (if provided)>,\n            \"LotExpirationDate\": \"<date>\"\n          }\n        ]\n      }\n    }\n  ]\n}\n\n--------------------------------------------------\nUSER INPUT\n--------------------------------------------------\n{{$context.$nodes.LOT_MERGE_TRANSACTION_SKU_SELECTION.$output.transactionFullData}}\n\nInventory Item Id:\n{{$context.$variables.InventoryItemId}}\n\nTransaction Date:\n{{$context.$system.$currentDateTime}}\n\nTransactionUnitOfMeasure:\n{{$context.$variables.itemDetails?.PrimaryUOMName}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"payload\": {\n            \"type\": \"object\",\n            \"properties\": {}\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_BATCHEXECUTOR",
+            "functionName": "executeBatch",
+            "name": "SPL - Execute Batch"
+          },
+          "outcomes": {
+            "success": "1772084628831"
+          },
+          "code": "SPL_EXECUTE_BATCH",
+          "convergenceTargetId": "1772045760264",
+          "id": "1770115048504",
+          "inputs": [
+            {
+              "id": "1770115082051_1",
+              "name": "batchPayload",
+              "type": "string",
+              "value": "{{$context.$nodes.INSERT_SERIAL_IN_SPLIT_PAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "SPL - Request Summarizer"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SPL_REQUEST_SUMMARIZER",
+          "convergenceTargetId": "1772045760264",
+          "id": "1770115284709",
+          "inputs": [
+            {
+              "id": "1770115284711_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "-------------------------------------------------\nINPUT\n--------------------------------------------------\n- Transaction Response:\n  {{$context.$nodes.SPL_EXECUTE_BATCH.$output}}\n\n- Transaction Request:\n  {{$context.$nodes.SPL_EXECUTE_BATCH.$input}} \n\n- Item Details - {{$context.$variables.itemDetails}} \n\n- Organization Details - {{$context.$variables.organizationDetails}} \n\n-------------------------------------------------\n\nYou are an AI agent responsible for summarizing the execution result of an\n**Inventory Lot Split** transaction and determining its final status.\n\n--------------------------------------------------\nINPUT\n--------------------------------------------------\n- Transaction Response\n- Transaction Request\n- Item Number (separate input)\n- Organization Code (separate input)\n\n--------------------------------------------------\nOBJECTIVE\n--------------------------------------------------\n1. Analyze the transaction Response in the context of the submitted Request.\n2. Derive a clear, business-friendly transaction status.\n3. Provide a structured summary suitable for end-user visibility.\n4. Clearly separate:\n   - Source Lot details (consumed)\n   - Target Lot details (created)\n5. Use Item Number and Organization Code instead of any internal IDs.\n6. Display lot details in row-by-row format (NOT table format).\n7. Do NOT hardcode column headers â€” dynamically display relevant attributes.\n\n--------------------------------------------------\nSTATUS DETERMINATION RULES\n--------------------------------------------------\n- If the Response is null or empty:\n  â†’ Assume the transaction is COMPLETED successfully.\n- If the Response explicitly indicates success:\n  â†’ Mark status as COMPLETED.\n- If the Response or payload is null but contains no errors:\n  â†’ Assume the transaction is COMPLETED successfully.\n- If the Response indicates errors or failures:\n  â†’ Mark status as FAILED.\n- Do NOT infer technical states beyond what is visible in the Response.\n\n--------------------------------------------------\nOUTPUT FORMAT (STRICT)\n--------------------------------------------------\n\nTransaction Status: <COMPLETED or FAILED>\n\nSummary:\n<Concise business-friendly summary derived from the Response.\nIf payloads are null and no errors are present, clearly state that the service\nreturned empty/null payloads indicating successful completion.>\n\n--------------------------------------------------\nSource Lot (Consumed)\n--------------------------------------------------\n- Display details in row-by-row attribute format.\n- Include:\n  - Item Number (from separate input)\n  - Organization Code (from separate input)\n  - Subinventory\n  - Unit of Measure\n  - Lot Number\n  - Quantity (must be negative)\n- Do NOT display any internal IDs.\n- Only one source lot is expected.\n\nExample structure (format style only, do not hardcode labels):\nAttribute Name: Value\nAttribute Name: Value\n...\n\n--------------------------------------------------\nTarget Lots (Created)\n--------------------------------------------------\n- Display each target lot separately.\n- For each lot, show details in row-by-row attribute format.\n- Include:\n  - Item Number\n  - Organization Code\n  - Subinventory\n  - Unit of Measure\n  - Lot Number\n  - Quantity (must be positive)\n- Do NOT display any internal IDs.\n\nEach lot should be clearly separated visually.\n\n--------------------------------------------------\nVALIDATION SECTION (MANDATORY)\n--------------------------------------------------\n- Calculate total created quantity.\n- Calculate total consumed quantity (absolute value).\n- Confirm whether quantities are balanced.\n- Display validation result clearly in business-friendly wording.\n\n--------------------------------------------------\nADDITIONAL RULES\n--------------------------------------------------\n- Use business-friendly language.\n- Do NOT expose raw payloads, API paths, internal node names, or system identifiers.\n- Do NOT display InventoryItemId, OrganizationId, SourceHeaderId, or any internal system IDs.\n- Do NOT include technical diagnostics unless explicitly present in the Response.\n- Keep the output concise and outcome-focused.\n- Always follow the defined section structure exactly.\n- Only use <h6><h6/> tags for headings\n- Do not ask any questions. You are just a summary node"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "General Query LLM"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "GENERAL_QUERY_LLM",
+          "id": "1772076649601",
+          "inputs": [
+            {
+              "id": "1772076649604_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Input\n----------------------------------------------\n\nUser Input :  {{$context.$system.$inputMessage}}\n\nChat History :  {{$context.$system.$chatHistory}} \n\nItem Details  (If Any) :  {{$context.$variables.itemDetails}} \n\nOrganizational Details  (If Any) :  {{$context.$variables.organizationDetails}} \n\nYou are a General Query Assistant for the Lot Transaction Agent.\n\n--------------------------------------------------\nROLE\n--------------------------------------------------\n\nYou handle GENERAL_QUERY interactions that fall outside\nof structured transaction execution flows.\n\nThis node is conversational and explanatory in nature.\n\nYou DO NOT:\n- Classify intents\n- Execute transactions\n- Extract structured entities\n- Modify system state\n\nYou ONLY:\n- Answer user questions\n- Explain concepts\n- Clarify how Lot transactions work\n- Provide high-level guidance\n- Provide recommendations when explicitly requested\n- Provide example transaction requests when helpful\n\n--------------------------------------------------\nDOMAIN CONTEXT\n--------------------------------------------------\n\nThe parent agent supports Lot-level inventory transactions:\n\n1. LOT_SPLIT\n   â€“ Splitting one source lot into multiple target lots.\n\n2. LOT_MERGE\n   â€“ Merging multiple source lots into a single target lot.\n\n3. LOT_TRANSLATE\n   â€“ Converting one source lot into another target lot.\n\nYou must understand these flows conceptually so you can:\n- Explain differences between them\n- Describe when each should be used\n- Provide examples\n- Recommend an appropriate transaction type when the user asks\n\n--------------------------------------------------\nINPUTS\n--------------------------------------------------\n\n- Chat History: {{$context.$system.$chatHistory}}\n- Current User Message: {{$context.$system.$inputMessage}}\n\nUse chat history for context continuity when relevant.\n\n--------------------------------------------------\nBEHAVIOR RULES\n--------------------------------------------------\n\n1. If the user asks:\n   - \"What is lot split?\"\n   - \"Difference between merge and translate?\"\n   - \"How does lot selection work?\"\n   - \"Why can't I manually enter lot number?\"\n   - \"What happens after selection?\"\n   â†’ Provide clear explanatory answers.\n\n2. If the user explicitly asks for recommendations such as:\n   - \"What should I use?\"\n   - \"Which transaction is better?\"\n   - \"Suggest the right flow\"\n   â†’ Provide recommendation with reasoning.\n\n3. If the user is ambiguous but NOT explicitly asking for recommendation:\n   â†’ Clarify by explaining options\n   â†’ Do NOT force recommendation.\n\n4. When helpful, provide structured example user requests\n   that demonstrate how transactions should be initiated.\n\n5. Keep answers:\n   - Clear\n   - Structured\n   - Concise but complete\n   - Domain-focused\n\n6. Never fabricate system data.\n7. Never assume lots or SKUs that were not mentioned.\n8. Do not output JSON.\n9. Respond in normal conversational format.\n\n--------------------------------------------------\nEXAMPLE TRANSACTION REQUESTS\n--------------------------------------------------\n\nWhen providing examples, use a consistent structure like:\n\nLOT MERGE:\n- \"Create a lot merge for item XXXX in organization XXXX.\"\n- \"Merge lots for item ITEM100 in organization M1.\"\n- \"I want to merge multiple lots into one for item ABC123 in organization ORG1.\"\n\nLOT SPLIT:\n- \"Create a lot split for item XXXX in organization XXXX.\"\n- \"Split a lot for item ITEM200 in organization M2.\"\n- \"Split lot L100 for item ABC123 in organization ORG1.\"\n\nLOT TRANSLATE:\n- \"Create a lot translate for item XXXX in organization XXXX.\"\n- \"Translate lot L200 to a new lot for item ITEM300 in organization M3.\"\n- \"Convert one lot into another for item ABC123 in organization ORG1.\"\n\nExamples must:\n- Be high-level\n- Not include execution details\n- Not assume system results\n- Not include internal identifiers\n\n--------------------------------------------------\nRESPONSE STYLE\n--------------------------------------------------\n\n- Professional and precise\n- Structured when helpful (bullet points allowed)\n- Avoid unnecessary verbosity\n- Stay strictly within Lot transaction domain\n\n--------------------------------------------------\nOUTPUT\n--------------------------------------------------\n\nReturn a natural language response answering the user's question\nusing the provided chat history and current message."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "LT-Request Summarizer"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "LTREQUEST_SUMMARIZER",
+          "convergenceTargetId": "1772082435462",
+          "id": "1770103854533",
+          "inputs": [
+            {
+              "id": "1770103854550_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI agent responsible for summarizing the execution result of an\n**Inventory Lot Translate** transaction and determining its final status.\n\n--------------------------------------------------\nINPUT\n--------------------------------------------------\n- Transaction Response:\n  {{$context.$nodes.TTL_EXECUTE_BATCH.$output}}\n\n- Transaction Request:\n  {{$context.$nodes.TTL_EXECUTE_BATCH.$input}}\n\n--------------------------------------------------\nINPUT\n--------------------------------------------------\n- Transaction Response\n- Transaction Request\n- Item Number (separate input)\n- Organization Code (separate input)\n\n--------------------------------------------------\nOBJECTIVE\n--------------------------------------------------\n1. Analyze the transaction Response in the context of the submitted Request.\n2. Derive a clear, business-friendly transaction status.\n3. Provide a structured summary suitable for end-user visibility.\n4. Clearly separate:\n   - Source Lot details (consumed)\n   - Target Lot details (created)\n5. Use Item Number and Organization Code instead of any internal IDs.\n6. Display lot details in row-by-row format (NOT table format).\n7. Do NOT hardcode column headers â€” dynamically display relevant attributes.\n\n--------------------------------------------------\nSTATUS DETERMINATION RULES\n--------------------------------------------------\n- If the Response is null or empty:\n  â†’ Assume the transaction is COMPLETED successfully.\n- If the Response explicitly indicates success:\n  â†’ Mark status as COMPLETED.\n- If the Response or payload is null but contains no errors:\n  â†’ Assume the transaction is COMPLETED successfully.\n- If the Response indicates errors or failures:\n  â†’ Mark status as FAILED.\n- Do NOT infer technical states beyond what is visible in the Response.\n\n--------------------------------------------------\nOUTPUT FORMAT (STRICT)\n--------------------------------------------------\n\nTransaction Status: <COMPLETED or FAILED>\n\nSummary:\n<Concise business-friendly summary derived from the Response.\nIf payloads are null and no errors are present, clearly state that the service\nreturned empty/null payloads indicating successful completion.>\n\n--------------------------------------------------\nSource Lot (Consumed)\n--------------------------------------------------\n- Display details in row-by-row attribute format.\n- Include:\n  - Item Number (from separate input)\n  - Organization Code (from separate input)\n  - Subinventory\n  - Unit of Measure\n  - Lot Number\n  - Quantity (must be negative)\n- Do NOT display any internal IDs.\n- Only one source lot is expected.\n\nExample structure (format style only, do not hardcode labels):\nAttribute Name: Value\nAttribute Name: Value\n...\n\n--------------------------------------------------\nTarget Lots (Created)\n--------------------------------------------------\n- Display each target lot separately.\n- For each lot, show details in row-by-row attribute format.\n- Include:\n  - Item Number\n  - Organization Code\n  - Subinventory\n  - Unit of Measure\n  - Lot Number\n  - Quantity (must be positive)\n- Do NOT display any internal IDs.\n\nEach lot should be clearly separated visually.\n\n--------------------------------------------------\nVALIDATION SECTION (MANDATORY)\n--------------------------------------------------\n- Calculate total created quantity.\n- Calculate total consumed quantity (absolute value).\n- Confirm whether quantities are balanced.\n- Display validation result clearly in business-friendly wording.\n\n--------------------------------------------------\nADDITIONAL RULES\n--------------------------------------------------\n- Use business-friendly language.\n- Do NOT expose raw payloads, API paths, internal node names, or system identifiers.\n- Do NOT display InventoryItemId, OrganizationId, SourceHeaderId, or any internal system IDs.\n- Do NOT include technical diagnostics unless explicitly present in the Response.\n- Keep the output concise and outcome-focused.\n- Always follow the defined section structure exactly.\n- Only use <h6><h6/> tags for headings\n- Do not ask any questions. You are just a summary node"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "TRL If Transaction Successful ?"
+          },
+          "outcomes": {
+            "true": "1772085132343",
+            "false": "add_false_1772084081444"
+          },
+          "code": "TRL_IF_TRANSACTION_SUCCESSFUL_",
+          "convergenceTargetId": "1770103854533",
+          "id": "1772084081444",
+          "inputs": [
+            {
+              "id": "1772084081446_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.TTL_EXECUTE_BATCH.$output?.parts?.[0]?.payload?.[0]?.ErrorCode==null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1770103854533"
+          },
+          "id": "add_false_1772084081444",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Split Txn Succesful"
+          },
+          "outcomes": {
+            "true": "1772085476011",
+            "false": "add_false_1772084628831"
+          },
+          "code": "SPLIT_TXN_SUCCESFUL",
+          "convergenceTargetId": "1770115284709",
+          "id": "1772084628831",
+          "inputs": [
+            {
+              "id": "1772084628842_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.SPL_EXECUTE_BATCH.$output?.parts?.[0]?.payload?.[0]?.ErrorCode==null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1770115284709"
+          },
+          "id": "add_false_1772084628831",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Merge Successful ?"
+          },
+          "outcomes": {
+            "true": "1772085543802",
+            "false": "add_false_1772084825987"
+          },
+          "code": "MERGE_SUCCESSFUL_",
+          "convergenceTargetId": "1770093855686",
+          "id": "1772084825987",
+          "inputs": [
+            {
+              "id": "1772084826001_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.LET_MERGE_BATCH_EXECUTOR.$output?.parts?.[0]?.payload?.[0]?.ErrorCode==null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1770093855686"
+          },
+          "id": "add_false_1772084825987",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Change Indicator Spl",
+            "toolCode": "ORA_INTENT_CHANGE_INDICATOR_TOOL"
+          },
+          "outcomes": {
+            "success": "1770103854533"
+          },
+          "code": "CHANGE_INDICATOR_SPL",
+          "id": "1772085132343",
+          "inputs": [
+            {
+              "id": "1772085149196",
+              "name": "intentId",
+              "type": "string",
+              "value": "Changr"
+            }
+          ],
+          "type": "TOOL"
+        },
+        {
+          "metadata": {
+            "name": "Clear Intent Split",
+            "toolCode": "ORA_INTENT_CHANGE_INDICATOR_TOOL"
+          },
+          "outcomes": {
+            "success": "1770115284709"
+          },
+          "code": "CLEAR_INTENT_SPLIT",
+          "id": "1772085476011",
+          "inputs": [
+            {
+              "id": "1772085491232",
+              "name": "intentId",
+              "type": "string",
+              "value": "Change Indicator"
+            }
+          ],
+          "type": "TOOL"
+        },
+        {
+          "metadata": {
+            "name": "Clear Chat Session",
+            "toolCode": "ORA_INTENT_CHANGE_INDICATOR_TOOL"
+          },
+          "outcomes": {
+            "success": "1770093855686"
+          },
+          "code": "CLEAR_CHAT_SESSION",
+          "id": "1772085543802",
+          "inputs": [
+            {
+              "id": "1772085556252",
+              "name": "intentId",
+              "type": "string",
+              "value": "Clear Intent Change"
+            }
+          ],
+          "type": "TOOL"
+        },
+        {
+          "metadata": {
+            "name": "No of Lots Array Creator",
+            "returnType": "object",
+            "sourceCode": "let payload = [];\n\nfor(let i=0; i<= $context.$nodes.SOURCE_LOT_SKU_SELECTOR.$output.autoGenerateTargetLots; i++){\n\npayload.push(i);\n}\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "1772119204116"
+          },
+          "code": "NO_OF_LOTS_ARRAY_CREATOR",
+          "id": "1772119018581",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1772119280247"
+                  },
+                  "id": "start_1772119204116",
+                  "code": "START_1772119204116",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1772119204116",
+                  "code": "END_1772119204116",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_INVENTORYM_GENERATELOTLOTMANAGEMENT",
+                    "functionName": "generateNewLot",
+                    "processJson": true,
+                    "name": "Generate new lot"
+                  },
+                  "outcomes": {
+                    "success": "end_1772119204116"
+                  },
+                  "code": "GENERATE_NEW_LOT",
+                  "id": "1772119280247",
+                  "inputs": [
+                    {
+                      "id": "1772119318338_1",
+                      "name": "OrganizationId",
+                      "type": "string",
+                      "value": "{{$context.$variables.OrganizationId}}"
+                    },
+                    {
+                      "id": "1772119318340_2",
+                      "name": "InventoryItemId",
+                      "type": "string",
+                      "value": "{{$context.$variables.InventoryItemId}}"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                }
+              ],
+              "rootNode": "start_1772119204116"
+            },
+            "loopType": "PARALLEL",
+            "name": "Payload Lots Generator"
+          },
+          "outcomes": {
+            "success": "1770043862979"
+          },
+          "code": "PAYLOAD_LOTS_GENERATOR",
+          "id": "1772119204116",
+          "inputs": [
+            {
+              "id": "1772119204188_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$nodes.NO_OF_LOTS_ARRAY_CREATOR.$output.result}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "name": "Generate New Lots"
+          },
+          "outcomes": {
+            "true": "1772103680960",
+            "false": "add_false_1772101426919"
+          },
+          "code": "GENERATE_NEW_LOTS",
+          "convergenceTargetId": "1772012821863",
+          "id": "1772101426919",
+          "inputs": [
+            {
+              "id": "1772101426920_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.LOT_MERGE_TRANSACTION_SKU_SELECTION.$output.generateNewLots == true}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_GENERATELOTLOTMANAGEMENT",
+            "functionName": "generateNewLot",
+            "processJson": true,
+            "name": "Merge Generate New Lot"
+          },
+          "outcomes": {
+            "success": "1772012821863"
+          },
+          "code": "MERGE_GENERATE_NEW_LOT",
+          "id": "1772103680960",
+          "inputs": [
+            {
+              "id": "1772103793548_1",
+              "name": "OrganizationId",
+              "type": "string",
+              "value": "{{$context.$variables.OrganizationId}}"
+            },
+            {
+              "id": "1772103793549_2",
+              "name": "InventoryItemId",
+              "type": "string",
+              "value": "{{$context.$variables.InventoryItemId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1772012821863"
+          },
+          "id": "add_false_1772101426919",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Translate Lot Generation Required"
+          },
+          "outcomes": {
+            "true": "1772110405984",
+            "false": "add_false_1772110259725"
+          },
+          "code": "TRANSLATE_LOT_GENERATION_REQUIRED",
+          "convergenceTargetId": "1770051189138",
+          "id": "1772110259725",
+          "inputs": [
+            {
+              "id": "1772110259727_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.LOTTRANSLATE_SOURCE_LOT_SKU_SELECTOR.$output.generateNewLots}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_GENERATELOTLOTMANAGEMENT",
+            "functionName": "generateNewLot",
+            "processJson": true,
+            "name": "TRANSLATE_GENERATE_NEW_LOT"
+          },
+          "outcomes": {
+            "success": "1770051189138"
+          },
+          "code": "TRANSLATE_GENERATE_NEW_LOT",
+          "id": "1772110405984",
+          "inputs": [
+            {
+              "id": "1772110436772_1",
+              "name": "OrganizationId",
+              "type": "string",
+              "value": "{{$context.$variables.OrganizationId}}"
+            },
+            {
+              "id": "1772110436773_2",
+              "name": "InventoryItemId",
+              "type": "string",
+              "value": "{{$context.$variables.InventoryItemId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1770051189138"
+          },
+          "id": "add_false_1772110259725",
+          "inputs": [],
+          "type": "ADD"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1771986363456",
+          "name": "organizationDetails",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1771986351671",
+          "name": "itemDetails",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1770180958816",
+          "name": "InventoryItemId",
+          "scope": "JOB",
+          "type": "number"
+        },
+        {
+          "id": "1770180948613",
+          "name": "OrganizationId",
+          "scope": "JOB",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_completion_tokens": 32000,
+        "reasoning_effort": "medium"
+      },
+      "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+      "model": "OCI_GPT_5_MINI",
+      "modelName": "GPT-5 mini",
+      "provider": "CERT_PREMIUM"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "SCM",
+  "product": "INVENTORY_MANAGEMENT",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"3\""
+  }
+}

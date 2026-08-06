@@ -1,0 +1,308 @@
+{
+  "workflowId": "300000326918436",
+  "workflowCode": "ORA_HCM_IRC_MATCHING_CANDIDATES_ACTIONS",
+  "name": "Matching Candidates Actions",
+  "description": "Manages the matching candidates actions performed on candidates.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1765307898570"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "check_mode"
+          },
+          "outcomes": {
+            "true": "1765308028522",
+            "false": "1769110447380"
+          },
+          "code": "CHECKMODE",
+          "convergenceTargetId": "end",
+          "id": "1765307898570",
+          "inputs": [
+            {
+              "id": "1765307898572_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.Mode == 'InitActions'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "prepare-list-of-action"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "PREPARELISTOFACTION",
+          "id": "1765308028522",
+          "inputs": [
+            {
+              "id": "1765308028523_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Your job is to provide the list of actions. This is a Talent Advisor agent for a recruiter sourcing candidates for a recruitment application... The data on which you need to choose the best actions would be from here - {{$context.$triggers.REST.$input.TalentAdvisorData}} \n\nThese actions will help outreach the candidate for one or many job requisitions. \n\nIf a candidate is Strong/Medium match and Highly Active, then recommend action OUTREACH_CANDIDATE \nIf a candidate is Medium match and Medium Active, then recommend action ADD_TO_PROSPECT \nIf a candidate is Medium to low match and not active, then recommend action INVITE_TO_EVENT \n\nEnsure the followUp Command always have ora.Invoke has the same format as in the example. You can substitute only the properties - key value pair but not change the signature..  \n\nYou will only support 3 actions and their name and code are as follows. Keep the action name Req Title under 10 characters - \n\n1. Action Name - Add to Prospect , Action Code - ADD_TO_PROSPECT, FollowupCommandPayload - {PersonId, RequisitionId}\n2. Action Name - Outreach Candidate , Action Code - OUTREACH_CANDIDATE , FollowupCommandPayload - {PersonId, RequisitionId}\n3. Action Name - Invite To Event , Action Code - INVITE_TO_EVENT , FollowupCommandPayload - {PersonId, RequisitionId}\n\nDisplay at least one candidate with INVITE_TO_EVENT\n\nGet the PersonId, RequisitionId from the data object..\n\nYou can send actions back as part of your response. Actions follow this format:\n\nAs an example:\n[\n{\n  \"title\": \"Add <Candidate Name> As Prospect\",\n  \"shortDescription\": \"Adds the candidate to as a prospect to a requisition\" ,\n  \"actionText\": \"Add To Prospect\",\n  \"followUpCommand\": \"ora.Invoke( \"ADD_TO_PROSPECT\",{\"PersonId\":\"<PersonId>\",\"RequisitionId\":\"<RequisitionId>\"})\"\n},\n{\n  \"title\": \"Outreach <Candidate Name>\",\n  \"shortDescription\": \"Sends a personalized email to the candidate encouraging to a apply to a requisition\" ,\n  \"actionText\": \"OUTREACH_CANDIDATE\",\n  \"followUpCommand\": \"ora.Invoke( \"OUTREACH_CANDIDATE\",{\"PersonId\":\"<PersonId>\",\"RequisitionId\":\"<RequisitionId>\"})\"\n},\n{\n  \"title\": \"Invite <Candidate Name> to Event\",\n  \"shortDescription\": \"Invites the candidate to apply to an event\" ,\n  \"actionText\": \"Invite to Event\",\n  \"followUpCommand\": \"ora.Invoke( \"INVITE_TO_EVENT\",{\"PersonId\":\"<PersonId>\",\"RequisitionId\":\"<RequisitionId>\"})\"\n}\n]\n\nRequirements:\n\nReplace <Candidate Name> with the actual name of the Job Requisition from the data\n\nReplace <Action Button Text> with the text specified in the templates above\n\nReplace <somePayload> with the actual PersonId or event ID or required parameters from the data\n\nPrioritize by urgency (upcoming start dates, registration deadlines)\n\nKeep shortDescription consistent with the templates provided above\n\nGenerate MAXIMUM 5 insights even if more events require action\n\nEach insight must be independently actionable\n\nIF no job requisitions requiring action are found:\n\nReturn an empty response with no data.\n\nOutput format: Return only the insight objects, nothing else."
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"actionPayload\": {\n            \"type\": \"object\",\n            \"properties\": {}\n        },\n        \"action\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Talent Advisor Actions"
+          },
+          "outcomes": {
+            "OUTREACH_CANDIDATE": "1765769408520",
+            "AddProspect": "1765769234856"
+          },
+          "code": "TALENT_ADVISOR_ACTIONS",
+          "convergenceTargetId": "end",
+          "id": "1765185848898",
+          "inputs": [
+            {
+              "id": "1765185848899_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.PARSEACTIONPAYLOAD.$output.result.actionCode}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "setPayloadForAddAsProspect",
+            "returnType": "object",
+            "sourceCode": "// 1. Retrieve data from the previous step\n// Replace 'previousStepResult' with the actual variable name holding the output from the last step\n// e.g., var inputPayload = $context.steps.ParsePayload.actionPayload;\nvar inputPayload = $context.$nodes.PARSEACTIONPAYLOAD.$output.result.actionPayload;\n\n// Initialize the outgoing object\nvar businessObjectPayload = {};\n\n// 2. Construct the specific Business Object structure\nif (inputPayload) {\n    businessObjectPayload = {\n        \"addedByContextType\": \"ORA_CAND_PROFILE\",\n\n        // Ensure requisitionId is wrapped in an array as required by the format\n        \"requisitionIds\": inputPayload.requisitionId ? [inputPayload.requisitionId] : [],\n\n        // Use the personIds array directly\n        \"personIds\": Array.isArray(inputPayload.personIds) ? inputPayload.personIds : []\n    };\n}\n\n// 3. Return the payload as a stringified JSON\nvar result = JSON.stringify(businessObjectPayload);\nresult;"
+          },
+          "outcomes": {
+            "success": "1765769273936"
+          },
+          "code": "SETPAYLOADFORADDASPROSPECT",
+          "id": "1765769234856",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_RECRUITING_STADDASPROSPECT",
+            "functionName": "doall_createProspects_recruitingUIProspects",
+            "name": "AddAsProspectBO"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ADDASPROSPECTBO",
+          "id": "1765769273936",
+          "inputs": [
+            {
+              "id": "1765769301032_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.SETPAYLOADFORADDASPROSPECT.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_RECRUITING_STCANDIDATESEAR",
+            "functionName": "SearchUsingPersonIds",
+            "name": "GetCandidateData"
+          },
+          "outcomes": {
+            "success": "1765769451084"
+          },
+          "code": "GETCANDIDATEDATA",
+          "id": "1765769408520",
+          "inputs": [
+            {
+              "id": "1765769435133_1",
+              "name": "payload",
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_RECRUITING_STJOBREQUISITION",
+            "functionName": "get_recruitingUIJobRequisitions_by_job_requisition_id",
+            "name": "Get Requisition Details"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "GET_REQUISITION_DETAILS",
+          "id": "1765769451084",
+          "inputs": [
+            {
+              "id": "1765769478149_1",
+              "name": "job_requisition_Id",
+              "type": "string",
+              "value": "{{$context.$nodes.PARSEACTIONPAYLOAD.$output.result.actionPayload.requisitionId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "ParseActionPayload",
+            "returnType": "object",
+            "sourceCode": "// 1. Get the Raw Input (Handle casing and stringified JSON)\nvar inputObj = $context.$triggers.REST.$input;\n// Use OraAction if it exists; otherwise, default to the whole input\nvar rawInput = inputObj.OraAction || inputObj.oraAction || inputObj;\n\n// Initialize variables\nvar payloadData = {};\nvar requisitionId = null;\nvar personIds = [];\nvar validationError = null;\nvar actionCode = \"UNKNOWN\";\n\n// 2. PARSE THE INPUT\ntry {\n    if (typeof rawInput === 'string') {\n        // Attempt to parse if it's a string\n        var cleanInput = rawInput.trim();\n        // Basic check to see if it's a JSON string\n        if (cleanInput.charAt(0) === '{' || cleanInput.charAt(0) === '[') {\n            payloadData = JSON.parse(cleanInput);\n        } else {\n            validationError = \"Input is a string but not valid JSON\";\n        }\n    } else if (rawInput && typeof rawInput === 'object') {\n        // Already an object, use as is\n        payloadData = rawInput;\n    } else {\n        validationError = \"Input format is unsupported\";\n    }\n} catch (e) {\n    validationError = \"JSON Parsing Failed: \" + e.message;\n}\n\n// 3. EXTRACT AND VALIDATE DATA\nif (!validationError && payloadData) {\n\n    // Extract RequisitionId (Check both casings)\n    requisitionId = payloadData.RequisitionId || payloadData.requisitionId || null;\n\n    // Extract PersonIds (Check both casings)\n    var tempPersonIds = payloadData.PersonIds || payloadData.personIds;\n\n    // Ensure PersonIds is a valid array\n    if (tempPersonIds && Array.isArray(tempPersonIds)) {\n        personIds = tempPersonIds;\n    }\n}\n\n// 4. DETERMINE ACTION CODE\n// Check if both required fields are present\nif (requisitionId && personIds.length > 0) {\n    actionCode = \"AddProspect\";\n} else if (!validationError) {\n    actionCode = \"ERROR_INVALID_PAYLOAD\";\n    validationError = \"Missing RequisitionId or PersonIds\";\n} else {\n    actionCode = \"ERROR_PARSING\";\n}\n\n// 5. CREATE RESULT\nvar result = {\n    \"actionCode\": actionCode,\n    \"actionPayload\": {\n        \"requisitionId\": String(requisitionId), // Ensure it stays a string for IDs\n        \"personIds\": personIds,\n        \"count\": personIds.length\n    },\n    \"error\": validationError\n};\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1765185848898"
+          },
+          "code": "PARSEACTIONPAYLOAD",
+          "id": "1769110447380",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1765344024597",
+          "name": "TalentAdvisorAction",
+          "scope": "JOB",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.75
+      },
+      "code": "ORA_LLM_PREMIUM",
+      "model": "OPEN_AI_GPT_4_1_MINI",
+      "modelName": "GPT-4.1 mini",
+      "provider": "CERT_PREMIUM"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1765308324247",
+            "name": "OraAction",
+            "type": "string"
+          },
+          {
+            "id": "1765307959694",
+            "name": "TalentAdvisorData",
+            "type": "object"
+          },
+          {
+            "id": "1765307874187",
+            "name": "Mode",
+            "type": "string"
+          },
+          {
+            "id": "1765185812477",
+            "name": "TalentAdvisorActionold",
+            "type": "string"
+          },
+          {
+            "id": "1765185491019",
+            "name": "PersonId",
+            "type": "number"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": [
+      "523233"
+    ],
+    "deletedTriggerTypes": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "RECRUITING",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "seededRoles": [
+    {
+      "role": "ORA_HCM_IRC_HIRING_MGR_WF_AGENT_ACCESS",
+      "id": "300000326918437"
+    }
+  ],
+  "header": {
+    "ETag": "\"2\""
+  }
+}
