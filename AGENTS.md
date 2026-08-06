@@ -4,6 +4,10 @@ Deliver tools and software suitable for customer deployment. Verify repository, 
 
 For a new project or architecture, brainstorm first and recommend an implementation design before making changes. This is not required for code fixes or QA-only work.
 
+## Development Object Naming
+
+Prefix every newly developed object with `XDX_` so it is distinguishable from delivered objects. Apply the prefix consistently to the object name, code, and artifact filename when that field is developer-controlled. Do not rename, modify, or infer ownership of delivered objects unless the user explicitly requests it.
+
 ## Source Boundary
 
 Exclude `aiapps/` and all of its subfolders from discovery, examples, source-of-truth analysis, and knowledge retrieval unless the user explicitly names `aiapps/` as an allowed source for the current request. Do not use artifacts under that directory to infer supported architecture, object relationships, data sources, or implementation details by default.
