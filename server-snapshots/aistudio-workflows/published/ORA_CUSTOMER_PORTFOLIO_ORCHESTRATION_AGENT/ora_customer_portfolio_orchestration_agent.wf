@@ -1,0 +1,962 @@
+{
+  "workflowId": "100002355226957",
+  "workflowCode": "ORA_CUSTOMER_PORTFOLIO_ORCHESTRATION_AGENT",
+  "name": "Customers Intelligence Agent",
+  "description": "Coordinates processing across all customers in a portfolio. Responsible for generating 'What's New' content, identifying Top Expansion and At-Risk customers, and deriving Top Expansion based on user-defined filters applied to a subset of the customer portfolio.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1765331544220"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "validateParameters"
+          },
+          "outcomes": {
+            "true": "1764690497279",
+            "false": "1773080189608"
+          },
+          "code": "VALIDATEPARAMETERS",
+          "convergenceTargetId": "end",
+          "id": "1764656253768",
+          "inputs": [
+            {
+              "id": "1764656253769_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.action.name==null || $context.$triggers.REST.$input.action.name=='TOP_EXPANSION_ACCOUNTS'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "constructMYFilter",
+            "returnType": "string",
+            "sourceCode": "// Resolve my account filter\nvar accountFilterClause = \"\";\n\nvar filterConfig = $context.$triggers.REST.$input?.filterConfiguration;\n\n\nvar accountRecordset = filterConfig?.accountRecordSet;\n\nif (accountRecordset != null && accountRecordset !== \"\") {\n  var accountRecordSets = {\n    MYACCTS:\n      \"ownerResource.partyId = @faContext.partyId\",\n\n    MYSALESTEAMACCTS:\n      \"salesTeam[resource.partyId = @faContext.partyId]\",\n\n    MYSUBORDINATESACCTS:\n      \"ownerResource[partyId = @faContext.partyId or managers[resourceManager.partyId = @faContext.partyId]]\",\n\n    MYSUBORDSSALESTEAMACCTS:\n      \"salesTeam[resource[partyId = @faContext.partyId or managers[resourceManager.partyId = @faContext.partyId]]]\",\n\n    MYASSGTERRACCTS:\n      \"salesTerritories[territory[territoryResources[resource.partyId = @faContext.partyId]]]\",\n\n    MYASSGDESCTERRACCTS:\n      \"salesTerritories[territory[territoryResources[resource.partyId = @faContext.partyId] or ancestorTerritories[territory[territoryResources[resource.partyId = @faContext.partyId]]]]]\",\n\n    MYSALESTEAMTERRACCTS:\n      \"salesTeam[resource.partyId = @faContext.partyId] or salesTerritories[territory[territoryResources[resource.partyId = @faContext.partyId]]]\",\n\n    MYSUBORDTEAMTERRACCTS:\n      \"salesTeam[resource[partyId = @faContext.partyId or managers[resourceManager.partyId = @faContext.partyId]]] or \" +\n      \"salesTerritories[territory[territoryResources[resource.partyId = @faContext.partyId] or \" +\n      \"ancestorTerritories[territory[territoryResources[resource.partyId = @faContext.partyId]]]]]\"\n  };\n\n  if (accountRecordSets[accountRecordset]) {\n    accountFilterClause =\n      \"(fusionAccount[\" + accountRecordSets[accountRecordset] + \"])\";\n  }\n}\n\n// Explicit account filter overrides recordset filter\nvar explicitAccountFilter = filterConfig?.accountFilter;\n\nif (explicitAccountFilter != null && explicitAccountFilter.trim() !== \"\") {\n  accountFilterClause = explicitAccountFilter;\n}\n\n\n// Resolve my product filter\nvar productFilter = \"\";\n\n// Default behavior → true unless explicitly false\nvar filterByTerritory = filterConfig?.filterProductByTerritory;\n\nif (filterByTerritory == null || filterByTerritory === true) {\n  productFilter =\n    \"((productType = 'PRODUCT_GROUP' and \" +\n    \"fusionProductGroup[parentProductGroupHierarchies[\" +\n    \"baseUsageFlag = true and firstProductGroup[\" +\n    \"territoryCoverages[territory[territoryResources[resource.partyId=@faContext.partyId]]]]]]) \" +\n    \"or (productType = 'Item' and fusionProduct[\" +\n    \"territoryCoverages[territory[territoryResources[resource.partyId=@faContext.partyId]]] \" +\n    \"or parentProductGroups[activeFlag = true and startDate < @currentDateTime \" +\n    \"and endDate > @currentDateTime and productGroup[\" +\n    \"parentProductGroupHierarchies[baseUsageFlag = true and firstProductGroup[\" +\n    \"territoryCoverages[territory[territoryResources[resource.partyId=@faContext.partyId]]]]]]]]))\";\n}\n\n\n// Construct MY filter\nvar MYFilter = \"\";\n\nif (accountFilterClause && productFilter) {\n  MYFilter = accountFilterClause + \" and \" + productFilter;\n} \nelse if (accountFilterClause) {\n  MYFilter = accountFilterClause;\n} \nelse if (productFilter) {\n  MYFilter = productFilter;\n} \nelse {\n  MYFilter = \"1=1\";\n}\n\nreturn MYFilter;"
+          },
+          "outcomes": {
+            "success": "1764656253768"
+          },
+          "code": "CONSTRUCTMYFILTER",
+          "id": "1765331544220",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "whereClauseUiFilter",
+            "returnType": "string",
+            "sourceCode": "let expansionAccountsFilterLocal =  $context.$triggers.REST.$input?.action?.config?.expansionAccountsFilter;\nreturn (!expansionAccountsFilterLocal || !expansionAccountsFilterLocal.trim())   ? \"annualRecurringRevenue>0\"   : expansionAccountsFilterLocal;"
+          },
+          "outcomes": {
+            "success": "1773088427935"
+          },
+          "code": "WHERECLAUSEUIFILTER",
+          "convergenceTargetId": "1764656978874",
+          "id": "1764690497279",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "isValidCache"
+          },
+          "outcomes": {
+            "true": "1773087976219",
+            "false": "1773120083608"
+          },
+          "code": "ISVALIDCACHE",
+          "convergenceTargetId": "end",
+          "id": "1773080169021",
+          "inputs": [
+            {
+              "id": "1773080169024_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECKCACHEVALIDITY.$output.output}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "ReturnBlank"
+          },
+          "outcomes": {},
+          "code": "RETURNBLANK",
+          "convergenceTargetId": "end",
+          "id": "1773080189608",
+          "inputs": [
+            {
+              "id": "1773080189612_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "HasCount"
+          },
+          "outcomes": {
+            "true": "1771645448566",
+            "false": "1765343720615"
+          },
+          "code": "HASCOUNT",
+          "convergenceTargetId": "end",
+          "id": "1764714570998",
+          "inputs": [
+            {
+              "id": "1764714570999_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.LISTOFPARTIES1.$output.result?.length >0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "PrepareProfilerParameter",
+            "returnType": "object",
+            "sourceCode": "let accountBatchSizeLocal =  $context.$triggers.REST.$input?.action?.config?.accountBatchSize;\nlet productBatchSizeLocal =  $context.$triggers.REST.$input?.action?.config?.productBatchSize;\nlet listOfAccountIdsValue = $context.$nodes.LISTOFPARTIES1.$output.result;\nlet expansionFormulaLocal = $context.$nodes.EXPANSIONFORMULA.$output;\nlet riskFormulaLocal = $context.$nodes.RISKFORMULA.$output;\nlet myFilterCriteriaLocal = $context.$nodes.CONSTRUCTMYFILTER.$output.result;\n\naccountBatchSizeLocal = (accountBatchSizeLocal == null || accountBatchSizeLocal.toString().trim() === \"\")   ? 3   : accountBatchSizeLocal;\nproductBatchSizeLocal = (productBatchSizeLocal == null || productBatchSizeLocal.toString().trim() === \"\")    ? 20    : productBatchSizeLocal;\n\n\nvar output = {\n  config: {\n      accountBatchSize: accountBatchSizeLocal,\n      productBatchSize: productBatchSizeLocal,\n      listOfAccountIds: listOfAccountIdsValue,\n      riskFormula: riskFormulaLocal != null ? riskFormulaLocal : null,\n      expansionFormula: expansionFormulaLocal != null ? expansionFormulaLocal : null,\n      myFilterCriteria: myFilterCriteriaLocal != null ? myFilterCriteriaLocal : null\n  }\n};\n\nJSON.stringify(output);"
+          },
+          "outcomes": {
+            "success": "1764716957846"
+          },
+          "code": "PREPAREPROFILERPARAMETER",
+          "id": "1771645448566",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "CustomerProfiling",
+            "workflowCode": "ORA_CUSTOMER_PORTFOLIO_PROFILING_AGENT"
+          },
+          "outcomes": {
+            "success": "1765344368072"
+          },
+          "code": "CUSTOMERPROFILING1",
+          "convergenceTargetId": "1765344368072",
+          "id": "1764716957846",
+          "inputs": [
+            {
+              "id": "1771647602627_1",
+              "name": "message",
+              "type": "string"
+            },
+            {
+              "id": "1771647602628_2",
+              "name": "action",
+              "type": "object",
+              "value": "{{$context.$nodes.PREPAREPROFILERPARAMETER.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "ScanWhatsNew",
+            "returnType": "boolean",
+            "sourceCode": "const focusArray = $context.$variables.pFocusArea\nreturn Array.isArray(focusArray) && focusArray.includes(\"WHATS_NEW\");"
+          },
+          "outcomes": {
+            "success": "1765344433649"
+          },
+          "code": "SCANWHATSNEW",
+          "id": "1765344368072",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "onlyExpansion"
+          },
+          "outcomes": {
+            "true": "1765344539174",
+            "false": "1764719636918"
+          },
+          "code": "ONLYEXPANSION",
+          "convergenceTargetId": "end",
+          "id": "1765344433649",
+          "inputs": [
+            {
+              "id": "1765344433651_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.action.name=='TOP_EXPANSION_ACCOUNTS'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "GPT-5 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "onlyExpansionAccounts"
+          },
+          "outcomes": {
+            "success": "1772822948732"
+          },
+          "code": "ONLYEXPANSIONACCOUNTS",
+          "convergenceTargetId": "1764719636918",
+          "id": "1765344539174",
+          "inputs": [
+            {
+              "id": "1765344539176_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "INPUT DATA SOURCE\n\nThe input JSON must be read from:\n{{$context.$nodes.CUSTOMERPROFILING1.$output.output}}\n\nThis object contains an AccountProfile structure with an array of account items.\nAll processing must be performed ONLY on this input.\n\n--------------------------------------------------\n\nYou are given an input JSON object named AccountProfile that contains an array of account items.\n\nYour task is to analyze the dataset and return a single JSON object in the exact output format defined below.\nDo not add extra keys, explanations, markdown, or commentary outside the JSON.\n\nPROCESSING RULES (MUST FOLLOW IN ORDER)\n\n1. Compute Account-Level Scores\n   For every account compute:  \n   - Account Expansion Score = highest numeric expansionScore among expansionProducts.items\n\n2. Build Expansion Candidate Pool\n   - Sort accounts by Account Expansion Score in descending order\n   - Select top {{$context.$triggers.REST.$input.action.config.numberOfTopExpansions}}\n     - Default to 5 if null or blank\n   - If fewer than 5 accounts exist, return all available.\n   - Store results under: expansionCandidates.items[]\n   - Each entry must include below set of attributes:\n    \"expansionCandidates\": {\n     \"items\": [\n      {\n        \"accountName\": \"{from dataset}\",\n        \"accountUrl\": \"{from dataset}\",\n        \"registryIdentifier\": \"{from dataset}\",\n        \"accountId\": \"{from dataset}\",\n        \"annualRecurringRevenue\": \"{numeric value from dataset}\",\n        \"currencyCode\": \"{from dataset}\",\n        \"engagementTrend\":\"{from dataset}\",\n        \"renewalDate\": \"YYYY-MM-DD format from dataset\",\n        \"summary\": \"{one-two lines expansion focused summary}\",\n        \"suggestedProducts\": \"{top 5 comma-separated products ranked by expansionScore DESC, if fewer than 5 include all}\"\n      }\n     ]\n   }\n \n\n3. minArr / maxArr Calculation\n- Compute minArr and maxArr using all accounts present in expansionCandidates.items.\n- Consider all accounts in expansionCandidates, not just the top 5.\n- If expansionCandidates.items is empty, return:\n  \"minArr\": null,\n  \"maxArr\": null\n\nSTRICT OUTPUT FORMAT (MUST MATCH EXACTLY)\n\n{\n   \"expansionCandidates\": {\n     \"items\": [\n      {\n        \"accountName\": \"{from dataset}\",\n        \"accountUrl\": \"{from dataset}\",\n        \"registryIdentifier\": \"{from dataset}\",\n        \"accountId\": \"{from dataset}\",\n        \"annualRecurringRevenue\": \"{numeric value from dataset}\",\n        \"currencyCode\": \"{from dataset}\",\n        \"engagementTrend\":\"{from dataset}\",\n        \"renewalDate\": \"YYYY-MM-DD format from dataset\",\n        \"summary\": \"{one-two lines expansion focused summary}\",\n        \"suggestedProducts\": \"{top 5 comma-separated products ranked by expansionScore DESC, if fewer than 5 include all}\"\n      },\n      \"minArr\": 0,\n      \"maxArr\": 0\n     ]\n   }\n}\n\nHARD CONSTRAINTS\n- Output valid JSON only\n- No comments\n- No markdown\n- No extra keys\n- Numeric fields must be numbers, not strings\n- Risk and expansion accounts must never overlap"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "OnlyExpansions"
+          },
+          "outcomes": {},
+          "code": "ONLYEXPANSIONS",
+          "convergenceTargetId": "end",
+          "id": "1772822948732",
+          "inputs": [
+            {
+              "id": "1772822948735_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.ONLYEXPANSIONACCOUNTS.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "GPT-5 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "WithWhatsNew"
+          },
+          "outcomes": {
+            "success": "1772824320202"
+          },
+          "code": "WITHWHATSNEW",
+          "convergenceTargetId": "1771784649338",
+          "id": "1764719636918",
+          "inputs": [
+            {
+              "id": "1764719636920_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "INPUT DATA SOURCE\n\nThe input JSON must be read from:\n{{$context.$nodes.CUSTOMERPROFILING1.$output.output}}\n\nThis object contains an AccountProfile structure with an array of account items.\nAll processing must be performed ONLY on this input.\n\n--------------------------------------------------\n\nYou are given an input JSON object named AccountProfile that contains an array of account items.\n\nYour task is to analyze the dataset and return a single JSON object in the exact output format defined below.\nDo not add extra keys, explanations, markdown, or commentary outside the JSON.\n\nPROCESSING RULES (MUST FOLLOW IN ORDER)\n\n1. Compute Account-Level Scores\nFor every account compute:\n- Account Risk Score = highest numeric riskScore among riskProducts.items\n- Account Expansion Score = highest numeric expansionScore among expansionProducts.items\nRules:\n- Ignore null, missing, or non-numeric scores.\n- If an account has no valid scores for a category, exclude it from that category.\n\n2. Identify At-Risk Accounts FIRST\n- Sort all accounts by Account Risk Score in descending order.\n- Select the top {{$context.$triggers.REST.$input.action.config.numberOfTopRisks}} accounts (default to 3 if null or blank).\n- If fewer than 3 at-risk accounts exist, return all available accounts.\n  Important: Once at-risk accounts are selected, they are locked and must not be considered for expansion candidates.\n- For each at-risk account, identify the top 5 products ranked by riskScore (descending).\n  - If fewer than 5 products exist, include all available products.\n- Product list: Prepare a comma-separated list of these products and store it under atRiskCustomers.items[].products.\n- Summary generation: Generate a 2–3 line risk summary based on the selected product data - highlighting risk factors across the selected products and store it under atRiskCustomers.items[].summary.\n- Store results under: atRiskCustomers.items[]\n- Each entry must include the following attributes:\n\"atRiskCustomers\": {\n  \"items\": [\n    {\n      \"accountName\": \"{from input dataset}\",\n      \"accountUrl\": \"{from input dataset}\",\n      \"registryIdentifier\": \"{from input dataset}\",\n      \"accountId\": \"{from input dataset}\",\n      \"summary\": \"{2-3 line risk summary highlighting risk factors across the selected products}\",\n      \"annualRecurringRevenue\": \"{numeric value from input dataset}\",\n      \"engagementTrend\": \"{from input dataset}\",\n      \"renewalDate\": \"YYYY-MM-DD format from input dataset\",\n      \"products\": \"{top 5 comma-separated products ranked by riskScore DESC}\"\n    }\n  ]\n}\n\n3. Lock Risk Accounts\n   Accounts selected as atRiskCustomers must NOT appear in expansionCandidates\n\n4. Build Expansion Candidate Pool AFTER At-Risk Selection \n- Build the expansion candidate pool from the remaining accounts only (exclude locked at-risk accounts).\n- Sort all remaining accounts by Account Expansion Score in descending order.\n- Select the top {{$context.$triggers.REST.$input.action.config.numberOfTopExpansions}} accounts (default to 5 if null or blank).\n- If fewer than 5 expansion candidates exist, return all available accounts.\n- For each expansion candidate, identify the top 5 products ranked by expansionScore (descending).\n  - If fewer than 5 products exist, include all available products.\n- Product list: Prepare a comma-separated list of these products and store it under expansionCandidates.items[].suggestedProducts.\n- Summary generation: Generate a 2–3 line expansion summary based on the selected product data - highlighting growth opportunities across selected products and store it under expansionCandidates.items[].summary.\n- Store results under: expansionCandidates.items[]\n- Each entry must include the following attributes:\n\"expansionCandidates\": {\n  \"items\": [\n    {\n      \"accountName\": \"{from input dataset}\",\n      \"accountUrl\": \"{from input dataset}\",\n      \"registryIdentifier\": \"{from input dataset}\",\n      \"accountId\": \"{from input dataset}\",\n      \"summary\": \"{2-3 line expansion summary highlighting growth opportunities across selected products}\",\n      \"annualRecurringRevenue\": \"{numeric value from input dataset}\",\n      \"currencyCode\": \"{from input dataset}\",\n      \"engagementTrend\": \"{from input dataset}\",\n      \"renewalDate\": \"YYYY-MM-DD format from input dataset\",\n      \"suggestedProducts\": \"{top 5 comma-separated products ranked by expansionScore DESC}\"\n    }\n  ]\n}\n\n6. Build whatsNewSummary \n   Generate STRICTLY VALID HTML.\n\nOUTPUT REQUIREMENTS:\n- Output ONLY a single <ul> element.\n- The <ul> must contain EXACTLY TWO <li> elements.\n- Do NOT output markdown.\n- Do NOT output explanations.\n- Do NOT output code fences.\n- Do NOT output anything before or after the <ul>.\n- The HTML must be syntactically valid.\n\nSTRUCTURE:\n<ul>\n  <li>\n    <strong>Expansion Insights:</strong>\n    3–4 sentences of natural-language summary.\n  </li>\n  <li>\n    <strong>Risk Observations:</strong>\n    3–4 sentences of natural-language summary.\n  </li>\n</ul>\n\nCONTENT RULES:\n1) Expansion Insights\n- Base insights ONLY on expansionProducts.items[].\n- If mentioning an account, it MUST exist ONLY in expansionCandidates.items[].\n- Replace accountName with the exact hyperlink HTML from `accountUrl`.\n- Do NOT mention expansionScore, riskScore, or any numeric scoring terminology.\n- Write in human-readable natural language.\n- No bullet points inside the <li>.\n- No additional HTML tags except <strong> and provided <a> hyperlinks.\n2) Risk Observations\n- Base insights ONLY on riskProducts.items[].\n- If mentioning an account, it MUST exist ONLY in atRiskCustomers.items[].\n- Replace accountName with the exact hyperlink HTML from `accountUrl`.\n- Do NOT mention expansionScore, riskScore, or any numeric scoring terminology.\n- Write in human-readable natural language.\n- No bullet points inside the <li>.\n- No additional HTML tags except <strong> and provided <a> hyperlinks.\n\nCONSTRAINTS:\n- The response must begin immediately with <ul> and end immediately with </ul> with no leading or trailing whitespace.\n- Do NOT introduce accounts outside the permitted lists.\n- Do NOT create placeholder hyperlinks.\n- Do NOT modify the provided hyperlink HTML.\n- Ensure proper closing tags.\n- Output must strictly be valid HTML.\n- Do NOT introduce accounts outside the permitted lists.\n\n7. minArr / maxArr Calculation\n- Compute minArr and maxArr using all accounts present in expansionCandidates.items.\n- Consider all accounts in expansionCandidates, not just the top 5.\n- If expansionCandidates.items is empty, return:\n  \"minArr\": null,\n  \"maxArr\": null\n \n8. Edge Case Handling\n- If no risk accounts exist → build expansionCandidates from all accounts\n- If no expansion accounts exist → still return atRiskCustomers\n- Risk and Expansion sets must be mutually exclusive\n\n\nFINAL OUTPUT FORMAT (MUST MATCH EXACTLY)\n\n{\n  \"whatsNewSummary\": \"{from step 6}\",\n  \"expansionCandidates\": {\n    \"items\": [\n      {\n        \"accountName\": \"{accountName}\",\n        \"accountUrl\": \"{accountUrl}\",\n        \"registryIdentifier\": \"{registryIdentifier}\",\n        \"accountId\": \"{accountId}\",\n        \"annualRecurringRevenue\": 0,\n        \"currencyCode\": \"USD\",\n        \"engagementTrend\":\"{engagementTrend}\",\n        \"renewalDate\": \"YYYY-MM-DD\",\n        \"summary\": \"{from step 4}\",\n        \"suggestedProducts\": \"{expansionProducts}\"\n      }\n    ]\n  },\n  \"atRiskCustomers\": {\n    \"items\": [\n      {\n        \"accountName\": \"{accountName}\",\n        \"accountUrl\": \"{accountUrl}\",\n        \"registryIdentifier\": \"{registryIdentifier}\",\n        \"accountId\": \"{accountId}\",\n        \"summary\": \"{from step 2}\",\n        \"annualRecurringRevenue\": 0,\n        \"engagementTrend\":\"{engagementTrend}\",\n        \"renewalDate\": \"YYYY-MM-DD\",\n        \"products\": \"{riskProducts}\"\n      }\n    ]\n  },\n  \"minArr\": 0,\n  \"maxArr\": 0\n}\n\nHARD CONSTRAINTS\n- Output valid JSON only\n- No comments\n- No markdown\n- No extra keys\n- Numeric fields must be numbers, not strings\n- Risk and expansion accounts must never overlap"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "AgentResponse",
+            "returnType": "string",
+            "sourceCode": "return JSON.stringify($context.$nodes.WITHWHATSNEW.$output, null, 2);"
+          },
+          "outcomes": {
+            "success": "1772826111381"
+          },
+          "code": "AGENTRESPONSE",
+          "id": "1772824320202",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "getCacheForUpdate",
+            "workflowCode": "ORA_RESOURCE_INSIGHT_CACHE_AGENT"
+          },
+          "outcomes": {
+            "success": "1772826062139"
+          },
+          "code": "GETOLDCACHE",
+          "id": "1772826111381",
+          "inputs": [
+            {
+              "id": "1772826131284_1",
+              "name": "message",
+              "type": "string"
+            },
+            {
+              "id": "1772826131285_2",
+              "name": "action",
+              "type": "object",
+              "value": "{\n     \"name\":\"GET\",\n     \"config\":{\n        \"insightCode\" : \"CUSTOMER_INSIGHTS\" \n    }\n }"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "hasOldCache"
+          },
+          "outcomes": {
+            "true": "1772829280322",
+            "false": "1772823211642"
+          },
+          "code": "HASOLDCACHE",
+          "convergenceTargetId": "1773105499106",
+          "id": "1772826062139",
+          "inputs": [
+            {
+              "id": "1772826062140_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{JSON.parse($context.$nodes.GETOLDCACHE.$output.output || '{}').items?.[0]?.$id != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "preparePATCHResponse",
+            "returnType": "string",
+            "sourceCode": "const response = JSON.stringify({\n    name: \"PATCH\",\n    config:{\n      insightCode: \"CUSTOMER_INSIGHTS\",\n      data: $context.$nodes.AGENTRESPONSE.$output.result\n   }\n});\n\nresponse;"
+          },
+          "outcomes": {
+            "success": "1772829424172"
+          },
+          "code": "PREPAREPATCHRESPONSE",
+          "id": "1772829280322",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "cacheLLMResponsePATCH",
+            "workflowCode": "ORA_RESOURCE_INSIGHT_CACHE_AGENT"
+          },
+          "outcomes": {
+            "success": "1773105499106"
+          },
+          "code": "CACHELLMRESPONSEPATCH",
+          "id": "1772829424172",
+          "inputs": [
+            {
+              "id": "1772829457330_1",
+              "name": "message",
+              "type": "string"
+            },
+            {
+              "id": "1772829457331_2",
+              "name": "action",
+              "type": "object",
+              "value": "{{$context.$nodes.PREPAREPATCHRESPONSE.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "preparePOSTResponse",
+            "returnType": "string",
+            "sourceCode": "const response = JSON.stringify({\n    name: \"POST\",\n    config:{\n      insightCode: \"CUSTOMER_INSIGHTS\",\n      data: $context.$nodes.AGENTRESPONSE.$output.result\n    }\n});\n\nresponse;"
+          },
+          "outcomes": {
+            "success": "1772823282443"
+          },
+          "code": "PREPAREPOSTRESPONSE",
+          "convergenceTargetId": "1772829147643",
+          "id": "1772823211642",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "cacheLLMResponsePOST",
+            "workflowCode": "ORA_RESOURCE_INSIGHT_CACHE_AGENT"
+          },
+          "outcomes": {
+            "success": "1773105499106"
+          },
+          "code": "CACHELLMRESPONSEPOST",
+          "convergenceTargetId": "1772829147643",
+          "id": "1772823282443",
+          "inputs": [
+            {
+              "id": "1772823316991_1",
+              "name": "message",
+              "type": "string"
+            },
+            {
+              "id": "1772823316992_2",
+              "name": "action",
+              "type": "object",
+              "value": "{{$context.$nodes.PREPAREPOSTRESPONSE.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "Empty Json"
+          },
+          "outcomes": {},
+          "code": "EMPTY_JSON",
+          "convergenceTargetId": "end",
+          "id": "1765343720615",
+          "inputs": [
+            {
+              "id": "1765343720617_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{\n  expansionCandidates: {},\n  atRiskCustomers: {}\n}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1765922765056",
+            "1": "1765922805657",
+            "2": "1771819472501",
+            "3": "add_1765348205444_3"
+          },
+          "code": "PARALLEL_1765348205446",
+          "convergenceTargetId": "1764714570998",
+          "id": "1765348205444",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "name": "IsExpansion"
+          },
+          "outcomes": {
+            "true": "1764716572005",
+            "false": "add_false_1765922765056"
+          },
+          "code": "ISEXPANSION",
+          "convergenceTargetId": "1764714570998",
+          "id": "1765922765056",
+          "inputs": [
+            {
+              "id": "1765922765058_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.action.name==null || $context.$triggers.REST.$input.action.name=='TOP_EXPANSION_ACCOUNTS'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "GPT-5 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "ExpansionFormula"
+          },
+          "outcomes": {
+            "success": "1764714570998"
+          },
+          "code": "EXPANSIONFORMULA",
+          "convergenceTargetId": "1765922830238",
+          "id": "1764716572005",
+          "inputs": [
+            {
+              "id": "1764716572006_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Input source: {{$context.$nodes.METADATA.$output}}\n\nAsk:\nBased on the above data source, prepare a formula to calculate the Expansion score and return the final mathematical formula.\nStrict: Your final response should be a mathematical equation.\n\nSee the expansion score calculation rules below:\n\n# Reward and Penalty Guidance\n- Always start with a score of 50 and keep adding or subtracting based on the below award and penalty rules.  \n- Reward strengths, maturity, and indicators of growth.  \n- Penalize weaknesses, instability, and risk.  \n- Do not apply multiple penalties for the same risk type.  \n- Keep all adjustments within the 0–100 range.  \n\n## When to Award\nAward whenever a signal indicates positive momentum, strength, or readiness.  \n**Examples:**  \n- Strong or high investment signals  \n- Engagement trend improving or staying healthy  \n- Strong or consistent usage/activity  \n- Product live, stable, or performing well  \n- Buying group active or well-covered  \n- Renewal timeline showing low risk  \n- Ownership status reflecting healthy adoption  \n*Rewards should increase confidence in expansion readiness.*  \n\n## When to Apply Penalty\nApply a penalty whenever a signal introduces friction, risk, or uncertainty.  \n**Examples:**  \n- Weak or low investment signals  \n- Increasing critical issues or escalations  \n- Unexpected or concerning usage patterns  \n- Declining engagement or weakening trends  \n- Missing or inactive buying group roles  \n- Renewal uncertainty or expiration  \n- Ownership signals indicating churn risk  \n*Penalties should reduce the score only when the signal decreases confidence.*\n"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1764714570998"
+          },
+          "id": "add_false_1765922765056",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "IsRisk"
+          },
+          "outcomes": {
+            "true": "1764716720763",
+            "false": "add_false_1765922805657"
+          },
+          "code": "ISRISK",
+          "convergenceTargetId": "1764714570998",
+          "id": "1765922805657",
+          "inputs": [
+            {
+              "id": "1765922805658_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.action.name==null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "GPT-5 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "RiskFormula"
+          },
+          "outcomes": {
+            "success": "1764714570998"
+          },
+          "code": "RISKFORMULA",
+          "convergenceTargetId": "1765922845923",
+          "id": "1764716720763",
+          "inputs": [
+            {
+              "id": "1764716720766_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Input sources:\n1.) Input metadata => {{$context.$nodes.METADATA.$output}} \n\nAsk:\nBased on the above data source, prepare a formula to calculate the Risk score and return the final mathematical formula.\nStrict: Your final response should be a mathematical equation.\n\nSee the risk score calculation rules below:\n\n# Reward and Penalty Guidance\n\n## When to Award (Increase Risk Score)\nAward a higher risk score whenever a signal indicates exposure, vulnerability, or instability.  \n**Examples:**  \n- Weak or declining investment trends  \n- Low or inconsistent usage  \n- Product stability or adoption issues  \n- Renewal or ownership uncertainties  \n- Gaps in engagement or inactive buying groups  \n\n## When to Apply Penalty (Reduce Risk Score)\nReduce risk score if a product shows signs of stability, adoption, or healthy usage.  \n**Examples:**  \n- Strong or consistent engagement  \n- Stable usage and performance  \n- Low churn signals  \n- Healthy renewal timeline  \n\n## General Principles\n- Reward indicators of risk, weakness, or potential churn.  \n- Penalize signals of strength or stability.  \n- Keep all adjustments within the 0–100 range.\n"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1764714570998"
+          },
+          "id": "add_false_1765922805657",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "MaxAccountLimit",
+            "returnType": "number",
+            "sourceCode": "const maxAccountLimitLocal =  $context.$triggers.REST.$input?.action?.config?.maxAccountLimit;\n\nreturn (maxAccountLimitLocal == null || String(maxAccountLimitLocal).trim() === '')   ? 100   : maxAccountLimitLocal;"
+          },
+          "outcomes": {
+            "success": "1765838052981"
+          },
+          "code": "MAXACCOUNTLIMIT",
+          "id": "1771819472501",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_ACCOUNTPRODUCTBO",
+            "functionName": "get_aggregated_products_by_account",
+            "name": "GetAccountIds"
+          },
+          "outcomes": {
+            "success": "1764715640470"
+          },
+          "code": "GETACCOUNTIDS",
+          "convergenceTargetId": "1765837938148",
+          "id": "1765838052981",
+          "inputs": [
+            {
+              "id": "1766114908462_1",
+              "name": "p_filter",
+              "type": "string",
+              "value": "{{$context.$nodes.CONSTRUCTMYFILTER.$output.result}}"
+            },
+            {
+              "id": "1766114908464_2",
+              "name": "p_where",
+              "type": "string",
+              "value": "{{$context.$nodes.WHERECLAUSEUIFILTER.$output.result}}"
+            },
+            {
+              "id": "1766114908465_3",
+              "name": "p_order_by",
+              "type": "string",
+              "value": "annualRecurringRevenue:desc"
+            },
+            {
+              "id": "1766114908466_4",
+              "name": "p_offset",
+              "type": "integer",
+              "value": "0"
+            },
+            {
+              "id": "1766114908467_5",
+              "name": "p_row_count",
+              "type": "integer",
+              "value": "{{$context.$nodes.MAXACCOUNTLIMIT.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"type\": \"object\",\n  \"description\": \"Output specification for the list of accounts with product and engagement details\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"description\": \"Array of account objects with details\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"accountId\": {\n            \"type\": \"number\",\n            \"description\": \"Unique numeric identifier of the account\"\n          },\n          \"accountName\": {\n            \"type\": \"string\",\n            \"description\": \"Name of the account\"\n          },\n          \"accountUniqueName\": {\n            \"type\": \"string\",\n            \"description\": \"Unique name identifier for the account\"\n          },\n          \"registryIdentifier\": {\n            \"type\": \"string\",\n            \"description\": \"CRM Registry Identifier for this account\"\n          },\n          \"currencyCode\": {\n            \"type\": \"string\",\n            \"description\": \"Currency code, e.g., USD\"\n          },\n          \"annualRecurringRevenue\": {\n            \"type\": \"number\",\n            \"description\": \"Annual recurring revenue (ARR) for the account\"\n          },\n          \"renewalDate\": {\n            \"type\": \"string\",\n            \"format\": \"date\",\n            \"description\": \"Next renewal date for the account\"\n          },\n          \"investmentAmount\": {\n            \"type\": \"number\",\n            \"description\": \"Total investment amount associated with this account\"\n          },\n          \"investmentTenure\": {\n            \"type\": \"number\",\n            \"description\": \"Investment tenure in months\"\n          },\n          \"engagementTrend\": {\n            \"type\": \"string\",\n            \"description\": \"Trend of engagement: Up/Down/Stable\"\n          },\n          \"openPriorityOne\": {\n            \"type\": \"number\",\n            \"description\": \"Number of open priority one items\"\n          },\n          \"totalPriorityOneLastSixMonths\": {\n            \"type\": \"number\",\n            \"description\": \"Total priority one items in the last six months\"\n          },\n          \"ownedProducts\": {\n            \"type\": \"string\",\n            \"description\": \"Comma-separated list of products currently owned by the account\"\n          },\n          \"suggestedProducts\": {\n            \"type\": \"string\",\n            \"description\": \"Comma-separated list of suggested products for the account\"\n          }\n        },\n        \"required\": [\"accountId\", \"accountName\", \"registryIdentifier\"]\n      }\n    },\n    \"links\": {\n      \"type\": \"object\",\n      \"description\": \"Links for pagination or self-reference\",\n      \"properties\": {\n        \"$self\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"href\": {\n              \"type\": \"string\",\n              \"description\": \"URL of the current query or resource\"\n            }\n          },\n          \"required\": [\"href\"]\n        }\n      }\n    },\n    \"hasMore\": {\n      \"type\": \"boolean\",\n      \"description\": \"Indicates if there are more items available beyond this response\"\n    }\n  },\n  \"required\": [\"items\", \"links\", \"hasMore\"]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "PrepareListOfPartyIds",
+            "returnType": "array",
+            "sourceCode": "const list = $context?.$nodes?.GETACCOUNTIDS?.$output?.items ?? [];\n\nlet parties = [];\n\nfor (let i = 0; i < list.length; i++) {\n    if (list[i]?.accountId != null) {\n        parties.push(list[i].accountId);\n    }\n}\n\nparties = [...new Set(parties)];\n\nreturn parties;"
+          },
+          "outcomes": {
+            "success": "1764714570998"
+          },
+          "code": "LISTOFPARTIES1",
+          "convergenceTargetId": "1765348609133",
+          "id": "1764715640470",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "description": "Add node for branch 3",
+            "name": "Add 3"
+          },
+          "outcomes": {
+            "success": "1764714570998"
+          },
+          "id": "add_1765348205444_3",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "CheckCacheValidity",
+            "workflowCode": "ORA_RESOURCE_INSIGHT_CACHE_AGENT"
+          },
+          "outcomes": {
+            "success": "1773080169021"
+          },
+          "code": "CHECKCACHEVALIDITY",
+          "id": "1773087602999",
+          "inputs": [
+            {
+              "id": "1773087617557_1",
+              "name": "message",
+              "type": "string"
+            },
+            {
+              "id": "1773087617557_2",
+              "name": "action",
+              "type": "object",
+              "value": "{{$context.$nodes.CACHEVALIDITYPARAMETERS.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "GetCachedData",
+            "workflowCode": "ORA_RESOURCE_INSIGHT_CACHE_AGENT"
+          },
+          "outcomes": {
+            "success": "1773088705405"
+          },
+          "code": "GETCACHEDDATA",
+          "id": "1773087976219",
+          "inputs": [
+            {
+              "id": "1773087994318_1",
+              "name": "message",
+              "type": "string"
+            },
+            {
+              "id": "1773087994319_2",
+              "name": "action",
+              "type": "object",
+              "value": "{\n     \"name\":\"GET\",\n     \"config\":{\n        \"insightCode\" : \"CUSTOMER_INSIGHTS\" \n    }\n }"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "CacheValidityParameters",
+            "returnType": "string",
+            "sourceCode": "const response = JSON.stringify({\n    name: \"ISVALIDCACHE\",\n    config:{\n    insightCode: \"CUSTOMER_INSIGHTS\",\n    maxAgeDays:  $context.$triggers.REST.$input.action.config.refreshFrequency\n   }\n});\n\nresponse;"
+          },
+          "outcomes": {
+            "success": "1773087602999"
+          },
+          "code": "CACHEVALIDITYPARAMETERS",
+          "id": "1773088427935",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "ReturnCachedData"
+          },
+          "outcomes": {},
+          "code": "RETURNCACHEDDATA",
+          "convergenceTargetId": "end",
+          "id": "1773088705405",
+          "inputs": [
+            {
+              "id": "1773088705406_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{JSON.parse(JSON.parse($context.$nodes.GETCACHEDDATA.$output.output)?.items?.[0]?.insightContents)}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "AlwaysTrue"
+          },
+          "outcomes": {
+            "true": "1773105513874",
+            "false": "add_false_1773105499106"
+          },
+          "code": "ALWAYSTRUE",
+          "convergenceTargetId": "end",
+          "id": "1773105499106",
+          "inputs": [
+            {
+              "id": "1773105499109_1",
+              "name": "condition",
+              "type": "string",
+              "value": "true"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_false_1773105499106",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "returnFinalResponse"
+          },
+          "outcomes": {},
+          "code": "RETURNFINALRESPONSE",
+          "convergenceTargetId": "end",
+          "id": "1773105513874",
+          "inputs": [
+            {
+              "id": "1773105513877_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.AGENTRESPONSE.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_ACCOUNTPRODUCTBO",
+            "functionName": "get_open_api_account_products",
+            "processJson": true,
+            "name": "Metadata"
+          },
+          "outcomes": {
+            "success": "1765348205444"
+          },
+          "code": "METADATA",
+          "id": "1773120083608",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_completion_tokens": 32000,
+        "reasoning_effort": "low"
+      },
+      "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+      "model": "OCI_GPT_5_MINI",
+      "modelName": "GPT-5 mini",
+      "provider": "CERT_PREMIUM"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1771876004688",
+            "name": "filterConfiguration",
+            "scope": "JOB",
+            "type": "object"
+          },
+          {
+            "id": "1771645432048",
+            "name": "action",
+            "scope": "JOB",
+            "type": "object"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "SALES_FORCE_AUTOMATION",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "seededRoles": [
+    {
+      "role": "ORA_ZBS_SALES_ADMINISTRATOR_JOB",
+      "id": "100002355227338"
+    },
+    {
+      "role": "ORA_ZBS_SALES_MANAGER_JOB",
+      "id": "100002355227339"
+    },
+    {
+      "role": "ORA_ZBS_SALES_REPRESENTATIVE_JOB",
+      "id": "100002355227340"
+    },
+    {
+      "role": "ORA_ZBS_SALES_VP_JOB",
+      "id": "100002355227341"
+    }
+  ],
+  "header": {
+    "ETag": "\"2\""
+  }
+}

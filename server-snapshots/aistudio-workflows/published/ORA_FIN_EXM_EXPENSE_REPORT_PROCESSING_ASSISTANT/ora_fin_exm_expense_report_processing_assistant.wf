@@ -1,0 +1,1260 @@
+{
+  "workflowId": "300000331068546",
+  "workflowCode": "ORA_FIN_EXM_EXPENSE_REPORT_PROCESSING_ASSISTANT",
+  "name": "Expense Report Processing Assistant",
+  "description": "Expense Report Processing Assistant",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1774595262117"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Set Variables"
+          },
+          "outcomes": {
+            "success": "1773331572749"
+          },
+          "code": "SET_VARIABLES",
+          "id": "1772544299311",
+          "inputs": [
+            {
+              "id": "1778847486846",
+              "name": "eTag",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_EXPENSE_REPORT_DETAILS.$output?.items?.[0]?.$context?.etag || \"\"}}"
+            },
+            {
+              "id": "1774497434250",
+              "name": "expenseReportId",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_EXPENSE_REPORT_DETAILS.$output?.items[0]?.$id|| \"\"}}"
+            },
+            {
+              "id": "1773244635640",
+              "name": "reimbursementCurrency",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_EXPENSE_REPORT_DETAILS?.$output?.items[0]?.reimbursementCurrency?.currencyCode ||\"\"}}"
+            },
+            {
+              "id": "1772544304127",
+              "name": "businessUnitId",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_EXPENSE_REPORT_DETAILS?.$output?.items[0]?.businessUnit?.id ||\"\"}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Read Value Code",
+            "returnType": "object",
+            "sourceCode": "var response = $context.$nodes.GET_SETUP_OPTION.$output;\nvar myBusinessUnitId = $context.$variables.businessUnitId;\n\nvar items = response?.items || [];\n\n// All Business Units value\nvar allBuValueCode = items.find(i => !i.businessUnit)?.valueCode;\n\n// Specific BU record\nvar buItem = items.find(i => i.businessUnit?.id == myBusinessUnitId);\n\n// Pick BU valueCode if available, otherwise fallback to All BU\nvar valueCode = buItem?.valueCode || allBuValueCode;\n\nreturn valueCode;"
+          },
+          "outcomes": {
+            "success": "1773330119415"
+          },
+          "code": "READ_VALUE_CODE",
+          "id": "1773330083102",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "IsCaApplicable"
+          },
+          "outcomes": {
+            "true": "1780933713346",
+            "false": "1782719019777"
+          },
+          "code": "ISCAAPPLICABLE",
+          "convergenceTargetId": "end",
+          "id": "1773330119415",
+          "inputs": [
+            {
+              "id": "1773330119417_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.READ_VALUE_CODE.$output.result=='M'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_SETUPOPTIONS",
+            "functionName": "SetupOptionsForMethodOfApply",
+            "name": "Get Setup Option"
+          },
+          "outcomes": {
+            "success": "1773330083102"
+          },
+          "code": "GET_SETUP_OPTION",
+          "id": "1773331572749",
+          "inputs": [
+            {
+              "id": "1773331590488_1",
+              "name": "businessUnitId",
+              "type": "string",
+              "value": "{{$context.$variables.businessUnitId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Is Reply Flow"
+          },
+          "outcomes": {
+            "true": "1778678438154",
+            "false": "1774599665345"
+          },
+          "code": "IS_REPLY_FLOW",
+          "convergenceTargetId": "end",
+          "id": "1773330986269",
+          "inputs": [
+            {
+              "id": "1773330986272_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{String($context.$triggers.REST.$input.isReply).trim().toLowerCase() == 'true'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "hasCashAdvances"
+          },
+          "outcomes": {
+            "true": "1773999500876",
+            "false": "add_false_1773336614841"
+          },
+          "code": "HASCASHADVANCES",
+          "convergenceTargetId": "end",
+          "id": "1773336614841",
+          "inputs": [
+            {
+              "id": "1773336614846_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{JSON.parse($context.$nodes.CASH_ADVANCE_APPLICATION_ASSISTANT.$output.output).result.status != 'Failed'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Create Predictions Payload",
+            "returnType": "object",
+            "sourceCode": "let predictionsPayload = {};\nlet itemsArray = [];\n\nlet partnerExpensexpenseId = Number(\n    $context.$nodes.CREATE_MESSAGE_PARTNER_EXPENSE.$output.partnerExpenseId\n);\nvar expenseReportId = $context.$variables.expenseReportId;\n\nlet rawOutput = $context.$nodes.CASH_ADVANCE_APPLICATION_ASSISTANT.$output.output;\nlet parsedOutput = {};\n\nif (typeof rawOutput === \"string\" && rawOutput.trim() !== \"\") {\n    try {\n        parsedOutput = JSON.parse(rawOutput);\n    } catch (e) {\n        parsedOutput = {};\n    }\n}\n\nlet cashAdvanceData = parsedOutput.result || {};\nlet cashAdvanceSummary = cashAdvanceData.caSummery || {};\n\nlet recommendedAdv = cashAdvanceSummary.recommendedAdv || null;\n\nlet otherAdv = Array.isArray(cashAdvanceSummary.otherAdv)\n    ? cashAdvanceSummary.otherAdv\n    : [];\n\n// recommendedAdv => predictionRank = 1\nif (recommendedAdv != null) {\n\n    let fieldValueString = JSON.stringify(recommendedAdv).replace(/\"/g, '\\\\\"');\n\n    let itemPayload = {\n        \"$operation\": \"CREATE\",\n        \"partnerExpense\": {\n            \"id\": partnerExpensexpenseId\n        },\n        \"fieldName\": \"CashAdvance\",\n        \"fieldValue\": fieldValueString,\n        \"sourceObjectCode\": \"ORA_EXPENSE_REPORT\",\n        \"predictionTypeCode\": \"ORA_DEFAULTED\",\n        \"predictionDisplayRule\": \"ORA_REQUEST_USER_INPUT\",\n        \"predictionRank\": 1,\n        \"predictionSource\": \"ORA_FIN_EXM_CASH_ADV_ASSISTANT\",\n        \"ruleCode\": \"ORA_CASH_ADVANCE_DEFAULTED\",\n        \"driverName1\": \"ORA_PARTNER_EXPENSE_ID\",\n        \"driverValue1\": partnerExpensexpenseId,\n        \"driverName2\": \"ORA_SOURCE\",\n        \"driverValue2\": \"AGENT\",\n        \"driverName3\": \"ORA_CONTEXT\",\n        \"driverValue3\": \"CASH_ADVANCE\",\n        \"driverName4\": \"ORA_EXPENSE_REPORT_ID\",\n        \"driverValue4\": expenseReportId,\n        \"driverName5\": \"\",\n        \"driverValue5\": \"\"\n    };\n\n    itemsArray.push(itemPayload);\n}\n\n// otherAdv => predictionRank = index + 1\notherAdv.forEach((adv, index) => {\n\n    if (adv == null) return;\n\n    let fieldValueString = JSON.stringify(adv).replace(/\"/g, '\\\\\"');\n\n    let itemPayload = {\n        \"$operation\": \"CREATE\",\n        \"partnerExpense\": {\n            \"id\": partnerExpensexpenseId\n        },\n        \"fieldName\": \"CashAdvance\",\n        \"fieldValue\": fieldValueString,\n        \"sourceObjectCode\": \"ORA_EXPENSE_REPORT\",\n        \"predictionTypeCode\": \"ORA_RECOMMENDATION\",\n        \"predictionDisplayRule\": \"ORA_REQUEST_USER_INPUT\",\n        \"predictionRank\": index + 1,\n        \"predictionSource\": \"ORA_FIN_EXM_CASH_ADV_ASSISTANT\",\n        \"ruleCode\": \"ORA_CASH_ADVANCE_RECOMMENDATION\",\n        \"driverName1\": \"ORA_PARTNER_EXPENSE_ID\",\n        \"driverValue1\": partnerExpensexpenseId,\n        \"driverName2\": \"ORA_SOURCE\",\n        \"driverValue2\": \"AGENT\",\n        \"driverName3\": \"ORA_CONTEXT\",\n        \"driverValue3\": \"CASH_ADVANCE\",\n        \"driverName4\": \"ORA_EXPENSE_REPORT_ID\",\n        \"driverValue4\": expenseReportId,\n        \"driverName5\": \"\",\n        \"driverValue5\": \"\"\n    };\n\n   itemsArray.push(itemPayload);\n});\n\nif (itemsArray.length === 0) {\n    return {};\n}\n\npredictionsPayload[\"items\"] = itemsArray;\n\nreturn predictionsPayload;"
+          },
+          "outcomes": {
+            "success": "1774587097069"
+          },
+          "code": "CREATE_PREDICTIONS_PAYLOAD",
+          "id": "1774001970739",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "forEmailFlow"
+          },
+          "outcomes": {
+            "true": "1773243734704",
+            "false": "1772648642522"
+          },
+          "code": "FOR_EMAIL_FLOW",
+          "convergenceTargetId": "end",
+          "id": "1773330237987",
+          "inputs": [
+            {
+              "id": "1773330237989_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.mode=='Email'||$context.$triggers.REST.$input.mode=='Email'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_false_1773336614841",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EXPENSEPREDICTION",
+            "errorNodeId": "1773330237987",
+            "functionName": "bulkWriteExpensePredictions",
+            "name": "Update Predictions Data"
+          },
+          "outcomes": {
+            "success": "1773330237987"
+          },
+          "code": "UPDATE_PREDICTIONS_DATA",
+          "id": "1774587097069",
+          "inputs": [
+            {
+              "id": "1774587168494_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_PREDICTIONS_PAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EXPENSEREPORT",
+            "functionName": "GetExpenseReport",
+            "name": "Get Expense Report Details"
+          },
+          "outcomes": {
+            "success": "1772544299311"
+          },
+          "code": "GET_EXPENSE_REPORT_DETAILS",
+          "convergenceTargetId": "1774592484127",
+          "id": "1772544246212",
+          "inputs": [
+            {
+              "id": "1774595099047_1",
+              "name": "filterValues",
+              "type": "string",
+              "value": "{{$context.$nodes.EXPENSE_REPORT_FILTER.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Expense Report Filter",
+            "returnType": "string",
+            "sourceCode": "return ($context.$triggers.REST.$input.expenseReportId && String($context.$triggers.REST.$input.expenseReportId).trim()!==\"\" && $context.$triggers.REST.$input.expenseReportId!==\"<provide a value>\")\n? \"id=\" + Number($context.$triggers.REST.$input.expenseReportId)\n: (($context.$triggers.REST.$input.expenseReportNumber && $context.$triggers.REST.$input.expenseReportNumber.trim()!==\"\" && $context.$triggers.REST.$input.expenseReportNumber!==\"<provide a value>\")\n? \"expenseReportNumber='\" + $context.$triggers.REST.$input.expenseReportNumber.trim() + \"'\"\n: \"\");"
+          },
+          "outcomes": {
+            "success": "1772544246212"
+          },
+          "code": "EXPENSE_REPORT_FILTER",
+          "id": "1774595262117",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Cash Advance Application Assistant",
+            "workflowCode": "ORA_FIN_EXM_CASH_ADVANCE_APPLICATION_ASSISTANT"
+          },
+          "outcomes": {
+            "success": "1773336614841"
+          },
+          "code": "CASH_ADVANCE_APPLICATION_ASSISTANT",
+          "id": "1774599665345",
+          "inputs": [
+            {
+              "id": "1782904951261_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            },
+            {
+              "id": "1782904951262_2",
+              "name": "reimbursementCurrency",
+              "type": "string",
+              "value": "{{$context.$variables.reimbursementCurrency}}"
+            },
+            {
+              "id": "1782904951264_3",
+              "name": "personId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.personId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "Extract Reply Email Prompt",
+            "returnType": "object",
+            "sourceCode": "const mainPrompt = `-- TASK @ DEFAULT VERSION --\nPrompt: Email Reply Choice Extraction\n\nInput:\nemailJsonVar with:\n- subject\n- body_text\n- body_html\n\nAssume content is fully decoded and merged.\n\nYour task is to extract ONLY:\n1. replyChoice\n2. justificationForDoNotApply\n3. otherOption\n4. partnerExpensexpenseId\n\n==================================================\n1) INPUT PRIORITY\n==================================================\n\n1) Use body_text first\n2) If body_text is empty, use text from body_html\n\nIMPORTANT:\n- Do not combine conflicting choices from body_text and body_html.\n- If body_text is present, use body_text for reply-choice extraction.\n\n==================================================\n2) CLEANUP RULES\n==================================================\n\nNormalize:\n- Convert double backslashes (\\\\\\\\) to single backslash (\\\\)\n\nRemove lines matching (case-insensitive):\n- Confidential - Oracle Restricted Including External Recipients\n- Confidential - Oracle Restricted \\\\Including External Recipients\n\nTrim extra whitespace.\n\n==================================================\n3) USER REPLY EXTRACTION\n==================================================\n\nROLE:\nYou are a reply-choice extractor.\n\nGOAL:\nExtract the actual user-selected reply from the latest email message.\n\nIMPORTANT:\n- Extract ONLY what the user actually replied\n- Ignore instruction/system text\n- Ignore quoted email content\n- Ignore auto-generated prompts\n- Ignore signatures\n- Ignore footer content\n\n==================================================\n4) VALID replyChoice VALUES\n==================================================\n\nAllowed values:\n- approve\n- doNotApply\n- otherOption\n- unknown\n\n==================================================\n5) IMPORTANT RULES\n==================================================\n\nDo NOT extract choices from instruction text such as:\n- Reply \"Approve\" to submit now\n- Reply \"Don't apply\" (with justification)\n- Reply with Option 1\n- Reply with Option 2\n- Reply with Option 3\n\nIf the email only contains instructions and not an actual user reply:\n- replyChoice = \"unknown\"\n\n==================================================\n6) APPROVE DETECTION\n==================================================\n\nSet replyChoice = \"approve\" ONLY if the user explicitly replied:\n- Approve\n- approve\n\n==================================================\n7) DO NOT APPLY DETECTION\n==================================================\n\nSet replyChoice = \"doNotApply\" ONLY if the user explicitly replied:\n- Don't apply\n- Dont apply\n- do not apply\n- Don't apply cash advance\n- Do not apply cash advance\n\nIf detected:\n- Extract justification written after the choice\n- Exclude system instructions, delimiter lines, metadata, signatures, and footers\n- Preserve the user's exact wording\n\nIf there is no justification, return an empty string.\n\n==================================================\n8) OTHER OPTION DETECTION\n==================================================\n\nValid inputs ONLY:\n\nOption 1:\n- \"1\"\n- \"Option 1\"\n- \"Select 1\"\n\nOption 2:\n- \"2\"\n- \"Option 2\"\n- \"Select 2\"\n\nNormalize Option 1 inputs to \"1\".\nNormalize Option 2 inputs to \"2\".\n\nAny other custom text is invalid.\n\n==================================================\n9) PARTNER EXPENSE ID EXTRACTION\n==================================================\n\nExtract the value from a metadata line formatted as:\n\npartnerExpensexpenseId:<value>\n\nRules:\n- Match the field name case-insensitively\n- Allow optional whitespace before and after the colon\n- Return only the value after the colon\n- Trim surrounding whitespace\n- Do not include the field name or colon\n- The value may be extracted from body_text or body_html\n- Prefer the value from body_text when present\n- If the field is missing, return an empty string\n- Do not use the top-level payload field named partnerExpenseId\n\nExample:\n\nInput:\npartnerExpensexpenseId:300100659846962\n\nOutput value:\n\"300100659846962\"\n\n==================================================\n10) UNKNOWN RULE\n==================================================\n\nIf no actual user reply exists:\n- replyChoice = \"unknown\"\n- justificationForDoNotApply = \"\"\n- otherOption = \"unknown\"\n\n==================================================\n11) OUTPUT FORMAT (STRICT)\n==================================================\n\nReturn valid JSON only:\n\n{\n  \"replyChoice\": \"approve|doNotApply|otherOption|unknown\",\n  \"justificationForDoNotApply\": \"\",\n  \"otherOption\": \"1|2|unknown\",\n  \"partnerExpensexpenseId\": \"\"\n}\n\nRules:\n- Do not add extra fields\n- Do not add explanations\n- Do not add markdown\n- Do not wrap the response in triple backticks\n- Return raw JSON only\n`;\n\nreturn mainPrompt;"
+          },
+          "outcomes": {
+            "success": "1778678476786"
+          },
+          "code": "EXTRACT_REPLY_EMAIL_PROMPT",
+          "id": "1778678438154",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Email Purpose"
+          },
+          "outcomes": {
+            "success": "1778836618665"
+          },
+          "code": "EMAIL_PURPOSE",
+          "id": "1778678476786",
+          "inputs": [
+            {
+              "id": "1778678476787_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "let emailJsonVar= {{$context.$triggers.REST.$input.emailJson}}\n{{$context.$nodes.EXTRACT_REPLY_EMAIL_PROMPT.$output.result}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Extract User Choice"
+          },
+          "outcomes": {
+            "approve": "add_approve_1778678583498",
+            "doNotApply": "1778678796208",
+            "otherOption": "1780911883983",
+            "unknown": "add_unknown_1778678583498"
+          },
+          "code": "EXTRACT_USER_CHOICE",
+          "convergenceTargetId": "1782969473737",
+          "id": "1778678583498",
+          "inputs": [
+            {
+              "id": "1778678583499_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.EMAILPURPOSEOUTPUT.$output.result.replyChoice}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "description": "Add node for unknown case branch",
+            "name": "Add (unknown Case)"
+          },
+          "outcomes": {
+            "success": "1782969473737"
+          },
+          "id": "add_unknown_1778678583498",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "DoNot Apply Justification Provided"
+          },
+          "outcomes": {
+            "true": "1778678847218",
+            "false": "add_false_1778678796208"
+          },
+          "code": "DONOT_APPLY_JUSTIFICATION_PROVIDED",
+          "convergenceTargetId": "1782969473737",
+          "id": "1778678796208",
+          "inputs": [
+            {
+              "id": "1778678796209_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EMAILPURPOSEOUTPUT.$output.result.justificationForDoNotApply && $context.$nodes.EMAILPURPOSEOUTPUT.$output.result.justificationForDoNotApply.trim() != \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1782969473737"
+          },
+          "id": "add_false_1778678796208",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_APPLYCASHADVANCES",
+            "functionName": "RevertManualCashAdvances",
+            "name": "Revert CashAdvances"
+          },
+          "outcomes": {
+            "success": "1782969473737"
+          },
+          "code": "REVERT_CASHADVANCES",
+          "id": "1778678847218",
+          "inputs": [
+            {
+              "id": "1778678862050_1",
+              "name": "expenseReportId",
+              "type": "string",
+              "value": "{{$context.$variables.expenseReportId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for approve case branch",
+            "name": "Add (approve Case)"
+          },
+          "outcomes": {
+            "success": "1782969473737"
+          },
+          "id": "add_approve_1778678583498",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EXPENSEORGANIZATIONSETTINGS",
+            "errorNodeId": "1773330986269",
+            "functionName": "getEReciptForwardingEmail",
+            "name": "GetEReciptForwardingEmail"
+          },
+          "outcomes": {
+            "success": "1773330986269"
+          },
+          "code": "GETERECIPTFORWARDINGEMAIL",
+          "convergenceTargetId": "1773330986269",
+          "id": "1777533292180",
+          "inputs": [
+            {
+              "id": "1778678267168_1",
+              "name": "OrgId",
+              "type": "string",
+              "value": "{{$context.$variables.businessUnitId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Submit Report Email Payload",
+            "returnType": "object",
+            "sourceCode": "var expenseReport = $context.$nodes.GET_EXPENSE_REPORT_DETAILS.$output?.items[0]\nvar expenseReportId= $context.$variables.expenseReportId \nvar userIntent= $context.$nodes.EMAILPURPOSEOUTPUT.$output.result.replyChoice;\n\n\nlet notifyEmailAddress = expenseReport?.person?.emails?.items[0]?.emailAddress;\nlet customAliasFrom = $context.$nodes.GETERECIPTFORWARDINGEMAIL.$output?.items[0]?.SettingValue;\nlet reportStatus = $context.$nodes.ISREPORTSUBMITREQUIRED.$output?\"AGENT_SUBMITTED\":\"PENDING_REVIEW\"\n\nvar href = expenseReport?.$context?.links?.$self?.href;\nvar hostUrl = \"\";\nif (href) {\n  hostUrl = href.split(\"/\").slice(0, 3).join(\"/\");\n}\n\nvar params = {\n    customActionApiGUID: \"c38ef5a9-5340-4313-a334-436a26e6c02d\",\n    purpose: \"TOUCHLESS_CREATE_REPORT\",\n    customAliasFrom:customAliasFrom,\n    expenseReportId : expenseReportId,\n    userIntent : userIntent,\n    enableCompletionAgent :\"true\",\n    expenseAppUrl : hostUrl+\"/fscmUI/redwood/expense/home\",\n    expenseReportUrl : hostUrl + \"/fscmUI/redwood/expense/home/navigator/manage/report-details?expenseReportId=\"+expenseReportId,\n    reportStatus : reportStatus\n};\n\nif (notifyEmailAddress) \n    params.notifyEmailAddress = notifyEmailAddress;\n\n\nif (expenseReport.expenseReportNumber) \n    params.expenseReportNumber = expenseReport.expenseReportNumber;\n\nif (expenseReport.expenseReportDate) \n    params.expenseReportDate = expenseReport.expenseReportDate;\n\nif (expenseReport.expenseReportTotalAmount) \n    params.expenseReportTotalAmount = expenseReport.expenseReportTotalAmount;\n\nif (expenseReport.reimbursementCurrency && expenseReport.reimbursementCurrency.currencyCode) {\n    params.reimbursementCurrencyCode = expenseReport.reimbursementCurrency.currencyCode;\n}\n\nif (expenseReport.expenses && expenseReport.expenses.items && expenseReport.expenses.items.length > 0) {\n    params.expensesCount = expenseReport.expenses.items.length;\n}\n\nvar caSummery = {};\nparams.cashAdvanceSummary = JSON.stringify(caSummery);\n\nreturn { params: params };"
+          },
+          "outcomes": {
+            "success": "1778829433738"
+          },
+          "code": "PREPARE_SUBMIT_REPORT_EMAIL_PAYLOAD",
+          "id": "1778829255688",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EMAILNOTIFICATION",
+            "functionName": "SendEmailNotification",
+            "name": "Send Submit Report Email"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SEND_SUBMIT_REPORT_EMAIL",
+          "id": "1778829433738",
+          "inputs": [
+            {
+              "id": "1778829503871_1",
+              "name": "params",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_SUBMIT_REPORT_EMAIL_PAYLOAD.$output.result.params}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "EmailPurposeOutput",
+            "returnType": "object",
+            "sourceCode": "let raw = $context.$nodes.EMAIL_PURPOSE.$output;\n\nif (typeof raw === \"string\") {\n  raw = raw\n    .replace(/^```json\\\\s*/i, \"\")\n    .replace(/^```\\\\s*/i, \"\")\n    .replace(/\\\\s*```$/i, \"\")\n    .trim();\n  try {\n    raw = JSON.parse(raw);\n  } catch (e) {\n    raw = {};   // fallback object\n  }\n}\n\nreturn raw;"
+          },
+          "outcomes": {
+            "success": "1782729825886"
+          },
+          "code": "EMAILPURPOSEOUTPUT",
+          "id": "1778836618665",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_APPLYCASHADVANCES",
+            "functionName": "ApplyManualCashAdvances",
+            "name": "Auto Apply CashAdvance"
+          },
+          "outcomes": {
+            "success": "1774001970739"
+          },
+          "code": "AUTO_APPLY_CASHADVANCE",
+          "convergenceTargetId": "1774001970739",
+          "id": "1774607788862",
+          "inputs": [
+            {
+              "id": "1774607822260_1",
+              "name": "expenseReportId",
+              "type": "string",
+              "value": "{{$context.$variables.expenseReportId}}"
+            },
+            {
+              "id": "1774607822261_2",
+              "name": "cashAdvanceNumbers",
+              "type": "string",
+              "value": "{{[JSON.parse($context.$nodes.CASH_ADVANCE_APPLICATION_ASSISTANT.$output.output).result.caSummery.recommendedAdv.cashAdvanceNumber]}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EMAILNOTIFICATION",
+            "functionName": "SendEmailNotification",
+            "name": "Send Email Notification"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SEND_EMAIL_NOTIFICATION",
+          "convergenceTargetId": "1772648642522",
+          "id": "1773289800763",
+          "inputs": [
+            {
+              "id": "1773324097682_1",
+              "name": "params",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_EMAIL_PAYLOAD.$output.result.params}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Summarize Cash Advances Output"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SUMMARIZE_CASH_ADVANCES_OUTPUT",
+          "convergenceTargetId": "1773243734704",
+          "id": "1772648642522",
+          "inputs": [
+            {
+              "id": "1772648642523_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "##Your Responsibilities\n\nStep 1: Read the Result \n  Read the output from {{$context.$nodes.CASH_ADVANCE_APPLICATION_ASSISTANT.$output.output}} \n\nStep 2: Validate the Response \n   - If the result contains the key \"recommendedAdv\", proceed to Step 3 and Step 4.\n   - If the result does NOT contain \"recommendedAdv\", display the response exactly as received without any modification.\n\nStep 3: Read the 'recommendedAdv'\n##Display Recommend Cash Advance Applied:\nShow a left-aligned label: Cash Advance Applied\nDisplay the selected record in an HTML table using <table border=\"1\">.\n\nThe table must contain these headers:\n  Information\n  Advance Amount\n\n##Record Formatting:\n\nInformation column:\n  Display in this format:\n<cashAdvanceNumber>: <tripStartDate>(if null show empty) - <tripEndDate >(if null show empty)\n<StatusCode> (<Purpose>)\n Due <SettlementDate> \n\nAdvance Amount column:\n Display in this format:\n <Amount> <PaymentCurrencyCode> - Advanced amount\n<UnappliedAmount> <PaymentCurrencyCode> - remaining\n\nStep 4: Read 'otherAdv' and Display Other Cash Advance Options \n\nDisplay Requirements:\nShow a left-aligned label: Other Cash Advances Options:\n\nEach option must:\nBe labeled as Option 1, Option 2, etc.\nBe displayed in a completely separate table.\nUse <table border=\"1\">.\nNot combine multiple options into one table.\n\nTable Headers (for each option table):\nInformation\nAdvance Amount\n\n##Record Formatting:\n\nInformation column:\nDisplay in this format:\n <cashAdvanceNumber>: <tripStartDate>(if null show empty) - <tripEndDate >(if null show empty)\n<StatusCode> (<Purpose>)\n Due <SettlementDate> \n\nAdvance Amount column:\n<Amount> <PaymentCurrencyCode> - Advanced amount\n<UnappliedAmount> <PaymentCurrencyCode> - remaining\n\n##Rules (Strictly Follow):\n 1. Each row must be treated as a separate section labeled Option <row number>.\n 2. Each row must be displayed in its own independent <table border=\"1\">.\n 3. Do not merge multiple options into a single table.\n 4. Maintain clean and readable HTML formatting.\n 5. Do not add any explanations outside the required tables.\n 6. Show 'Step 4' only when otherAdv.length>0"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Email Payload",
+            "returnType": "object",
+            "sourceCode": "var expenseReport = $context.$nodes.GET_EXPENSE_REPORT_DETAILS.$output?.items[0];\nvar expenseReportId= $context.$variables.expenseReportId;\nvar expenseReportNumber= expenseReport?.expenseReportNumber|| \"\";\nvar reportAmount = expenseReport?.expenseReportTotalAmount || \"\";\nvar reportCurrency = $context.$variables.reimbursementCurrency \nvar reportDate = expenseReport?.expenseReportDate || \"\";\n\nlet notifyEmailAddress = expenseReport?.person?.emails?.items[0]?.emailAddress; \nlet customAliasFrom = $context.$nodes.GETERECIPTFORWARDINGEMAIL.$output?.items[0]?.SettingValue;\n\nvar href = expenseReport?.$context?.links?.$self?.href;\nvar hostUrl = \"\";\nif (href) {\n  hostUrl = href.split(\"/\").slice(0, 3).join(\"/\");\n}\n\n\nvar params = {\n    customActionApiGUID: \"c38ef5a9-5340-4313-a334-436a26e6c02d\",\n    purpose: \"TOUCHLESS_CREATE_REPORT\",\n    customAliasFrom:customAliasFrom,\n    expenseReportId : expenseReportId,\n    enableCompletionAgent :\"true\",\n    userIntent :\"\",\n    expenseAppUrl : hostUrl+\"/fscmUI/redwood/expense/home\",\n    expenseReportUrl : hostUrl+\"/fscmUI/redwood/expense/home/navigator/manage/report-details?expenseReportId=\"+expenseReportId,\n    reportStatus : \"PENDING_REVIEW\"\n};\n\nif (notifyEmailAddress) \n    params.notifyEmailAddress = notifyEmailAddress;\n\nif (expenseReport.expenseReportNumber) \n    params.expenseReportNumber = expenseReport.expenseReportNumber;\n\nif (expenseReport.expenseReportDate) \n    params.expenseReportDate = expenseReport.expenseReportDate;\n\nif (expenseReport.expenseReportTotalAmount) \n    params.expenseReportTotalAmount = expenseReport.expenseReportTotalAmount;\n\nif (expenseReport.reimbursementCurrency && expenseReport.reimbursementCurrency.currencyCode) {\n    params.reimbursementCurrencyCode = expenseReport.reimbursementCurrency.currencyCode;\n}\n\nif (expenseReport.expenses && expenseReport.expenses.items && expenseReport.expenses.items.length > 0) {\n    params.expensesCount = expenseReport.expenses.items.length;\n}\n\n\nvar formattedReportDate = \"\";\nif (reportDate) {\n    var dateParts = reportDate.split(\"-\");\n    if (dateParts.length >= 3) {\n        formattedReportDate = dateParts[1] + \"/\" + dateParts[2].substring(0, 2) + \"/\" + dateParts[0].substring(2);\n    } else {\n        formattedReportDate = reportDate;\n    }\n}\n\nvar subject = \"Re: Cash Advance Applied:Expense Report\";\nif (reportAmount && reportCurrency) {\n    subject = subject + \"(\" + Number(reportAmount).toFixed(2) + \" \" + reportCurrency + \")\";\n}\nif (formattedReportDate) {\n    subject = subject + \" on \" + formattedReportDate;\n}\nparams.emailSubject=subject;\n\n\nlet partnerExpensexpenseId = $context.$nodes.CREATE_MESSAGE_PARTNER_EXPENSE.$output.partnerExpenseId;\nvar responseTemplate = \"mailto:\" + customAliasFrom +\n    \"?body=\" + encodeURIComponent(\n        \"\\n\\n-----Please type your comments above this line-----\\n\\nExpenseReportNumber:\" + expenseReportNumber +\n        \"\\npartnerExpensexpenseId:\" + partnerExpensexpenseId\n    ) +\"&subject=\" + encodeURIComponent(subject);\nparams.responseTemplate=responseTemplate;\n\n// Build advSummery manually as string\nvar cashAdvanceData = JSON.parse($context.$nodes.CASH_ADVANCE_APPLICATION_ASSISTANT.$output.output).result || {};\nvar caSummery = cashAdvanceData.caSummery || {};\n\nparams.cashAdvanceSummary = JSON.stringify(caSummery);\n\nreturn { params: params };"
+          },
+          "outcomes": {
+            "success": "1773289800763"
+          },
+          "code": "PREPARE_EMAIL_PAYLOAD",
+          "convergenceTargetId": "1773289800763",
+          "id": "1773243734704",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "isValidOtherOption"
+          },
+          "outcomes": {
+            "true": "1780923371715",
+            "false": "add_false_1780911883983"
+          },
+          "code": "ISVALIDOTHEROPTION",
+          "convergenceTargetId": "1782969473737",
+          "id": "1780911883983",
+          "inputs": [
+            {
+              "id": "1780911883985_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EMAILPURPOSEOUTPUT.$output.result.otherOption== \"1\" || $context.$nodes.EMAILPURPOSEOUTPUT.$output.result.otherOption== \"2\" || $context.$nodes.EMAILPURPOSEOUTPUT.$output.result.otherOption== \"3\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1782969473737"
+          },
+          "id": "add_false_1780911883983",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_CREATEREPORTPARTNEREXPENSE",
+            "errorNodeId": "1773331572749",
+            "functionName": "createReportPartnerExpense",
+            "name": "Create Report Partner Expense"
+          },
+          "outcomes": {
+            "success": "1774607788862"
+          },
+          "code": "CREATE_REPORT_PARTNER_EXPENSE",
+          "convergenceTargetId": "1774607788862",
+          "id": "1773999500876",
+          "inputs": [
+            {
+              "id": "1780906046654_1",
+              "name": "expenseReportId",
+              "type": "string",
+              "value": "{{$context.$variables.expenseReportId}}"
+            },
+            {
+              "id": "1780906046655_2",
+              "name": "providerTypeCode",
+              "type": "string",
+              "value": "AUTO_SUBMIT"
+            },
+            {
+              "id": "1780906046655_3",
+              "name": "conversationIdentifier",
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EXPENSEPREDICTION",
+            "functionName": "getCashAdvancesPredictions",
+            "processJson": true,
+            "name": "Get Cash Advances Predictions"
+          },
+          "outcomes": {
+            "success": "1780984085627"
+          },
+          "code": "GET_CASH_ADVANCES_PREDICTIONS",
+          "id": "1780923371715",
+          "inputs": [
+            {
+              "id": "1780923417833_1",
+              "name": "partnerExpenseId",
+              "type": "string",
+              "value": "{{$context.$nodes.EMAILPURPOSEOUTPUT.$output.result.partnerExpensexpenseId}}"
+            },
+            {
+              "id": "1780923417834_2",
+              "name": "predictionTypeCode",
+              "type": "string",
+              "value": "ORA_RECOMMENDATION"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Extract user selection cash advance",
+            "returnType": "object",
+            "sourceCode": "const otherOption =\n  $context?.$nodes?.EMAILPURPOSEOUTPUT?.$output?.result?.otherOption;\n\nif (\n  otherOption === null ||\n  otherOption === undefined ||\n  String(otherOption).trim() === \"\"\n) {\n  return { cashAdvanceNumber: null };\n}\n\nconst selectedRank = String(otherOption).trim();\n\nconst items = $context?.$nodes?.GET_CASH_ADVANCES_PREDICTIONS?.$output?.items;\n\nif (!Array.isArray(items) || items.length === 0) {\n  return { cashAdvanceNumber: null };\n}\n\nconst selectedItem = items.find(\n  item => String(item?.predictionRank ?? \"\").trim() === selectedRank\n);\n\nif (!selectedItem?.fieldValue) {\n  return { cashAdvanceNumber: null };\n}\n\nconst text = String(selectedItem.fieldValue).trim();\n\nlet parsedFieldValue = null;\n\ntry {\n  parsedFieldValue = JSON.parse(text);\n} catch (e1) {\n  try {\n    parsedFieldValue = JSON.parse(text.replace(/\\\\\"/g, '\"'));\n  } catch (e2) {\n    return { cashAdvanceNumber: null };\n  }\n}\n\nreturn {\n  cashAdvanceNumber: parsedFieldValue?.cashAdvanceNumber ?? null\n};"
+          },
+          "outcomes": {
+            "success": "1782905037213"
+          },
+          "code": "EXTRACT_USER_SELECTION_CASH_ADVANCE",
+          "id": "1780984085627",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_PROCESSAGENTICPARTNEREXPENSE",
+            "errorNodeId": "1777533292180",
+            "functionName": "createMessagePartnerExpense",
+            "name": "Create Message Partner Expense"
+          },
+          "outcomes": {
+            "success": "1777533292180"
+          },
+          "code": "CREATE_MESSAGE_PARTNER_EXPENSE",
+          "convergenceTargetId": "1777533292180",
+          "id": "1780933713346",
+          "inputs": [
+            {
+              "id": "1780933735803_1",
+              "name": "userMessage",
+              "type": "string"
+            },
+            {
+              "id": "1780933735803_2",
+              "name": "partnerExpenseId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.partnerExpenseId}}"
+            },
+            {
+              "id": "1780933735804_3",
+              "name": "personId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.personId}}"
+            },
+            {
+              "id": "1780933735805_4",
+              "name": "isReply",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.isReply}}"
+            },
+            {
+              "id": "1780933735805_5",
+              "name": "hasAttachments",
+              "type": "string"
+            },
+            {
+              "id": "1780933735806_6",
+              "name": "isDelegate",
+              "type": "string"
+            },
+            {
+              "id": "1780933735807_7",
+              "name": "preparerId",
+              "type": "string"
+            },
+            {
+              "id": "1780933735808_8",
+              "name": "expenseId",
+              "type": "string",
+              "value": "{{$context.$variables.expenseReportId}}"
+            },
+            {
+              "id": "1780933735809_9",
+              "name": "partnerExpenseReferenceId",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "1780933735810_10",
+              "name": "providerTypeCode",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.partnerExpenseId && $context.$triggers.REST.$input.partnerExpenseId.trim() != \"\"?'EMAIL': 'AGENT'}}"
+            },
+            {
+              "id": "1780933735812_11",
+              "name": "intentFound",
+              "type": "string",
+              "value": "true"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EXPENSEREPORT",
+            "functionName": "UpdateExpenseReports",
+            "processJson": true,
+            "name": "Update Expense Report Status"
+          },
+          "outcomes": {
+            "success": "1782732952495"
+          },
+          "code": "UPDATE_EXPENSE_REPORT_STATUS",
+          "id": "1782719019777",
+          "inputs": [
+            {
+              "id": "1782719061725_1",
+              "name": "expenseReportsId",
+              "type": "string",
+              "value": "{{$context.$variables.expenseReportId}}"
+            },
+            {
+              "id": "1782719061726_2",
+              "name": "etag",
+              "type": "string",
+              "value": "{{$context.$variables.eTag}}"
+            },
+            {
+              "id": "1782719061727_3",
+              "name": "expenseStatusCode",
+              "type": "string",
+              "value": "SUBMITTED"
+            },
+            {
+              "id": "1782719061728_4",
+              "name": "unappliedAdvancesJustification",
+              "type": "string"
+            },
+            {
+              "id": "1782719061729_5",
+              "name": "cashAdvanceAppliedMethodCode",
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_PARTNEREXPENSE",
+            "errorNodeId": "1778678583498",
+            "functionName": "GetPartnerExpenseDetails",
+            "processJson": true,
+            "name": "Get Partner Expenses"
+          },
+          "outcomes": {
+            "success": "1782729998549"
+          },
+          "code": "GET_PARTNER_EXPENSES",
+          "id": "1782729825886",
+          "inputs": [
+            {
+              "id": "1782729863897_1",
+              "name": "partnerExpense_id",
+              "type": "string",
+              "value": "{{$context.$nodes.EMAILPURPOSEOUTPUT.$output.result.partnerExpensexpenseId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_PARTNEREXPENSE",
+            "functionName": "PatchStage",
+            "processJson": true,
+            "name": "Update Partner Expense"
+          },
+          "outcomes": {
+            "success": "1778678583498"
+          },
+          "code": "UPDATE_PARTNER_EXPENSE",
+          "id": "1782729998549",
+          "inputs": [
+            {
+              "id": "1782730038304_1",
+              "name": "partnerExpenseId",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PARTNER_EXPENSES.$output.$id}}"
+            },
+            {
+              "id": "1782730038305_2",
+              "name": "etag",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PARTNER_EXPENSES.$output?.$context?.etag || \"\"}}"
+            },
+            {
+              "id": "1782730038306_3",
+              "name": "stage",
+              "type": "string"
+            },
+            {
+              "id": "1782730038306_4",
+              "name": "statusCode",
+              "type": "string",
+              "value": "CLEAN"
+            },
+            {
+              "id": "1782730038307_5",
+              "name": "stageStatus",
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_INVOKEREPORTAPPROVALS",
+            "functionName": "invokeReportApprovals",
+            "processJson": true,
+            "name": "Invoke Report Approval"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "INVOKE_REPORT_APPROVAL",
+          "id": "1782732952495",
+          "inputs": [
+            {
+              "id": "1782732976694_1",
+              "name": "expenseReportId",
+              "type": "string",
+              "value": "{{$context.$variables.expenseReportId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_APPLYCASHADVANCES",
+            "functionName": "RevertManualCashAdvances",
+            "processJson": true,
+            "name": "Revert cash advances"
+          },
+          "outcomes": {
+            "success": "1782905085934"
+          },
+          "code": "REVERT_CASH_ADVANCES",
+          "id": "1782905037213",
+          "inputs": [
+            {
+              "id": "1782905056543_1",
+              "name": "expenseReportId",
+              "type": "string",
+              "value": "{{$context.$variables.expenseReportId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_APPLYCASHADVANCES",
+            "functionName": "ApplyManualCashAdvances",
+            "processJson": true,
+            "name": "Apply Cash advance"
+          },
+          "outcomes": {
+            "success": "1782969473737"
+          },
+          "code": "APPLY_CASH_ADVANCE",
+          "id": "1782905085934",
+          "inputs": [
+            {
+              "id": "1782905103133_1",
+              "name": "expenseReportId",
+              "type": "string",
+              "value": "{{$context.$variables.expenseReportId}}"
+            },
+            {
+              "id": "1782905103134_2",
+              "name": "cashAdvanceNumbers",
+              "type": "string",
+              "value": "{{[$context.$nodes.EXTRACT_USER_SELECTION_CASH_ADVANCE.$output.result.cashAdvanceNumber]}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "isReportSubmitRequired"
+          },
+          "outcomes": {
+            "true": "1778678650727",
+            "false": "add_false_1782969473737"
+          },
+          "code": "ISREPORTSUBMITREQUIRED",
+          "convergenceTargetId": "1778829255688",
+          "id": "1782969473737",
+          "inputs": [
+            {
+              "id": "1782969473739_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EMAILPURPOSEOUTPUT.$output.result.replyChoice==\"approve\" || $context.$nodes.ISVALIDOTHEROPTION.$output  || $context.$nodes.DONOT_APPLY_JUSTIFICATION_PROVIDED.$output}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1778829255688"
+          },
+          "id": "add_false_1782969473737",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Update Report Payload",
+            "returnType": "object",
+            "sourceCode": "var emailPurpose = $context.$nodes.EMAILPURPOSEOUTPUT.$output.result;\n\nvar payload = {\n  expenseStatusCode: \"SUBMITTED\"\n};\n\nif (\n  emailPurpose?.replyChoice === \"doNotApply\" &&\n  emailPurpose?.justificationForDoNotApply?.trim()\n) {\n  payload.unappliedAdvancesJustification =\n    emailPurpose.justificationForDoNotApply;\n\n  payload.cashAdvanceAppliedMethodCode = \"M\";\n}\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "1778678680808"
+          },
+          "code": "PREPARE_UPDATE_REPORT_PAYLOAD",
+          "convergenceTargetId": "1782969524402",
+          "id": "1778678650727",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EXPENSEREPORT",
+            "errorNodeId": "1778829255688",
+            "functionName": "UpdateExpenseReports",
+            "processJson": true,
+            "name": "Update ExpenseReport"
+          },
+          "outcomes": {
+            "success": "1782732883791"
+          },
+          "code": "UPDATE_EXPENSEREPORT",
+          "convergenceTargetId": "1782969524402",
+          "id": "1778678680808",
+          "inputs": [
+            {
+              "id": "1782718742041_1",
+              "name": "expenseReportsId",
+              "type": "string",
+              "value": "{{$context.$variables.expenseReportId}}"
+            },
+            {
+              "id": "1782718742043_2",
+              "name": "etag",
+              "type": "string",
+              "value": "{{$context.$variables.eTag}}"
+            },
+            {
+              "id": "1782718742044_3",
+              "name": "expenseStatusCode",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_UPDATE_REPORT_PAYLOAD.$output.result.expenseStatusCode}}"
+            },
+            {
+              "id": "1782718742045_4",
+              "name": "unappliedAdvancesJustification",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_UPDATE_REPORT_PAYLOAD.$output.result.unappliedAdvancesJustification}}"
+            },
+            {
+              "id": "1782718742046_5",
+              "name": "cashAdvanceAppliedMethodCode",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_UPDATE_REPORT_PAYLOAD.$output.result.cashAdvanceAppliedMethodCode}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_INVOKEREPORTAPPROVALS",
+            "errorNodeId": "1778829255688",
+            "functionName": "invokeReportApprovals",
+            "processJson": true,
+            "name": "Invoke Approvals"
+          },
+          "outcomes": {
+            "success": "1778829255688"
+          },
+          "code": "INVOKE_APPROVALS",
+          "convergenceTargetId": "1782969524402",
+          "id": "1782732883791",
+          "inputs": [
+            {
+              "id": "1782732907919_1",
+              "name": "expenseReportId",
+              "type": "string",
+              "value": "{{$context.$variables.expenseReportId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1778847468322",
+          "name": "eTag",
+          "scope": "CONVERSATION",
+          "type": "string"
+        },
+        {
+          "id": "1774497401053",
+          "name": "expenseReportId",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1773244587269",
+          "name": "reimbursementCurrency",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1772544195541",
+          "name": "businessUnitId",
+          "scope": "JOB",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.75,
+        "temperature": 0.01
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "modelName": "GPT OSS 120B (Basic)",
+      "provider": "CERT_BASIC"
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1780915176412",
+            "name": "partnerExpenseId",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1778678341144",
+            "name": "emailJson",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1774592233611",
+            "name": "expenseReportId",
+            "type": "string"
+          },
+          {
+            "id": "1772639686000",
+            "name": "mode",
+            "type": "string"
+          },
+          {
+            "id": "1772544182196",
+            "name": "personId",
+            "type": "string"
+          },
+          {
+            "id": "1772544165588",
+            "name": "expenseReportNumber",
+            "type": "string"
+          },
+          {
+            "id": "1772544144745",
+            "name": "isReply",
+            "type": "boolean"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "FIN",
+  "product": "EXPENSES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"4\""
+  }
+}

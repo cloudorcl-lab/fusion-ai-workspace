@@ -1,0 +1,385 @@
+{
+  "workflowId": "300000331056453",
+  "workflowCode": "ORA_SELFSERVICE_SEARCH_INDEX_BUILDER",
+  "name": "SelfService Search Index Builder",
+  "description": "An ingestion and indexing service that processes self-service agent configurations to power semantic search and routing. It retrieves agent descriptions via APIs, generates vector embeddings for both descriptions and supported user phrases, and stores them in optimized vector indexes. These indexes are used at query time to identify the most relevant agent through similarity search and weighted scoring.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1776629327571"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CPQCOMMERC_SELFSERVICEAIOUTCOMESTORE",
+            "functionName": "getOutcomeBy_Object_Type",
+            "processJson": true,
+            "name": "Get SelfService Search Agent Map"
+          },
+          "outcomes": {
+            "success": "1776630027589"
+          },
+          "code": "GET_SELFSERVICE_SEARCH_AGENT_MAP",
+          "id": "1776629327571",
+          "inputs": [
+            {
+              "id": "1776629363035_1",
+              "name": "pFilter",
+              "type": "string",
+              "value": "primaryObjectType in ('SelfServiceSearchAgentMap')"
+            },
+            {
+              "id": "1776629363036_2",
+              "name": "pFields",
+              "type": "string",
+              "value": "payload"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Get Flattened Phrases",
+            "returnType": "object",
+            "sourceCode": "\nconst payload = JSON.parse($context.$nodes.GET_SELFSERVICE_SEARCH_AGENT_MAP.$output.items[0].payload);\nconst agentsObj = payload.what.facts.agents;\n\n// agentCodes\nconst agentCodes = Object.keys(agentsObj);\n\n// agentCodes as string\nconst agentCodesString = `(${agentCodes.map(a => `'${a}'`).join(\",\")})`;\n\n// flattened in required format\nconst flattened = Object.entries(agentsObj).flatMap(([agentCode, data]) =>\n  data.embeddingPhrases.map(phrase =>\n    `Agent=${agentCode} | ${phrase.trim()}`\n  )\n);\n\nreturn [agentCodes, agentCodesString, flattened];"
+          },
+          "outcomes": {
+            "success": "1776630602929"
+          },
+          "code": "GET_FLATTENED_PHRASES",
+          "id": "1776630027589",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_OTHER_GETAGENTSLISTS",
+            "functionName": "getall_hcmAgentWorkflowsV2_by_workflowcode",
+            "processJson": true,
+            "name": "Get Agent Details"
+          },
+          "outcomes": {
+            "success": "1776633249861"
+          },
+          "code": "GET_AGENT_DETAILS",
+          "id": "1776630602929",
+          "inputs": [
+            {
+              "id": "1776630937659_1",
+              "name": "workflowcodes",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_FLATTENED_PHRASES.$output.result[1]}}"
+            },
+            {
+              "id": "1776630937660_2",
+              "name": "limit",
+              "type": "string"
+            },
+            {
+              "id": "1776630937661_3",
+              "name": "offset",
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Get Flattened Agent Descriptions",
+            "returnType": "object",
+            "sourceCode": "const response = $context.$nodes.GET_AGENT_DETAILS.$output;\n\nconst agentCodesSet = new Set($context.$nodes.GET_FLATTENED_PHRASES.$output.result[0]);\n\nconst items = response.items || [];\n\n// only PUBLISHED + matching WorkflowCode\nconst publishedAgents = items.filter(item =>\n  item.Status === \"PUBLISHED\" && agentCodesSet.has(item.WorkflowCode)\n);\n\n// flat structure in required format\nconst flattened = publishedAgents.map(item =>\n  `Agent=${item.WorkflowCode} | ${item.Description.trim()}`\n);\n\nreturn flattened;"
+          },
+          "outcomes": {
+            "success": "1776634012801"
+          },
+          "code": "GET_FLATTENED_AGENT_DESCRIPTIONS",
+          "id": "1776633249861",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1776634069528"
+                  },
+                  "id": "start_1776634012801",
+                  "code": "START_1776634012801",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1776634012801",
+                  "code": "END_1776634012801",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "name": "InsertAgentDescriptionsToSearchStore"
+                  },
+                  "outcomes": {
+                    "success": "end_1776634012801"
+                  },
+                  "code": "INSERTAGENTDESCRIPTIONSTOSEARCHSTORE",
+                  "id": "1776634069528",
+                  "inputs": [
+                    {
+                      "id": "1776634069529_1",
+                      "name": "indexName",
+                      "type": "string",
+                      "value": "SSAgentDescStore"
+                    },
+                    {
+                      "id": "1776634069530_2",
+                      "name": "content",
+                      "type": "string",
+                      "value": "{{$context.$nodes.INSERTDESCRIPTIONS.$currentItem}}"
+                    },
+                    {
+                      "id": "1776634069530_3",
+                      "name": "contentType",
+                      "type": "string",
+                      "value": "String"
+                    },
+                    {
+                      "id": "1776634069531_4",
+                      "name": "operation",
+                      "type": "string",
+                      "value": "OVERWRITE"
+                    },
+                    {
+                      "id": "1776634069531_5",
+                      "name": "documentId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.INSERTDESCRIPTIONS.$currentItemIndex}}"
+                    },
+                    {
+                      "id": "1776634069532_6",
+                      "name": "metaData",
+                      "type": "array",
+                      "value": []
+                    }
+                  ],
+                  "type": "VECTOR_DB_WRITER"
+                }
+              ],
+              "rootNode": "start_1776634012801"
+            },
+            "loopType": "SEQUENTIAL",
+            "name": "InsertDescriptions"
+          },
+          "outcomes": {
+            "success": "1776638853790"
+          },
+          "code": "INSERTDESCRIPTIONS",
+          "id": "1776634012801",
+          "inputs": [
+            {
+              "id": "1776634012804_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_FLATTENED_AGENT_DESCRIPTIONS.$output.result}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1776653117373"
+                  },
+                  "id": "start_1776638853790",
+                  "code": "START_1776638853790",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1776638853790",
+                  "code": "END_1776638853790",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "name": "InsertAgentPhrasesToSearchStore"
+                  },
+                  "outcomes": {
+                    "success": "end_1776638853790"
+                  },
+                  "code": "INSERTAGENTPHRASESTOSEARCHSTORE",
+                  "id": "1776653117373",
+                  "inputs": [
+                    {
+                      "id": "1776653117374_1",
+                      "name": "indexName",
+                      "type": "string",
+                      "value": "SSAgentPhraseStore"
+                    },
+                    {
+                      "id": "1776653117375_2",
+                      "name": "content",
+                      "type": "string",
+                      "value": "{{$context.$nodes.INSERTQUERIES.$currentItem}}"
+                    },
+                    {
+                      "id": "1776653117375_3",
+                      "name": "contentType",
+                      "type": "string",
+                      "value": "String"
+                    },
+                    {
+                      "id": "1776653117375_4",
+                      "name": "operation",
+                      "type": "string",
+                      "value": "OVERWRITE"
+                    },
+                    {
+                      "id": "1776653117375_5",
+                      "name": "documentId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.INSERTQUERIES.$currentItemIndex}}"
+                    },
+                    {
+                      "id": "1776653117376_6",
+                      "name": "metaData",
+                      "type": "array",
+                      "value": []
+                    }
+                  ],
+                  "type": "VECTOR_DB_WRITER"
+                }
+              ],
+              "rootNode": "start_1776638853790"
+            },
+            "loopType": "SEQUENTIAL",
+            "name": "InsertQueries"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "INSERTQUERIES",
+          "id": "1776638853790",
+          "inputs": [
+            {
+              "id": "1776638853792_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_FLATTENED_PHRASES.$output.result[2]}}"
+            }
+          ],
+          "type": "LOOP"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "CPQ_COMMERCE",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

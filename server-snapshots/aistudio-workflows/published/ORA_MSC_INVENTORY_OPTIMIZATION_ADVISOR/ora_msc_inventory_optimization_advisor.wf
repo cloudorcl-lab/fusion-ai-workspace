@@ -1,0 +1,965 @@
+{
+  "workflowId": "300000331068321",
+  "workflowCode": "ORA_MSC_INVENTORY_OPTIMIZATION_ADVISOR",
+  "name": "Inventory Optimization Advisor",
+  "description": "The Inventory Optimization Planning AI Agent assists supply chain planners in identifying and resolving service level shortfalls for finished goods by analyzing safety stock sensitivity across the distribution network. The agent is integrated into the planning dashboards and is launched through a guided workflow starting from supply chain network visualizations.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1772613063825"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "high"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "RoutingAgent"
+          },
+          "outcomes": {
+            "success": "1774373041898"
+          },
+          "code": "ROUTINGAGENT",
+          "id": "1772612737305",
+          "inputs": [
+            {
+              "id": "1772612737306_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "PROMPT_START\n\nYou are a query classification assistant for an Inventory Optimization Planning AI Agent.\n\n-------------------------------------\nInput Drill Context.\n-------------------------------------\nInput Context is a json object with fields - PlanId, PlanName and drillFilters. drillFilters is an array of arrays which hold json object for incoming drill from visualizations.\n\nInputContext : {{$context.$system.$inputContext}}\n\nFor eg :\nInputContext :\n{\n    \"PlanId\": 300100649770111,\n    \"PlanName\": \"SK-IOP-SL95\",\n    \"drillFilters\": [\n        [\n            {\n                \"levelId\": 1,\n                \"memberIds\": [\n                    27043033\n                ],\n                \"levelName\": \"Item\",\n                \"memberName\": \"IOP-DECK BOARD\"\n            },\n            {\n                \"levelId\": 40,\n                \"memberIds\": [\n                    195536\n                ],\n                \"memberName\": \"IOP_ORG1\",\n                \"levelName\": \"Organization\"\n            }\n        ]\n    ]\n}\n\nInformation we can retrieve are :\nPlanId : 300100649770111\nPlanName : SK-IOP-SL95\nItemId : 27043033\nItemName : IOP-DECK BOARD\nOrgId : 195536\nOrgCode : IOP_ORG1\n\nTo extract this item & org details from incoming drill you can utilize below js code snippet.\n\n\nJS_CODE_START\n\n// Get drillFilters input\nconst drillFilters = $context.$variables.drillFilters;\n\n// Initialize output object\nlet result = {\n  ItemId: null,\n  ItemName: null,\n  OrgCode: null,\n  OrgId: null\n};\n\n// Safely access first group\nif (Array.isArray(drillFilters) && drillFilters.length > 0) {\n  const filters = drillFilters[0];\n\n  filters.forEach(filter => {\n    if (filter.levelId === 1) {\n      result.ItemId = filter.memberIds?.[0]?.toString() || null;\n      result.ItemName = filter.memberName || null;\n    }\n\n    if (filter.levelId === 40) {\n      result.OrgId = filter.memberIds?.[0]?.toString() || null;\n      result.OrgCode = filter.memberName || null;\n    }\n  });\n}\n\n\nJS_CODE_END\n\nFrom js code output, result has ItemId, ItemName, OrgCode, OrgId\n\nAlways update the final context object based on new user questions and messages. Don't worry about optional fields, but always retrieve mandatory fields (ItemName, PlanName, OrgCode).\n\n\n-------------------------------------\nTASK OVERVIEW\n-------------------------------------\nYou must perform FOUR steps:\n\nSTEP 0 → CONTEXT EXTRACTION\nSTEP 0.5 → CONTEXT SWITCH DETECTION\nSTEP 1 → CONTEXT VALIDATION\nSTEP 2 → INTENT CLASSIFICATION\n\n-------------------------------------\nSTEP 0: CONTEXT EXTRACTION\n-------------------------------------\n- Extract ONLY explicitly mentioned values from the user input.\n- Do NOT infer or hallucinate.\n- Support JSON, key-value, or mixed input.\n\nProduce two objects:\n  - **drill_context**: parsed from the InputContext / drillFilters (ItemId, ItemName, OrgId, OrgCode, PlanId, PlanName)\n  - **user_context**: extracted from the current user message (ItemName, OrgCode, etc. — only what the user explicitly states)\n\n-------------------------------------\nSTEP 0.5: CONTEXT SWITCH DETECTION (CRITICAL)\n-------------------------------------\nThis step prevents stale IDs from the drill context from leaking into the final context when the user asks about a DIFFERENT item or org.\n\n**Compare user_context against drill_context:**\n\n1. **Item Switch Detection:**\n   - If user_context.ItemName is non-null AND differs from drill_context.ItemName (case-insensitive):\n     → Item context has switched.\n     → SET ItemId = null (discard the drill's ItemId — it belongs to the OLD item)\n     → SET ItemName = user_context.ItemName (use the NEW item from user query)\n\n   - If user_context.ItemName is non-null AND matches drill_context.ItemName:\n     → No switch. Retain drill_context.ItemId and drill_context.ItemName.\n\n   - If user_context.ItemName is null:\n     → No switch. Retain drill_context values.\n\n2. **Org Switch Detection:**\n   - If user_context.OrgCode is non-null AND differs from drill_context.OrgCode (case-insensitive):\n     → Org context has switched.\n     → SET OrgId = null (discard the drill's OrgId — it belongs to the OLD org)\n     → SET OrgCode = user_context.OrgCode (use the NEW org from user query)\n\n   - If user_context.OrgCode is non-null AND matches drill_context.OrgCode:\n     → No switch. Retain drill_context.OrgId and drill_context.OrgCode.\n\n   - If user_context.OrgCode is null:\n     → No switch. Retain drill_context values.\n\n3. **Plan fields (PlanId, PlanName):**\n   - Apply the same switch logic: if user explicitly provides a different PlanName, discard PlanId from drill.\n   - If no plan change mentioned, retain drill_context PlanId and PlanName.\n\n**Build final_context by merging in this priority order:**\n  1. Start with drill_context as base.\n  2. Apply switch nullifications (from above).\n  3. Overlay any remaining non-null user_context values.\n\n**Result:** final_context will never carry an ID that belongs to a different entity than the name in the same context.\n\n-------------------------------------\nSTEP 1.5: EARLY INTENT FILTER\n-------------------------------------\n- FIRST check:\n\n    If input contains ONLY context (JSON / key-value pairs)\n    AND no natural language query:\n\n    → SKIP intent filter\n    → Proceed to STEP 1 / STEP 2\n\n- Else:\n\n    If query is clearly unrelated to:\n        - service level\n        - inventory cost\n        - supply chain\n\n    → Case = INVALID\n    → STOP\n\nIMPORTANT:\n- Context-only input must NEVER be classified as INVALID\n\n-------------------------------------\nSTEP 1: CONTEXT VALIDATION\n-------------------------------------\nMandatory:\n- ItemName\n- OrgCode\n- PlanName\n\n- Check final_context (merged context):\n\n  - If ANY mandatory field missing:\n      → Case = MISSING_CONTEXT\n      → context_update_required = true if new data added\n      → Ask ONLY for missing fields\n      → STOP\n\n  - If ALL present → proceed\n\n-------------------------------------\nPREVIOUS INTENT DETECTION\n-------------------------------------\n- Check {{$context.$system.$chatHistory}}\n\n- Identify last meaningful user query\n\n- If it indicates:\n    - service level → previous_intent = SERVICE_LEVEL\n    - inventory cost → previous_intent = INVENTORY_COST\n    - MISSING_CONTEXT but clear intent → still count\n\n- Else:\n    → previous_intent = NONE\n\n-------------------------------------\nSTEP 2: INTENT CLASSIFICATION\n-------------------------------------\n\nCases:\n1. CONTEXT_ONLY\n2. SERVICE_LEVEL\n3. INVENTORY_COST\n4. INVALID\n\n-------------------------------------\nRULES (STRICT ORDER)\n-------------------------------------\n\n1. CONTEXT INPUT (FOLLOW-UP HANDLING):\n\n- If input contains ONLY context (no natural language):\n\n    → Check previous_intent\n\n    - If previous_intent = SERVICE_LEVEL → Case = SERVICE_LEVEL\n    - If previous_intent = INVENTORY_COST → Case = INVENTORY_COST\n    - If previous_intent = NONE → Case = CONTEXT_ONLY\n\n2. SERVICE_LEVEL:\n\n- Query relates to:\n   - service level\n   - stock availability\n   - fill rate\n   - stockouts\n   - increasing/improving service level\n\n→ Case = SERVICE_LEVEL\n\n3. INVENTORY_COST:\n\n- Query relates to:\n   - inventory cost\n   - holding cost\n   - excess inventory\n\n→ Case = INVENTORY_COST\n\n4. Else:\n→ Case = INVALID\n\n-------------------------------------\nLLM_QUERY RULES\n-------------------------------------\n\n- If MISSING_CONTEXT:\n  → \"Sorry, please provide the required inputs. {missing fields} are needed for me to answer questions on service level or inventory cost\"\n\n- If CONTEXT_ONLY:\n  → \"Context received. Please provide your query related to service level or inventory cost.\"\n\n- Else:\n  → \"\"\n\n-------------------------------------\nOUTPUT FORMAT (STRICT JSON)\n-------------------------------------\n{\n  \"Case\": \"<CASE_VALUE>\",\n  \"llm_query\": \"<STRING>\",\n  \"context_update_required\": <true/false>,\n  \"extracted_context\": {\n    \"ItemId\": \"<from final_context>\",\n    \"ItemName\": \"<from final_context>\",\n    \"OrgId\": \"<from final_context>\",\n    \"OrgName\": \"<from final_context>\",\n    \"OrgCode\": \"<from final_context>\",\n    \"PlanId\": \"<from final_context>\",\n    \"PlanName\": \"<from final_context>\"\n  }\n}\n\n-------------------------------------\nOUTPUT RULES\n-------------------------------------\n- No extra keys\n- Always **use final_context** (built via STEP 0.5 merge logic)\n- When a context switch is detected, the corresponding ID field MUST be null — never carry over an ID from a mismatched entity\n- context_update_required = true whenever any field in final_context differs from the previous drill_context\n- Be deterministic\n- Always return extracted_context json object so that we can proceed further for execution\n\n-------------------------------------\nUSER QUERY\n-------------------------------------\n{{$context.$system.$inputMessage}}\n\nPROMPT_END"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"RoutingAgentResponseV2\",\n  \"type\": \"object\",\n  \"additionalProperties\": false,\n  \"required\": [\"Case\", \"llm_query\", \"context_update_required\", \"extracted_context\"],\n  \"properties\": {\n    \"Case\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"SERVICE_LEVEL\",\n        \"INVENTORY_COST\",\n        \"INVALID\",\n        \"MISSING_CONTEXT\"\n      ]\n    },\n    \"llm_query\": {\n      \"type\": \"string\",\n      \"description\": \"Follow-up query when context is missing, else empty string\"\n    },\n    \"context_update_required\": {\n      \"type\": \"boolean\",\n      \"description\": \"True if user input contains context values that should be extracted and saved\"\n    },\n    \"extracted_context\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"properties\": {\n        \"ItemId\": { \"type\": [\"string\", \"null\"] },\n        \"ItemName\": { \"type\": [\"string\", \"null\"] },\n        \"OrgId\": { \"type\": [\"string\", \"null\"] },\n        \"OrgName\": { \"type\": [\"string\", \"null\"] },\n        \"OrgCode\": { \"type\": [\"string\", \"null\"] },\n        \"PlanId\": { \"type\": [\"string\", \"null\"] },\n        \"PlanName\": { \"type\": [\"string\", \"null\"] }\n      },\n      \"description\": \"Only populate fields that are explicitly provided in the user query; others should be null or omitted\"\n    }\n  }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "GetCategory"
+          },
+          "outcomes": {
+            "SERVICE_LEVEL": "1775327534426",
+            "INVENTORY_COST": "1775328875417",
+            "INVALID": "1774846953128",
+            "MISSING_CONTEXT": "1775474729669",
+            "CONTEXT_ONLY": "1775403365315"
+          },
+          "code": "GETCATEGORY",
+          "convergenceTargetId": "end",
+          "id": "1772612861481",
+          "inputs": [
+            {
+              "id": "1772612861482_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.ROUTINGAGENT.$output.Case}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "GetServiceLevelQueryResult"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "GETSERVICELEVELQUERYRESULT",
+          "id": "1772612902320",
+          "inputs": [
+            {
+              "id": "1772612902322_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a UI rendering assistant.\n\nYour task is to convert JSON input into a COMPLETE HTML table.\n\n========================\nINPUT\n========================\n\nThe input JSON will be available at:\n\n{{$context.$variables.ServiceQueryRestResponse}}\n\nThis JSON contains:\n\nServiceQueryRestResponse.items → ARRAY OF ROWS\n\nEach row contains:\n\n- Item\n- Organization\n- Percentage Service Level Sensitivity to Safety Stock Quantity per Thousand Units\n- Percentage Service Level Sensitivity to Safety Stock Value in Millions\n- Item Standard Cost\n\n========================\nCRITICAL RULE (HIGHEST PRIORITY)\n========================\n\nIF:\n- ServiceQueryRestResponse.items is EMPTY\nOR\n- ServiceQueryRestResponse.items is MISSING\n\nTHEN:\n\nRETURN ONLY THIS (NO TABLE, NO DIV, NOTHING ELSE):\n\n<p>We couldn't find any matching data for this selection : Plan {{$context.$variables.PlanName}} , Item {{$context.$variables.ItemName}}, Organization {{$context.$variables.OrgCode}} .</p>\n\nDO NOT render table\nDO NOT wrap in div\nDO NOT add any extra text\nAND STOP EXECUTION\n\n========================\nIMPORTANT RULES\n========================\n\n1. ALWAYS use:\n   ServiceQueryRestResponse.items\n\n2. DO NOT expect or use:\n   - data[]\n   - itemId\n   - itemDescription\n   - any other schema\n\n3. DO NOT skip rendering rows even if values are missing\n\n4. NEVER use or output result[0] anywhere in the final HTML.\n   - result[0] may exist in the input array, but it is reserved and must be ignored.\n   - Only row-specific indices starting at result[1] may be used.\n\n5. NEVER output the literal text `result[0]`, `result[1]`, `result[i]`, or any other `result[...]` token inside the final HTML.\n   - The drill-context token must be used only inside the href value.\n   - The final rendered HTML must contain the resolved drill-context value, not the placeholder text.\n\n========================\nDEEPLINK RULES — PER-ROW ONLY\n========================\n\nThere is only one kind of link in this output:\n\nPER-ROW DEEP LINK\n- Used only inside the Item column for each row\n- Must use the row-specific drill context for that row\n- NEVER use result[0] for a row link\n- NEVER reuse the same link for every row\n\nImportant indexing rule:\n- The drill-context array is 0-based\n- result[0] exists but must never be used\n- The first table row must use result[1]\n- The second table row must use result[2]\n- In general, the row at loop index i (starting from 1) must use result[i]\n\n========================\nCOLUMN MAPPING\n========================\n\nFor each row:\n\n# (index starting from 1)\n\nItem:\n→ items[].Item\n    This must be a deep link per row using the row-specific drill context.\n\nItem Description:\n→ Use items[].ItemDescription if there is value in items[].ItemDescription , If it is not present, keep the Item Description to be SAME as Item.\n\nOrganization:\n→ items[].Organization\n\nPercentage Service Level Sensitivity to Safety Stock Quantity per Thousand Units:\n→ items[].\"Percentage Service Level Sensitivity to Safety Stock Quantity per Thousand Units\"\n\nItem Standard Cost:\n→ items[].\"Item Standard Cost\"\n\nPercentage Service Level Sensitivity to Safety Stock Value in Millions:\n→ items[].\"Percentage Service Level Sensitivity to Safety Stock Value in Millions\"\n\n=========================================\nPER-ROW DEEP LINK REQUIREMENT\n=========================================\n\nIn the COLUMN MAPPING provided above, you have to make \"Item\" as a clickable hyper link in EVERY ROW.\n\nUse this exact href pattern for each row, substituting the current row index number into the array position:\n\n<a href=\"/fscmUI/redwood/supply-chain-planning/scp-workarea?startPlanId={{$context.$variables.PlanId}}&startVizId=9660&startDrillContext={{$context.$nodes.GENERATEDRILLCONTEXT.$output.result[1]}}\" target=\"_blank\" rel=\"noopener noreferrer\">Item</a>\n\nFor the second row, the href must use:\n\n<a href=\"/fscmUI/redwood/supply-chain-planning/scp-workarea?startPlanId={{$context.$variables.PlanId}}&startVizId=9660&startDrillContext={{$context.$nodes.GENERATEDRILLCONTEXT.$output.result[2]}}\" target=\"_blank\" rel=\"noopener noreferrer\">Item</a>\n\nFor the third row, the href must use:\n\n<a href=\"/fscmUI/redwood/supply-chain-planning/scp-workarea?startPlanId={{$context.$variables.PlanId}}&startVizId=9660&startDrillContext={{$context.$nodes.GENERATEDRILLCONTEXT.$output.result[3]}}\" target=\"_blank\" rel=\"noopener noreferrer\">Item</a>\n\nAnd so on.\n\nImportant: the row href must be the full relative URL above, with only the drill-context array index changing. Do not shorten it, do not add any leading or trailing text, do not add a leading slash before the template expression, and do not emit `result[n]` as literal text.\n\nRules:\n- The row link must use the row-specific drill context for that row only\n- Do NOT use result[0] for any row link\n- Do NOT use the same drill context for every row\n- Do NOT leave `result[n]` as plain text in the output\n- Do NOT emit a placeholder such as `{deepLinkUrl}`\n- The final HTML must contain the fully resolved href value for each row\n- Link must open in a new tab\n- Do not add any extra attributes\n\nThe Item cell must be rendered exactly as an anchor tag whose href uses the row-specific drill context value for that row.\n\n========================\nOUTPUT FORMAT (STRICT)\n========================\n\nReturn ONLY valid HTML\n\nMUST follow EXACT structure:\n\n<div>\n<p>...</p>\n<table>\n<thead>...</thead>\n<tbody>...</tbody>\n</table>\n\n</div>\n\nNO markdown\nNO partial HTML\nNO explanations\n\n=============================\nOUTPUT STRUCTURE\n=============================\n\n<p>The current context is: Plan {{$context.$variables.PlanName}} , Item {{$context.$variables.ItemName}} , Organization {{$context.$variables.OrgCode}}. The following item-locations in the selected item's supply chain have the greatest effect on service level, as measured by sensitivity to an increase in safety stock value. Consider increasing safety stock levels for these items.</p>\n\n========================\nTABLE STRUCTURE\n========================\n\nColumns in order:\n\n#\nItem\nItem Description\nOrganization\nPercentage Service Level Sensitivity to Safety Stock Quantity per Thousand Units\nItem Standard Cost\nPercentage Service Level Sensitivity to Safety Stock Value in Millions (The values might have decimals. Just preserve those as-it-is without discarding the decimal values. The only exception is that you can discard trailing zeroes after decimal. For example, display 10.22000 as 10.22)\n\n========================\nSTYLING\n========================\n\nTable:\nstyle=\"width:100%; border-collapse:collapse; font-size:14px;\"\n\nHeader:\nstyle=\"padding:8px; text-align:left; font-weight:600; border-bottom:1px solid #e5e5e5;\"\n\nCells:\nstyle=\"padding:8px; border-top:1px solid #e5e5e5;\"\n\nAlignment:\n- Numeric → right\n- Text → left\n\nNumeric columns:\n- #\n- Percentage Service Level Sensitivity to Safety Stock Quantity per Thousand Units\n- Item Standard Cost\n- Percentage Service Level Sensitivity to Safety Stock Value in Millions (The values might have decimals. Just preserve those as-it-is without discarding the decimal values. The only exception is that you can discard trailing zeroes after decimal. For example, display 10.22000 as 10.22)\n\n========================\nROW GENERATION\n========================\n\nLoop through items[]:\n\nFor each row:\n- Increment index starting from 1\n- Populate all columns\n- Use result[index] for the Item hyperlink in that row\n- The Item hyperlink must be generated with the exact row-specific drill-context value for that row\n- NEVER use result[0]\n- NEVER output `result[index]` as literal text\n- NEVER skip a row\n"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "SetContextVars"
+          },
+          "outcomes": {
+            "success": "1772612737305"
+          },
+          "code": "SETCONTEXTVARS",
+          "id": "1772613063825",
+          "inputs": [
+            {
+              "id": "1775471578124",
+              "name": "drillFilters",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$system.$inputContext.drillFilters}}"
+            },
+            {
+              "id": "1775456653799",
+              "name": "PlanId",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$system.$inputContext.PlanId}}"
+            },
+            {
+              "id": "1774428320993",
+              "name": "PlanName",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$system.$inputContext.PlanName}}"
+            },
+            {
+              "id": "1772613256399",
+              "name": "ServiceQueryRestResponse",
+              "scope": "JOB",
+              "type": "array",
+              "value": "{}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "setRestResponse"
+          },
+          "outcomes": {
+            "success": "1775404414537"
+          },
+          "code": "SETRESTRESPONSE",
+          "id": "1774373279311",
+          "inputs": [
+            {
+              "id": "1774373287477",
+              "name": "ServiceQueryRestResponse",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.GETONLYTOP5.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "SetUpdatedVars"
+          },
+          "outcomes": {
+            "success": "1772612861481"
+          },
+          "code": "SETUPDATEDVARS",
+          "convergenceTargetId": "1772612861481",
+          "id": "1774373041898",
+          "inputs": [
+            {
+              "id": "1776607008283",
+              "name": "MaxRowNum",
+              "scope": "JOB",
+              "type": "integer",
+              "value": "1000"
+            },
+            {
+              "id": "1774373161405",
+              "name": "PlanName",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.ROUTINGAGENT.$output.extracted_context.PlanName}}"
+            },
+            {
+              "id": "1774373145297",
+              "name": "PlanId",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.ROUTINGAGENT.$output.extracted_context.PlanId}}"
+            },
+            {
+              "id": "1774373115046",
+              "name": "OrgName",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.ROUTINGAGENT.$output.extracted_context.OrgName}}"
+            },
+            {
+              "id": "1774373091077",
+              "name": "OrgCode",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.ROUTINGAGENT.$output.extracted_context.OrgCode}}"
+            },
+            {
+              "id": "1774373082373",
+              "name": "OrgId",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.ROUTINGAGENT.$output.extracted_context.OrgId}}"
+            },
+            {
+              "id": "1774373069850",
+              "name": "ItemName",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.ROUTINGAGENT.$output.extracted_context.ItemName}}"
+            },
+            {
+              "id": "1774373052056",
+              "name": "ItemId",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.ROUTINGAGENT.$output.extracted_context.ItemId}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "GetOnlyTop5",
+            "returnType": "array",
+            "sourceCode": "let input = $context.$nodes.GETSERVICECOSTREST.$output;\n\nconst result = Array.isArray(input?.items)\n  ? [...input.items]\n      .sort((a, b) => {\n        const aVal = Number(a?.[\"Percentage Service Level Sensitivity to Safety Stock Value in Millions\"] ?? 0);\n        const bVal = Number(b?.[\"Percentage Service Level Sensitivity to Safety Stock Value in Millions\"] ?? 0);\n\n        if (bVal !== aVal) return bVal - aVal;\n\n        return String(b?.Item ?? \"\").localeCompare(String(a?.Item ?? \"\"));\n      })\n      .slice(0, 5)\n  : [];\n\n  return result;\n  "
+          },
+          "outcomes": {
+            "success": "1774373279311"
+          },
+          "code": "GETONLYTOP5",
+          "id": "1774423355754",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Return Invalid Response"
+          },
+          "outcomes": {},
+          "code": "RETURN_INVALID_RESPONSE",
+          "convergenceTargetId": "end",
+          "id": "1774846953128",
+          "inputs": [
+            {
+              "id": "1774846953129_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "Sorry, this agent can answer question only on the service level or inventory cost for a given context of Inventory plan, Item and Org."
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "GetTop5InventoryCost",
+            "returnType": "array",
+            "sourceCode": "let input = $context.$nodes.GETINVENTORYBREAKDOWN.$output;\n\nconst result = Array.isArray(input?.items)\n  ? [...input.items]\n      .sort((a, b) => {\n        const aVal = Number(a?.[\"Percentage Service Level Sensitivity to Safety Stock Value in Millions\"] ?? 0);\n        const bVal = Number(b?.[\"Percentage Service Level Sensitivity to Safety Stock Value in Millions\"] ?? 0);\n\n        if (aVal !== bVal) return aVal - bVal;\n\n        return String(a?.Item ?? \"\").localeCompare(String(b?.Item ?? \"\"));\n      })\n      .slice(0, 5)\n  : [];\n\n  return result;\n  "
+          },
+          "outcomes": {
+            "success": "1774848814135"
+          },
+          "code": "GETTOP5INVENTORYCOST",
+          "id": "1774848773019",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "setServiceResult"
+          },
+          "outcomes": {
+            "success": "1775405797186"
+          },
+          "code": "SETSERVICERESULT",
+          "id": "1774848814135",
+          "inputs": [
+            {
+              "id": "1774848825083",
+              "name": "ServiceQueryRestResponse",
+              "scope": "JOB",
+              "type": "array",
+              "value": "{{$context.$nodes.GETTOP5INVENTORYCOST.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "ShowResponseForInventoryCost"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SHOWRESPONSEFORINVENTORYCOST",
+          "id": "1774848852041",
+          "inputs": [
+            {
+              "id": "1774848852042_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a UI rendering assistant.\n\nYour task is to convert JSON input into a COMPLETE HTML table.\n\n========================\nINPUT\n========================\n\nThe input JSON will be available at:\n\n{{$context.$variables.ServiceQueryRestResponse}}\n\nThis JSON contains:\n\nServiceQueryRestResponse.items → ARRAY OF ROWS\n\nEach row contains:\n\n- Item\n- Organization\n- Percentage Service Level Sensitivity to Safety Stock Quantity per Thousand Units\n- Percentage Service Level Sensitivity to Safety Stock Value in Millions\n- Item Standard Cost\n\n========================\nCRITICAL RULE (HIGHEST PRIORITY)\n========================\n\nIF:\n- ServiceQueryRestResponse.items is EMPTY\nOR\n- ServiceQueryRestResponse.items is MISSING\n\nTHEN:\n\nRETURN ONLY THIS (NO TABLE, NO DIV, NOTHING ELSE):\n\n<p>We couldn't find any matching data for this selection : Plan {{$context.$variables.PlanName}} , Item {{$context.$variables.ItemName}}, Organization {{$context.$variables.OrgCode}} .</p>\n\nDO NOT render table\nDO NOT wrap in div\nDO NOT add any extra text\nAND STOP EXECUTION\n\n========================\nIMPORTANT RULES\n========================\n\n1. ALWAYS use:\n   ServiceQueryRestResponse.items\n\n2. DO NOT expect or use:\n   - data[]\n   - itemId\n   - itemDescription\n   - any other schema\n\n3. DO NOT skip rendering rows even if values are missing\n\n4. NEVER use or output result[0] anywhere in the final HTML.\n   - result[0] may exist in the input array, but it is reserved and must be ignored.\n   - Only row-specific indices starting at result[1] may be used.\n\n5. NEVER output the literal text `result[0]`, `result[1]`, `result[i]`, or any other `result[...]` token inside the final HTML.\n   - The drill-context token must be used only inside the href value.\n   - The final rendered HTML must contain the resolved drill-context value, not the placeholder text.\n\n========================\nDEEPLINK RULES — PER-ROW ONLY\n========================\n\nThere is only one kind of link in this output:\n\nPER-ROW DEEP LINK\n- Used only inside the Item column for each row\n- Must use the row-specific drill context for that row\n- NEVER use result[0] for a row link\n- NEVER reuse the same link for every row\n\nImportant indexing rule:\n- The drill-context array is 0-based\n- result[0] exists but must never be used\n- The first table row must use result[1]\n- The second table row must use result[2]\n- In general, the row at loop index i (starting from 1) must use result[i]\n\n========================\nCOLUMN MAPPING\n========================\n\nFor each row:\n\n# (index starting from 1)\n\nItem:\n→ items[].Item\n    This must be a deep link per row using the row-specific drill context.\n\nItem Description:\n→ Use items[].ItemDescription if there is value in items[].ItemDescription , If it is not present, keep the Item Description to be SAME as Item.\n\nOrganization:\n→ items[].Organization\n\nPercentage Service Level Sensitivity to Safety Stock Quantity per Thousand Units:\n→ items[].\"Percentage Service Level Sensitivity to Safety Stock Quantity per Thousand Units\"\n\nItem Standard Cost:\n→ items[].\"Item Standard Cost\"\n\nPercentage Service Level Sensitivity to Safety Stock Value in Millions:\n→ items[].\"Percentage Service Level Sensitivity to Safety Stock Value in Millions\"\n\n=========================================\nPER-ROW DEEP LINK REQUIREMENT\n=========================================\n\nIn the COLUMN MAPPING provided above, you have to make \"Item\" as a clickable hyper link in EVERY ROW.\n\nUse this exact href pattern for each row, substituting the current row index number into the array position:\n\n<a href=\"/fscmUI/redwood/supply-chain-planning/scp-workarea?startPlanId={{$context.$variables.PlanId}}&startVizId=9660&startDrillContext={{$context.$nodes.GENERATEDRILLCONTEXTSTRING.$output.result[1]}}\" target=\"_blank\" rel=\"noopener noreferrer\">Item</a>\n\nFor the second row, the href must use:\n\n<a href=\"/fscmUI/redwood/supply-chain-planning/scp-workarea?startPlanId={{$context.$variables.PlanId}}&startVizId=9660&startDrillContext={{$context.$nodes.GENERATEDRILLCONTEXTSTRING.$output.result[2]}}\" target=\"_blank\" rel=\"noopener noreferrer\">Item</a>\n\nFor the third row, the href must use:\n\n<a href=\"/fscmUI/redwood/supply-chain-planning/scp-workarea?startPlanId={{$context.$variables.PlanId}}&startVizId=9660&startDrillContext={{$context.$nodes.GENERATEDRILLCONTEXTSTRING.$output.result[3]}}\" target=\"_blank\" rel=\"noopener noreferrer\">Item</a>\n\nAnd so on.\n\nImportant: the row href must be the full relative URL above, with only the drill-context array index changing. Do not shorten it, do not add any leading or trailing text, do not add a leading slash before the template expression, and do not emit `result[n]` as literal text.\n\nRules:\n- The row link must use the row-specific drill context for that row only\n- Do NOT use result[0] for any row link\n- Do NOT use the same drill context for every row\n- Do NOT leave `result[n]` as plain text in the output\n- Do NOT emit a placeholder such as `{deepLinkUrl}`\n- The final HTML must contain the fully resolved href value for each row\n- Link must open in a new tab\n- Do not add any extra attributes\n\nThe Item cell must be rendered exactly as an anchor tag whose href uses the row-specific drill context value for that row.\n\n========================\nOUTPUT FORMAT (STRICT)\n========================\n\nReturn ONLY valid HTML\n\nMUST follow EXACT structure:\n\n<div>\n<p>...</p>\n<table>\n<thead>...</thead>\n<tbody>...</tbody>\n</table>\n\n</div>\n\nNO markdown\nNO partial HTML\nNO explanations\n\n=============================\nOUTPUT STRUCTURE\n=============================\n\n<p>The current context is: Plan {{$context.$variables.PlanName}} , Item {{$context.$variables.ItemName}} , Organization {{$context.$variables.OrgCode}}. The following item-locations in the selected item's supply chain have the least effect on service level, as measured by sensitivity to a decrease in safety stock value. Consider decreasing safety stock levels for these items.</p>\n\n========================\nTABLE STRUCTURE\n========================\n\nColumns in order:\n\n#\nItem\nItem Description\nOrganization\nPercentage Service Level Sensitivity to Safety Stock Quantity per Thousand Units\nItem Standard Cost\nPercentage Service Level Sensitivity to Safety Stock Value in Millions (The values might have decimals. Just preserve those as-it-is without discarding the decimal values. The only exception is that you can discard trailing zeroes after decimal. For example, display 10.22000 as 10.22)\n\n========================\nSTYLING\n========================\n\nTable:\nstyle=\"width:100%; border-collapse:collapse; font-size:14px;\"\n\nHeader:\nstyle=\"padding:8px; text-align:left; font-weight:600; border-bottom:1px solid #e5e5e5;\"\n\nCells:\nstyle=\"padding:8px; border-top:1px solid #e5e5e5;\"\n\nAlignment:\n- Numeric → right\n- Text → left\n\nNumeric columns:\n- #\n- Percentage Service Level Sensitivity to Safety Stock Quantity per Thousand Units\n- Item Standard Cost\n- Percentage Service Level Sensitivity to Safety Stock Value in Millions (The values might have decimals. Just preserve those as-it-is without discarding the decimal values. The only exception is that you can discard trailing zeroes after decimal. For example, display 10.22000 as 10.22)\n\n========================\nROW GENERATION\n========================\n\nLoop through items[]:\n\nFor each row:\n- Increment index starting from 1\n- Populate all columns\n- Use result[index] for the Item hyperlink in that row\n- The Item hyperlink must be generated with the exact row-specific drill-context value for that row\n- NEVER use result[0]\n- NEVER output `result[index]` as literal text\n- NEVER skip a row\n"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "isPlanIdMissing"
+          },
+          "outcomes": {
+            "true": "1775327625621",
+            "false": "add_false_1775327534426"
+          },
+          "code": "ISPLANIDMISSING",
+          "convergenceTargetId": "1775327784340",
+          "id": "1775327534426",
+          "inputs": [
+            {
+              "id": "1775327534427_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{!$context.$variables.PlanId}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1775327784340"
+          },
+          "id": "add_false_1775327534426",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_SUPPLYCHAI_PLANSBO",
+            "functionName": "getPlanIdFromPlanName",
+            "name": "GetPlanId"
+          },
+          "outcomes": {
+            "success": "1775327686773"
+          },
+          "code": "GETPLANID",
+          "id": "1775327625621",
+          "inputs": [
+            {
+              "id": "1775327666394_1",
+              "name": "plan_name",
+              "type": "string",
+              "value": "{{$context.$variables.PlanName}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "SetPlanId"
+          },
+          "outcomes": {
+            "success": "1775327784340"
+          },
+          "code": "SETPLANID",
+          "id": "1775327686773",
+          "inputs": [
+            {
+              "id": "1775327693384",
+              "name": "PlanId",
+              "scope": "JOB",
+              "type": "number",
+              "value": "{{$context.$nodes.GETPLANID.$output.items[0].PlanId}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_SUPPLYCHAI_SCPINVENTORYOPTIMIZATION",
+            "functionName": "IopBreakdownRest",
+            "processJson": true,
+            "name": "GetServiceCostRest"
+          },
+          "outcomes": {
+            "success": "1774423355754"
+          },
+          "code": "GETSERVICECOSTREST",
+          "convergenceTargetId": "1774423355754",
+          "id": "1774373187072",
+          "inputs": [
+            {
+              "id": "1776610695769_1",
+              "name": "planId",
+              "type": "string",
+              "value": "{{$context.$variables.PlanId}}"
+            },
+            {
+              "id": "1776610695770_2",
+              "name": "tableId",
+              "type": "string",
+              "value": "9663"
+            },
+            {
+              "id": "1776610695771_3",
+              "name": "startItemId",
+              "type": "string",
+              "value": "{{$context.$variables.ItemId}}"
+            },
+            {
+              "id": "1776610695772_4",
+              "name": "startOrgId",
+              "type": "string",
+              "value": "{{$context.$variables.OrgId}}"
+            },
+            {
+              "id": "1776610695773_5",
+              "name": "maxRowNum",
+              "type": "string",
+              "value": "{{$context.$variables.MaxRowNum}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "ifItemMissing"
+          },
+          "outcomes": {
+            "true": "1775327828082",
+            "false": "add_false_1775327784340"
+          },
+          "code": "IFITEMMISSING",
+          "convergenceTargetId": "1774373187072",
+          "id": "1775327784340",
+          "inputs": [
+            {
+              "id": "1775327784341_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{!$context.$variables.ItemId}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1774373187072"
+          },
+          "id": "add_false_1775327784340",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_SUPPLYCHAI_SCPITEMSTATUS",
+            "functionName": "getItems",
+            "name": "GetItemDetails"
+          },
+          "outcomes": {
+            "success": "1775327912876"
+          },
+          "code": "GETITEMDETAILS",
+          "id": "1775327828082",
+          "inputs": [
+            {
+              "id": "1775327848989_1",
+              "name": "itemVar",
+              "type": "string",
+              "value": "{{$context.$variables.ItemName}}"
+            },
+            {
+              "id": "1775327848990_2",
+              "name": "orgVar",
+              "type": "string",
+              "value": "{{$context.$variables.OrgCode}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "SetItemAndOrg"
+          },
+          "outcomes": {
+            "success": "1774373187072"
+          },
+          "code": "SETITEMANDORG",
+          "id": "1775327912876",
+          "inputs": [
+            {
+              "id": "1775327992730",
+              "name": "ItemId",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.GETITEMDETAILS.$output.items[0].InventoryItemId}}"
+            },
+            {
+              "id": "1775327920266",
+              "name": "OrgId",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.GETITEMDETAILS.$output.items[0].OrganizationId}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "IfPlanIdMissing2"
+          },
+          "outcomes": {
+            "true": "1775328906996",
+            "false": "add_false_1775328875417"
+          },
+          "code": "IFPLANIDMISSING2",
+          "convergenceTargetId": "1775329108387",
+          "id": "1775328875417",
+          "inputs": [
+            {
+              "id": "1775328875419_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{!$context.$variables.PlanId}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1775329108387"
+          },
+          "id": "add_false_1775328875417",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_SUPPLYCHAI_PLANSBO",
+            "functionName": "getPlanIdFromPlanName",
+            "name": "GetPlanId2"
+          },
+          "outcomes": {
+            "success": "1775328952537"
+          },
+          "code": "GETPLANID2",
+          "id": "1775328906996",
+          "inputs": [
+            {
+              "id": "1775328934386_1",
+              "name": "plan_name",
+              "type": "string",
+              "value": "{{$context.$variables.PlanName}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "SetPlanId2"
+          },
+          "outcomes": {
+            "success": "1775329108387"
+          },
+          "code": "SETPLANID2",
+          "id": "1775328952537",
+          "inputs": [
+            {
+              "id": "1775328962214",
+              "name": "PlanId",
+              "scope": "JOB",
+              "type": "number",
+              "value": "{{$context.$nodes.GETPLANID2.$output.items[0].PlanId}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "IfItemMissing2"
+          },
+          "outcomes": {
+            "true": "1775329164254",
+            "false": "add_false_1775329108387"
+          },
+          "code": "IFITEMMISSING2",
+          "convergenceTargetId": "1774848704633",
+          "id": "1775329108387",
+          "inputs": [
+            {
+              "id": "1775329108388_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{!$context.$variables.ItemId || !$context.$variables.OrgId}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1774848704633"
+          },
+          "id": "add_false_1775329108387",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_SUPPLYCHAI_SCPITEMSTATUS",
+            "functionName": "getItems",
+            "name": "getItemInfo"
+          },
+          "outcomes": {
+            "success": "1775329209337"
+          },
+          "code": "GETITEMINFO",
+          "id": "1775329164254",
+          "inputs": [
+            {
+              "id": "1775329184091_1",
+              "name": "itemVar",
+              "type": "string",
+              "value": "{{$context.$variables.ItemName}}"
+            },
+            {
+              "id": "1775329184092_2",
+              "name": "orgVar",
+              "type": "string",
+              "value": "{{$context.$variables.OrgCode}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "setItemInfo2"
+          },
+          "outcomes": {
+            "success": "1774848704633"
+          },
+          "code": "SETITEMINFO2",
+          "id": "1775329209337",
+          "inputs": [
+            {
+              "id": "1775329254404",
+              "name": "OrgId",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.GETITEMINFO.$output.items[0].OrganizationId}}"
+            },
+            {
+              "id": "1775329219472",
+              "name": "ItemId",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.GETITEMINFO.$output.items[0].InventoryItemId}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_SUPPLYCHAI_SCPINVENTORYOPTIMIZATION",
+            "functionName": "IopBreakdownRest",
+            "processJson": true,
+            "name": "GetInventoryBreakdown"
+          },
+          "outcomes": {
+            "success": "1774848773019"
+          },
+          "code": "GETINVENTORYBREAKDOWN",
+          "convergenceTargetId": "1774848773019",
+          "id": "1774848704633",
+          "inputs": [
+            {
+              "id": "1776610777847_1",
+              "name": "planId",
+              "type": "string",
+              "value": "{{$context.$variables.PlanId}}"
+            },
+            {
+              "id": "1776610777847_2",
+              "name": "tableId",
+              "type": "string",
+              "value": "9664"
+            },
+            {
+              "id": "1776610777848_3",
+              "name": "startItemId",
+              "type": "string",
+              "value": "{{$context.$variables.ItemId}}"
+            },
+            {
+              "id": "1776610777848_4",
+              "name": "startOrgId",
+              "type": "string",
+              "value": "{{$context.$variables.OrgId}}"
+            },
+            {
+              "id": "1776610777849_5",
+              "name": "maxRowNum",
+              "type": "string",
+              "value": "{{$context.$variables.MaxRowNum}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "ReturnContextOnly"
+          },
+          "outcomes": {},
+          "code": "RETURNCONTEXTONLY",
+          "convergenceTargetId": "end",
+          "id": "1775403365315",
+          "inputs": [
+            {
+              "id": "1775403365316_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.ROUTINGAGENT.$output.llm_query}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "GenerateDrillContext",
+            "returnType": "array",
+            "sourceCode": "const data = $context.$variables.ServiceQueryRestResponse;\n\n\nif (!data || !Array.isArray(data)) {\n    return \"W10=\";\n}\n\n// agent is expected to show these deep links - one deep link for all item-org combinations together. And Also, individual deep link for each item-org separately. In this method we build the encoded drill contexts\n\n// finalArray has encoded drill contexts. At index 0, we will have single context for all combinations together. From index 1 till end, we will have individual encoded drill contexts for each item-org\nlet finalArray = []; \n\n// fullArray is for accumulation of combinations. This is the array yet-to-be-encoded. It will be encoded after the looping is done.\nconst fullArray = [];\n\nfor (let i = 0; i < data.length; i++) {\n    const item = data[i];\n\n    const obj = [\n        {\n            levelId: 40,\n            memberIds: [Number(item.OrganizationId)],\n            levelName: \"Organization\"\n        },\n        {\n            levelId: 1,\n            memberIds: [Number(item.ItemId)],\n            levelName: \"Item\"\n        }\n    ];\n\n    // Add to full array\n    fullArray.push(obj);\n\n    let singleCombination = [obj];\n\n    // Encode individual item and push to final array\n    const encodedItem = btoa(JSON.stringify(singleCombination));\n    finalArray.push(encodedItem);\n}\n\n// Encode full array and insert at index 0\nconst encodedFullArray = btoa(JSON.stringify(fullArray));\nfinalArray.unshift(encodedFullArray);\n\n\nreturn finalArray;"
+          },
+          "outcomes": {
+            "success": "1772612902320"
+          },
+          "code": "GENERATEDRILLCONTEXT",
+          "id": "1775404414537",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "generateDrillContextString",
+            "returnType": "array",
+            "sourceCode": "const data = $context.$variables.ServiceQueryRestResponse;\n\n\nif (!data || !Array.isArray(data)) {\n    return \"W10=\";\n}\n\n// agent is expected to show these deep links - one deep link for all item-org combinations together. And Also, individual deep link for each item-org separately. In this method we build the encoded drill contexts\n\n// finalArray has encoded drill contexts. At index 0, we will have single context for all combinations together. From index 1 till end, we will have individual encoded drill contexts for each item-org\nlet finalArray = []; \n\n// fullArray is for accumulation of combinations. This is the array yet-to-be-encoded. It will be encoded after the looping is done.\nconst fullArray = [];\n\nfor (let i = 0; i < data.length; i++) {\n    const item = data[i];\n\n    const obj = [\n        {\n            levelId: 40,\n            memberIds: [Number(item.OrganizationId)],\n            levelName: \"Organization\"\n        },\n        {\n            levelId: 1,\n            memberIds: [Number(item.ItemId)],\n            levelName: \"Item\"\n        }\n    ];\n\n    // Add to full array\n    fullArray.push(obj);\n\n    let singleCombination = [obj];\n\n    // Encode individual item and push to final array\n    const encodedItem = btoa(JSON.stringify(singleCombination));\n    finalArray.push(encodedItem);\n}\n\n// Encode full array and insert at index 0\nconst encodedFullArray = btoa(JSON.stringify(fullArray));\nfinalArray.unshift(encodedFullArray);\n\n\nreturn finalArray;"
+          },
+          "outcomes": {
+            "success": "1774848852041"
+          },
+          "code": "GENERATEDRILLCONTEXTSTRING",
+          "id": "1775405797186",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "ReturnMissingContext"
+          },
+          "outcomes": {},
+          "code": "RETURNMISSINGCONTEXT",
+          "convergenceTargetId": "end",
+          "id": "1775474729669",
+          "inputs": [
+            {
+              "id": "1775474729670_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.ROUTINGAGENT.$output.llm_query}}"
+            }
+          ],
+          "type": "RETURN"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1776606959309",
+          "name": "MaxRowNum",
+          "scope": "CONVERSATION",
+          "type": "integer"
+        },
+        {
+          "id": "1775453874089",
+          "name": "drillFilters",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1774348803825",
+          "name": "PlanName",
+          "scope": "CONVERSATION",
+          "type": "string"
+        },
+        {
+          "id": "1774348791225",
+          "name": "PlanId",
+          "scope": "CONVERSATION",
+          "type": "string"
+        },
+        {
+          "id": "1774348783902",
+          "name": "OrgId",
+          "scope": "CONVERSATION",
+          "type": "string"
+        },
+        {
+          "id": "1772613229439",
+          "name": "ServiceQueryRestResponse",
+          "scope": "CONVERSATION",
+          "type": "array"
+        },
+        {
+          "id": "1772613111411",
+          "name": "ItemName",
+          "scope": "CONVERSATION",
+          "type": "string"
+        },
+        {
+          "id": "1772613101387",
+          "name": "ItemId",
+          "scope": "CONVERSATION",
+          "type": "string"
+        },
+        {
+          "id": "1772613094143",
+          "name": "OrgCode",
+          "scope": "CONVERSATION",
+          "type": "string"
+        },
+        {
+          "id": "1772613080752",
+          "name": "OrgName",
+          "scope": "CONVERSATION",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "SCM",
+  "product": "SUPPLY_CHAIN_PLANNING",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

@@ -1,0 +1,539 @@
+{
+  "workflowId": "100002240709086",
+  "workflowCode": "ORA_SERVICE_REQUEST_INGESTION_ASSISTANT_1",
+  "name": "Service Requests Ingestion Assistant",
+  "description": "Service Request Ingestion Assistant is responsible for retrieving resolved requests, validating their accuracy, and ingesting them into the RAG system",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1775457325574"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "verify whether the ingestion process is a single ingestion or a multi-ingestion.",
+            "name": "check Ingestion Mode"
+          },
+          "outcomes": {
+            "bulk": "1775110539582",
+            "single": "1775458246067"
+          },
+          "code": "CHECK_INGESTION_MODE",
+          "convergenceTargetId": "end",
+          "id": "1775457325574",
+          "inputs": [
+            {
+              "id": "1775457325574_caseExpression",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.srNumber && $context.$triggers.REST.$input.srNumber.trim() !== \"\" ? \"single\" : \"bulk\"}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "description": "Validates that a bulk ingestion query was provided in the REST trigger input.",
+            "name": "Validate Ingestion Query"
+          },
+          "outcomes": {
+            "true": "1776022419150",
+            "false": "1776066136960"
+          },
+          "code": "VALIDATE_INGESTION_QUERY",
+          "convergenceTargetId": "end",
+          "id": "1775110539582",
+          "inputs": [
+            {
+              "id": "1775110539583_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.query != \"null\" && $context.$triggers.REST.$input.query != \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_RETRIEVERESOLVE",
+            "description": "Retrieves a single resolved Service Request by SR number for ingestion.",
+            "errorNodeId": "1775804058600",
+            "functionName": "getSR",
+            "name": "Retrieve Resolved SR"
+          },
+          "outcomes": {
+            "success": "1775458382742"
+          },
+          "code": "RETRIEVE_RESOLVED_SR",
+          "id": "1775458246067",
+          "inputs": [
+            {
+              "id": "1775458246067_ObjectType",
+              "name": "ObjectType",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectType}}"
+            },
+            {
+              "id": "1775458246067_SrNumber",
+              "name": "SrNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.srNumber}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"ResolveDescription\": {\n            \"type\": \"string\"\n          },\n          \"ProblemDescription\": {\n            \"type\": \"string\"\n          },\n          \"Title\": {\n            \"type\": \"string\"\n          },\n          \"SrNumber\": {\n            \"type\": \"string\"\n          }\n        }\n      }\n    }\n  }\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "Sets the fetch size (page limit) used when retrieving resolved SRs for bulk ingestion.",
+            "name": "Set Fetch Size"
+          },
+          "outcomes": {
+            "success": "1775110750542"
+          },
+          "code": "SET_FETCH_SIZE",
+          "id": "1776022419150",
+          "inputs": [
+            {
+              "id": "1776022419150_fetchSize",
+              "name": "fetchSize",
+              "value": "100"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Format Error Message",
+            "returnType": "string",
+            "sourceCode": "let errorMsg =\n  \"Ingestion failed. Please verify the provided values and try again.\";\n\ntry {\n  const query = $context?.$triggers?.REST?.$input?.query;\n  const queryStr = typeof query === \"string\" ? query.trim() : \"\";\n\n  if (!queryStr) {\n    errorMsg =\n      \"Missing required input: `query`. Please provide a non-empty query value.\";\n  } else if ($context?.$nodes?.FETCH_RETRIEVE_RESOLVED_SRS?.$error?.$info) {\n    const info = $context.$nodes.FETCH_RETRIEVE_RESOLVED_SRS.$error.$info;\n    let detail = \"\";\n\n    try {\n      const parsed = JSON.parse(info);\n      detail =\n        (typeof parsed?.[\"o:errorDetails\"]?.[0]?.detail === \"string\" &&\n          parsed[\"o:errorDetails\"][0].detail.trim()) ||\n        (typeof parsed?.error?.details?.[0]?.detail === \"string\" &&\n          parsed.error.details[0].detail.trim()) ||\n        (typeof parsed?.message === \"string\" && parsed.message.trim()) ||\n        \"\";\n    } catch {\n      detail = \"\";\n    }\n\n    errorMsg =\n      detail || \"Invalid query. Please check the `query` value and try again.\";\n  } else if ($context?.$nodes?.INGEST_SR?.$error?.$info) {\n    const info = $context.$nodes.INGEST_SR.$error.$info;\n    let detail = \"\";\n\n    try {\n      const parsed = JSON.parse(info);\n      detail =\n        (typeof parsed?.details?.[0]?.detail === \"string\" &&\n          parsed.details[0].detail.trim()) ||\n        (typeof parsed?.error?.details?.[0]?.detail === \"string\" &&\n          parsed.error.details[0].detail.trim()) ||\n        (typeof parsed?.message === \"string\" && parsed.message.trim()) ||\n        \"\";\n    } catch {\n      detail = \"\";\n    }\n\n    errorMsg =\n      detail ||\n      \"Ingestion failed while processing the request. Please try again.\";\n  }\n} catch (err) {\n  try {\n    console.error(\"Unexpected ingestion error:\", err);\n  } catch {}\n  errorMsg = \"Ingestion failed. Please verify the provided values and try again.\";\n}\n\nreturn errorMsg;"
+          },
+          "outcomes": {
+            "success": "1775110562713"
+          },
+          "code": "FORMAT_ERROR_MESSAGE",
+          "id": "1776066136960",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "description": "Uses an LLM to determine whether the retrieved SR has sufficient content to ingest.",
+            "name": "check SR Validation"
+          },
+          "outcomes": {
+            "success": "1775501376833"
+          },
+          "code": "CHECK_SR_VALIDATION",
+          "id": "1775458382742",
+          "inputs": [
+            {
+              "id": "1775458382742_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": "Please validate the retrieved SR using the following criteria:\n\nAn SR is considered valid if **either** of the following conditions is satisfied:\n\n1. **The SR contains log data** (i.e., diagnostic logs, runtime logs, or system data included in any of the SR fields).\n - Check if any field includes raw log data that can be interpreted as diagnostic or runtime logs. If logs are present, the SR is valid.\n\n2. **At least one of the following fields contains clear, specific, and meaningful information**, even if the others are null or incomplete. A field is considered valid if:\n - It provides **specific details** about the issue, is **understandable**, and has **actionable information**.\n - It should **directly relate to the core issue or request**. \n \n The fields to evaluate are:\n - **Title** (`{{$context.$nodes.RETRIEVE_RESOLVED_SR.$output.items[0].Title}}`) - Must be clear, direct, and meaningful, summarizing the core issue. It should not be vague or overly broad.\n - **ProblemDescription** (`{{$context.$nodes.RETRIEVE_RESOLVED_SR.$output.items[0].ProblemDescription}}`) - Must provide specific details on the issue or request. It should explain the problem in sufficient detail so the cause is understandable.\n - **ResolveDescription** (`{{$context.$nodes.RETRIEVE_RESOLVED_SR.$output.items[0].ResolveDescription}}`) - Must outline how the issue was addressed, providing a **complete, clear, and informative solution** or steps taken to resolve the problem. It should not be a generic or overly vague description.\n\nIf none of these conditions are met, the SR is considered **not valid**. Please ensure that you check each of the above fields carefully to verify if the information provided meets the criteria."
+            },
+            {
+              "id": "1775458382742_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Please validate the retrieved SR using the following criteria:\n\nAn SR is considered valid if **either** of the following conditions is satisfied:\n\n1. **The SR contains log data** (i.e., diagnostic logs, runtime logs, or system data included in any of the SR fields).\n - Check if any field includes raw log data that can be interpreted as diagnostic or runtime logs. If logs are present, the SR is valid.\n\n2. **At least one of the following fields contains clear, specific, and meaningful information**, even if the others are null or incomplete. A field is considered valid if:\n - It provides **specific details** about the issue, is **understandable**, and has **actionable information**.\n - It should **directly relate to the core issue or request**. \n \n The fields to evaluate are:\n - **Title** (`{{$context.$nodes.RETRIEVE_RESOLVED_SR.$output.items[0].Title}}`) - Must be clear, direct, and meaningful, summarizing the core issue. It should not be vague or overly broad.\n - **ProblemDescription** (`{{$context.$nodes.RETRIEVE_RESOLVED_SR.$output.items[0].ProblemDescription}}`) - Must provide specific details on the issue or request. It should explain the problem in sufficient detail so the cause is understandable.\n - **ResolveDescription** (`{{$context.$nodes.RETRIEVE_RESOLVED_SR.$output.items[0].ResolveDescription}}`) - Must outline how the issue was addressed, providing a **complete, clear, and informative solution** or steps taken to resolve the problem. It should not be a generic or overly vague description.\n\nIf none of these conditions are met, the SR is considered **not valid**. Please ensure that you check each of the above fields carefully to verify if the information provided meets the criteria."
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"Reason\": {\n      \"type\": \"string\"\n    },\n    \"valid\": {\n      \"type\": \"boolean\"\n    }\n  }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_RETRIEVERESOLVE",
+            "description": "Retrieves resolved Service Requests matching the provided query (limit/offset) for bulk ingestion.",
+            "errorNodeId": "1776066136960",
+            "functionName": "getResolvedSRs",
+            "name": "Fetch Retrieve Resolved SRs"
+          },
+          "outcomes": {
+            "success": "1775110824602"
+          },
+          "code": "FETCH_RETRIEVE_RESOLVED_SRS",
+          "id": "1775110750542",
+          "inputs": [
+            {
+              "id": "1775110750542_ObjectType",
+              "name": "ObjectType",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectType}}"
+            },
+            {
+              "id": "1775110750542_query",
+              "name": "query",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.query}}"
+            },
+            {
+              "id": "1775110750542_limit",
+              "name": "limit",
+              "type": "string",
+              "value": "{{$context.$variables.fetchSize}}"
+            },
+            {
+              "id": "1775110750542_offset",
+              "name": "offset",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.offset || 0}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"ResolveDescription\": {\n            \"type\": \"string\"\n          },\n          \"ProblemDescription\": {\n            \"type\": \"string\"\n          },\n          \"Title\": {\n            \"type\": \"string\"\n          },\n          \"SrNumber\": {\n            \"type\": \"string\"\n          },\n          \"BUOrgId\": {\n            \"type\": \"string\"\n          },\n          \"QueueNumber\": {\n            \"type\": \"string\"\n          }\n        }\n      }\n    }\n  }\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "Returns the error message produced by the Error Handler node.",
+            "name": "Return Invalid Query Response"
+          },
+          "outcomes": {},
+          "code": "RETURN_INVALID_QUERY_RESPONSE",
+          "convergenceTargetId": "end",
+          "id": "1775110562713",
+          "inputs": [
+            {
+              "id": "1775110562714_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.FORMAT_ERROR_MESSAGE.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "description": "Branches the flow based on the LLM validation result (valid true/false).",
+            "name": "check SR Valid"
+          },
+          "outcomes": {
+            "true": "1775501780903",
+            "false": "1775804058600"
+          },
+          "code": "CHECK_SR_VALID",
+          "convergenceTargetId": "end",
+          "id": "1775501376833",
+          "inputs": [
+            {
+              "id": "1775501376833_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_SR_VALIDATION.$output.valid}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Normalizes retrieved SR items into an array of {SrNumber, value} strings for the ingestion loop.",
+            "name": "Clean And Validate SR Data",
+            "returnType": "array",
+            "sourceCode": "let srData = $context.$nodes.FETCH_RETRIEVE_RESOLVED_SRS.$output.items;\n\nlet outputArray = Array.isArray(srData)\n    ? srData.map(item => {\n        let title = item.Title || \"\";\n        let problem = item.ProblemDescription || \"\";\n        let resolve = item.ResolveDescription || \"\";\n        let srNumber = item.SrNumber || \"\";\n\n        let finalOutput = \"SrNumber : \" + srNumber +\n            \" ||| Title: \" + title +\n            \" ||| ProblemDescription: \" + problem +\n            \" ||| ResolveDescription: \" + resolve;\n\n        return {\n            SrNumber: srNumber,\n            value: finalOutput\n        };\n    })\n    : [];\n\nreturn outputArray;"
+          },
+          "outcomes": {
+            "success": "1775110879328"
+          },
+          "code": "CLEAN_AND_VALIDATE_SR_DATA",
+          "id": "1775110824602",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "description": "Builds a single SR document string from retrieved fields to send to the ingestion service.",
+            "name": "setDocument",
+            "returnType": "string",
+            "sourceCode": "return `SrNumber : ${$context.$triggers.REST.$input.srNumber} ||| Title: ${$context.$nodes.RETRIEVE_RESOLVED_SR.$output.items[0].Title} ||| ProblemDescription: ${$context.$nodes.RETRIEVE_RESOLVED_SR.$output.items[0].ProblemDescription} ||| ResolveDescription: ${$context.$nodes.RETRIEVE_RESOLVED_SR.$output.items[0].ResolveDescription}`;"
+          },
+          "outcomes": {
+            "success": "1775502032482"
+          },
+          "code": "SETDOCUMENT",
+          "id": "1775501780903",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "description": "Returns a response when the SR does not meet the validation criteria for ingestion.",
+            "name": "SR Not Valid"
+          },
+          "outcomes": {},
+          "code": "SR_NOT_VALID",
+          "id": "1775804058600",
+          "inputs": [
+            {
+              "id": "1775804058600_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "SR is not valid to Ingest."
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1775468008986"
+                  },
+                  "diagram": {
+                    "x": 5154.193075587194,
+                    "y": 6444.942276976512
+                  },
+                  "id": "start_1775110879328",
+                  "code": "START_1775110879328",
+                  "type": "START",
+                  "inputs": []
+                },
+                {
+                  "metadata": {
+                    "name": "Ingest SR",
+                    "businessObjectCode": "ORA_CX_SERVICECEN_INGESTDOCS",
+                    "description": "",
+                    "functionName": "IngestDocuments",
+                    "errorNodeId": "1776066136960"
+                  },
+                  "diagram": {
+                    "x": 5004.693075587194,
+                    "y": 6595.942276976512
+                  },
+                  "outcomes": {
+                    "success": "end_1775110879328"
+                  },
+                  "id": "1775468008986",
+                  "code": "INGEST_SR",
+                  "type": "BO_FUNCTION",
+                  "inputs": [
+                    {
+                      "id": "1775468008986_SrNumber",
+                      "name": "SrNumber",
+                      "type": "string",
+                      "value": "{{$context.$nodes.INGEST_SRS_LOOP.$currentItem.SrNumber}}"
+                    },
+                    {
+                      "id": "1775468008986_SrNum",
+                      "name": "SrNum",
+                      "type": "string",
+                      "value": "{{$context.$nodes.INGEST_SRS_LOOP.$currentItem.SrNumber}}"
+                    },
+                    {
+                      "id": "1775468008986_document",
+                      "name": "document",
+                      "type": "string",
+                      "value": "{{$context.$nodes.INGEST_SRS_LOOP.$currentItem.value}}"
+                    }
+                  ]
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "id": "end_1775110879328",
+                  "code": "END_1775110879328",
+                  "type": "END",
+                  "inputs": []
+                }
+              ],
+              "rootNode": "start_1775110879328"
+            },
+            "description": "Loops over the cleaned SR records and triggers ingestion for each item.",
+            "loopType": "PARALLEL",
+            "name": "Ingest SRs Loop"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "INGEST_SRS_LOOP",
+          "id": "1775110879328",
+          "inputs": [
+            {
+              "id": "1775110879329_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$nodes.CLEAN_AND_VALIDATE_SR_DATA.$output.result}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_INGESTDOCS",
+            "description": "Ingests the prepared SR document into the target ingestion endpoint.",
+            "functionName": "IngestDocuments",
+            "name": "Ingestion SR"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "INGESTION_SR",
+          "id": "1775502032482",
+          "inputs": [
+            {
+              "id": "1775502032482_SrNumber",
+              "name": "SrNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.srNumber}}"
+            },
+            {
+              "id": "1775502032482_SrNum",
+              "name": "SrNum",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.srNumber}}"
+            },
+            {
+              "id": "1775502032482_document",
+              "name": "document",
+              "type": "string",
+              "value": "{{$context.$nodes.SETDOCUMENT.$output.result}}"
+            }
+          ],
+          "outputSpecification": "",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "13725bfc-45d1-4330-a79f-69d07ada0fe1",
+          "name": "fetchSize",
+          "scope": "CONVERSATION",
+          "type": "integer"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_completion_tokens": 32000,
+        "reasoning_effort": "low"
+      },
+      "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+      "model": "OCI_GPT_5_MINI",
+      "modelName": "Gpt-5 Mini",
+      "provider": "CERT_PREMIUM"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1775457393467",
+            "name": "srNumber",
+            "type": "string"
+          },
+          {
+            "id": "1775119367490",
+            "name": "offset",
+            "scope": "JOB",
+            "type": "integer"
+          },
+          {
+            "id": "1775110496243",
+            "name": "objectType",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1775110489014",
+            "name": "query",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "SERVICE_CENTER",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"3\""
+  }
+}

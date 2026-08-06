@@ -1,0 +1,929 @@
+{
+  "workflowId": "300000326940075",
+  "workflowCode": "ORA_HCM_LEARNING_MY_TEAMS_LEARNING_ASSISTANT",
+  "name": "My Teams Learning Assistant",
+  "description": "An agent that can access the learning history of a manager's employees and answers questions about their employees current or completed learning.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1767741034335"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Determine User Intent"
+          },
+          "outcomes": {
+            "success": "1763334398001"
+          },
+          "code": "DETERMINE_USER_INTENT",
+          "id": "1762561251899",
+          "inputs": [
+            {
+              "id": "1762561251901_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Role\nYou are an intent classifier for manager questions about assigned learning. Classify the user’s latest question into exactly one routing label. Use the current message, the system chat history, and recent data history to resolve drill-downs.\n\nInputs\n- latest_user_message:\n  <latest_user_message>{{$context.$variables.userQuery}}</latest_user_message>\n- chat_history (system-managed; newest first; may be long or empty):\n  <chat_history>{{$context.$variables.chatHistory}}</chat_history>\n- data_history (newest last; may be empty/null). Each record: { timestamp, userIntent, runData }:\n  <data_history>{{$context.$variables.dataHistory}}</data_history>\n\nHistory-aware context\n- Prefer data_history as the anchor for drill-down references (e.g., “show details,” “for Ravi,” “that course,” “the first one,” “those two”). Scan newest→oldest and use the most recent record whose userIntent and runData provide a clear, unambiguous referent present in the current question.\n- Use chat_history only as secondary context if data_history is missing or insufficient.\n- If contexts conflict, follow the latest_user_message.\n\nLabels\n- learner_aggregations\n  - Wants cohort/org rollups organized by learner (person-level summaries; not rosters).\n  - Signals: “by my directs/team/org,” “counts by learner,” “required vs voluntary by team,” top overdue learners, time windows/org filters without rosters or specific item details.\n- learning_item_aggregations\n  - Wants summaries organized by learning item (item-level rollups; not person rosters).\n  - Signals: “which items/courses have the most overdue,” “compare items,” “counts by item,” item performance; item search expecting counts/rollups (not names only).\n- learner_assignments\n  - Wants details for one identifiable learner’s assignments (that person’s enrollments, statuses, due/completion dates).\n  - Signals: a specific learner by name/ID/email/username; pronouns/ordinals referencing a learner from a prior learner_aggregations result in data_history/chat_history.\n- learning_item_assignments\n  - Wants roster/details for one identifiable learning item (learners for that item with statuses/dates).\n  - Signals: a specific item by title/number/ID; pronouns/ordinals referencing an item from a prior learning_item_aggregations result in data_history/chat_history.\n- learning_records\n  - Wants enrollment records (person–item pairs) beyond a single person or a single item; e.g., lists for multiple learners/items, emails/exports.\n  - Signals: “list learners assigned to {item} with emails,” “who hasn’t started across these 3 items,” “show enrollments for Priya and Marco,” mixed/multi-entity rosters.\n- other\n  - Greetings, meta/system/admin tasks (e.g., create/assign courses), unrelated topics, or queries too vague to route.\n\nDisambiguation and tie-breakers (history-aware)\n- Scope-driven default:\n  - Single identifiable learner → learner_assignments (prefer over learning_records).\n  - Single identifiable item → learning_item_assignments (prefer over learning_records).\n  - Group scope (team/org/directs/department) without roster → learner_aggregations.\n- Drill-down via data_history/chat_history:\n  - If the last relevant userIntent = learner_aggregations and the user references a learner (name/pronoun/ordinal) from that runData → learner_assignments.\n  - If the last relevant userIntent = learning_item_aggregations and the user references an item (title/pronoun/ordinal) from that runData → learning_item_assignments.\n- Person focus vs counts:\n  - Names/IDs/emails/usernames expecting individual details → learner_assignments (single) or learning_records (multiple people).\n  - Counts/summary by person/team/org without rosters → learner_aggregations.\n- Item focus vs rosters:\n  - Counts/compare by item → learning_item_aggregations.\n  - Roster/details for a single item → learning_item_assignments.\n  - Rosters/details spanning multiple items → learning_records.\n- “Who is overdue?”:\n  - Roster for one item → learning_item_assignments.\n  - Rosters across items or unspecified → learning_records.\n  - Counts by person → learner_aggregations.\n  - Which items are most overdue → learning_item_aggregations.\n- If insufficient information (no identifiable population/item/learner), choose other.\n\nRobustness\n- Handle empty/malformed chat_history or data_history gracefully; do not invent entities.\n- Resolve pronouns/ordinals only if a clear referent exists in data_history (preferred) or, secondarily, chat_history.\n- If still ambiguous, prefer other.\n\nOutput\nReturn exactly one lowercase label with no quotes, no punctuation, no extra text:\n- learner_aggregations\n- learning_item_aggregations\n- learner_assignments\n- learning_item_assignments\n- learning_records\n- other"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Supported Intent?"
+          },
+          "outcomes": {
+            "true": "1763145701482",
+            "false": "1766193353866"
+          },
+          "code": "SUPPORTED_INTENT",
+          "convergenceTargetId": "end",
+          "id": "1763334398001",
+          "inputs": [
+            {
+              "id": "1763334398002_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.DETERMINE_USER_INTENT.$output !== \"other\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Set Payload Templates"
+          },
+          "outcomes": {
+            "success": "1762562531858"
+          },
+          "code": "SET_PAYLOAD_TEMPLATES",
+          "convergenceTargetId": "1763334832403",
+          "id": "1763145701482",
+          "inputs": [
+            {
+              "id": "1763145985314",
+              "name": "payloadForData",
+              "type": "string",
+              "value": "{\n  \"query\": \"\",\n  \"searchFields\": [\n    \"learningItemTitle\",\n    \"assignmentRecordNumber\",\n    \"learningItemNumber\",\n    \"DisplayName\",\n    \"Username\",\n    \"PersonNumber\",\n    \"WorkEmail\"\n  ],\n  \"securityFilters\": { \"type\": \"MANAGER\" },\n  \"filters\": [\n    { \"name\": \"reports\", \"value\": \"DIRECT_REPORTS\" },\n    { \"name\": \"enrollments\", \"value\": \"CURRENT\" },\n    { \"name\": \"assignedToId\", \"term\": \"\" },\n    { \"name\": \"learningItemId\", \"term\": \"\" },\n    { \"name\": \"assignmentRecordNumber\", \"term\": \"\" },\n    { \"name\": \"learningItemNumber\", \"terms\": [] },\n    { \"name\": \"assignedDate\", \"value\": \"\" },\n    { \"name\": \"assignmentDueDate\", \"value\": \"\" },\n    { \"name\": \"completedDate\", \"value\": \"\" },\n    { \"name\": \"expirationDate\", \"value\": \"\" },\n    { \"name\": \"learningFormat\", \"terms\": [] },\n    { \"name\": \"learningItemTypev2\", \"terms\": [] },\n    { \"name\": \"assignmentSubStatus\", \"terms\": [] },\n    { \"name\": \"assignmentType\", \"terms\": [] },\n    { \"name\": \"assignerDisplayName\", \"terms\": [] },\n    { \"name\": \"BusinessTitle\", \"terms\": [] },\n    { \"name\": \"JobName\", \"terms\": [] },\n    { \"name\": \"DepartmentName\", \"terms\": [] },\n    { \"name\": \"PositionName\", \"terms\": [] },\n    { \"name\": \"LocationName\", \"terms\": [] },\n    { \"name\": \"BusinessUnitName\", \"terms\": [] },\n    { \"name\": \"LegalEmployerName\", \"terms\": [] },\n    { \"name\": \"GradeName\", \"terms\": [] },\n  ],\n  \"sort\": [],\n  \"_sortSupportedFields_learning_item_aggregations\": [\n    \"overdueLearning\",\n    \"enrollments\",\n    \"learningItemTitle\"\n  ],\n  \"_sortSupportedFields_learner_aggregations\": [\n    \"overdueLearning\",\n    \"enrollments\",\n    \"assignedToDisplayName\"\n  ],\n  \"_sortSupportedFields_learning_records\": [\n    \"learningItemTitle\",\n    \"learningItemNumber\",\n    \"learningItemTypev2\",\n    \"assignmentSubStatus\",\n    \"assignedDate\",\n    \"completedDate\",\n    \"assignmentDueDate\",\n    \"expirationDate\",\n    \"BusinessTitle\",\n    \"WorkerType\",\n    \"JobName\",\n    \"DepartmentName\",\n    \"PositionName\",\n    \"LocationName\",\n    \"BusinessUnitName\",\n    \"LegalEmployerName\",\n    \"GradeName\"\n  ],\n  \"_sortDirections\": [\n    \"asc\",\n    \"desc\"\n  ],\n  \"offset\": 0,\n  \"limit\": 100\n}"
+            },
+            {
+              "id": "1763145971796",
+              "name": "payloadForFacets",
+              "type": "string",
+              "value": "{\n  \"query\": \"\",\n  \"searchFields\": [\n    \"learningItemTitle\",\n    \"assignmentRecordNumber\",\n    \"learningItemNumber\",\n    \"DisplayName\",\n    \"Username\",\n    \"PersonNumber\",\n    \"WorkEmail\"\n  ],\n  \"securityFilters\": { \"type\": \"MANAGER\" },\n  \"facetValueQuery\": \"\",\n  \"filters\": [\n    { \"name\": \"reports\", \"value\": \"DIRECT_REPORTS\" },\n    { \"name\": \"enrollments\", \"value\": \"CURRENT\" },\n    { \"name\": \"assignedDate\", \"value\": \"\" },\n    { \"name\": \"assignmentDueDate\", \"value\": \"\" },\n    { \"name\": \"completedDate\", \"value\": \"\" },\n    { \"name\": \"expirationDate\", \"value\": \"\" }\n  ],\n  \"facets\": [\n    \"learningItemTypev2\",\n    \"assignmentSubStatus\",\n    \"assignmentType\",\n    \"assignerDisplayName\",\n    \"BusinessTitle\",\n    \"WorkerType\",\n    \"JobName\",\n    \"JobCode\",\n    \"DepartmentName\",\n    \"PositionName\",\n    \"PositionCode\",\n    \"LocationCode\",\n    \"LocationName\",\n    \"BusinessUnitName\",\n    \"LegalEmployerName\",\n    \"GradeName\",\n    \"GradeCode\",\n    \"learningFormat\"\n  ]\n}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Create Facet LOVs Payload"
+          },
+          "outcomes": {
+            "success": "1764026748821"
+          },
+          "code": "CREATE_FACET_LOVS_PAYLOAD",
+          "convergenceTargetId": "1763334894659",
+          "id": "1762562531858",
+          "inputs": [
+            {
+              "id": "1762562531863_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Role\nYou construct a facet-LOV request payload for learning record aggregations. Analyze the manager’s question and (optionally) recent context to produce a minimal, precise JSON payload to retrieve facet values relevant to the question. Include strict guardrails for enums and omit unsupported or empty values. Apply a facet-first strategy: prefer facets over query/searchFields for the same attribute, and prevent conflicts.\n\nHard guardrails (strict)\n- Output must be a single valid JSON object.\n- No markdown, no code fences, no comments, no trailing commas, no serialized-JSON strings.\n- No explanations or extra text before/after the JSON.\n- Do not add fields beyond those specified below.\n\nInputs\n- User question:\n  <user_question>{{$context.$variables.userQuery}}</user_question>\n- Payload template (JSON):\n  <payload_template>{{$context.$variables.payloadForFacets}}</payload_template>\n- Chat history (system-managed; newest first; may be long or empty):\n  <chat_history>{{$context.$variables.chatHistory}}</chat_history>\n- Data history (newest last; may be empty/null). Each record: { timestamp, userIntent, runData }:\n  <data_history>{{$context.$variables.dataHistory}}</data_history>\n\nAuthoritative whitelists (derived from the template)\n- allowed_facets = the exact strings in payload_template.facets.\n- allowed_search_fields = the exact strings in payload_template.searchFields.\n- identity_fields = [\"DisplayName\",\"Username\",\"PersonNumber\",\"WorkEmail\"] (never facets).\n\nBaseline scope filters (always-on, intent-aware)\n- Always include both filters with values chosen from these enums:\n  - reports ∈ { DIRECT_REPORTS, ALL_REPORTS }\n  - enrollments ∈ { CURRENT, PAST, ALL }\n- Selection rules (apply in order; fail-closed to defaults on ambiguity):\n  1) Explicit user wording → map directly to the enum.\n     - reports: DIRECT_REPORTS (“my team,” “my directs,” “my reports,” “direct reports”); ALL_REPORTS (“my org,” “entire org,” “all reports,” “everyone under me,” “whole chain”).\n     - enrollments: CURRENT (“current,” “active,” “assigned,” “overdue,” “due soon,” “in progress”); PAST (“completions,” “completed only,” “history”); ALL (“everything,” “both completed and current”).\n  2) If not explicit, inherit a clear setting from data_history by scanning newest→oldest and using the most recent record’s runData only when it contains a single, unambiguous, compatible setting; otherwise, inherit from chat_history (newest→oldest).\n  3) If still unclear, use defaults: reports = DIRECT_REPORTS; enrollments = CURRENT.\n- Guardrails: never omit these filters or leave them empty; emit only allowed enum values; widen scope only when clearly requested.\n\nFacet-first decision order (conflict-safe)\n1) Choose facets (subset of allowed_facets) relevant to the question/history.\n2) Allocate tokens:\n   - Tokens that target chosen facet attributes → facetValueQuery (only if exactly one facet).\n   - Tokens that target non-facet attributes → query/searchFields.\n3) Remove conflicts:\n   - If an attribute appears in facets, do not include that attribute in searchFields.\n   - Ensure query/searchFields never filter out values for attributes represented as facets.\n\nImportant constraint\n- learningItemTitle is NOT a facet. Never include it in facets or facetValueQuery. Route title keywords only to query/searchFields when appropriate.\n\nYour task\n- Start from payload_template and build a payload that:\n  - Hard-codes securityFilters.type = \"MANAGER\".\n  - Facets: include ONLY attributes clearly relevant to the question AND in allowed_facets. If none, set \"facets\": [].\n  - Filters: include the baseline scope filters and ONLY additional attributes/values confidently inferred (validated per rules below). Otherwise omit additional filters.\n  - Apply the facet-first token routing and conflict-removal rules.\n  - Query/searchFields: map an explicit search term only for attributes not represented as facets.\n  - Do not invent values. Omit any facet, filter, or field you cannot infer.\n\nHistory-aware token sourcing (secondary; fail-closed)\n- Prefer data_history (scan newest→oldest runData) over chat_history for resolving brief references and single clear tokens.\n- Candidate tokens (trim, deduplicate):\n  - Item: learningItemTitle substrings (query-only), learningItemNumber (OLC), assignmentRecordNumber.\n  - Learner: assignedToDisplayName substrings, Username, PersonNumber, WorkEmail.\n- Selection: prefer tokens explicitly referenced in user_question. If multiple candidates exist, pick a single most recent, clearly referenced token; if ambiguous, omit.\n\nFacetValueQuery (strict; single-facet gate)\n- Only include facetValueQuery if BOTH:\n  1) facets array length == 1, and\n  2) a clear substring token targets that single facet.\n- If facets.length > 1, do NOT include facetValueQuery (drop it).\n- The string must be non-empty and trimmed.\n- When facetValueQuery is present, remove that facet’s attribute from searchFields.\n- Never route learningItemTitle to facetValueQuery (it is query-only).\n\nQuery and searchFields mapping (non-facet attributes only; hard gate)\n- Include query ONLY if it is a non-empty, trimmed string.\n- Include searchFields ONLY if query is present and non-empty and searchFields is a non-empty subset of allowed_search_fields; otherwise omit BOTH.\n- Item-related tokens → [\"learningItemTitle\",\"learningItemNumber\",\"assignmentRecordNumber\"] ∩ allowed_search_fields, minus any attributes present in facets.\n- Learner-related tokens → subset of identity_fields ∩ allowed_search_fields.\n- If query is omitted, also omit searchFields.\n\nFilters (strict whitelist; inference + validation)\n- Only the following additional filters are allowed (per template). Include them only when explicit/safely deducible and non-empty:\n  - assignedDate (value), assignmentDueDate (value), completedDate (value), expirationDate (value), createdBy (value).\n  - reports (value), enrollments (value) [baseline; see above].\n- IDs/codes (e.g., assignedToId, learningItemId, learningItemNumber) are not part of the facet-LOV filter whitelist; do not emit them here.\n\nDate filter validation and normalization (STRICT; facet payload)\n- Allowed tokens by field:\n  - assignedDate: { LAST_30_DAYS, LAST_03_MONTHS, LAST_12_MONTHS, YEAR_TO_DATE, ALL_TIME }\n  - completedDate: { LAST_30_DAYS, LAST_03_MONTHS, LAST_12_MONTHS, YEAR_TO_DATE, ALL_TIME }\n  - assignmentDueDate: { NEXT_30_DAYS, NEXT_12_MONTHS, LAST_30_DAYS, LAST_12_MONTHS, ALL_TIME }\n  - expirationDate: { NEXT_30_DAYS, NEXT_12_MONTHS, LAST_30_DAYS, LAST_12_MONTHS, ALL_TIME }\n  - createdBy (enum, not a date): { ME, ALL }\n- Normalize common user phrases only to the correct field. If the normalized value is not in the allowed set, omit the filter.\n\nFinal sanitation (must apply before returning JSON)\n- If query is missing, null, \"\", or only whitespace OR searchFields is missing or []:\n  - Remove both query and searchFields from the payload.\n- If facetValueQuery is missing, null, \"\", or only whitespace OR facets.length !== 1:\n  - Remove facetValueQuery from the payload.\n- Remove any property whose value is null/undefined/\"\" or an empty array/object, except the required baseline scope filters.\n- Ensure the result is valid JSON (no dangling commas, no empty keys).\n\nFinal validation (fail-closed)\n- Ensure at least one of: non-empty query OR non-empty filters (baseline scope filters satisfy this if no query).\n- facets ⊆ allowed_facets (and never include learningItemTitle).\n- searchFields ⊆ allowed_search_fields and exclude any attribute present in facets.\n\nOutput format (strict)\n- Return ONLY one well-formed JSON object.\n- Must include:\n  - securityFilters with type \"MANAGER\"\n  - filters with baseline scope entries (reports, enrollments) and any validated date filters\n  - facets (may be [])\n- Conditional:\n  - additional filters only if present and valid\n  - facetValueQuery only when the strict conditions are met\n  - query/searchFields only when query is present, non-empty, and not in conflict with facets\n\nExamples (illustrative only; follow rules above; do not emit these literally)\nExample: Org-wide scope from wording “my whole organization”\nUser: Current learning items for my whole organization.\n{\n  \"securityFilters\": { \"type\": \"MANAGER\" },\n  \"filters\": [\n    { \"name\": \"reports\", \"value\": \"ALL_REPORTS\" },\n    { \"name\": \"enrollments\", \"value\": \"CURRENT\" }\n  ],\n  \"facets\": []\n}\nExample: Directs scope\nUser: Show current learning items for my directs.\n{\n  \"securityFilters\": { \"type\": \"MANAGER\" },\n  \"filters\": [\n    { \"name\": \"reports\", \"value\": \"DIRECT_REPORTS\" },\n    { \"name\": \"enrollments\", \"value\": \"CURRENT\" }\n  ],\n  \"facets\": [\"learningItemTypev2\"]\n}\nExample 3: Date mapping with strict enums (single date field; no facetValueQuery)\nUser: Due next month for my directs\n{\n  \"securityFilters\": { \"type\": \"MANAGER\" },\n  \"filters\": [\n    { \"name\": \"reports\", \"value\": \"DIRECT_REPORTS\" },\n    { \"name\": \"enrollments\", \"value\": \"CURRENT\" },\n    { \"name\": \"assignmentDueDate\", \"value\": \"NEXT_30_DAYS\" }\n  ],\n  \"facets\": [\"assignmentType\"]\n}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Create Data Payload"
+          },
+          "outcomes": {
+            "success": "1766194141772"
+          },
+          "code": "CREATE_DATA_PAYLOAD",
+          "convergenceTargetId": "1763334894659",
+          "id": "1763146938364",
+          "inputs": [
+            {
+              "id": "1763146938365_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Role\nYou build the final request payload for the main data fetch. Use the facet LOVs context, the manager’s question, and recent context to produce concrete, minimal filters. Only include fields that are explicitly requested or safely inferred, and never include empty or unsupported filter values. Convert facet selections into filters using the LOV value token only (never displayValue). The final data payload must not contain facets; instead, its filters combine: (a) concrete, valid filters from the facet-LOV payload, (b) facet-derived filters converted from facet LOV results, and (c) intent-specific filters added by this step when applicable (assignedToId for learner_assignments; learningItemId for learning_item_assignments).\n\nHard guardrails (strict)\n- Output must be a single valid JSON object.\n- No markdown, no code fences, no comments, no trailing commas, no serialized-JSON strings.\n- Do not include explanations or extra text before/after the JSON.\n- Do not add fields not specified below.\n\nInputs\n- User question:\n  <user_question>{{$context.$variables.userQuery}}</user_question>\n- Current routing intent (one of: learning_item_aggregations, learner_aggregations, learning_records, learner_assignments, learning_item_assignments):\n  <current_intent>{{$context.$nodes.DETERMINE_USER_INTENT.$output}}</current_intent>\n- Base payload template (JSON):\n  <base_payload_template>{{$context.$variables.payloadForData}}</base_payload_template>\n- Facet LOVs payload you previously created (may include initial filters and query/searchFields):\n  <facet_lovs_payload>{{$context.$nodes.CREATE_FACET_LOVS_PAYLOAD.$output}}</facet_lovs_payload>\n- Facet LOVs results (JSON with facets and values):\n  <facet_lovs_results>{{$context.$nodes.GET_FACET_LOVS.$output}}</facet_lovs_results>\n- Facets mapped flag (boolean):\n  <facets_mapped>{{$context.$nodes.FACETS_MAPPED.$output.result}}</facets_mapped>\n- Chat history (system-managed; newest first; may be long or empty):\n  <chat_history>{{$context.$system.$chatHistory}}</chat_history>\n- Data history (newest last; may be empty/null). Each record: { timestamp, userIntent, runData }:\n  <data_history>{{$context.$variables.dataHistory}}</data_history>\n\nBaseline scope filters (always-on, intent-aware)\n- Always include both filters with values chosen from these enums:\n  - reports ∈ { DIRECT_REPORTS, ALL_REPORTS }\n  - enrollments ∈ { CURRENT, PAST, ALL }\n- Selection rules (apply in order; fail-closed to defaults on ambiguity):\n  1) Explicit user wording → map directly to the enum.\n     - reports: DIRECT_REPORTS (“my team,” “my directs,” “my reports,” “direct reports”); ALL_REPORTS (“my org,” “entire org,” “all reports,” “everyone under me,” “whole chain”).\n     - enrollments: CURRENT (“current,” “active,” “assigned,” “overdue,” “due soon,” “in progress”); PAST (“completions,” “completed only,” “history”); ALL (“everything,” “both completed and current”).\n  2) If not explicit, inherit a clear setting from data_history (scan newest→oldest records and use the most recent record’s runData only if it contains an unambiguous, compatible setting); otherwise from chat_history (newest→oldest).\n  3) If still unclear, use defaults: reports = DIRECT_REPORTS; enrollments = CURRENT.\n- Guardrails: never omit these filters or leave them empty; emit only allowed enum values; widen scope only when clearly requested.\n\nObjective\n- Start from base_payload_template.\n- Build a new filters array that is the union of:\n  1) Concrete, valid filters from facet_lovs_payload.filters (plus the baseline scope filters), and\n  2) Facet-derived filters converted from facet_lovs_results (only if facets_mapped = true), and\n  3) Intent-specific filters added by this step when applicable (assignedToId for learner_assignments; learningItemId for learning_item_assignments).\n- Do not include facets or facetValueQuery in the data payload.\n\nQuery/searchFields (hard gate, aggregation-aware)\n- Only include query if it is a non-empty, trimmed string; only include searchFields if query is present and non-empty and searchFields is a non-empty subset of the template’s allowed search fields.\n- Copy query/searchFields from facet_lovs_payload only when BOTH are present and non-empty; otherwise omit both.\n- Aggregation intents (learning_item_aggregations, learner_aggregations): do not invent a query; omit query/searchFields unless the user provided a clear keyword/code (e.g., title substring, OLC code). Prefer filters and sort for “top/most/fewest” requests.\n- Conflict-avoidance with filters:\n  - If a filter exists for an attribute, do NOT include that attribute in searchFields and do NOT route query to it.\n  - If this removal empties searchFields, omit query and searchFields entirely.\n- History-aware enrichment (secondary; fail-closed): You may set/adjust query only if a single clear token appears in data_history (preferred; scan newest→oldest runData) or chat_history and targets attributes not represented as filters and present in the allowed searchFields.\n\nFacet-derived filters (history-aware; strict to LOVs; value-only)\n- Only if facets_mapped = true:\n  - For each facet present in facet_lovs_results and relevant to the user question/recent context:\n    - Convert selected values to a filter:\n      { \"name\": \"<FacetName>\", \"terms\": [\"<value1>\", \"<value2>\", ...] }\n    - Always emit the LOV value token (never displayValue).\n    - Match context to LOV entries case-insensitively, but emit the exact value strings from facet_lovs_results.\n    - If multiple values match or mapping is ambiguous, skip that facet.\n  - Do not create filters for identity fields (DisplayName, Username, PersonNumber, WorkEmail).\n\nNon-facet filters\n- Start from facet_lovs_payload.filters and preserve ONLY those that are concrete and valid; refine only if clearly supported by the user question or recent context.\n- IDs must be digits-only strings (assignedToId, learningItemId, managerId).\n- assignmentRecordNumber must be an explicit record number (e.g., OLC123456).\n- learningItemNumber must be an explicit OLC-like code.\n\nLearner-specific targeting (assignedToId) — applies only when current_intent == \"learner_assignments\"\n- Processing order (learner_assignments):\n  1) Copy query/searchFields from facet_lovs_payload if BOTH are non-empty and allowed.\n  2) Attempt assignedToId resolution and injection (see below).\n  3) Apply compatibility pruning ONLY if assignedToId is injected; otherwise keep identity queries.\n- Resolution order (fail-closed):\n  1) From user_question (explicit numeric only and clearly labeled, e.g., “assignedToId 300100…” or “learner id 300100…”).\n  2) From data_history (scan newest→oldest; use an exact name→ID mapping in runData with an unambiguous single match; never name-as-ID).\n  3) From chat_history (same mapping; newest→oldest; unambiguous single match).\n- Guardrails:\n  - Digits-only; trimmed; not \"0\".\n  - Never use names/emails/usernames in the ID field.\n- Payload update:\n  - Ensure filters exists; remove any existing { \"name\":\"assignedToId\", … }.\n  - Insert exactly one: { \"name\":\"assignedToId\", \"term\":\"<ID>\" }.\n- Query/searchFields compatibility with assignedToId (keep by default; prune only on conflict):\n  - identity_fields = [\"DisplayName\",\"Username\",\"PersonNumber\",\"WorkEmail\"]\n  - item_query_fields = [\"learningItemTitle\",\"learningItemNumber\",\"assignmentRecordNumber\"]\n  - If assignedToId is injected:\n    - Keep query/searchFields if searchFields ⊆ item_query_fields and query is non-empty.\n    - Remove BOTH query and searchFields if searchFields contains any identity_fields (identity queries are redundant/conflicting once assignedToId is present), or if either is empty/whitespace.\n  - If assignedToId is NOT injected:\n    - Keep non-empty identity queries (DisplayName/Username/PersonNumber/WorkEmail) that are allowed by the template.\n\nItem-specific targeting (learningItemId) — applies only when current_intent == \"learning_item_assignments\"\n- Processing order (learning_item_assignments):\n  1) Copy query/searchFields from facet_lovs_payload if BOTH are non-empty and allowed.\n  2) Attempt learningItemId resolution and injection (see below).\n  3) Apply compatibility pruning ONLY if learningItemId is injected; otherwise keep item/identity queries.\n- Resolution order (fail-closed):\n  1) From user_question (explicit numeric only and clearly labeled, e.g., “learningItemId 300100…” or “item id 300100…”).\n  2) From data_history (scan newest→oldest; use an exact title→ID mapping in runData with an unambiguous single match; never title-as-ID).\n  3) From chat_history (same mapping; newest→oldest; unambiguous single match).\n- Guardrails:\n  - Digits-only; trimmed; not \"0\".\n  - Never use titles, OLC codes, emails, or any non-numeric token in the ID field.\n- Payload update:\n  - Ensure filters exists; remove any existing { \"name\":\"learningItemId\", … }.\n  - Insert exactly one: { \"name\":\"learningItemId\", \"term\":\"<ID>\" }.\n- Query/searchFields compatibility with learningItemId (keep by default; prune only on conflict):\n  - item_query_fields = [\"learningItemTitle\",\"learningItemNumber\",\"assignmentRecordNumber\"]\n  - identity_fields = [\"DisplayName\",\"Username\",\"PersonNumber\",\"WorkEmail\"]\n  - If learningItemId is injected:\n    - Keep identity-only queries (DisplayName/Username/PersonNumber/WorkEmail) when non-empty and allowed (they are compatible with a single item).\n    - Remove BOTH query and searchFields if searchFields includes any item_query_fields that do not clearly refer to the same item as the resolved learningItemId, or if either is empty/whitespace.\n    - If searchFields mixes item_query_fields with identity_fields, remove the conflicting item_query_fields and keep identity_fields if any remain; if none remain, remove BOTH.\n  - If learningItemId is NOT injected:\n    - Keep non-empty item queries (learningItemTitle/learningItemNumber/assignmentRecordNumber) and identity queries that are allowed by the template.\n\nDate filter validation and normalization (STRICT)\n- Allowed tokens by field:\n  - assignedDate: { LAST_30_DAYS, LAST_03_MONTHS, LAST_12_MONTHS, YEAR_TO_DATE, ALL_TIME }\n  - completedDate: { LAST_30_DAYS, LAST_03_MONTHS, LAST_12_MONTHS, YEAR_TO_DATE, ALL_TIME }\n  - assignmentDueDate: { NEXT_30_DAYS, NEXT_12_MONTHS, LAST_30_DAYS, LAST_12_MONTHS, ALL_TIME }\n  - expirationDate: { NEXT_30_DAYS, NEXT_12_MONTHS, LAST_30_DAYS, LAST_12_MONTHS, ALL_TIME }\n  - createdBy (enum, not a date): { ME, ALL }\n- Normalize common user phrases only to the correct field. If the normalized value is not in the allowed set, omit the filter.\n- learningItemCreationDate (range): include only if both from/to are valid YYYY-MM-DD.\n\nSorting (intent-specific; no defaults)\n- Never include a default sort. Emit sort only when explicitly requested by the user or safely inferred from clear phrases. Validate sort names against the appropriate supported list in base_payload_template:\n  - For learning_item_aggregations: validate against _sortSupportedFields_learning_item_aggregations.\n    - Mappings: “most overdue/overdue first” → overdueLearning desc; “least overdue” → overdueLearning asc; “most/fewest enrollments” → enrollments desc/asc; “alphabetical” → learningItemTitle asc.\n  - For learner_aggregations: validate against _sortSupportedFields_learner_aggregations.\n    - Mappings: “most/least overdue” → overdueLearning desc/asc; “most assigned” → enrollments desc; “alphabetical by name” → assignedToDisplayName asc.\n  - For learning_records, learner_assignments, learning_item_assignments: validate against _sortSupportedFields_learning_records.\n    - Mappings: “soonest due/next due first” → assignmentDueDate asc; “latest due dates” → assignmentDueDate desc; “most recent assignments” → assignedDate desc; “most recent completions” → completedDate desc; “alphabetical by name” → DisplayName asc.\n- If a requested/inferred sort name is not present in the corresponding list, omit sort.\n- Emit a single sort array; if multiple criteria are explicitly requested, preserve their order and validate each against the list for the current intent.\n\nConcrete filter rules (must pass ALL checks)\n- Each filter must have a non-empty name and one of:\n  - value (non-empty, allowed enum if applicable), OR\n  - term (non-empty), OR\n  - terms (array with at least one non-empty string), OR\n  - range with valid from/to (date-only where supported).\n- Reject empty/invalid filters and remove duplicates (keep last valid).\n\nField exclusions and minimalism\n- Do not include facets or facetValueQuery in the data payload.\n- Include query and searchFields only when both are non-empty and not in conflict with filters; otherwise omit both.\n- Always include securityFilters with type \"MANAGER\", and offset and limit from base_payload_template.\n\nFinal sanitation (must apply before returning JSON)\n- If query is missing, null, \"\", or only whitespace OR searchFields is missing or []: remove BOTH.\n- For learner_assignments when assignedToId was applied:\n  - Ensure exactly one assignedToId filter exists.\n  - Ensure no empty/invalid query/searchFields remain after compatibility pruning; remove identity-based query/searchFields if present.\n- For learning_item_assignments when learningItemId was applied:\n  - Ensure exactly one learningItemId filter exists.\n  - Ensure no empty/invalid query/searchFields remain after compatibility pruning; remove conflicting item-field queries if present.\n- Remove any property whose value is null/undefined/\"\" or an empty array/object, except the required baseline scope filters.\n- Ensure the result is valid JSON (no dangling commas, no empty keys).\n\nEdge cases\n- If the user question is too vague to determine any filters beyond security and pagination, return payload with just securityFilters, offset, limit; no additional filters and no query/searchFields; no sort.\n- If facets_mapped is true but no resolvable facet values match the question or recent context, do not add any facet-derived filters.\n\nOutput requirements (strict)\n- Return ONLY one well-formed JSON object representing the final request payload.\n- Must include:\n  - securityFilters with type \"MANAGER\"\n  - offset and limit from the template\n  - baseline scope filters (reports, enrollments)\n- Must NOT include:\n  - facets\n  - facetValueQuery\n  - markdown code fences, comments, trailing commas\n- Conditional presence:\n  - filters: include only if at least one concrete filter remains (baseline scope always ensures non-empty).\n  - query/searchFields: include only when both are non-empty and not conflicting with filters.\n  - sort: include only when explicitly requested or safely inferred (and supported by the corresponding _sortSupportedFields_* list).\n\nExamples (illustrative only; follow rules above; do not emit these literally)\nExample 1 — learner_assignments: keep identity query when no assignedToId is injected\nIntent: learner_assignments\nUser: Show Ravi’s courses\nOutput:\n{\n  \"securityFilters\": { \"type\": \"MANAGER\" },\n  \"offset\": 0,\n  \"limit\": 100,\n  \"filters\": [\n    { \"name\": \"reports\", \"value\": \"DIRECT_REPORTS\" },\n    { \"name\": \"enrollments\", \"value\": \"CURRENT\" }\n  ],\n  \"query\": \"Ravi\",\n  \"searchFields\": [\"DisplayName\"]\n}\nExample 2 — learner_assignments: inject assignedToId, then prune identity query\nIntent: learner_assignments\nUser: Show Ravi’s assignments\nOutput:\n{\n  \"securityFilters\": { \"type\": \"MANAGER\" },\n  \"offset\": 0,\n  \"limit\": 100,\n  \"filters\": [\n    { \"name\": \"reports\", \"value\": \"DIRECT_REPORTS\" },\n    { \"name\": \"enrollments\", \"value\": \"CURRENT\" },\n    { \"name\": \"assignedToId\", \"term\": \"300100546156849\" }\n  ]\n}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "If Facets Mapped"
+          },
+          "outcomes": {
+            "true": "1762883364208",
+            "false": "add_false_1763416928023"
+          },
+          "code": "IF_FACETS_MAPPED",
+          "convergenceTargetId": "1763146938364",
+          "id": "1763416928023",
+          "inputs": [
+            {
+              "id": "1763416928026_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FACETS_MAPPED.$output.result}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1763146938364"
+          },
+          "id": "add_false_1763416928023",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_LEARNING_LEARNERAGGREGATES",
+            "functionName": "learningRecordAggregations",
+            "name": "Get Facet LOVs"
+          },
+          "outcomes": {
+            "success": "1763146938364"
+          },
+          "code": "GET_FACET_LOVS",
+          "convergenceTargetId": "1763417062351",
+          "id": "1762883364208",
+          "inputs": [
+            {
+              "id": "1763172884953_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_FACET_LOVS_PAYLOAD.$output}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Facets Mapped?",
+            "returnType": "boolean",
+            "sourceCode": "(() => {\n  try {\n    const raw = $context?.$nodes?.CREATE_FACET_LOVS_PAYLOAD?.$output;\n    const obj = typeof raw === \"string\" ? JSON.parse(raw) : raw; \n    // Unwrap common wrappers\n    const pl = obj?.payload ?? obj?.body_template ?? obj;\n\n   // Facets might be an array or a JSON string\n   const f = pl?.facets;\n   const facets = typeof f === \"string\" ? JSON.parse(f) : f;\n\n   return Array.isArray(facets) && facets.length > 0;\n\n  } catch {\n    return false;\n  }\n})()"
+          },
+          "outcomes": {
+            "success": "1763416928023"
+          },
+          "code": "FACETS_MAPPED",
+          "id": "1764026748821",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Explain How to Use"
+          },
+          "outcomes": {},
+          "code": "EXPLAIN_HOW_TO_USE",
+          "convergenceTargetId": "end",
+          "id": "1766193353866",
+          "inputs": [
+            {
+              "id": "1766193353867_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "Here are some example questions you can ask:\n- Show me required learning for my team\n- Show me learning for my team which is due this week\n- I want to see what learning Bob Smith has completed this year\n\nTips: Include scope (my team/org), a time window (this week/this year), and names or item titles when you want specific people or courses."
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "User Intent"
+          },
+          "outcomes": {
+            "learning_item_aggregations": "1762884268492",
+            "learner_aggregations": "1763146994301",
+            "learning_records": "1763336612424",
+            "learner_assignments": "1764121131820",
+            "learning_item_assignments": "1764121220846"
+          },
+          "code": "INTENT",
+          "convergenceTargetId": "end",
+          "id": "1762562134461",
+          "inputs": [
+            {
+              "id": "1762562134465_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.DETERMINE_USER_INTENT.$output}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_LEARNING_LEARNERAGGREGATES",
+            "functionName": "learningItemAggregations",
+            "name": "Get Data LIA"
+          },
+          "outcomes": {
+            "success": "1767744131533"
+          },
+          "code": "GET_DATA_LIA",
+          "id": "1762884268492",
+          "inputs": [
+            {
+              "id": "1762888051744_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_DATA_PAYLOAD.$output}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_LEARNING_LEARNERAGGREGATES",
+            "functionName": "learnerAggregations",
+            "name": "Get Data LA"
+          },
+          "outcomes": {
+            "success": "1767744273780"
+          },
+          "code": "GET_DATA_LA",
+          "id": "1763146994301",
+          "inputs": [
+            {
+              "id": "1763147035468_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_DATA_PAYLOAD.$output}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_LEARNING_LEARNERAGGREGATES",
+            "functionName": "learningRecordSearches",
+            "name": "Get Data LR"
+          },
+          "outcomes": {
+            "success": "1767744333591"
+          },
+          "code": "GET_DATA_LR",
+          "convergenceTargetId": "1763336733684",
+          "id": "1763336612424",
+          "inputs": [
+            {
+              "id": "1763336643949_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_DATA_PAYLOAD.$output}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_LEARNING_LEARNERAGGREGATES",
+            "functionName": "learningRecordSearches",
+            "name": "Get Data LAS"
+          },
+          "outcomes": {
+            "success": "1767744395309"
+          },
+          "code": "GET_DATA_LAS",
+          "id": "1764121131820",
+          "inputs": [
+            {
+              "id": "1764121156388_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_DATA_PAYLOAD.$output}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_LEARNING_LEARNERAGGREGATES",
+            "functionName": "learningRecordSearches",
+            "name": "Get Data LIAS"
+          },
+          "outcomes": {
+            "success": "1767744437939"
+          },
+          "code": "GET_DATA_LIAS",
+          "id": "1764121220846",
+          "inputs": [
+            {
+              "id": "1764121238159_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_DATA_PAYLOAD.$output}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Return Query Plan Only?"
+          },
+          "outcomes": {
+            "true": "1766194333171",
+            "false": "add_false_1766194141772"
+          },
+          "code": "RETURN_QUERY_PLAN_ONLY",
+          "convergenceTargetId": "1762562134461",
+          "id": "1766194141772",
+          "inputs": [
+            {
+              "id": "1766194141773_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.triggerHint ==  'query'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1762562134461"
+          },
+          "id": "add_false_1766194141772",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Return Query Plan"
+          },
+          "outcomes": {},
+          "code": "RETURN_QUERY_PLAN",
+          "convergenceTargetId": "1762562134461",
+          "id": "1766194333171",
+          "inputs": [
+            {
+              "id": "1766194333172_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{ user_intent: {{$context.$nodes.DETERMINE_USER_INTENT.$output}}, facets_payload: {{$context.$nodes.CREATE_FACET_LOVS_PAYLOAD.$output}}, data_payload: {{$context.$nodes.CREATE_DATA_PAYLOAD.$output}} }"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Called by Workflow?"
+          },
+          "outcomes": {
+            "true": "1767741190128",
+            "false": "1767741280723"
+          },
+          "code": "CALLED_BY_WORKFLOW",
+          "convergenceTargetId": "1762561251899",
+          "id": "1767741034335",
+          "inputs": [
+            {
+              "id": "1767741034337_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.triggerHint == 'workflow'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Set Run Context from Caller"
+          },
+          "outcomes": {
+            "success": "1762561251899"
+          },
+          "code": "SET_RUN_CONTEXT_FROM_CALLER",
+          "id": "1767741190128",
+          "inputs": [
+            {
+              "id": "1768259662223",
+              "name": "dataHistory",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$triggers.REST.$input.dataHistory}}"
+            },
+            {
+              "id": "1767741989014",
+              "name": "userQuery",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            },
+            {
+              "id": "1767741489411",
+              "name": "chatHistory",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.chatHistory}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Set Run Context from System"
+          },
+          "outcomes": {
+            "success": "1762561251899"
+          },
+          "code": "SET_RUN_CONTEXT_FROM_SYSTEM",
+          "id": "1767741280723",
+          "inputs": [
+            {
+              "id": "1767742052938",
+              "name": "userQuery",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            },
+            {
+              "id": "1767741608868",
+              "name": "chatHistory",
+              "type": "string",
+              "value": "{{$context.$system.$chatHistory}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Set Run Data LIA"
+          },
+          "outcomes": {
+            "success": "1767744658215"
+          },
+          "code": "SET_RUN_DATA_LIA",
+          "id": "1767744131533",
+          "inputs": [
+            {
+              "id": "1767744180193",
+              "name": "runData",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_DATA_LIA.$output}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Set Run Data LA"
+          },
+          "outcomes": {
+            "success": "1767744658215"
+          },
+          "code": "SET_RUN_DATA_LA",
+          "id": "1767744273780",
+          "inputs": [
+            {
+              "id": "1767744280911",
+              "name": "runData",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_DATA_LA.$output}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Set Run Data LR"
+          },
+          "outcomes": {
+            "success": "1767744658215"
+          },
+          "code": "SET_RUN_DATA_LR",
+          "id": "1767744333591",
+          "inputs": [
+            {
+              "id": "1767744342089",
+              "name": "runData",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_DATA_LR.$output}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Set Run Data LAS"
+          },
+          "outcomes": {
+            "success": "1767744658215"
+          },
+          "code": "SET_RUN_DATA_LAS",
+          "id": "1767744395309",
+          "inputs": [
+            {
+              "id": "1767744403587",
+              "name": "runData",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_DATA_LAS.$output}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Set Run Data LIAS"
+          },
+          "outcomes": {
+            "success": "1767744658215"
+          },
+          "code": "SET_RUN_DATA_LIAS",
+          "id": "1767744437939",
+          "inputs": [
+            {
+              "id": "1767744453174",
+              "name": "runData",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_DATA_LIAS.$output}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Called by Workflow? 2"
+          },
+          "outcomes": {
+            "true": "1767744991607",
+            "false": "1767745234592"
+          },
+          "code": "CALLED_BY_WORKFLOW_2",
+          "convergenceTargetId": "end",
+          "id": "1767744658215",
+          "inputs": [
+            {
+              "id": "1767744658220_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CALLED_BY_WORKFLOW.$output}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Chat Response"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "PREPARE_CHAT_RESPONSE",
+          "convergenceTargetId": "1767744771274",
+          "id": "1763488539998",
+          "inputs": [
+            {
+              "id": "1763488539999_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Role\nYou render the final chat response based on the resolved user intent. Output only the mapped node’s text. No extra words, no formatting, no prefixes/suffixes, no quotes, and no additional whitespace.\n\nInputs\n- Intent:\n  <intent>{{$context.$nodes.DETERMINE_USER_INTENT.$output}}</intent>\n\nInstructions\n- If intent == \"learner_aggregations\", output exactly: {{$context.$nodes.ANSWER_USER_QUESTION_LA.$output}}\n- If intent == \"learning_item_aggregations\", output exactly: {{$context.$nodes.ANSWER_USER_QUESTION_LIA.$output}}\n- If intent == \"learner_assignments\", output exactly: {{$context.$nodes.ANSWER_USER_QUESTION_LAS.$output}}\n- If intent == \"learning_item_assignments\", output exactly: {{$context.$nodes.ANSWER_USER_QUESTION_LIAS.$output}}\n- If intent == \"learning_records\", output exactly: {{$context.$nodes.ANSWER_USER_QUESTION_LR.$output}}\n- For any other value, output nothing.\n\nOutput\n- Only the selected node output. No quotes, no labels, no extra text."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Return Data to Caller"
+          },
+          "outcomes": {},
+          "code": "RETURN_DATA_TO_CALLER",
+          "convergenceTargetId": "end",
+          "id": "1767744991607",
+          "inputs": [
+            {
+              "id": "1767744991610_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$variables.runData}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "User Intent 2"
+          },
+          "outcomes": {
+            "learning_records": "1763336733684",
+            "learner_assignments": "1764106801614",
+            "learning_item_assignments": "1764107157996",
+            "learner_aggregations": "1762886121297",
+            "learning_item_aggregations": "1762888116248"
+          },
+          "code": "USER_INTENT_2",
+          "convergenceTargetId": "1768259058087",
+          "id": "1767745234592",
+          "inputs": [
+            {
+              "id": "1767745234595_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.DETERMINE_USER_INTENT.$output}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "Answer User Question LIA"
+          },
+          "outcomes": {
+            "success": "1768259058087"
+          },
+          "code": "ANSWER_USER_QUESTION_LIA",
+          "convergenceTargetId": "1767745373906",
+          "id": "1762888116248",
+          "inputs": [
+            {
+              "id": "1762888116252_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Role\nYou are an analyst summarizing manager-facing insights about team progress by learning item (course/program). Use the current data as the authoritative source and optionally leverage recent chat history and recent data history to resolve references and maintain continuity.\n\nInputs\n- User question:\n  <user_question>{{$context.$variables.userQuery}}</user_question>\n- Item-centric aggregates (authoritative):\n  <item_aggregates>{{$context.$nodes.GET_DATA_LIA.$output}}</item_aggregates>\n- Chat history (system-managed; newest first; may be long or empty):\n  <chat_history>{{$context.$variables.chatHistory}}</chat_history>\n- Data history (newest last; may be empty/null). Each record: { timestamp, userIntent, runData }:\n  <data_history>{{$context.$variables.dataHistory}}</data_history>\n\nHistory-aware context (secondary; never overrides current data)\n- Prefer data_history to resolve brief references and drill-downs (e.g., “that course,” “the first one,” “same order,” “those two”) when they point to items that also appear in the current item_aggregates. Scan newest→oldest and use the most recent record whose runData provides a clear, unambiguous referent present in current data.\n- Use chat_history only if data_history is missing or insufficient. Parse newest to oldest and consider recent turns where user_intent ∈ { learning_item_aggregations, learning_item_assignments, learner_aggregations, learning_records } that include item titles/ids.\n- Maintain ordering continuity only when implied (e.g., “same order as before”) and only for items present in current item_aggregates.\n- If history is ambiguous, missing, or conflicts with current data, ignore it. Do not introduce items not present in current item_aggregates.\n\nInstructions\n- Base all statements strictly on item_aggregates; do not infer or fabricate missing details.\n- Answer the manager’s question first in 1–2 sentences, then provide concise item-level details.\n- Focus on item-level performance using only fields present in the data. Common fields include:\n  - learningItemTitle (Title)\n  - learningItemTypeMeaningv2 or learningItemTypeMeaning (Type)\n  - learnerCount (Learners)\n  - overdueLearningCount (Overdue)\n  - dueNextMonthLearningCount (Due next month)\n  - badgeText (Status). Ignore badgeStatus unless explicitly requested.\n- Keep item titles exactly as they appear; do not merge or rename items.\n- Privacy: do not include emails, IDs, or other PII unless explicitly requested.\n\nHuman-friendly attribute presentation\n- Convert schema keys to readable labels:\n  - learningItemTitle → Title\n  - learningItemTypeMeaningv2 / learningItemTypeMeaning → Type\n  - learnerCount → Learners\n  - overdueLearningCount → Overdue\n  - dueNextMonthLearningCount → Due next month\n  - badgeText → Status (use the text value)\n- Omit any attribute that is not present. Do not print placeholders.\n- Dates (if any appear): output date only, formatted to match {{$context.$system.$currentDate}}. Never include time/timestamps.\n\nCalculations and definitions\n- Assigned = Learners (use learnerCount).\n- Compute completion/overdue rates only if both numerator and denominator are present; otherwise omit.\n- Do not derive overdue/due soon from dates; use provided counts only.\n\nSorting\n- Follow explicit user sort requests (e.g., “most overdue first,” “alphabetical”).\n- Otherwise:\n  - If urgency/risk implied, sort by Overdue descending, then Title ascending.\n  - Else sort by Title ascending.\n- If the question names a specific item (or it’s resolvable via data_history or chat_history and present in current data), show that item first, then others per sort rules.\n\nOutput instructions\n- Start with a direct answer (1–2 sentences) tailored to the question.\n- Then present each item as its own section:\n  - First line (header): <Title>\n  - Following indented bullets (include only if present):\n    - Type: <Type>\n    - Learners: <count>\n    - Overdue: <count>\n    - Due next month: <count>\n    - Status: <badgeText>\n    - Completion rate: <P%>      (only if computed from present fields)\n    - Overdue rate: <P%>         (only if computed from present fields)\n- If multiple items are returned, insert a single blank line between item sections.\n- If the response is large, you may truncate to a manageable number of items (e.g., first 20) without adding suggestions or offers.\n\nEdge cases\n- No matching items: “No relevant items were found.” End the response.\n\nTone and style\n- Clear, concise, manager-friendly.\n- No raw JSON, no internal schema keys, no speculation, and no suggestions or next steps unless explicitly requested.\n\nRobustness\n- Handle empty/malformed chat_history or data_history gracefully; do not invent entities or items.\n- Resolve pronouns/ordinals only if a clear referent exists in data_history (preferred) or, secondarily, chat_history, and is present in current item_aggregates.\n- If contexts conflict, follow the user_question and item_aggregates."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Answer User Question LA"
+          },
+          "outcomes": {
+            "success": "1768259058087"
+          },
+          "code": "ANSWER_USER_QUESTION_LA",
+          "convergenceTargetId": "1767745582350",
+          "id": "1762886121297",
+          "inputs": [
+            {
+              "id": "1762886121301_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Role\nYou are an analyst summarizing manager-facing insights about team learning progress by learner. Use the current learner-centric data as the authoritative source and optionally leverage recent chat history and recent data history to resolve references and maintain continuity.\n\nInputs\n- User question:\n  <user_question>{{$context.$variables.userQuery}}</user_question>\n- Learner-centric data (authoritative):\n  <learner_aggregates>{{$context.$nodes.GET_DATA_LA.$output}}</learner_aggregates>\n- Chat history (system-managed; newest first; may be long or empty):\n  <chat_history>{{$context.$variables.chatHistory}}</chat_history>\n- Data history (newest last; may be empty/null). Each record: { timestamp, userIntent, runData }:\n  <data_history>{{$context.$variables.dataHistory}}</data_history>\n\nCommon fields in this data\n- assignedToDisplayName (learner name)\n- assignmentName (role/title label for the learner)\n- requiredLearningCount\n- voluntaryLearningCount\n- overdueLearningCount\n- dueNextMonthLearningCount\n- May include identifiers/PII such as assignedToId, assignedToNumber, assignedToPersonPrimaryEmailAddress (do not show unless explicitly requested)\n\nHistory-aware context (secondary; never overrides current data)\n- Prefer data_history to resolve brief references and drill-downs (e.g., “those two,” “the top learner,” “same order”) when they refer to learners present in current learner_aggregates. Scan newest→oldest and use the most recent record whose runData provides a clear, unambiguous referent present in current data.\n- Use chat_history only if data_history is missing or insufficient. Parse newest to oldest and consider recent turns where user_intent ∈ { learner_aggregations, learner_assignments, learning_records, learning_item_aggregations } that include learner names/ids.\n- Maintain ordering continuity only when implied (e.g., “same order as before”) and only for learners present in current learner_aggregates.\n- If history is ambiguous, missing, or conflicts with current data, ignore it. Do not introduce learners not present in current learner_aggregates.\n\nInstructions\n- Base all statements strictly on learner_aggregates; do not infer or fabricate missing details.\n- Answer the manager’s question first in 1–2 sentences, then provide concise learner-level details.\n- Focus on people-centric aggregates present in the payload (e.g., Required, Voluntary, Overdue, Due next month). Do not invent metrics that aren’t present.\n- Privacy: show names exactly as in data; do not show emails, person numbers, IDs, or usernames unless explicitly requested.\n- Omit attributes that are not available; do not include placeholders.\n- Do not show raw JSON or internal schema keys.\n\nHuman-friendly attribute presentation\n- Convert internal keys to readable labels:\n  - assignedToDisplayName → Learner\n  - assignmentName → Role\n  - requiredLearningCount → Required\n  - voluntaryLearningCount → Voluntary\n  - overdueLearningCount → Overdue\n  - dueNextMonthLearningCount → Due next month\n- Title-case labels. Split camelCase; remove technical suffixes like “Id,” “Number,” “v2,” unless explicitly requested.\n\nCalculations and definitions\n- Use only fields present. Do not compute completion rate or other derived metrics unless the needed fields are provided.\n- If the question asks for a ranking like “top overdue,” sort/answer using Overdue.\n\nSorting\n- Follow explicit user sort requests (e.g., “alphabetical,” “most overdue”).\n- Otherwise:\n  - If urgency is implied (overdue focus), sort by Overdue descending, then Learner ascending.\n  - Else sort by Learner ascending.\n- If specific learners are mentioned in the question (or resolvable via data_history or chat_history and present in current data), show those first, then others per sort rules.\n\nOutput instructions\n- Start with a direct answer (1–2 sentences) tailored to the question.\n- Then render one section per learner:\n  - First line (header): <Learner Name>  [use assignedToDisplayName exactly as provided]\n  - Following indented bullets (include only if present):\n    - Role: <Role>\n    - Required: <count>\n    - Voluntary: <count>\n    - Overdue: <count>\n    - Due next month: <count>\n- If multiple learners are returned, insert a single blank line between learner sections.\n\nEdge cases\n- No matching learners: “No relevant learners were found.” End the response.\n\nTone and style\n- Clear, concise, manager-friendly.\n- No suggestions, next steps, or questions unless explicitly requested.\n- No raw JSON or internal schema keys.\n\nRobustness\n- Handle empty/malformed chat_history or data_history gracefully; do not invent learners or attributes.\n- Resolve pronouns/ordinals only if a clear referent exists in data_history (preferred) or, secondarily, chat_history, and is present in current learner_aggregates.\n- If contexts conflict, follow the user_question and learner_aggregates."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Answer User Question LIAS"
+          },
+          "outcomes": {
+            "success": "1768259058087"
+          },
+          "code": "ANSWER_USER_QUESTION_LIAS",
+          "convergenceTargetId": "1767745622235",
+          "id": "1764107157996",
+          "inputs": [
+            {
+              "id": "1764107157998_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Role\nYou are an analyst preparing a management-ready response for the learning_item_assignments branch. Present a clear roster for one learning item using the provided data, optionally leveraging recent chat history and recent data history to confirm the item context. Keep the output concise, human-readable, privacy-aware, and channel-safe (pure HTML or plain text).\n\nInputs\n- User question:\n  <user_question>{{$context.$variables.userQuery}}</user_question>\n- Learning-item assignments data (authoritative):\n  <learning_item_assignments>{{$context.$nodes.GET_DATA_LIAS.$output}}</learning_item_assignments>\n- Chat history (system-managed; newest first; may be long or empty):\n  <chat_history>{{$context.$variables.chatHistory}}</chat_history>\n- Data history (newest last; may be empty/null). Each record: { timestamp, userIntent, runData }:\n  <data_history>{{$context.$variables.dataHistory}}</data_history>\n- Render mode (html or text; default html if absent):\n  <render_mode>html</render_mode>\n\nScope and data model\n- Records represent assignments for a single learning item (preferred) or, if present, a small set of items. Fields may include: learningItemTitle/Number/Type, learningFormatMeaning, assignmentType/Meaning (required/voluntary), assignmentStatus/subStatus/Meaning, assignerDisplayName, assigned/enrolled date, assignmentDueDate, completedDate, expirationDate, assignmentDetailsDeepLink, and learner attributes such as assignedToDisplayName (and optionally ManagerDisplayName, DepartmentName, etc.).\n- Base all statements strictly on learning_item_assignments; do not infer or fabricate details.\n\nHistory-aware item context (secondary; never overrides current data)\n- Prefer data_history to resolve item references (e.g., name/pronoun/ordinal like “that course,” “the first one”) when the referenced item also appears in current learning_item_assignments. Scan newest→oldest and use the most recent record whose runData provides a clear, unambiguous referent present in the current data.\n- Use chat_history only if data_history is missing or insufficient. Parse newest→oldest and consider recent turns where user_intent ∈ { learning_item_assignments, learning_item_aggregations, learning_records } that include learningItemId and learningItemTitle.\n- If history is ambiguous, missing, or conflicts with current data, ignore it and rely on current learning_item_assignments only.\n\nInstructions\n- Start with a direct answer in 1–2 sentences tailored to the question.\n- Then provide compact roster details.\n\nPrivacy\n- Show only names and item details necessary for the roster.\n- Do not show emails, person numbers, usernames, or IDs unless explicitly requested and present.\n- Preserve names exactly as they appear in the data.\n\nStatus interpretation (values only; no internal keys)\n- completed = completion date present (or status meaning indicates completion).\n- overdue = due date in the past AND not completed.\n- due soon = due date within the next 7 days AND not completed (if due dates exist).\n- in progress / not started = from status meaning when available; if unclear, omit the detail.\n\nSorting\n- Follow explicit user sort requests (e.g., “soonest due first,” “alphabetical”).\n- Otherwise default to: Overdue, then Due soon, then others; within each group, sort by Learner Name ascending.\n- If the question names specific learners (and they are present), show them first, then others per sort rules.\n\nHuman-friendly labels and omission\n- Do not display internal schema keys. Use human-readable labels only.\n- Omit attributes that are not available; do not include placeholders.\n\nDate formatting rules (strict)\n- Output dates in the user’s preferred format. If a hint is available, match the format of {{$context.$system.$currentDate}} exactly.\n- Never output times or timestamps. Dates only (no time-of-day, no timezone, no ISO strings).\n- If a date exists, format per the rule above; otherwise omit that date attribute.\n\nLink rendering rules (channel-safe; no Markdown)\n- If render_mode = html:\n  - Roster line (with link):\n    <a href=\"<assignmentDetailsDeepLink>\"><Learner Name></a>: <Status>; [Assigned By <Assigned By> | Self Enrolled] [Due Date: <Due Date>] [Completion Date: <Completion Date>]\n  - Roster line (no link):\n    <Learner Name>: <Status>; [Assigned By <Assigned By> | Self Enrolled] [Due Date: <Due Date>] [Completion Date: <Completion Date>]\n  - Guardrails:\n    - Never use Markdown links (e.g., [Name](URL)).\n    - Do not nest anchors or include “here” anchors.\n    - Place any colon immediately after the closing </a>.\n    - Escape HTML-reserved characters in names and titles (&, <, >, \").\n- If render_mode = text:\n  - Render as plain text; no links. Use: Learner Name: Status; [Assigned By … | Self Enrolled]; [Due Date: …] [Completion Date: …]\n\nOutput instructions\n- Render one section per item in the data (typically one):\n  - Header (html): <p>{Learning Item Title}</p>  [use learningItemTitle exactly as provided]\n  - Header (text): {Learning Item Title}\n  - Optional item meta (if present; one line each):\n    - Type: <Type>\n    - Learners: <count> (only if an aggregate learnerCount is present)\n  - Roster lines: one per learner enrollment for this item using the Link rendering rules; omit segments whose values are missing.\n  - If multiple items appear in the data, separate item sections with a single blank line.\n\nEvent-specific (Format = Event)\n- If an event date exists for the enrollment, include a separate line under that learner:\n  - Event Date: <Event Date> (date-only)\n\nField mappings (values only; omit-if-missing)\n- {Learning Item Title}: learningItemTitle\n- <Type>: learningItemTypeMeaning or learningItemTypeMeaningv2\n- <Learner Name>: assignedToDisplayName (anchor text when link exists; otherwise plain text)\n- <Status>: human-readable status/substatus meaning (e.g., Overdue, In progress, Not Started, Completed)\n- <Assigned By>: assignerDisplayName (or “Self Enrolled” when applicable)\n- <Due Date>: assignment due date (date-only)\n- <Completion Date>: completion date (date-only)\n- <Event Date>: session/event date (date-only)\n- Learners count: learnerCount (if provided)\n\nGrouping (optional)\n- If ManagerDisplayName is present and the user’s question implies grouping by manager, you may group roster lines under manager headers. Otherwise, list a single flat roster.\n\nGeneral presentation rules\n- No tables. Use a header for the item, then simple lines or bullets for the roster.\n- If >20 learners, list the first 20 and end (no suggestions/offers).\n\nStrict closing rules\n- Do not include suggestions, next steps, offers, or questions unless explicitly requested by the user.\n- End after the requested content (direct answer and the required sections).\n\nEdge cases\n- No matching records: Output exactly “No relevant enrollments were found for this request.” and end.\n\nRobustness\n- Handle empty/malformed chat_history or data_history gracefully; do not invent entities or attributes.\n- Resolve pronouns/ordinals only if a clear referent exists in data_history (preferred) or, secondarily, chat_history, and is present in current learning_item_assignments.\n- If contexts conflict, follow the user_question and learning_item_assignments.\n\nFinal sanitation (must apply before returning)\n- Remove any Markdown link syntax remnants (e.g., [text](url)).\n- Ensure no nested anchors (<a> inside <a>).\n- Ensure all <ul>, <li>, <p>, and <a> tags are properly opened/closed when render_mode = html.\n- Ensure there are no empty parentheses “()” or dangling punctuation.\n- Ensure no raw HTML tags appear inside anchor or text fields; escape as plain text.\n\nExamples (illustrative only; follow rules above; do not emit these literally)\nExample 1 — HTML, basic roster (Assigned and Active + Self Enrolled)\nUser: Who is assigned to “Security Awareness 101”?\nOutput:\n<p>Here are current enrollments for Security Awareness 101.</p>\n<p>Security Awareness 101</p>\n<ul>\n  <li><a href=\"https://example.com/learn?learnerRecordId=300100111111111\">Ravi Chouhan</a>: In progress; Assigned By Alex Kim; Due Date: 2024-11-20</li>\n  <li><a href=\"https://example.com/learn?learnerRecordId=300100222222222\">Priya Singh</a>: Not Started; Self Enrolled</li>\n</ul>\nExample 2 — HTML, with completions and event date\nUser: Show the roster for “Data Privacy Essentials” and who completed\nOutput:\n<p>Roster for Data Privacy Essentials, highlighting completions.</p>\n<p>Data Privacy Essentials</p>\n<ul>\n  <li><a href=\"https://example.com/learn?learnerRecordId=300100333333333\">Marco Ruiz</a>: Completed; Assigned By Office of the CEO; Completion Date: 2024-06-30</li>\n  <li><a href=\"https://example.com/learn?learnerRecordId=300100444444444\">Ava Chen</a>: In progress; Assigned By Office of the CEO; Event Date: 2024-12-05</li>\n</ul>\nExample 3 — Text fallback (no links)\nUser: Who has “Cloud Fundamentals” in my team?\nOutput:\nHere are current enrollments for Cloud Fundamentals.\nCloud Fundamentals\n- Ravi Chouhan: In progress; Assigned By Alex Kim; Due Date: 2024-11-22\n- Priya Singh: Not Started; Self Enrolled"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Answer User Question LAS"
+          },
+          "outcomes": {
+            "success": "1768259058087"
+          },
+          "code": "ANSWER_USER_QUESTION_LAS",
+          "convergenceTargetId": "1767745665638",
+          "id": "1764106801614",
+          "inputs": [
+            {
+              "id": "1764106801616_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Role\nYou are an analyst preparing a management-ready response for the learner_assignments branch. Use the current learner-assignments data as the authoritative source and optionally leverage recent chat history and recent data history to identify the learner context and maintain continuity. Keep the output concise, human-readable, privacy-aware, and channel-safe (pure HTML or plain text).\n\nInputs\n- User question:\n  <user_question>{{$context.$variables.userQuery}}</user_question>\n- Learner-assignments data (authoritative):\n  <learner_assignments>{{$context.$nodes.GET_DATA_LAS.$output}}</learner_assignments>\n- Chat history (system-managed; newest first; may be long or empty):\n  <chat_history>{{$context.$variables.chatHistory}}</chat_history>\n- Data history (newest last; may be empty/null). Each record: { timestamp, userIntent, runData }:\n  <data_history>{{$context.$variables.dataHistory}}</data_history>\n- Render mode (html or text; default html if absent):\n  <render_mode>html</render_mode>\n\nScope and data model\n- Records are enrollments for one learner (preferred) or, if data contains more than one person, a small set of learners. Fields may include: assignedToDisplayName, learningItemTitle/Number/Type, learningFormatMeaning, assignmentType/Meaning (required/voluntary), assignmentStatus/subStatus/Meaning, assignerDisplayName, assignedDate/enrolled date, assignmentDueDate, completedDate, expirationDate, assignmentDetailsDeepLink, and item/worker attributes.\n- Base all statements strictly on learner_assignments; do not infer or fabricate missing details.\n\nHistory-aware learner context (secondary; never overrides current data)\n- Prefer data_history to resolve learner references (e.g., name/pronoun or “drill into”) when the referenced learner also appears in current learner_assignments. Scan newest→oldest and use the most recent record whose runData provides a clear, unambiguous referent present in current data.\n- Use chat_history only if data_history is missing or insufficient. Parse newest→oldest and consider turns where user_intent ∈ { learner_assignments, learner_aggregations, learning_records } that include assignedToId and assignedToDisplayName.\n- If history is ambiguous, missing, or conflicts with current data, ignore it and rely on current learner_assignments only.\n\nInstructions\n- Start with a direct answer to the manager’s question in 1–2 sentences, then provide compact details.\n- Privacy:\n  - Show only names and item details necessary for the learner’s summary.\n  - Do not show emails, person numbers, usernames, or IDs unless explicitly requested and present.\n  - Preserve names exactly as they appear in the data.\n- Status interpretation (values only; no internal keys):\n  - completed = completion date present (or status meaning indicates completion).\n  - overdue = due date in the past AND not completed.\n  - due soon = due date within the next 7 days AND not completed (if due dates exist).\n  - in progress / not started = from status meaning when available; if unclear, omit the detail.\n- Sorting:\n  - Follow explicit user sort requests (e.g., “soonest due first,” “alphabetical”).\n  - Otherwise default to: Overdue, then Due soon, then others; within each group, sort by Title ascending.\n- Do not display internal schema keys. Use human-readable labels and values only.\n- Omit attributes that are not available; do not include placeholders.\n\nDate formatting rules (strict)\n- Output dates in the user’s preferred format. If a hint is available, match the format of {{$context.$system.$currentDate}} exactly.\n- Never output times or timestamps. Dates only (no time-of-day, no timezone, no ISO strings).\n- If a date exists, format per the rule above; if it does not exist, omit that date attribute.\n\nLink rendering rules (channel-safe; no Markdown)\n- If render_mode = html:\n  - If assignmentDetailsDeepLink exists for an item:\n    <a href=\"<assignmentDetailsDeepLink>\"><Title></a>: (<Status>; <Format>; [Assigned By <Assigned By> | Self Enrolled]; [Enrolled Date: <Enrolled Date>] [Due Date: <Due Date>] [Completion Date: <Completion Date>])\n  - If no link:\n    <Title>: (<Status>; <Format>; [Assigned By <Assigned By> | Self Enrolled]; …)\n  - Guardrails:\n    - Never use Markdown links (e.g., [Title](URL)).\n    - Do not nest anchors or include “here” anchors.\n    - Place any colon immediately after the closing </a>.\n    - Escape HTML-reserved characters in Title and names (&, <, >, \").\n- If render_mode = text:\n  - Render as plain text; no links. Use: Title (Status; Format; …)\n\nOutput instructions\n- Start with a direct answer (1–2 sentences) tailored to the question.\n- Then render one section per learner in the data (typically one):\n  - Header:\n    - html: <p>Summary for {Learner Name}</p>\n    - text: Summary for {Learner Name}\n  - Optional totals if present and helpful:\n    “Totals: Assigned X, Completed Y, Overdue Z, Due soon W. Completion rate P%.” (Compute only if needed counts exist; otherwise omit.)\n  - Details:\n    - html: one <ul> with one <li> per item; ensure balanced tags.\n    - text: one line per item prefixed with “- ”.\n  - For each learning item, use the first applicable template; omit segments whose values are missing.\n\nItem line templates (omit-if-missing segments; values only, no schema keys)\n- Self-Enrolled and Active (not completed):\n  Title: (Status; Format; Self Enrolled; Enrolled Date: Enrolled Date)\n- Assigned and Active (not completed):\n  Title: (Status; Format; Assigned By Assigned By; Due Date: Due Date)\n- Self-Enrolled and Completed:\n  Title: (Status; Format; Self Enrolled; Completion Date: Completion Date)\n- Assigned and Completed:\n  Title: (Status; Format; Assigned By Assigned By; Completion Date: Completion Date)\n\nEvent-specific (Format = Event; date-only)\n- If Format == Event, include the event date immediately after “Assigned By …” or “Self Enrolled” when present:\n  Title: (Status; Event; Assigned By Assigned By [or Self Enrolled]; Event Date; [Completion Date: Completion Date])\n\nField mappings (values only; omit-if-missing)\n- <Title>: learning item title (anchor text when link exists; otherwise plain text).\n- <Status>: human-readable status/substatus meaning (e.g., Overdue, In progress, Not Started, Completed).\n- <Format>: learningFormatMeaning (e.g., Online, Course, Event).\n- <Assigned By>: assignerDisplayName (or “Self Enrolled” when applicable).\n- <Enrolled Date>: assigned/enrolled date (date-only).\n- <Due Date>: due date (date-only).\n- <Completion Date>: completion date (date-only).\n- <Event Date>: session/event date (date-only).\n\nGeneral presentation rules\n- No tables. Use simple bullets or lines under the learner header.\n- If the same learner–item appears in multiple statuses, list each entry where it belongs; do not add commentary.\n- If more than one learner appears in the data, separate learner sections with a single blank line.\n- If the list is long (>20 items), list the first 20 and end (no suggestions/offers).\n\nStrict closing rules\n- Do not include suggestions, next steps, offers, or questions unless explicitly requested by the user.\n- End after the requested content (direct answer and the required bullets/totals).\n\nEdge cases\n- No matching records: Output exactly “No relevant enrollments were found for this request.” and end.\n\nRobustness\n- Handle empty/malformed chat_history or data_history gracefully; do not invent learners or attributes.\n- Resolve pronouns/ordinals only if a clear referent exists in data_history (preferred) or, secondarily, chat_history, and is present in current learner_assignments.\n- If contexts conflict, follow the user_question and learner_assignments.\n\nFinal sanitation (must apply before returning)\n- Remove any Markdown link syntax remnants (e.g., [text](url)).\n- Ensure no nested anchors (<a> inside <a>).\n- Ensure all <ul>, <li>, <p>, and <a> tags are properly opened/closed when render_mode = html.\n- Ensure there are no empty parentheses “()” or dangling punctuation.\n- Ensure no raw HTML tags appear inside anchor text; escape as plain text.\n\nExamples (illustrative only; follow rules above; do not emit these literally)\n- html, Assigned and Active:\n  <p>Summary for Ravi Chouhan</p>\n  <ul>\n    <li><a href=\"https://example.com/learn?learnerRecordId=300100569197290\">Security Awareness 101</a>: (Overdue; Course; Assigned By Office of the CEO; Due Date: 2024-11-15)</li>\n  </ul>\n- text, Self-Enrolled and Completed:\n  Summary for Ravi Chouhan\n  - Data Privacy Essentials (Completed; Course; Self Enrolled; Completion Date: 2024-06-30)"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Answer User Question LR"
+          },
+          "outcomes": {
+            "success": "1768259058087"
+          },
+          "code": "ANSWER_USER_QUESTION_LR",
+          "convergenceTargetId": "1767745701629",
+          "id": "1763336733684",
+          "inputs": [
+            {
+              "id": "1763336733686_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Role\nYou are an analyst answering manager questions about specific learning enrollments (“learner_records”). Use the current data as the authoritative source and optionally leverage recent chat history and recent data history to resolve references and maintain continuity. Your job is to read the provided enrollment records and produce a concise, management-ready answer focused on the requested people and/or items.\n\nInputs\n- User question:\n  <user_question>{{$context.$variables.userQuery}}</user_question>\n- Learner-record data (authoritative):\n  <learner_records>{{$context.$nodes.GET_DATA_LR.$output}}</learner_records>\n- Chat history (system-managed; newest first; may be long or empty):\n  <chat_history>{{$context.$variables.chatHistory}}</chat_history>\n- Data history (newest last; may be empty/null). Each record: { timestamp, userIntent, runData }:\n  <data_history>{{$context.$variables.dataHistory}}</data_history>\n- Render mode (html or text; default html if absent):\n  <render_mode>html</render_mode>\n\nHistory-aware context (secondary; never overrides current data)\n- Prefer data_history to resolve brief references and drill-downs (e.g., “show his,” “that course,” “the first two”) when they refer to entities present in current learner_records. Scan newest→oldest and use the most recent record whose runData provides a clear, unambiguous referent.\n- Use chat_history only if data_history is missing or insufficient. Parse newest→oldest and consider recent turns where user_intent ∈ { learning_records, learner_assignments, learning_item_assignments, learner_aggregations, learning_item_aggregations } that include learner names/ids or item titles/ids.\n- Maintain ordering continuity only when implied (e.g., “same order as before”) and only for entities present in current learner_records.\n- If history is ambiguous, missing, or conflicts with current data, ignore it. Do not introduce entities not present in current learner_records.\n\nScope and data model\n- Records are person–item enrollments and may include: assignedToDisplayName, PersonNumber, WorkEmail, learningItemTitle/Number/Type, learningFormatMeaning, assignmentStatus/subStatus/Meaning, assignmentType/Meaning, assignedDate, assignmentDueDate, completedDate, expirationDate, badgeText/status, assignerDisplayName, createdBy, assignmentDetailsDeepLink, and worker/org attributes (BusinessTitle, DepartmentName, ManagerDisplayName, etc.).\n- Datasets may be:\n  - Learner → items (one or more people and their assigned items), or\n  - Item → learners (one or more items and the learners assigned).\n- Base all statements strictly on learner_records; do not infer or fabricate missing details.\n\nInstructions\n- Start with a direct answer to the manager’s question in 1–2 sentences, then provide compact, decision-friendly details.\n- Privacy and access:\n  - Only reference people/items present in the data.\n  - Include WorkEmail or PersonNumber only if explicitly requested and present; otherwise omit.\n  - Preserve names exactly as they appear in the data.\n- Status interpretation (values only; no internal keys):\n  - completed = completion date present (or status meaning indicates completion).\n  - overdue = due date in the past AND not completed.\n  - due soon = due date within the next 7 days AND not completed (if due dates exist).\n  - in progress / not started = from status meaning when available; if unclear, omit status detail rather than guessing.\n- Sorting:\n  - Follow explicit user sort requests (e.g., “soonest due first,” “alphabetical”).\n  - Otherwise default to: Overdue, then Due soon, then others; within each group, alphabetical by name/title as appropriate.\n  - If the question names specific entities (or resolvable via data_history or chat_history and present in current data), show them first, then others per sort rules.\n- Do not display internal schema keys (e.g., assignmentSubStatusMeaning). Use human-readable labels only (e.g., “Due Date”, “Completion Date”).\n- Omit attributes that are not available; do not include placeholders such as “not available in data.”\n\nDate formatting rules (strict)\n- Output dates in the user’s preferred format. If a format hint is available, match the format of {{$context.$system.$currentDate}} exactly.\n- Never output times or timestamps. Dates only (no time-of-day, no timezone, no ISO timestamps).\n- If a date value exists, format it per the rule above; if it does not exist, omit that date attribute.\n\nLink rendering rules (channel-safe; no Markdown)\n- If render_mode = html:\n  - Learner → items lines:\n    - If assignmentDetailsDeepLink exists:\n      <a href=\"<assignmentDetailsDeepLink>\"><Title></a>: (<Status>; <Format>; Assigned By <Assigned By> [or Self Enrolled]; [Enrolled Date: <Enrolled Date>] [Due Date: <Due Date>] [Completion Date: <Completion Date>])\n    - Else:\n      <Title>: (<Status>; <Format>; Assigned By <Assigned By> [or Self Enrolled]; …)\n  - Item → learners lines:\n    - If assignmentDetailsDeepLink exists:\n      <a href=\"<assignmentDetailsDeepLink>\"><Learner Name></a>: <Status>; [Due Date: <Due Date>] [Completion Date: <Completion Date>]\n    - Else:\n      <Learner Name>: <Status>; [Due Date: <Due Date>] [Completion Date: <Completion Date>]\n  - Guardrails:\n    - Never use Markdown links (e.g., [Title](URL)).\n    - Do not nest anchors or include “here” anchors.\n    - Place any colon immediately after the closing </a>.\n    - Escape HTML-reserved characters in Title, Learner Name, Assigner Name (e.g., &, <, >, \").\n- If render_mode = text:\n  - Render as plain text; no links. Use: Title (Status; Format; …) and Learner Name: Status; …\n\nOutput instructions\n- Start with a direct answer (1–2 sentences) tailored to the question.\n- Then present details using simple lists:\n  - If render_mode = html: one <ul> containing one <li> per record; ensure all tags are balanced.\n  - If render_mode = text: one bullet per line prefixed with “- ”.\n- Omit-if-missing segments:\n  - Include only present attributes; join segments inside parentheses with “; ”.\n  - If no segments remain for a parenthetical, omit the parentheses entirely.\n\nA) Individual learner format (Learner → items)\n- Header (render_mode = html): <p>Summary for {Learner Name}</p>\n- Header (render_mode = text): Summary for {Learner Name}\n- Optional totals if present and helpful:\n  - “Totals: Assigned X, Completed Y, Overdue Z, Due soon W. Completion rate P%.” (compute only if needed fields exist; otherwise omit)\n- For each learning item, choose the applicable template (apply the Link rendering rules above).\n\nB) Specific learning item format (Item → learners), optionally grouped by manager\n- For each manager (if grouping is supported and data present):\n  - Manager header (html): <p>{Manager Name}:</p>\n  - Manager header (text): {Manager Name}:\n  - For each learning item under the manager, list learners as one entry per record using the Link rendering rules above.\n\nField mappings (values only; omit-if-missing)\n- <Title>: learning item title (anchor text when link exists; otherwise plain text).\n- <Learner Name>: assignedToDisplayName (anchor text when link exists; otherwise plain text).\n- <Status>: human-readable status/substatus meaning (e.g., Overdue, In progress, Not Started, Completed).\n- <Format>: learningFormatMeaning (e.g., Online, Course, Event).\n- <Assigned By>: assignerDisplayName (or “Self Enrolled” when applicable).\n- <Enrolled Date>: assigned/enrolled date (date-only).\n- <Due Date>: due date (date-only).\n- <Completion Date>: completion date (date-only).\n- <Event Date>: session/event date (date-only; if Format == Event, place after “Assigned By …” or “Self Enrolled”).\n\nGeneral presentation rules\n- Do not show internal field names or “key=value” pairs.\n- If the same learner–item appears multiple times with different statuses, list each entry where it belongs without extra commentary.\n- If >20 records, list the first 20 and end. Do not add suggestions or offers.\n\nStrict closing rules\n- Do not include suggestions, next steps, offers, or questions unless explicitly requested by the user.\n- End after the requested content (direct answer and the required bullets/totals).\n\nEdge cases\n- No matching records: Output exactly “No relevant enrollments were found for this request.” and end.\n\nRobustness\n- Handle empty/malformed chat_history or data_history gracefully; do not invent entities or attributes.\n- Resolve pronouns/ordinals only if a clear referent exists in data_history (preferred) or, secondarily, chat_history, and is present in current learner_records.\n- If contexts conflict, follow the user_question and learner_records.\n\nFinal sanitation (must apply before returning)\n- Remove any Markdown link syntax remnants (e.g., [text](url)).\n- Ensure no nested anchors (<a> inside <a>).\n- Ensure all <ul>, <li>, <p>, and <a> tags are properly opened/closed (when render_mode = html).\n- Ensure there are no empty parentheses “()” or dangling punctuation.\n- Ensure no raw HTML tags appear inside anchor text; escape as plain text.\n\nExamples (illustrative only; follow rules above; do not emit these literally)\nExample 1 — Learner → items (render_mode = html)\nUser: Show all enrollments for Ravi Chouhan, include completed\nOutput:\n<p>Here are all of Ravi Chouhan’s enrollments (including completed).</p>\n<p>Summary for Ravi Chouhan</p>\n<p>Totals: Assigned 2, Completed 0, Overdue 1, Due soon 0. Completion rate 0%.</p>\n<ul>\n  <li><a href=\"https://example.com/learn?learnerRecordId=300100569197290\">DONOTUSE AUTOMATION COURSE INITIATIVE1</a>: (Overdue; Course; Assigned By Office of the CEO; Due Date: 2022-10-21)</li>\n  <li><a href=\"https://example.com/learn?learnerRecordId=300100546826094\">Course1 Test</a>: (In progress; Course; Self Enrolled; Enrolled Date: 2021-08-30)</li>\n</ul>\nExample 2 — Item → learners (render_mode = html)\nUser: Who is overdue on “Security Awareness 101”?\nOutput:\n<p>Overdue enrollments for Security Awareness 101.</p>\n<ul>\n  <li><a href=\"https://example.com/learn?learnerRecordId=300100111111111\">Ravi Chouhan</a>: Overdue; Due Date: 2024-11-15</li>\n  <li><a href=\"https://example.com/learn?learnerRecordId=300100222222222\">Priya Singh</a>: Overdue; Due Date: 2024-11-12</li>\n</ul>\nExample 3 — Plain text fallback (render_mode = text)\nUser: Soonest due first for my team\nOutput:\nHere are the soonest-due enrollments.\n- Security Awareness 101 (Overdue; Course; Due Date: 2024-11-15)\n- Data Privacy Essentials (Due soon; Course; Due Date: 2024-11-18)"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Add Data to History",
+            "returnType": "object",
+            "sourceCode": "const maxSize = 3;  // adjust as needed\n\nconst rawHist = $context.$variables.dataHistory;\nconst runData = ($context.$variables.runData ?? null);\nconst userIntent = $context.$nodes.DETERMINE_USER_INTENT.$output;\n\n// Normalize existing history to { runCount, records[] } using camelCase\nconst hist = (rawHist && typeof rawHist === \"object\" && Array.isArray(rawHist.records))\n  ? { runCount: Number(rawHist.runCount) || rawHist.records.length, records: rawHist.records.slice() }\n  : (Array.isArray(rawHist)\n      ? { runCount: rawHist.length, records: rawHist.slice() }\n      : { runCount: 0, records: [] });\n\n// Build new record (camelCase fields)\nconst record = {\n  timestamp: new Date().toISOString(),\n  userIntent,\n  runData\n};\n\n// Append and cap size by dropping oldest\nhist.records.push(record);\nwhile (hist.records.length > maxSize) hist.records.shift();\n\n// Increment total run counter (ever), independent of cap\nhist.runCount = (Number(hist.runCount) || 0) + 1;\n\n// Return updated history object\nreturn hist;"
+          },
+          "outcomes": {
+            "success": "1768259135293"
+          },
+          "code": "ADD_DATA_TO_HISTORY",
+          "id": "1768259058087",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Save Data History"
+          },
+          "outcomes": {
+            "success": "1763488539998"
+          },
+          "code": "SAVE_DATA_HISTORY",
+          "id": "1768259135293",
+          "inputs": [
+            {
+              "id": "1768259145046",
+              "name": "dataHistory",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.ADD_DATA_TO_HISTORY.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1768259020024",
+          "name": "dataHistory",
+          "scope": "CONVERSATION",
+          "type": "object"
+        },
+        {
+          "id": "1767804949553",
+          "name": "userQuery",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1767744166790",
+          "name": "runData",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1767741433026",
+          "name": "chatHistory",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1763145802427",
+          "name": "payloadForData",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1762984733966",
+          "name": "payloadForFacets",
+          "scope": "JOB",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1768259525115",
+            "name": "dataHistory",
+            "scope": "JOB",
+            "type": "object"
+          },
+          {
+            "id": "1767741534720",
+            "name": "chatHistory",
+            "type": "string"
+          },
+          {
+            "id": "1767740566549",
+            "name": "triggerHint",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "LEARNING",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": true,
+  "firstStarterQuestion": "Show me required learning for my team",
+  "secondStarterQuestion": "Show me learning for my team which is due this week",
+  "thirdStarterQuestion": "I want to see what learning Bob Smith has completed this year",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"2\""
+  }
+}

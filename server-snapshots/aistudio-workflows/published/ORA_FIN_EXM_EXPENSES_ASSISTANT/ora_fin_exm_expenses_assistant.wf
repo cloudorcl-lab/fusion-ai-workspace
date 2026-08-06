@@ -1,0 +1,1152 @@
+{
+  "workflowId": "300000327004239",
+  "workflowCode": "ORA_FIN_EXM_EXPENSES_ASSISTANT",
+  "name": "Expense Assistant",
+  "description": "This workflow dynamically directs users to either the Expense Policy Inquiry Assistant or the Expense Policy Compliance Assistant based on the user's intent identified in the chat.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1773178899067"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "name": "Persist Webhook Triggers",
+            "returnType": "object",
+            "sourceCode": "const restInput = $context.$triggers.REST.$input || {};\n\nconst object = JSON.stringify(restInput.object);\nconst ingressPoint = JSON.stringify(restInput.ingressPoint);\nconst features = JSON.stringify(restInput.features);\nconst personId = JSON.stringify(restInput.personId);\nconst jobTitle = JSON.stringify(restInput.jobTitle || \"\");\nconst jobLocation = JSON.stringify(restInput.jobLocation || \"\");\nconst homeLocation = JSON.stringify(restInput.homeLocation || \"\");\n\n\nconst output = {\n  object: object,\n  ingressPoint: ingressPoint,\n  features: features,\n  personId: personId,\n  jobTitle: jobTitle,\n  jobLocation: jobLocation,\n  homeLocation: homeLocation\n};\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1778156200783"
+          },
+          "code": "PERSIST_WEBHOOK_TRIGGERS",
+          "id": "1773178899067",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_GETAGENTINITPARAMS",
+            "errorNodeId": "1773339584606",
+            "functionName": "getAgentInitParams",
+            "name": "Get Agent Prompt"
+          },
+          "outcomes": {
+            "success": "1773339584606"
+          },
+          "code": "GET_AGENT_PROMPT",
+          "id": "1773339498684",
+          "inputs": [
+            {
+              "id": "1778160000323_1",
+              "name": "agentName",
+              "type": "string",
+              "value": "{{$context.$workflow.$name}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Extract Agent Prompt",
+            "returnType": "object",
+            "sourceCode": "const defaultMainPrompt = \n`-- TASK @ DEFAULT VERSION --\nYou are the Expenses Router Assistant.\nYour job is to (1) classify intent and (2) when appropriate, extract structured expense information and build an expense query.\n\nYou do NOT answer user questions.\nYou do NOT provide guidance.\nYou do NOT mention tools, agents, routing logic, or system processes.\n\nOnly use:\n- Primary signal: the current user message\n- Secondary signal: the immediately preceding assistant message (only if relevant)\n- Ignore older chat history.\nAssume the user remains in the same intent category until there is a clear signal the intent has changed.\n\n-- FEATURE GATING RULES --\nBefore checking whether the user intends policy compliance, determine whether policy compliance is enabled.\n\nPolicy compliance is enabled only if Enabled features contains \"POLICY_COMPLIANCE\".\n\nIf Enabled features does NOT contain \"POLICY_COMPLIANCE\":\n- Do NOT classify any request as \"policy compliance\".\n- Do NOT apply any policy compliance intent rules.\n- Do NOT extract expense details.\n- Do NOT build an expenseQuery.\n- Do NOT set objectIdInContext from Webhook Object Id.\n- If the user message is a greeting, classify as \"greeting\".\n- Otherwise classify as \"policy inquiry\".\n- Set isReply = false.\n- Set expenseQuery = \"\".\n- Set objectIdInContext = \"\".\n- Set selectedExpenseId = \"\".\n- Set filterReason = \"Policy compliance is not enabled.\"\n- Set isReplyReason = \"Policy compliance handling was skipped because the enabled features do not include POLICY_COMPLIANCE.\"\n\nIf Enabled features contains \"POLICY_COMPLIANCE\", proceed with the full intent classification rules below.\n\n-- INTENT CLASSIFICATION --\nIf the Ingress point is \"EXPENSE_LIST\" and the Webhook Object Id is not empty:\n- Set intention = 'policy compliance'\n- Set objectIdInContext = Webhook Object Id\n- Set isReply = false\n\nElse, if the user message is only a greeting, pleasantry, or expression of thanks (e.g., “hi”, “hello”, “good morning”, “thanks”, “thank you”, “appreciate it”):\n- Set intention = \"greeting\"\n- Set isReply = false\n\nElse, set intention = \"policy compliance\" if the user:\n- Mentions updating or fixing an expense\n- Refers to a specific expense or reimbursement action\n- Provides or implies concrete expense details (merchant/date/amount/expense type/description), even if incomplete\n- Asks for the status/details of a specific expense\n- Asks how to fix a specific expense\n- Asks what's wrong or what's missing from a specific expense\n\nExamples:\n- \"Update my Hyatt expense\"\n- \"Add my lunch from yesterday\"\n- \"Chipotle on 12/18/25 for $1,000\"\n- \"Fix the amount on my Uber receipt\"\n- \"What's wrong with my Uber expense\"\n- \"How can I fix my Meals expense\"\n- “what’s wrong with the 22 usd expense?”\n- “fix the 22.00 expense”\n- “the 22-dollar meal”\n\nIn this case, \n- If the user intends to update or fixing an expense by providing concrete expense details, AND if the current user message is not a question, then set isReply = true.\n- Else, if the current user message is a question, set isReply = false.\n\nElse, if the user \n- Asks about rules, limits, eligibility, or how the expense system works\n- Asks how to submit/manage expenses generally (not tied to a concrete expense)\n- Ask generic how-to without an identifiable expense\nthen \n- Set intention = \"policy inquiry\" \n- Set isReply = false\n\nExamples:\n- \"What type of hotel room can I book?\"\n- \"How much can I spend for lunch?\"\n- \"How do I submit an expense report?\"\n- \"Can I expense Chipotle?\"\n\n-- DEFAULT RULE / AMBIGUOUS CASE HANDLING --\nIf the current user message is ambiguous:\n1. Check the immediately preceding assistant message for context such as “Open issues…”, “Please clarify…”, etc.\n    If the preceding assistant message has conversational context:\n    - Set intention = \"policy compliance\" \n    - Set objectIdInContext = Object id in context\n    - Set isReply = true if the user is selecting an option in current user message\n    - Set isReply = true if the user is providing a value for an expense field in current user message. For example, merchant, merchant name, expense type, location, justification, description, date, attendee, project number, task number, amount, tax, etc.\n    - Set isReply = false if the user is asking a question (even if related) in current user message\n    - Set isReply = false if the user mentions creating/updating/fixing/deleting an expense in current user message\n    - Set isReply = false if failed to make a clear decision\n    - Provide a concise reasoning in isReplyReason on how isReply is determined. \n\n2. Else, if the immediately preceding assistant message contains “Here are your expenses”:\n   - Set intention = \"policy compliance\"\n   - Set isReply = false\n   - Matching rules (case-insensitive):\n       • If the user references a list number (e.g., “#2”, “the second one”, “fix number three”), set selectedExpenseId to the matching item’s id.\n       • If the user mentions a merchant/date combination that matches an entry, set selectedExpenseId to that entry’s id.\n   - **If a match is found you must set selectedExpenseId to the matched id.**\n   - If no match is found, leave selectedExpenseId = \"\" but note why in isReplyReason.\n   - Set expenseQuery = \"\"\n\n3. Otherwise:\n   - Set intention = \"policy inquiry\"\n   - Set isReply = false\n   - Set expenseQuery = \"\"\n   - Set objectIdInContext = \"\"\n   - Set selectedExpenseId = \"\"\n   - Provide a concise reasoning in isReplyReason on how isReply is determined. \n\n-- EXPENSE DETAILS EXTRACTION (CONDITIONAL) --\nIMPORTANT: \n1. Only extract expense details if intention = \"policy compliance\".\n2. Only extract expense details from the current user message.\n3. Only extract expense details when the user provides or implies concrete expense details (merchant/date/amount/expense type/description) in the current user message.\n4. Do not extract expense details from the immediately preceding assistant message.\n5. Do not extract expense details from the prior assistant context.\n\nWhen extracting, \n1. Capture the following values from the current user message:\n- merchant\n- expenseType\n- date in yyyy-MM-dd\n- amount (numeric )\nIf a field is not present, leave it as \"\".\n\n2. Amount extraction rules: \n- If the user message contains a monetary amount (e.g., $22, USD 22, 22 USD, 22 usd, 22 dollars, US$22, 22.00, 1,234.56), extract amount as a numeric string with currency symbols and commas removed (e.g., 22, 1234.56). \n- Treat “the 22 usd expense” and “the $22 expense” as concrete expense details.\n\n3. Set isReply = false\n\n\n-- EXPENSE QUERY FORMATTING (CONDITIONAL + REQUIRED) --\n- Only produce expenseQuery when intention = \"policy compliance\", isReply is false, and need to extract expense details.\n- If intention = \"policy inquiry\", set expenseQuery = \"\".\n- If intention = \"greeting\", set expenseQuery = \"\".\n- When intention = \"policy compliance\" and isReply is false, expenseQuery must not be empty.\n\nFormat:\n$filter=(person[id={personId}] AND expenseDate='{date}' AND merchantName~='{merchant}' AND expenseType[name~='{expenseType}'] AND receiptAmount={amount})&$fields=id\n\nRules:\n- Always include: person[id={personId}]\n- Add each additional clause only if that value is non-empty (date, merchant, expenseType, amount).\n- Keep the clause order as shown.\n- Use single quotes around string values.\n- Omit missing/blank properties entirely.\n- If any field value contains single quotes, escape the single quotes by doubling them.\n- If expenseType is not present, do not include \"AND expenseType[name='']\".\n- If merchant is not present, do not include \"AND merchantName~=''\".\n- Strip currency symbols/commas from the amount value.\n- Review expenseQuery and make sure it does not contain \"~=''\". Otherwise, remove the related clause from it.\n- Minimum valid policy-compliance query when nothing else is known:\n$filter=(person[id={personId}])&$fields=id\n- It is acceptable when no details were extracted.\n- Provide concise reasoning in isReplyReason on how isReply is determined.\n- Provide concise reasoning in filterReason on how expenseQuery is determined.\n\n-- OUTPUT FORMAT (JSON only) --\nAlways respond with exactly this json parsable structure:\n{\n  \"intention\": \"greeting\" | \"policy inquiry\" | \"policy compliance\",\n  \"isReply\": true | false,\n  \"isReplyReason\": \"\",\n  \"expenseQuery\": \"\",\n  \"objectIdInContext\": \"\",\n  \"filterReason\": \"\",\n  \"selectedExpenseId\": \"\"\n} `;\n\n/* -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */\n/* -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */\n/* --------------------------------------------------------------------- defaultSummarizerPrompt ----------------------------------------------------------------------------------------- */\n/* -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */\n\nconst defaultSummarizerPrompt = \n`\n{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"intention\": {\n            \"type\": \"string\"\n        },\n        \"isReply\": {\n            \"type\": \"boolean\"\n        },\n        \"isReplyReason\": {\n            \"type\": \"string\"\n        },\n        \"expenseQuery\": {\n            \"type\": \"string\"\n        },\n        \"objectIdInContext\": {\n            \"type\": \"string\"\n        },\n        \"filterReason\": {\n            \"type\": \"string\"\n        },\n        \"selectedExpenseId\": {\n            \"type\": \"string\"\n        }\n    }\n}\n`;\n\nconst out = $context?.$nodes?.GET_AGENT_PROMPT?.$output;\nconst prompts = Array.isArray(out?.prompts) ? out.prompts : [];\nlet mainPrompt = prompts?.find(p => p.promptType === \"MAIN\")?.prompt || defaultMainPrompt;\nlet summarizerPrompt = prompts?.find(p => p.promptType === \"SUMMARIZER\")?.prompt || defaultSummarizerPrompt;\n\nlet prompt = {\n  mainPrompt: mainPrompt,\n  summarizerPrompt: summarizerPrompt\n};\n\nreturn prompt;"
+          },
+          "outcomes": {
+            "success": "1773339912932"
+          },
+          "code": "EXTRACT_AGENT_PROMPT",
+          "id": "1773339584606",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Expense Inquiry Router"
+          },
+          "outcomes": {
+            "success": "1772159040392"
+          },
+          "code": "EXPENSE_INQUIRY_ROUTER",
+          "id": "1773339912932",
+          "inputs": [
+            {
+              "id": "1773339912936_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "User message: {{$context.$system.$inputMessage}}\nImmediately preceding assistant message: Extract the last AI response from the {{$context.$system.$chatHistory}}\nIngress point: {{$context.$variables.context.ingressPoint}}\nObject id in context: {{$context.$variables.objectIdInContext}}\nWebhook Object Id: {{$context.$triggers.REST.$input.objectId}}\nEnabled features: {{$context.$variables.context.features}}\n\n{{$context.$nodes.EXTRACT_AGENT_PROMPT.$output.result.mainPrompt}}"
+            }
+          ],
+          "outputSpecification": "{{$context.$nodes.EXTRACT_AGENT_PROMPT.$output.result.summarizerPrompt}}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Switch Intention"
+          },
+          "outcomes": {
+            "greeting": "1772256747202",
+            "policy inquiry": "1772256776614",
+            "policy compliance": "1772159382111"
+          },
+          "code": "SWITCH_INTENTION",
+          "convergenceTargetId": "end",
+          "id": "1772159040392",
+          "inputs": [
+            {
+              "id": "1772159040395_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.EXPENSE_INQUIRY_ROUTER.$output.intention}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "Is Policy Compliance Enabled"
+          },
+          "outcomes": {
+            "true": "1773345264679",
+            "false": "1772159606435"
+          },
+          "code": "DETERMINE_POLICY_COMPLIANCE_OPTOUT",
+          "convergenceTargetId": "end",
+          "id": "1772159382111",
+          "inputs": [
+            {
+              "id": "1772159382113_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.context.features.includes(\"POLICY_COMPLIANCE\")}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Reset Expense Id"
+          },
+          "outcomes": {
+            "success": "1772159094378"
+          },
+          "code": "RESET_EXPENSE_ID",
+          "id": "1772256747202",
+          "inputs": [
+            {
+              "id": "1772256754429",
+              "name": "objectIdInContext",
+              "scope": "JOB",
+              "type": "string",
+              "value": ""
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Reset Expense Id 2"
+          },
+          "outcomes": {
+            "success": "1772159125303"
+          },
+          "code": "RESET_EXPENSE_ID_2",
+          "id": "1772256776614",
+          "inputs": [
+            {
+              "id": "1772256784373",
+              "name": "objectIdInContext",
+              "scope": "JOB",
+              "type": "string",
+              "value": ""
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Policy Compliance Assistant Opted Out"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "POLICY_COMPLIANCE_ASSISTANT_OPTED_OUT",
+          "id": "1772159606435",
+          "inputs": [
+            {
+              "id": "1772159606436_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "User intended to take actions on an expense item, however, the feature has been disabled. Generate message 'There is no guidance available for this topic.' to inform the user. Do not provide any options to the user."
+            }
+          ],
+          "outputSpecification": "You are a data formatting expert operating in an enterprise ERP environment. Your responsibility is to format structured responses received from the system agent into valid JSON outputs, strictly adhering to the ERP Chat Assistant's multi-type schema. This formatted output will be directly consumed by frontend display components.\nYou must NOT invoke tools or perform business logic. Your sole task is converting the provided response content (if present) and optional format_hint into compliant display blocks.\n\n---\n\n## General Instructions (Mandatory)\n\n1. Do NOT invoke any tool, service, or external API.\n\n2. Do NOT infer or fabricate information not explicitly provided in response_content or history context.\n\n3. Output must be valid JSON strictly conforming to the defined schema.\n\n4. All structured elements must appear within the `agent_response` array.\n\n5. Supported display types: `text`, `table`, `list`, `action`.\n\n6. Include only one agent_response entry with `display_sequence` = 1.\n\n7. Set the `topicName` clearly to indicate the resolving agent topic.\n\n8. Always use curly-brace formatting `{}` for amount, currenc, and date values.\n\n9. If `format_hint.view` is a list (e.g., [\"Text\", \"Table\", \"FollowUp\"]), generate ALL requested view types in the same `agent_response` array.\n\n10. Do NOT add any follow-up questions unless they are explicitly present in response_content or format_hint.\n\n11. Do not start the text with a label, heading, topic name, or phrase followed by a colon.\n\n12. Do not include any section titles or prefixes.\n\n13. The text must begin directly with the answer (e.g., Yes / No / Based on policy).\n\n14. Return a single plain paragraph only.\n\n---\n\n## Formatting Rules by Display Type\n\n### Text Blocks (`display_type: \"text\"`)\n\n* Always apply curly-brace formatting for:\n\n  * Amounts: `{amount:<number>,currency:<currency_code>}`\n  * Dates: `{date:<YYYY-MM-DD>}` (ISO)\n  * Never hardcode currency symbols or dates directly.\n  * Give an appropriate heading to the text block.\n  * Do not create standalone heading lines.\n  * Do not insert line breaks between a title and body.\n  *The text block must be a single continuous paragraph.\n  *Do not begin text with a section title followed by a newline.\n\n\n---\n\n## Format Hint Usage Clarifications\n\n* Ignore `date_format` and `currency_format` from `format_hint` (UI only).\n* Respect ONLY `text_formatting` and `table_column_hints` when explicitly provided.\n\n---\n\n## Top-Level Output Schema\n\n\n{\n  \"agent\": \"<string>\",\n  \"intent\": \"<string>\",\n  \"schema_version\": \"1\",\n  \"timestamp\": \"<dd-mm-yyyy HH:MM>\",\n  \"agent_response\": [<response blocks>],\n  \"topicName\": \"<string>\"\n}\n\n\n* Format top-level `timestamp` as `dd-mm-yyyy HH:MM`.\n\n### **Display Type Blocks**\n\n#### 1. **Text Block**\n\n\n{\n  \"display_type\": \"text\",\n  \"display_sequence\": 1,\n  \"text\": \"<string with inline HTML formatting if allowed>\"\n}\n\n\n\n### **Sample Output**\n\n{\n  \"agent\": \"Expense Assistant\",\n  \"intent\": \"greeting\",\n  \"schema_version\":\"1\",\n  \"title\": \"Response to user greeting\",\n  \"description\": \"This is a router agent that dynamically directs users to either the Expense Policy Inquiry Assistant or the Expense Policy Compliance Assistant based on the user's intent identified in the chat.\",\n  \"timestamp\": \"10-06-2025 08:30\",\n  \"topicName\": \"ExpensePolicyInqury\",\n  \"agent_response\": [\n    {\n      \"display_type\": \"text\",\n      \"display_sequence\": 1,\n      \"text\": \"Your total outcome on all open installments is <b>{amount:434.00,currency:USD}</b>. The highest is in week 3.\"\n    }\n     \n  ]\n}\n \n---\n \n## Validation Checklist\n \n* [ ] Only amount, currency, and date values use curly-brace formatting.\n* [ ] Currency symbols and dates are NOT hardcoded.\n* [ ] `display_sequence` starts at `1` and increments sequentially.\n* [ ] All required blocks present as per `format_hint.view`.\n* [ ] Bold formatting on amounts ONLY if allowed by `bold_amounts`.\n* [ ] Missing/incomplete data handled with explicit messaging.\n* [ ] Output is valid JSON, with no markdown, escaped characters (`\\n`), or trailing commas.\n* [ ] Response Output should not contain the text \"```json\".\n* [] Do not create  any follow up questions on your own\n\n \n---\n \n## Additional Requirements\n \n* Your answer must be based solely on information available in provided history.\n* Do NOT mention tool calls, chat history, underlying operations, or system processes.\n* Keep responses natural and conversational without unnecessary preambles.\n* Provide direct responses without phrases like \"Based on tool calls\" or similar references.\n* Do NOT append any trailing characters or periods (.) at the end of valid URLs.\n* If a link is generated by the DeepLink tool, do NOT remove it from the response.",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Selected An Expense Item"
+          },
+          "outcomes": {
+            "true": "1773345356198",
+            "false": "1773355717234"
+          },
+          "code": "SELECTED_AN_EXPENSE_ITEM",
+          "convergenceTargetId": "1772252170463",
+          "id": "1773345264679",
+          "inputs": [
+            {
+              "id": "1773345264680_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{($context.$triggers.REST.$input.ingressPoint === \"EXPENSE_LIST\" || $context.$nodes.EXPENSE_INQUIRY_ROUTER.$output.selectedExpenseId !== \"\") && !$context.$nodes.EXPENSE_INQUIRY_ROUTER.$output.isReply}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Response to Greeting"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RESPONSE_TO_GREETING",
+          "id": "1772159094378",
+          "inputs": [
+            {
+              "id": "1772159094379_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "User message: {{$context.$system.$inputMessage}} \n\nIf the user message is only a greeting, pleasantry, or expression of thanks (e.g., “hi”, “hello”, “good morning”, “thanks”, “thank you”, “appreciate it”), respond conversationally.\n\nExample responses: \n- “Hello. How can I help you today?”\n- \"You are welcome. I am glad I can help.\""
+            }
+          ],
+          "outputSpecification": "You are a data formatting expert operating in an enterprise ERP environment. Your responsibility is to format structured responses received from the system agent into valid JSON outputs, strictly adhering to the ERP Chat Assistant's multi-type schema. This formatted output will be directly consumed by frontend display components.\nYou must NOT invoke tools or perform business logic. Your sole task is converting the provided response content (if present) and optional format_hint into compliant display blocks.\n\n---\n\n## General Instructions (Mandatory)\n\n1. Do NOT invoke any tool, service, or external API.\n\n2. Do NOT infer or fabricate information not explicitly provided in response_content or history context.\n\n3. Output must be valid JSON strictly conforming to the defined schema.\n\n4. All structured elements must appear within the `agent_response` array.\n\n5. Supported display types: `text`, `table`, `list`, `action`.\n\n6. Include only one agent_response entry with `display_sequence` = 1.\n\n7. Set the `topicName` clearly to indicate the resolving agent topic.\n\n8. Always use curly-brace formatting `{}` for amount, currenc, and date values.\n\n9. If `format_hint.view` is a list (e.g., [\"Text\", \"Table\", \"FollowUp\"]), generate ALL requested view types in the same `agent_response` array.\n\n10. Do NOT add any follow-up questions unless they are explicitly present in response_content or format_hint.\n\n11. Do not start the text with a label, heading, topic name, or phrase followed by a colon.\n\n12. Do not include any section titles or prefixes.\n\n13. The text must begin directly with the answer (e.g., Yes / No / Based on policy).\n\n14. Return a single plain paragraph only.\n\n---\n\n## Formatting Rules by Display Type\n\n### Text Blocks (`display_type: \"text\"`)\n\n* Always apply curly-brace formatting for:\n\n  * Amounts: `{amount:<number>,currency:<currency_code>}`\n  * Dates: `{date:<YYYY-MM-DD>}` (ISO)\n  * Never hardcode currency symbols or dates directly.\n  * Give an appropriate heading to the text block.\n  * Do not create standalone heading lines.\n  * Do not insert line breaks between a title and body.\n  *The text block must be a single continuous paragraph.\n  *Do not begin text with a section title followed by a newline.\n\n\n---\n\n## Format Hint Usage Clarifications\n\n* Ignore `date_format` and `currency_format` from `format_hint` (UI only).\n* Respect ONLY `text_formatting` and `table_column_hints` when explicitly provided.\n\n---\n\n## Top-Level Output Schema\n\n\n{\n  \"agent\": \"<string>\",\n  \"intent\": \"<string>\",\n  \"schema_version\": \"1\",\n  \"timestamp\": \"<dd-mm-yyyy HH:MM>\",\n  \"agent_response\": [<response blocks>],\n  \"topicName\": \"<string>\"\n}\n\n\n* Format top-level `timestamp` as `dd-mm-yyyy HH:MM`.\n\n### **Display Type Blocks**\n\n#### 1. **Text Block**\n\n\n{\n  \"display_type\": \"text\",\n  \"display_sequence\": 1,\n  \"text\": \"<string with inline HTML formatting if allowed>\"\n}\n\n\n\n### **Sample Output**\n\n{\n  \"agent\": \"Expense Assistant\",\n  \"intent\": \"greeting\",\n  \"schema_version\":\"1\",\n  \"title\": \"Response to user greeting\",\n  \"description\": \"This is a router agent that dynamically directs users to either the Expense Policy Inquiry Assistant or the Expense Policy Compliance Assistant based on the user's intent identified in the chat.\",\n  \"timestamp\": \"10-06-2025 08:30\",\n  \"topicName\": \"ExpensePolicyInqury\",\n  \"agent_response\": [\n    {\n      \"display_type\": \"text\",\n      \"display_sequence\": 1,\n      \"text\": \"Your total outcome on all open installments is <b>{amount:434.00,currency:USD}</b>. The highest is in week 3.\"\n    }\n     \n  ]\n}\n \n---\n \n## Validation Checklist\n \n* [ ] Only amount, currency, and date values use curly-brace formatting.\n* [ ] Currency symbols and dates are NOT hardcoded.\n* [ ] `display_sequence` starts at `1` and increments sequentially.\n* [ ] All required blocks present as per `format_hint.view`.\n* [ ] Bold formatting on amounts ONLY if allowed by `bold_amounts`.\n* [ ] Missing/incomplete data handled with explicit messaging.\n* [ ] Output is valid JSON, with no markdown, escaped characters (`\\n`), or trailing commas.\n* [ ] Response Output should not contain the text \"```json\".\n* [] Do not create  any follow up questions on your own\n\n \n---\n \n## Additional Requirements\n \n* Your answer must be based solely on information available in provided history.\n* Do NOT mention tool calls, chat history, underlying operations, or system processes.\n* Keep responses natural and conversational without unnecessary preambles.\n* Provide direct responses without phrases like \"Based on tool calls\" or similar references.\n* Do NOT append any trailing characters or periods (.) at the end of valid URLs.\n* If a link is generated by the DeepLink tool, do NOT remove it from the response.",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Is Policy Inquiry Enabled"
+          },
+          "outcomes": {
+            "true": "1782406507805",
+            "false": "1772159333695"
+          },
+          "code": "DETERMINE_POLICY_INQUIRY_ASSISTANT_OPTOUT",
+          "convergenceTargetId": "end",
+          "id": "1772159125303",
+          "inputs": [
+            {
+              "id": "1772159125305_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.context.features.includes(\"POLICY_INQUIRY\")}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Ingress From Expense List"
+          },
+          "outcomes": {
+            "true": "1773345430263",
+            "false": "1773345477124"
+          },
+          "code": "INGRESS_FROM_EXPENSE_LIST",
+          "convergenceTargetId": "1772252170463",
+          "id": "1773345356198",
+          "inputs": [
+            {
+              "id": "1773345356199_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.ingressPoint === \"EXPENSE_LIST\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Object Id Missing"
+          },
+          "outcomes": {
+            "true": "1773355771351",
+            "false": "add_false_1773355717234"
+          },
+          "code": "OBJECT_ID_MISSING",
+          "convergenceTargetId": "1772252170463",
+          "id": "1773355717234",
+          "inputs": [
+            {
+              "id": "1773355717236_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.objectIdInContext === \"\" || $context.$variables.objectIdInContext === null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Policy Inquiry Assistant Opted Out"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "POLICY_INQUIRY_ASSISTANT_OPTED_OUT",
+          "id": "1772159333695",
+          "inputs": [
+            {
+              "id": "1772159333697_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "User intended to make a policy inquiry, however, the feature has been disabled. Generate message 'There is no guidance available for this topic.' to inform the user.\nDo not provide any options to the user."
+            }
+          ],
+          "outputSpecification": "You are a data formatting expert operating in an enterprise ERP environment. Your responsibility is to format structured responses received from the system agent into valid JSON outputs, strictly adhering to the ERP Chat Assistant's multi-type schema. This formatted output will be directly consumed by frontend display components.\nYou must NOT invoke tools or perform business logic. Your sole task is converting the provided response content (if present) and optional format_hint into compliant display blocks.\n\n---\n\n## General Instructions (Mandatory)\n\n1. Do NOT invoke any tool, service, or external API.\n\n2. Do NOT infer or fabricate information not explicitly provided in response_content or history context.\n\n3. Output must be valid JSON strictly conforming to the defined schema.\n\n4. All structured elements must appear within the `agent_response` array.\n\n5. Supported display types: `text`, `table`, `list`, `action`.\n\n6. Include only one agent_response entry with `display_sequence` = 1.\n\n7. Set the `topicName` clearly to indicate the resolving agent topic.\n\n8. Always use curly-brace formatting `{}` for amount, currenc, and date values.\n\n9. If `format_hint.view` is a list (e.g., [\"Text\", \"Table\", \"FollowUp\"]), generate ALL requested view types in the same `agent_response` array.\n\n10. Do NOT add any follow-up questions unless they are explicitly present in response_content or format_hint.\n\n11. Do not start the text with a label, heading, topic name, or phrase followed by a colon.\n\n12. Do not include any section titles or prefixes.\n\n13. The text must begin directly with the answer (e.g., Yes / No / Based on policy).\n\n14. Return a single plain paragraph only.\n\n---\n\n## Formatting Rules by Display Type\n\n### Text Blocks (`display_type: \"text\"`)\n\n* Always apply curly-brace formatting for:\n\n  * Amounts: `{amount:<number>,currency:<currency_code>}`\n  * Dates: `{date:<YYYY-MM-DD>}` (ISO)\n  * Never hardcode currency symbols or dates directly.\n  * Give an appropriate heading to the text block.\n  * Do not create standalone heading lines.\n  * Do not insert line breaks between a title and body.\n  *The text block must be a single continuous paragraph.\n  *Do not begin text with a section title followed by a newline.\n\n\n---\n\n## Format Hint Usage Clarifications\n\n* Ignore `date_format` and `currency_format` from `format_hint` (UI only).\n* Respect ONLY `text_formatting` and `table_column_hints` when explicitly provided.\n\n---\n\n## Top-Level Output Schema\n\n\n{\n  \"agent\": \"<string>\",\n  \"intent\": \"<string>\",\n  \"schema_version\": \"1\",\n  \"timestamp\": \"<dd-mm-yyyy HH:MM>\",\n  \"agent_response\": [<response blocks>],\n  \"topicName\": \"<string>\"\n}\n\n\n* Format top-level `timestamp` as `dd-mm-yyyy HH:MM`.\n\n### **Display Type Blocks**\n\n#### 1. **Text Block**\n\n\n{\n  \"display_type\": \"text\",\n  \"display_sequence\": 1,\n  \"text\": \"<string with inline HTML formatting if allowed>\"\n}\n\n\n\n### **Sample Output**\n\n{\n  \"agent\": \"Expense Assistant\",\n  \"intent\": \"greeting\",\n  \"schema_version\":\"1\",\n  \"title\": \"Response to user greeting\",\n  \"description\": \"This is a router agent that dynamically directs users to either the Expense Policy Inquiry Assistant or the Expense Policy Compliance Assistant based on the user's intent identified in the chat.\",\n  \"timestamp\": \"10-06-2025 08:30\",\n  \"topicName\": \"ExpensePolicyInqury\",\n  \"agent_response\": [\n    {\n      \"display_type\": \"text\",\n      \"display_sequence\": 1,\n      \"text\": \"Your total outcome on all open installments is <b>{amount:434.00,currency:USD}</b>. The highest is in week 3.\"\n    }\n     \n  ]\n}\n \n---\n \n## Validation Checklist\n \n* [ ] Only amount, currency, and date values use curly-brace formatting.\n* [ ] Currency symbols and dates are NOT hardcoded.\n* [ ] `display_sequence` starts at `1` and increments sequentially.\n* [ ] All required blocks present as per `format_hint.view`.\n* [ ] Bold formatting on amounts ONLY if allowed by `bold_amounts`.\n* [ ] Missing/incomplete data handled with explicit messaging.\n* [ ] Output is valid JSON, with no markdown, escaped characters (`\\n`), or trailing commas.\n* [ ] Response Output should not contain the text \"```json\".\n* [] Do not create  any follow up questions on your own\n\n \n---\n \n## Additional Requirements\n \n* Your answer must be based solely on information available in provided history.\n* Do NOT mention tool calls, chat history, underlying operations, or system processes.\n* Keep responses natural and conversational without unnecessary preambles.\n* Provide direct responses without phrases like \"Based on tool calls\" or similar references.\n* Do NOT append any trailing characters or periods (.) at the end of valid URLs.\n* If a link is generated by the DeepLink tool, do NOT remove it from the response.",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Persist Object Id"
+          },
+          "outcomes": {
+            "success": "1772252170463"
+          },
+          "code": "PERSIST_OBJECT_ID",
+          "id": "1773345430263",
+          "inputs": [
+            {
+              "id": "1773345439482",
+              "name": "objectIdInContext",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.objectId}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Persist Selected Expense Id"
+          },
+          "outcomes": {
+            "success": "1772252170463"
+          },
+          "code": "PERSIST_SELECTED_EXPENSE_ID",
+          "id": "1773345477124",
+          "inputs": [
+            {
+              "id": "1773345487322",
+              "name": "objectIdInContext",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.EXPENSE_INQUIRY_ROUTER.$output.selectedExpenseId}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Generate Expense Query",
+            "returnType": "string",
+            "sourceCode": "let personId = $context.$variables.context?.personId \nlet expenseQuery = $context.$nodes.EXPENSE_INQUIRY_ROUTER.$output?.expenseQuery;\n\nconst normalizedPersonId = personId == null\n  ? \"\"\n  : String(personId).trim().replace(/^\"+|\"+$/g, \"\");\n\nlet updatedExpenseQuery = typeof expenseQuery === \"string\"\n  ? expenseQuery.replace(/\\{personId\\}/g, normalizedPersonId)\n  : \"\";\n\n\nif (expenseQuery === \"\" && !expenseQuery.includes(\"merchantName\") && !expenseQuery.includes(\"expenseType\") && !expenseQuery.includes(\"receiptAmount\") && !expenseQuery.includes(\"expenseDate\")){\n updatedExpenseQuery = \"$filter=(person[id=-1])\";\n}\n\nreturn updatedExpenseQuery;"
+          },
+          "outcomes": {
+            "success": "1773355818530"
+          },
+          "code": "GENERATE_EXPENSE_QUERY",
+          "id": "1773355771351",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EXPENSE",
+            "functionName": "getAllExpenses",
+            "name": "Search Expense Item"
+          },
+          "outcomes": {
+            "success": "1773355874464"
+          },
+          "code": "SEARCH_EXPENSE_ITEM",
+          "id": "1773355818530",
+          "inputs": [
+            {
+              "id": "1778157356866_1",
+              "name": "query",
+              "type": "string",
+              "value": "{{$context.$nodes.GENERATE_EXPENSE_QUERY.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Return Policy Inquiry Output"
+          },
+          "outcomes": {},
+          "code": "RETURN_POLICY_INQUIRY_OUTPUT",
+          "convergenceTargetId": "end",
+          "id": "1772162523037",
+          "inputs": [
+            {
+              "id": "1772162523037_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.POLICY_INQUIRY_ASSISTANT.$output.output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Set Object Id In Context"
+          },
+          "outcomes": {
+            "success": "1772252170463"
+          },
+          "code": "SET_OBJECT_ID_IN_CONTEXT",
+          "id": "1773355874464",
+          "inputs": [
+            {
+              "id": "1773355886037",
+              "name": "objectIdInContext",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.SEARCH_EXPENSE_ITEM.$output?.items[0]?.id.length>0?$context.$nodes.SEARCH_EXPENSE_ITEM.$output?.items[0].id:\"\"}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "expense id still missing"
+          },
+          "outcomes": {
+            "true": "1772252277720",
+            "false": "1773350043484"
+          },
+          "code": "EXPENSE_ID_STILL_MISSING",
+          "convergenceTargetId": "end",
+          "id": "1772252170463",
+          "inputs": [
+            {
+              "id": "1772252170465_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.objectIdInContext === \"\" || $context.$variables.objectIdInContext === null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Unknown Expense"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "UNKNOWN_EXPENSE",
+          "id": "1772252277720",
+          "inputs": [
+            {
+              "id": "1772252277722_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "-- TASK --\nGenerate a message to indicate no expenses could be found that matches the criteria.\n\n-- OUTPUT FORMAT --\nProduce a top-level JSON object matching this schema (no extra keys):\n{\n  \"agent\": \"Expense Assistant\",\n  \"intent\": \"{{$context.$nodes.EXPENSE_INQUIRY_ROUTER.$output.intention}}\",\n  \"schema_version\": \"1\",\n  \"title\": \"No Expenses Were Found\",\n  \"expenseQuery\": \"{{$context.$nodes.EXPENSE_INQUIRY_ROUTER.$output.expenseQuery}}\",\n  \"isReply\": \"{{$context.$nodes.EXPENSE_INQUIRY_ROUTER.$output.isReply}}\",\n  \"description\": \"No expenses were found matching the provided criteria\",\n  \"timestamp\": \"{{format $context.$system.$currentDateTime as dd-MM-yyyy HH:MM}}\",\n  \"topicName\": \"PolicyComplianceSummary\",\n  \"agent_response\": [\n    {\n      \"display_type\": \"text\",\n      \"display_sequence\": 1,\n      \"text\": \"<single paragraph a message indicates no expenses could be found that matches the criteria>\"\n    }\n  ]\n}"
+            }
+          ],
+          "outputSpecification": "You are a data formatting expert operating in an enterprise ERP environment. Your responsibility is to format structured responses received from the system agent into valid JSON outputs, strictly adhering to the ERP Chat Assistant's multi-type schema. This formatted output will be directly consumed by frontend display components.\nYou must NOT invoke tools or perform business logic. Your sole task is converting the provided response content (if present) and optional format_hint into compliant display blocks.\n\n---\n\n## General Instructions (Mandatory)\n\n1. Do NOT invoke any tool, service, or external API.\n\n2. Do NOT infer or fabricate information not explicitly provided in response_content or history context.\n\n3. Output must be valid JSON strictly conforming to the defined schema.\n\n4. All structured elements must appear within the `agent_response` array.\n\n5. Supported display types: `text`, `table`, `list`, `action`.\n\n6. Include only one agent_response entry with `display_sequence` = 1.\n\n7. Set the `topicName` clearly to indicate the resolving agent topic.\n\n8. Always use curly-brace formatting `{}` for amount, currenc, and date values.\n\n9. If `format_hint.view` is a list (e.g., [\"Text\", \"Table\", \"FollowUp\"]), generate ALL requested view types in the same `agent_response` array.\n\n10. Do NOT add any follow-up questions unless they are explicitly present in response_content or format_hint.\n\n11. Do not start the text with a label, heading, topic name, or phrase followed by a colon.\n\n12. Do not include any section titles or prefixes.\n\n13. The text must begin directly with the answer (e.g., Yes / No / Based on policy).\n\n14. Return a single plain paragraph only.\n\n---\n\n## Formatting Rules by Display Type\n\n### Text Blocks (`display_type: \"text\"`)\n\n* Always apply curly-brace formatting for:\n\n  * Amounts: `{amount:<number>,currency:<currency_code>}`\n  * Dates: `{date:<YYYY-MM-DD>}` (ISO)\n  * Never hardcode currency symbols or dates directly.\n  * Give an appropriate heading to the text block.\n  * Do not create standalone heading lines.\n  * Do not insert line breaks between a title and body.\n  *The text block must be a single continuous paragraph.\n  *Do not begin text with a section title followed by a newline.\n\n\n---\n\n## Format Hint Usage Clarifications\n\n* Ignore `date_format` and `currency_format` from `format_hint` (UI only).\n* Respect ONLY `text_formatting` and `table_column_hints` when explicitly provided.\n\n---\n\n## Top-Level Output Schema\n\n\n{\n  \"agent\": \"<string>\",\n  \"intent\": \"Unknown Expense\",\n  \"schema_version\": \"1\",\n  \"timestamp\": \"<dd-mm-yyyy HH:MM>\",\n  \"agent_response\": [<response blocks>],\n  \"topicName\": \"<string>\"\n}\n\n\n* Format top-level `timestamp` as `dd-mm-yyyy HH:MM`.\n\n### **Display Type Blocks**\n\n#### 1. **Text Block**\n\n\n{\n  \"display_type\": \"text\",\n  \"display_sequence\": 1,\n  \"text\": \"<string with inline HTML formatting if allowed>\"\n}\n\n\n\n### **Sample Output**\n\n{\n  \"agent\": \"Expense Assistant\",\n  \"intent\": \"greeting\",\n  \"schema_version\":\"1\",\n  \"title\": \"Response to user greeting\",\n  \"description\": \"This is a router agent that dynamically directs users to either the Expense Policy Inquiry Assistant or the Expense Policy Compliance Assistant based on the user's intent identified in the chat.\",\n  \"timestamp\": \"10-06-2025 08:30\",\n  \"topicName\": \"ExpensePolicyInqury\",\n  \"agent_response\": [\n    {\n      \"display_type\": \"text\",\n      \"display_sequence\": 1,\n      \"text\": \"Your total outcome on all open installments is <b>{amount:434.00,currency:USD}</b>. The highest is in week 3.\"\n    }\n     \n  ]\n}\n \n---\n \n## Validation Checklist\n \n* [ ] Only amount, currency, and date values use curly-brace formatting.\n* [ ] Currency symbols and dates are NOT hardcoded.\n* [ ] `display_sequence` starts at `1` and increments sequentially.\n* [ ] All required blocks present as per `format_hint.view`.\n* [ ] Bold formatting on amounts ONLY if allowed by `bold_amounts`.\n* [ ] Missing/incomplete data handled with explicit messaging.\n* [ ] Output is valid JSON, with no markdown, escaped characters (`\\n`), or trailing commas.\n* [ ] Response Output should not contain the text \"```json\".\n* [] Do not create  any follow up questions on your own\n\n \n---\n \n## Additional Requirements\n \n* Your answer must be based solely on information available in provided history.\n* Do NOT mention tool calls, chat history, underlying operations, or system processes.\n* Keep responses natural and conversational without unnecessary preambles.\n* Provide direct responses without phrases like \"Based on tool calls\" or similar references.\n* Do NOT append any trailing characters or periods (.) at the end of valid URLs.\n* If a link is generated by the DeepLink tool, do NOT remove it from the response.",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Is replying"
+          },
+          "outcomes": {
+            "true": "1773350061323",
+            "false": "1773350089589"
+          },
+          "code": "IS_REPLYING",
+          "convergenceTargetId": "1772252345671",
+          "id": "1773350043484",
+          "inputs": [
+            {
+              "id": "1773350043488_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{($context.$nodes.EXPENSE_INQUIRY_ROUTER.$output.isReply == true) || ($context.$nodes.EXPENSE_INQUIRY_ROUTER.$output.isReply == \"true\")}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Set Mode to Update"
+          },
+          "outcomes": {
+            "success": "1772252345671"
+          },
+          "code": "SET_MODE_TO_UPDATE",
+          "id": "1773350061323",
+          "inputs": [
+            {
+              "id": "1773350074639",
+              "name": "pcMode",
+              "scope": "JOB",
+              "type": "string",
+              "value": "update"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Set Mode to Summary"
+          },
+          "outcomes": {
+            "success": "1772252345671"
+          },
+          "code": "SET_MODE_TO_SUMMARY",
+          "id": "1773350089589",
+          "inputs": [
+            {
+              "id": "1773350099660",
+              "name": "pcMode",
+              "scope": "JOB",
+              "type": "string",
+              "value": "summary"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Policy Compliance",
+            "workflowCode": "ORA_FIN_EXM_EXPENSE_POLICY_COMPLIANCE_ASSISTANT"
+          },
+          "outcomes": {
+            "success": "extract_updated_fields"
+          },
+          "code": "POLICY_COMPLIANCE",
+          "id": "1772252345671",
+          "inputs": [
+            {
+              "id": "1778047459265_1",
+              "name": "message",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "1778047459267_2",
+              "name": "channel",
+              "type": "string",
+              "value": "UI"
+            },
+            {
+              "id": "1778047459268_3",
+              "name": "mode",
+              "type": "string",
+              "value": "{{$context.$variables.pcMode}}"
+            },
+            {
+              "id": "1778047459270_4",
+              "name": "isReplyFlow",
+              "type": "boolean",
+              "value": "false"
+            },
+            {
+              "id": "1778047459271_5",
+              "name": "expenseId",
+              "type": "string",
+              "value": "{{$context.$variables.objectIdInContext}}"
+            },
+            {
+              "id": "1778047459273_6",
+              "name": "partnerExpenseId",
+              "type": "string"
+            },
+            {
+              "id": "1778047459274_7",
+              "name": "userMessage",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            },
+            {
+              "id": "1778047459278_8",
+              "name": "preparerId",
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "Extract Updated Fields",
+            "returnType": "object",
+            "sourceCode": "// ── helpers ──────────────────────────────────────────────────────────────\nfunction safeStr(v) {\n  if (v === null || v === undefined) return \"\";\n  return String(v).trim();\n}\n\nfunction friendlyField(raw) {\n  if (!raw) return \"\";\n  const key = safeStr(raw).toLowerCase().replace(/[\\s_-]+/g, \"\");\n  const map = {\n    merchantname: \"Merchant name\",\n    expensetype: \"Expense type\",\n    startdate: \"Date\",\n    enddate: \"Date\",\n    expensedate: \"Date\",\n    receiptamount: \"Receipt amount\",\n    receiptcurrency: \"Currency\",\n    currencycode: \"Currency\",\n    costcenter: \"Cost center\",\n    projectnumber: \"Project number\",\n    tasknumber: \"Task number\",\n    justification: \"Justification\",\n    receiptmissingjustification: \"Justification\",\n    description: \"Description\",\n    location: \"Location\",\n    attendees: \"Attendees\",\n    receipt: \"Receipt\",\n    numberofnights: \"Number of nights\",\n    numberofattendees: \"Number of attendees\",\n    billedamount: \"Billed amount\",\n    receiptdate: \"Receipt date\",\n    expensereportname: \"Expense report name\"\n  };\n  return map[key] || raw;\n}\n\nfunction normalizeField(raw) {\n  if (!raw) return \"\";\n  let trimmed = safeStr(raw).replace(/\\b(has|was)\\s+(been|set|updated)\\b.*$/i, \"\").trim();\n  if (!trimmed) trimmed = safeStr(raw);\n  return friendlyField(trimmed);\n}\n\n// ── 1. Pull raw compliance output safely ──────────────────────────────────\nconst rawPcOutput = $context.$nodes.POLICY_COMPLIANCE?.$output?.output;\nconst pcOutputRaw = typeof rawPcOutput === \"string\" ? safeStr(rawPcOutput) : \"\";\n\n// ── 2. Expense id (stringify numbers) ─────────────────────────────────────\nconst expenseId = safeStr($context.$variables.objectIdInContext);\n\n// ── 3. Parse structured payload if available ─────────────────────────────\nconst updatedFields = [];\nlet pcOutput = {};\ntry {\n  pcOutput = pcOutputRaw.startsWith(\"{\")\n    ? JSON.parse(pcOutputRaw)\n    : (rawPcOutput && typeof rawPcOutput === \"object\" ? rawPcOutput : {});\n} catch (e) {\n  pcOutput = rawPcOutput && typeof rawPcOutput === \"object\" ? rawPcOutput : {};\n}\n\n// ── 4. acknowledgements / defaults ───────────────────────────────────────\nconst ackData = pcOutput?.summarizedData?.acknowledgements?.data\n             || pcOutput?.acknowledgements\n             || [];\nif (Array.isArray(ackData)) {\n  for (const item of ackData) {\n    const field = normalizeField(item?.fieldName || item?.field || item?.attributeName || \"\");\n    const value = safeStr(item?.fieldValue ?? item?.value ?? item?.attributeValue ?? \"\");\n    if (field && value) {\n      updatedFields.push({ field, value, source: \"acknowledgement\", status: \"SUCCESS\" });\n    }\n  }\n}\n\nconst defaultsData = pcOutput?.summarizedData?.defaults?.data\n                  || pcOutput?.defaults\n                  || [];\nif (Array.isArray(defaultsData)) {\n  for (const item of defaultsData) {\n    const field = normalizeField(item?.fieldName || item?.field || item?.attributeName || \"\");\n    const value = safeStr(item?.fieldValue ?? item?.value ?? item?.attributeValue ?? \"\");\n    if (field && value) {\n      updatedFields.push({ field, value, source: \"default\", status: \"SUCCESS\" });\n    }\n  }\n}\n\n// ── 5. Narrative extraction (always allowed now) ──────────────────────────\nconst narrativeText =\n  pcOutputRaw ||\n  safeStr(pcOutput?.output || pcOutput?.summary || pcOutput?.message || pcOutput?.text || \"\");\n\nif (narrativeText.length > 0) {\n  const patterns = [\n    /(\\w[\\w\\s]*?)\\s+has been updated to\\s+(.+?)(?:\\.|,|$)/gi,\n    /(\\w[\\w\\s]*?)\\s+has been set to\\s+(.+?)(?:\\.|,|$)/gi,\n    /(\\w[\\w\\s]*?)\\s+was updated to\\s+(.+?)(?:\\.|,|$)/gi,\n    /(\\w[\\w\\s]*?)\\s+was set to\\s+(.+?)(?:\\.|,|$)/gi,\n    /(\\w[\\w\\s]*?)\\s+updated to\\s+(.+?)(?:\\.|,|$)/gi,\n    /(\\w[\\w\\s]*?)\\s+set to\\s+(.+?)(?:\\.|,|$)/gi,\n    /(\\w[\\w\\s]*?)\\s+changed to\\s+(.+?)(?:\\.|,|$)/gi,\n    /updated\\s+(\\w[\\w\\s]*?)\\s+to\\s+(.+?)(?:\\.|,|$)/gi,\n    /(\\w[\\w\\s]*?)\\s+is now\\s+(.+?)(?:\\.|,|$)/gi\n  ];\n\n  for (const pattern of patterns) {\n    let match;\n    while ((match = pattern.exec(narrativeText)) !== null) {\n      const field = normalizeField(match[1]);\n      const value = safeStr(match[2]);\n      if (!field || !value) continue;\n      updatedFields.push({ field, value, source: \"narrative\", status: \"SUCCESS\" });\n    }\n  }\n}\n\n// ── 6. Tool-call fallback (if the platform exposes nodes) ─────────────────\nconst pcNodes = $context.$nodes.POLICY_COMPLIANCE?.$output?.nodes ?? [];\nconst UPDATE_KEYWORDS = [\"update\", \"patch\", \"add\", \"delete\", \"remove\", \"set\", \"attach\", \"upload\"];\nconst SKIP_KEYS = new Set([\n  \"expenseid\",\n  \"id\",\n  \"partnerexpenseid\",\n  \"preparerid\",\n  \"personid\",\n  \"etag\",\n  \"channel\",\n  \"mode\",\n  \"isreplyflow\",\n  \"message\",\n  \"userinputmessage\",\n  \"usermessage\"\n]);\n\nfunction isUpdateTool(name) {\n  const lower = (name || \"\").toLowerCase();\n  if (lower.includes(\"get\") || lower.includes(\"fetch\") || lower.includes(\"search\") ||\n      lower.includes(\"read\") || lower.includes(\"list\") || lower.includes(\"check\")) return false;\n  return UPDATE_KEYWORDS.some(k => lower.includes(k));\n}\n\nfor (const node of pcNodes) {\n  const toolName = node.toolName || node.name || node.code || \"\";\n  if (!isUpdateTool(toolName)) continue;\n  const nodeStatus = safeStr(node.output?.status || node.status || \"SUCCESS\").toUpperCase();\n  if (nodeStatus === \"ERROR\" || nodeStatus === \"FAILURE\" || nodeStatus === \"FAILED\") continue;\n\n  const inp = node.input || node.inputs || {};\n  if (inp.field !== undefined && inp.value !== undefined) {\n    updatedFields.push({\n      field: normalizeField(safeStr(inp.field)),\n      value: safeStr(inp.value),\n      source: \"tool\",\n      status: nodeStatus\n    });\n    continue;\n  }\n  if (inp.attributeName !== undefined && inp.attributeValue !== undefined) {\n    updatedFields.push({\n      field: normalizeField(safeStr(inp.attributeName)),\n      value: safeStr(inp.attributeValue),\n      source: \"tool\",\n      status: nodeStatus\n    });\n    continue;\n  }\n  for (const [k, v] of Object.entries(inp)) {\n    if (SKIP_KEYS.has(k.toLowerCase())) continue;\n    if (v === null || v === undefined || v === \"\") continue;\n    updatedFields.push({\n      field: friendlyField(k),\n      value: safeStr(v),\n      source: \"tool\",\n      status: nodeStatus\n    });\n  }\n}\n\n// ── 7. Merge with previous turn (newest wins) ─────────────────────────────\nlet prevFields = [];\ntry {\n  const prev = $context.$variables.canvasContent;\n  const parsed = prev && typeof prev === \"object\" ? prev\n               : (typeof prev === \"string\" && prev ? JSON.parse(prev) : null);\n  if (Array.isArray(parsed?.updatedFields)) prevFields = parsed.updatedFields;\n} catch (e) {}\n\nconst fieldMap = new Map();\nfor (const f of [...prevFields, ...updatedFields]) {\n  if (!f || !f.field) continue;\n  fieldMap.set(f.field.toLowerCase(), { ...f });\n}\nconst mergedFields = Array.from(fieldMap.values());\n\n// ── 8. Build outputs (object + JSON literal for the LLM prompt) ───────────\nconst canvasContent = {\n  expenseId: expenseId,\n  updatedFields: mergedFields\n};\n\nconst canvasContentLiteral = JSON.stringify(canvasContent);\n\nreturn {\n  canvasContent,\n  canvasContentLiteral\n};"
+          },
+          "outcomes": {
+            "success": "persist_canvas_content"
+          },
+          "code": "EXTRACT_UPDATED_FIELDS",
+          "id": "extract_updated_fields",
+          "inputs": [],
+          "outputSpecification": "{\"$schema\": \"http://json-schema.org/draft-04/schema#\", \"type\": \"object\", \"properties\": {\"result\": {\"type\": \"object\"}, \"timeout\": {\"type\": \"boolean\"}, \"error\": {\"type\": \"string\"}}, \"required\": [\"output\", \"timeout\", \"error\"]}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Persist Canvas Content"
+          },
+          "outcomes": {
+            "success": "1776142493676"
+          },
+          "code": "PERSIST_CANVAS_CONTENT",
+          "id": "persist_canvas_content",
+          "inputs": [
+            {
+              "id": "1775541191434",
+              "name": "canvasContentLiteral",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_UPDATED_FIELDS.$output.result.canvasContentLiteral}}"
+            },
+            {
+              "id": "persist_canvas_content_1",
+              "name": "canvasContent",
+              "scope": "CONVERSATION",
+              "type": "object",
+              "value": "{{$context.$nodes.EXTRACT_UPDATED_FIELDS.$output.result.canvasContent}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_EXPENSE",
+            "functionName": "getExpenseInfo",
+            "name": "Get Validation Status Code"
+          },
+          "outcomes": {
+            "success": "1774590194349"
+          },
+          "code": "GET_VALIDATION_STATUS_CODE",
+          "id": "1776142493676",
+          "inputs": [
+            {
+              "id": "1778139789703_1",
+              "name": "expenseId",
+              "type": "string",
+              "value": "{{$context.$variables.objectIdInContext}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Current Expense Is Clean"
+          },
+          "outcomes": {
+            "true": "1774595874626",
+            "false": "1775466553986"
+          },
+          "code": "CURRENT_EXPENSE_IS_CLEAN",
+          "convergenceTargetId": "1773870313435",
+          "id": "1774590194349",
+          "inputs": [
+            {
+              "id": "1774590194350_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_VALIDATION_STATUS_CODE.$output.validationStatusCode == \"CLEAN\" && $context.$nodes.GET_VALIDATION_STATUS_CODE.$output.expenseErrors.hasMore != true}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_FETCHUNSUBMITTEDEXPENSES",
+            "functionName": "FetchUnsubmittedExpenses",
+            "name": "Fetch Unsubmitted Expenses BO"
+          },
+          "outcomes": {
+            "success": "1774596078713"
+          },
+          "code": "FETCH_UNSUBMITTED_EXPENSES_BO",
+          "convergenceTargetId": "1774596078713",
+          "id": "1774595874626",
+          "inputs": [
+            {
+              "id": "1778137479669_1",
+              "name": "personId",
+              "type": "string",
+              "value": "{{$context.$variables.context.personId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "RESET UNSUBMITTED EXPENSES"
+          },
+          "outcomes": {
+            "success": "1773870313435"
+          },
+          "code": "RESET_UNSUBMITTED_EXPENSES",
+          "convergenceTargetId": "1776339445478",
+          "id": "1775466553986",
+          "inputs": [
+            {
+              "id": "1775466562340",
+              "name": "unsubmittedExpenseList",
+              "scope": "JOB",
+              "type": "object",
+              "value": ""
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Format Payload",
+            "returnType": "object",
+            "sourceCode": "const boOutput = $context.$nodes.FETCH_UNSUBMITTED_EXPENSES_BO.$output ?? {};\n\nconst rawExpenses =\n  Array.isArray(boOutput?.items) ? boOutput.items :\n  Array.isArray(boOutput?.result?.items) ? boOutput.result.items :\n  Array.isArray(boOutput?.output?.items) ? boOutput.output.items :\n  Array.isArray(boOutput) ? boOutput :\n  [];\n\nconst formattedExpenses = rawExpenses.map((item = {}) => ({\n  id: item.id ?? \"\",\n  merchant: item.merchantName ?? \"Unknown Merchant\",\n  expenseDate: item.expenseDate ?? \"\",\n  expenseTypeName: item.expenseType?.name ?? \"Expense\",\n  receiptAmount:\n    item.receiptAmount !== null && item.receiptAmount !== undefined\n      ? {\n          value: Number(item.receiptAmount),\n          currency: item.receiptCurrency?.currencyCode ?? \"USD\"\n        }\n      : null\n}));\n\nreturn { unsubmittedExpenses: formattedExpenses };"
+          },
+          "outcomes": {
+            "success": "1774596133542"
+          },
+          "code": "FORMAT_PAYLOAD",
+          "id": "1774596078713",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "set unsubmitted list"
+          },
+          "outcomes": {
+            "success": "1773870313435"
+          },
+          "code": "SET_UNSUBMITTED_LIST",
+          "id": "1774596133542",
+          "inputs": [
+            {
+              "id": "1774596150985",
+              "name": "unsubmittedExpenseList",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.FORMAT_PAYLOAD.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_GETAGENTINITPARAMS",
+            "errorNodeId": "1773870365776",
+            "functionName": "getAgentInitParams",
+            "name": "Get PC Output Prompt"
+          },
+          "outcomes": {
+            "success": "1773870365776"
+          },
+          "code": "GET_PC_OUTPUT_PROMPT",
+          "convergenceTargetId": "1773870365776",
+          "id": "1773870313435",
+          "inputs": [
+            {
+              "id": "1778400461859_1",
+              "name": "agentName",
+              "type": "string",
+              "value": "ORA_FIN_EXM_EXPENSES_ASSISTANT_PC"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Extract PC Output Prompt",
+            "returnType": "object",
+            "sourceCode": "const defaultMainPrompt =`Let pcOutput = ${$context.$nodes.POLICY_COMPLIANCE.$output.output}\nLet expenseId =  ${$context.$variables.objectIdInContext}\nLet pcMode = ${$context.$variables.pcMode}\nLet canvasContent =  ${$context.$variables.canvasContent}\n\n\n\npcOutput is a JSON object summarizing the expense, with keys such as:\n- openIssues (array of strings or objects)\n- acknowledgements (array)\n- failures / defaults / recommendations (ignore these) - they should not be surfaced even if present.\n\nROLE / GOAL\nYou are an Expenses Agent inside the Touchless Expenses UI. Use professional, customer-friendly wording. Keep responses concise and action-oriented. Do not invent data or infer missing details. Do not include greetings or introductions (for example, do not say “I can assist…”).\n\nTASK\nA) Parse pcOutput. Do not invent data.\n   Note on canvas_content output:\n- canvas_content output is always JSON.\n- Output canvas_content exactly as the canvasContent object above, including its expenseId and updatedFields.\n- If canvasContent is null or an empty string, output {\"expenseId\": \"\", \"updatedFields\": []}.\n- Read canvasContent as a JSON object only.\n\n\n\nB) Normalize Open Issues FIRST (must be deterministic):\n\n0) STATE/ISSUE CONSISTENCY PRE-RULES (must be deterministic):\n- Do NOT blindly ignore pcOutput.openIssues just because validation status appears CLEAN/ready.\n- Instead, compute these booleans (case-insensitive checks):\n  • stateSaysReady = (pcOutput.validationStatus == \"CLEAN\") OR\n                     (pcOutput.status contains \"ready for submission\") OR\n                     (pcOutput.expenseState contains \"ready for submission\")\n  • stateSaysAction = (pcOutput.status contains \"requires action\") OR\n                      (pcOutput.expenseState contains \"requires action\") OR\n                      (pcOutput.status contains \"missing\") OR\n                      (pcOutput.expenseState contains \"missing\")\n- Continue to read openIssuesRaw from pcOutput.openIssues (missing/null => empty array). Do NOT empty it here.\n\n1) Create openIssuesRaw = pcOutput.openIssues (if missing/null, treat as empty array).\n\n2) Map each item to a string issueText as follows:\n   - If item is a string => issueText = item\n   - If item is an object:\n       • if item.message exists => issueText = item.message\n       • else if item.summary exists => issueText = item.summary\n       • else if item.title exists => issueText = item.title\n       • else => issueText = JSON.stringify(item)\n\n3) Clean each issueText:\n   - trim whitespace\n   - remove leading bullets/prefixes: \"• \", \"- \", \"* \"\n   - remove any leading \"Open Issues:\" text\n   - REMOVE EXPENSE ID REFERENCES (must do this even if present in pcOutput):\n     • Remove any curly-brace token that contains an expense id, e.g. \"{expenseId:300100651996163}\" (case-insensitive key match).\n     • Remove any plain-text expense id references such as:\n       - \"expenseId=300100651996163\"\n       - \"expense id: 300100651996163\"\n       - \"expense 300100651996163\"\n\n   FIELD NAME NORMALIZATION (apply to every issueText and acknowledgement text before output):\n   - Convert concatenated/technical field identifiers into user-friendly field names.\n   - Perform case-insensitive replacements on whole words/tokens (do not change parts of normal words).\n\n   a) Explicit mappings (case-insensitive):\n   - \"merchantname\" -> \"merchant name\"\n   - \"expensetype\"  -> \"expense type\"\n   - \"startdate\"    -> \"date\"\n   - \"enddate\"      -> \"date\"\n   - \"expensedate\"  -> \"date\"\n   - \"receiptamount\" -> \"receipt amount\"\n   - \"currencycode\" -> \"currency\"\n   - \"costcenter\"   -> \"cost center\"\n   - \"projectnumber\" -> \"project number\"\n   - \"tasknumber\"    -> \"task number\"\n   - \"justification\" -> \"justification\" (no change; listed for clarity)\n\n   b) Generic fallback normalization:\n   - If a token looks like a concatenated field name (letters only, no spaces) and contains any of these substrings:\n     \"merchant\", \"expense\", \"type\", \"date\", \"amount\", \"receipt\", \"description\"\n     then insert spaces between recognized parts when it improves readability.\n     Examples:\n     - \"merchantname\" => \"merchant name\"\n     - \"receiptamount\" => \"receipt amount\"\n     - \"expensedate\" => \"expense date\" (but then apply rule a to simplify to \"date\" if desired)\n\n   c) Preserve original capitalization of normal sentence text.\n   - Only normalize the field-name token itself; do not change the rest of the sentence.\n\n   - After removal, re-trim and collapse repeated spaces.\n\nOPEN ISSUES SENTENCE FORMATTING (apply to each item in openIssuesNormalized before output):\n- Each open issue MUST be a complete sentence:\n  1) Capitalize the first alphabetical character of the sentence.\n     - If the sentence starts with a quote/parenthesis/brace, capitalize the first letter after it.\n  2) Ensure it ends with exactly one period \".\" unless it already ends with \"?\" or \"!\".\n     - If it ends with \".\" already, keep a single \".\" (do not add another).\n     - If it ends with \":\" or \";\" or \",\", remove that trailing punctuation and add \".\".\n  3) If an issue is a fragment like \"Description value is required\", rewrite minimally into a full sentence without adding new facts:\n     - Preferred pattern: \"<Field name> is required.\"\n     Examples:\n       • \"Description value is required\" => \"Description is required.\"\n       • \"Merchant name value is required\" => \"Merchant name is required.\"\n       • \"Missing description\" => \"Description is missing.\"\n- Do NOT change the meaning or add details beyond what is present.\n\n4) Filter OUT non-issues (case-insensitive match after trimming):\n   - \"\" (empty)\n   - \"none\"\n   - \"no open issues exist\"\n   - \"no open issues\"\n\n5) The result is openIssuesNormalized (array of strings).\n\n6) Determine hasBlockingIssues (case-insensitive):\n- hasBlockingIssues = true if ANY openIssuesNormalized item indicates missing/required fields or similar blockers.\n  Treat the following as blocking keywords/phrases:\n  - \"required\"\n  - \"is required\"\n  - \"missing\"\n  - \"must be provided\"\n  - \"cannot be blank\"\n  - \"value is required\"\n  - \"receipt required\"\n  - \"invalid\"\n- Otherwise hasBlockingIssues = false.\n\nC) Determine Expense State text (must be consistent with open issues):\n- If pcOutput is null/empty => Expense State = \"No compliance information available.\"\n- Else if hasBlockingIssues is true:\n   • If pcOutput provides descriptive action text (e.g., \"Requires action for missing required fields\"), use it (after stripping status codes like CLEAN/ERROR/WARNING).\n   • Otherwise choose ONE of the following syntactically different but semantically equivalent sentences:\n     1) \"This expense needs a bit more information before it’s ready.\"\n     2) \"Please add the missing details so you can submit this expense.\"\n     3) \"A few updates are needed before you can submit this expense.\"\n     4) \"Please review and update the items below.\"\n   • Do NOT use \"Ready for submission\" or any synonym when hasBlockingIssues is true.\n- Else if stateSaysReady is true:\n   • Expense State = \"Expense is ready for submission.\"\n- Else:\n   • Use the best available descriptive state text from pcOutput (after stripping validation/status codes and labels).\n\nD) Build output sections (1–3 blocks, no headings):\n\n1) Always output Expense State as the first line only:\n- Output Expense State as a single sentence on its own line.\n- NEVER append any open issue text to this same line.\n\n2) If expense is clean/ready with no issues, stop:\n- If pcOutput is not null/empty AND stateSaysReady is true AND hasBlockingIssues is false AND openIssuesNormalized length == 0:\n  - STOP. Output nothing else (do not output “No open issues exist.” and do not output acknowledgements).\n\n3) Open Issues content (only if not stopped above):\n- If pcOutput is null/empty: OMIT Open Issues entirely.\n- Else if openIssuesNormalized has 1+ items:\n  - Output EXACTLY this lead-in line (fixed; do not vary):\n    \"Add the following to complete the expense:\"\n  - Then output open issues as bullets with these strict rules:\n    • Output one bullet per line.\n    • Each bullet line MUST start with \"- \" (dash + space).\n    • Do NOT place multiple bullets on the same line as any other text.\n    • Do NOT place any bullet on the same line as the lead-in.\n    • Format:\n      - <issue>\n- Else:\n  - Output exactly: \"No open issues exist.\"\n\n4) Acknowledgements (optional; only if not stopped above):\n- Include only if pcMode is not \"summary\" AND acknowledgements exists and is non-empty AND is not \"None\" (case-insensitive).\n- If included:\n  - Output EXACTLY this lead-in line:\n    \"Please acknowledge the following before you submit:\"\n  - Then list each acknowledgement as bullets, one per line, same bullet rules as above:\n    - <ack>\n- Omit the acknowledgements block entirely otherwise.\n\nE) Formatting rules:\n- Start a new line for each output line.\n- Do not include headings in the output (do not write labels like \"Expense State:\", \"Open Issues:\", or \"Acknowledgements:\").\n- Do not include \"Missing details/suggestions: \" text if present in pcOutput.\n- Do not include expense details (no merchant, amount, type, date, location summaries).\n- Exclude error/status codes if present.\n- Do not include \"The numberofattendees has been updated\" or any text related to \"numberofattendees\".\n- Use curly-brace formatting for dates/amounts if any appear.\n- Never output any of these standalone words/tokens anywhere in the text block: \"CLEAN\", \"ERROR\", \"WARNING\" (case-insensitive) when they represent validation/status codes rather than normal English.\n- Do not remove expenseId  and updatedFields from canvas_content. Never include an expense id (expenseId) in the text block output. \n- Never output curly-brace formatting for expenseId (e.g., \"{expenseId:...}\") anywhere.\n- If any source text contains an expense id, remove it before output.\n- Apply FIELD NAME NORMALIZATION to each output line before output.\n\nF)Output : Return the JSON below exactly as given below. canvas_content attribute in OUTPUT_FORMAT is always json object. Do not remove expenseId  and updatedFields from canvas_content even if updatedFields is empty. \n\nOUTPUT_FORMAT\n{\n  \"agent\": \"Expense Assistant\",\n  \"intent\": \"policy compliance\",\n  \"isReply\": ${$context.$nodes.EXPENSE_INQUIRY_ROUTER.$output.isReply},\n  \"filterReason\":  ${$context.$nodes.EXPENSE_INQUIRY_ROUTER.$output.filterReason},\n  \"schema_version\": \"1\",\n  \"title\": \"Expense Compliance Summary\",\n  \"description\": \"Summarized compliance status for the selected expense.\",\n  \"timestamp\": \" {{format $context.$system.$currentDateTime as dd-MM-yyyy HH:mm}}\",\n  \"topicName\": \"PolicyComplianceSummary\",\n  \"agent_response\": [\n    {\n      \"display_type\": \"text\",\n      \"display_sequence\": 1,\n      \"text\": \"〈single paragraph containing the sections above〉\"\n    },\n    {\n      \"display_type\": \"canvas\",\n      \"display_sequence\": 2,\n      \"canvas_content\":Read ${$context.$variables.canvasContent} as JSON object only.\n    }\n  ]\n}\n\n\nValidation (must follow):\n- Never output BOTH open issues and \"No open issues exist.\"\n- Never invent content. Only use pcOutput.\n-If you ever return {updatedFields:…} or expenseId without quotes, the client will reject the response. Keep the literal untouched.`;\n\n\n\n/* -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */\n/* --------------------------------------------------------------------- defaultSummarizerPrompt ----------------------------------------------------------------------------------------- */\n/* -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */\n\nconst defaultSummarizerPrompt = \n`You are a data formatting expert operating in an enterprise ERP environment. Your responsibility is to format structured responses received from the system agent into valid JSON outputs, strictly adhering to the ERP Chat Assistant's multi-type schema. This formatted output will be directly consumed by frontend display components.\nYou must NOT invoke tools or perform business logic. Your sole task is converting the provided response content (if present) and optional format_hint into compliant display blocks.\n---\n## General Instructions (Mandatory)\n1. Do NOT invoke any tool, service, or external API.\n2. Do NOT infer or fabricate information not explicitly provided in response_content or history context.\n3. Output must be valid JSON strictly conforming to the defined schema.\n4. All structured elements must appear within the agent_response array.\n5. Supported display types: text, table, list, action.\n6. Maintain display_sequence, starting from 1, incrementing sequentially.\n7. Set the topicName clearly to indicate the resolving agent topic.\n8. Always use curly-brace formatting {} for amount, currenc, and date values.\n---\n## Formatting Rules by Display Type\n### Text Blocks (display_type: \"text\")\n  * Always apply curly-brace formatting for:\n  * Amounts: {amount:<number>,currency:<currency_code>}\n  * Dates: {date:<YYYY-MM-DD>} (ISO)\n  * Never hardcode currency symbols or dates directly.\n  * If passing the currency name or code separately, add them without curly-brace. \n  * Do not include headings in the text block.\n\n---\n## Top-Level Output Schema\n{\n  \"agent\": \"<string>\",\n  \"intent\": \"<string>\",\n  \"isReply\": \"<string>\",\n  \"filterReason\":  \"<string>\",\n  \"schema_version\": \"1\",\n  \"title\": \"<string>\",\n  \"description\": \"<string>\",\n  \"timestamp\": \"<dd-mm-yyyy HH:MM>\",\n  \"agent_response\": [<response blocks>],\n  \"topicName\": \"<string>\"\n}\n\n* Format top-level \"timestamp\" as \"dd-mm-yyyy HH:MM\".\n### **Display Type Blocks**\n#### 1. **Text Block**\n{\n  \"display_type\": \"text\",\n  \"display_sequence\": 1,\n  \"text\": \"<string with inline HTML formatting if allowed>\"\n}\n\n\n---\n## Validation Checklist\n* [ ] Only amount, currency, and date values use curly-brace formatting.\n* [ ] Currency symbols and dates are NOT hardcoded.\n* [ ] \"display_sequence\" starts at \"1\" and increments sequentially.\n* [ ] Missing/incomplete data handled with explicit messaging.\n* [ ] Output is valid JSON, with no markdown, escaped characters (\"\\n\"), or trailing commas.\n* [ ] Do not create  any follow up questions on your own\n---\n## Additional Requirements\n* Your answer must be based solely on information available in provided history.\n* Do NOT mention tool calls, chat history, underlying operations, or system processes.\n* Keep responses natural and conversational without unnecessary preambles.\n* Provide direct responses without phrases like \"Based on tool calls\" or similar references.\n* Do NOT append any trailing characters or periods (.) at the end of valid URLs.\n* If a link is generated by the DeepLink tool, do NOT remove it from the response.`;\n\n\nconst out = $context?.$nodes?.GET_PC_OUTPUT_PROMPT?.$output;\nconst prompts = Array.isArray(out?.prompts) ? out.prompts : [];\nlet mainPrompt = prompts?.find(p => p.promptType === \"MAIN\")?.prompt || defaultMainPrompt;\nlet summarizerPrompt = prompts?.find(p => p.promptType === \"SUMMARIZER\")?.prompt || defaultSummarizerPrompt;\n\nlet prompt = {\n  mainPrompt: mainPrompt,\n  summarizerPrompt: summarizerPrompt\n};\n\nreturn prompt;"
+          },
+          "outcomes": {
+            "success": "1772747328757"
+          },
+          "code": "EXTRACT_PC_OUTPUT_PROMPT",
+          "convergenceTargetId": "1772747328757",
+          "id": "1773870365776",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Format PC Output"
+          },
+          "outcomes": {
+            "success": "1776339445478"
+          },
+          "code": "FORMAT_PC_OUTPUT",
+          "convergenceTargetId": "1776339445478",
+          "id": "1772747328757",
+          "inputs": [
+            {
+              "id": "1772747328759_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_PC_OUTPUT_PROMPT.$output.result.mainPrompt}}"
+            }
+          ],
+          "outputSpecification": "{{$context.$nodes.EXTRACT_PC_OUTPUT_PROMPT.$output.result.summarizerPrompt}}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "APPEND CANVAS CONTENT",
+            "returnType": "object",
+            "sourceCode": "const rawOutput = $context.$nodes.FORMAT_PC_OUTPUT.$output;\nconst canvasContent = $context.$variables.canvasContent;\n\nfunction normalizeCanvasContent(value) {\n  if (value && typeof value === \"object\" && !Array.isArray(value)) return value;\n  if (typeof value === \"string\" && value.trim().startsWith(\"{\")) {\n    try {\n      const parsed = JSON.parse(value);\n      if (parsed && typeof parsed === \"object\" && !Array.isArray(parsed)) return parsed;\n    } catch (_) {}\n  }\n  return { expenseId: \"\", updatedFields: [] };\n}\n\nfunction markCanvasIfResolved(canvas, responses) {\n  if (!canvas || typeof canvas !== \"object\") return canvas;\n\n  const updatedArray = Array.isArray(canvas.updatedFields)\n    ? canvas.updatedFields\n    : [];\n\n  const textBlocks = Array.isArray(responses)\n    ? responses.filter(block => block && block.display_type === \"text\")\n    : [];\n\n  const shouldMarkUpdated = textBlocks.some(block => {\n    const text = typeof block?.text === \"string\" ? block.text.toLowerCase() : \"\";\n    if (!text) return false;\n    return (\n      text.includes(\"expense is ready for submission\") ||\n      text.includes(\"no open issues\") ||\n      text.includes(\"updated\")\n    );\n  });\n\n  if (shouldMarkUpdated) {\n    const existing = updatedArray.find(\n      entry =>\n        entry &&\n        typeof entry.field === \"string\" &&\n        entry.field.toLowerCase() === \"updated\"\n    );\n    if (existing) {\n      existing.value = true;\n      existing.status = existing.status || \"SUCCESS\";\n      existing.source = existing.source || \"system\";\n    } else {\n      updatedArray.push({\n        field: \"Updated\",\n        value: true,\n        source: \"system\",\n        status: \"SUCCESS\"\n      });\n    }\n  }\n\n  canvas.updatedFields = updatedArray;\n  return canvas;\n}\n\nlet parsedOutput;\nif (typeof rawOutput === \"string\" && rawOutput.trim().startsWith(\"{\")) {\n  try {\n    parsedOutput = JSON.parse(rawOutput);\n  } catch (_) {\n    parsedOutput = {};\n  }\n} else if (rawOutput && typeof rawOutput === \"object\") {\n  parsedOutput = rawOutput;\n} else {\n  parsedOutput = {};\n}\n\nif (!Array.isArray(parsedOutput.agent_response)) {\n  parsedOutput.agent_response = [];\n}\n\nconst resolvedCanvas = markCanvasIfResolved(\n  normalizeCanvasContent(canvasContent),\n  parsedOutput.agent_response\n);\n\nconst canvasBlock = parsedOutput.agent_response.find(\n  block => block && block.display_type === \"canvas\"\n);\n\nif (canvasBlock) {\n  canvasBlock.canvas_content = resolvedCanvas;\n} else {\n  parsedOutput.agent_response.push({\n    display_type: \"canvas\",\n    display_sequence: parsedOutput.agent_response.length + 1,\n    canvas_content: resolvedCanvas\n  });\n}\n\nreturn parsedOutput;"
+          },
+          "outcomes": {
+            "success": "1777542212481"
+          },
+          "code": "APPEND_CANVAS_CONTENT",
+          "convergenceTargetId": "1775466553986",
+          "id": "1776339445478",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "APPEND_UNSUBMITTED_LIST",
+            "returnType": "object",
+            "sourceCode": "const appendSource = $context.$nodes.APPEND_CANVAS_CONTENT?.$output;\nconst unsubmittedSource = $context.$variables.unsubmittedExpenseList;\n\nfunction parseObject(value) {\n  if (value && typeof value === \"object\") return value;\n  if (typeof value === \"string\" && value.trim().startsWith(\"{\")) {\n    try {\n      return JSON.parse(value);\n    } catch (_) {}\n  }\n  return {};\n}\n\nlet payload = parseObject(appendSource);\nif (payload?.result) payload = payload.result;\nif (payload?.result) payload = payload.result;\nif (!payload || typeof payload !== \"object\") {\n  payload = {};\n}\n\nif (!Array.isArray(payload.agent_response)) {\n  payload.agent_response = [];\n}\n\nconst validationStatusCode =\n  $context.$nodes.GET_VALIDATION_STATUS_CODE?.$output?.validationStatusCode;\n\nconst textBlock = payload.agent_response.find(\n  block => block?.display_type === \"text\"\n);\n\nconst responseText =\n  typeof textBlock?.text === \"string\" ? textBlock.text.toLowerCase() : \"\";\n\nconst isClean = validationStatusCode === \"CLEAN\";\nconst isReadyForSubmission = responseText.includes(\n  \"expense is ready for submission\"\n);\n\n// Do not add display_sequence 3 unless expense is clean and response says ready.\nif (!isClean || !isReadyForSubmission) {\n  return payload;\n}\n\nconst unsubmittedPayload = parseObject(unsubmittedSource);\nconst expenses = Array.isArray(unsubmittedPayload?.unsubmittedExpenses)\n  ? unsubmittedPayload.unsubmittedExpenses\n  : [];\n\nconst nextSequence =\n  payload.agent_response.reduce((max, block) => {\n    const seq = Number(block?.display_sequence);\n    return Number.isFinite(seq) && seq > max ? seq : max;\n  }, 0) + 1;\n\nconst items = expenses.length > 0\n  ? expenses.map((item, index) => {\n      const merchant = item?.merchant || \"Merchant not provided\";\n      const date = item?.expenseDate ? ` on {date:${item.expenseDate}}` : \"\";\n      const type = item?.expenseTypeName || \"Expense\";\n\n      const hasAmount =\n        item?.receiptAmount &&\n        item.receiptAmount.value !== null &&\n        item.receiptAmount.value !== undefined &&\n        item.receiptAmount.value !== \"\";\n\n      const amount = hasAmount\n        ? ` - {amount:${item.receiptAmount.value},currency:${item.receiptAmount.currency || \"USD\"}}`\n        : \"\";\n\n      return {\n        id: String(item?.id ?? \"\"),\n        Default: `${index + 1}. `,\n        value: `${merchant}${date} for ${type}${amount}`\n      };\n    })\n  : [\n      {\n        id: \"\",\n        Default: \"1. \",\n        value: \"You have no unsubmitted expenses right now.\"\n      }\n    ];\n\npayload.agent_response.push({\n  display_type: \"list\",\n  display_sequence: nextSequence,\n  header: \"Here are your expenses\",\n  fields: {\n    items\n  },\n  selection_mode: expenses.length > 0 ? \"single\" : \"none\",\n  keyAttributes: {\n    items: [\"id\"]\n  },\n  accessibility: {\n    \"aria-label\": \"Unsubmitted expenses list\"\n  }\n});\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "APPENDUNSUBMITTEDLIST",
+          "id": "1777542212481",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1772252170463"
+          },
+          "id": "add_false_1773355717234",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Starting New Conversation"
+          },
+          "outcomes": {
+            "true": "1778156275822",
+            "false": "add_false_1778156200783"
+          },
+          "code": "STARTING_NEW_CONVERSATION",
+          "convergenceTargetId": "1773339498684",
+          "id": "1778156200783",
+          "inputs": [
+            {
+              "id": "1778156200784_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.personId !== null && $context.$triggers.REST.$input.personId !== \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1773339498684"
+          },
+          "id": "add_false_1778156200783",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Set Context"
+          },
+          "outcomes": {
+            "success": "1773339498684"
+          },
+          "code": "SET_CONTEXT",
+          "id": "1778156275822",
+          "inputs": [
+            {
+              "id": "1778156281290",
+              "name": "context",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.PERSIST_WEBHOOK_TRIGGERS.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Policy Inquiry Assistant",
+            "workflowCode": "ORA_FIN_EXM_EXPENSE_POLICY_ASSISTANT"
+          },
+          "outcomes": {
+            "success": "1772162523037"
+          },
+          "code": "POLICY_INQUIRY_ASSISTANT",
+          "id": "1782406507805",
+          "inputs": [
+            {
+              "id": "1782406529031_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            },
+            {
+              "id": "1782406529032_2",
+              "name": "jobTitle",
+              "type": "string",
+              "value": "{{$context.$variables.context.jobTitle}}"
+            },
+            {
+              "id": "1782406529033_3",
+              "name": "jobLocation",
+              "type": "string",
+              "value": "{{$context.$variables.context.jobLocation}}"
+            },
+            {
+              "id": "1782406529034_4",
+              "name": "homeLocation",
+              "type": "string",
+              "value": "{{$context.$variables.context.homeLocation}}"
+            },
+            {
+              "id": "1782406529035_5",
+              "name": "personId",
+              "type": "string",
+              "value": "{{$context.$variables.context.personId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1774952526236",
+          "name": "canvasContentLiteral",
+          "scope": "CONVERSATION",
+          "type": "string"
+        },
+        {
+          "id": "1774870646592",
+          "name": "canvasContent",
+          "scope": "CONVERSATION",
+          "type": "object"
+        },
+        {
+          "id": "1773208296710",
+          "name": "unsubmittedExpenseList",
+          "scope": "CONVERSATION",
+          "type": "object"
+        },
+        {
+          "id": "1773178358415",
+          "name": "context",
+          "scope": "CONVERSATION",
+          "type": "object"
+        },
+        {
+          "id": "1772670435224",
+          "name": "pcMode",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1772158649563",
+          "name": "objectIdInContext",
+          "scope": "CONVERSATION",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.2,
+        "temperature": 0.01
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "modelName": "GPT-OSS-120B",
+      "provider": "CERT_BASIC"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1782406684452",
+            "name": "jobTitle",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1782406674636",
+            "name": "jobLocation",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1782406663770",
+            "name": "homeLocation",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1772757220271",
+            "name": "uiContext",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1772757197926",
+            "name": "delegateMode",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1772756539793",
+            "name": "objectId",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1772756532979",
+            "name": "object",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1772755051020",
+            "name": "ingressPoint",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1772160751832",
+            "name": "features",
+            "type": "string"
+          },
+          {
+            "id": "1772158537477",
+            "name": "personId",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpLocalFileUploadEnabledFlag": true,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "FIN",
+  "product": "EXPENSES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"8\""
+  }
+}

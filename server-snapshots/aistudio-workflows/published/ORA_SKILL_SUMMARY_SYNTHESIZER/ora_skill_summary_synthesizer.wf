@@ -1,0 +1,148 @@
+{
+  "workflowId": "300000331062513",
+  "workflowCode": "ORA_SKILL_SUMMARY_SYNTHESIZER",
+  "name": "Skill Summary Synthesizer",
+  "description": "Enriches skill data with LLM-generated descriptions and synonyms, producing schema-compliant skill summaries for search and matching use cases.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1770324643255"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Generate Skill Summary"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "GENERATE_SKILL_SUMMARY",
+          "id": "1770324643255",
+          "inputs": [
+            {
+              "id": "1770324643257_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI assistant specializing in HR and skills data management. Your task is to enrich raw skill data by generating insightful, context-aware descriptions and a carefully curated list of synonyms based on the provided skill information, company context, business domain, schema, and configurations. The final enriched object must contain only the attributes defined in the Enriched JSON Schema.\n\n# Text to Summarize\nThe input will be a JSON containing a skill, along with several attributes that describe the skill. You will also find an attribute, organization_information, that describes the company in which these skills will be used.\nHere is the JSON for text_to_summarize:\n\n{{$context.$triggers.REST.$input.textToSummarize}}\n\n# Configurations\n\n## Normalized JSON Schema:\nThis JSON defines the exact set of keys and their types that will appear in the output object.\nHere is the JSON for normalized_json_schema:\n\n{{$context.$triggers.REST.$input.normalizedJsonSchema}}\n\n## Enrichment Configuration:\nA JSON object indicating which fields from the normalized_json_schema are to be enriched.\nHere is the JSON for enrichment_configuration:\n\n{{$context.$triggers.REST.$input.enrichmentConfiguration}}\n\n# Output Format\nGenerate only a JSON object with two keys: \"original\" and \"enriched\".\n{\n\"original\": {\n// Text to Summarize mapped to schema keys. Use null if missing in input.\n},\n\"enriched\": {\n// List of enriched values mapped to schema keys\n}\n}\n\n# Processing Rules\n\n## \"original\" Object:\n• Create the \"original\" object in your output. Transform the data in text_to_summarize into a new JSON that strictly conforms to the normalized_json_schema. If a key listed in the schema is absent from text_to_summarize, include it with a value of null.\n\n## \"enriched\" Object:\n• Initialize an object named \"enriched\" that contains every key that is (a) present in normalized_json_schema and (b) flagged as true in enrichment_configuration.\n• If a key is flagged for enrichment but you cannot reasonably enrich it, include the key in \"enriched\" with the value null.\n• If the corresponding value in \"text_to_summarize\" already satisfies the enrichment rules in full, copy that value verbatim into \"enriched\" instead of creating a new one.\n\na. If \"field_name\" is \"skill_description\":\n- If skill_description in the input is non-null, contains a meaningful description of the skill, copy it directly to enriched[\"skill_description\"].\n– Otherwise, craft a concise description of 60-90 words (2-4 sentences).\n– Focus on capabilities, knowledge, and practical application; remain domain-specific yet broadly reusable across contexts.\n– Do NOT mention or paraphrase any company, product, client, or proprietary project names.\n– Use neutral, inclusive language that avoids gendered or age-related wording.\n– Assign this text to enriched[\"skill_description\"].\n\nb. If \"field_name\" is \"skill_synonyms\":\n– Copy every existing synonym from text_to_summarize into the new list. Do not make any changes to the wording of the existing synonyms (convert objects to plain strings if needed).\n– After the copied items, append up to a maximum of 10 additional synonyms or alternate phrasings that are true semantic equivalents of skill_name.\n– Each synonym must be ≤ 5 words.\n– Maintain Title Case; do not add trailing punctuation.\n– Where a widely accepted, unambiguous abbreviation exists (e.g., “FP&A”), include it in parentheses immediately after the full form: “Financial Planning and Analysis (FP&A)”.\n– Exclude low-value terms (e.g., “Skill in …”, “Mastery of …”, etc.).\n– Deduplicate case-insensitively and ignore simple word-order permutations.\n– Assign the final list to enriched[\"skill_synonyms\"].\n\nc. If \"field_name\" is something else:\n– Generate an appropriate value using the available information in the enrichment_configuration in the context of skill_name, skill_description, and organization_information.\n– If enrichment is not possible, set the value to null.\n\n# Compliance, Bias, and Formatting Rules (apply globally):\n• All enriched text must be neutral, inclusive, and free of discriminatory language.\n• Do not output any markup; return plain JSON that is fully RFC 8259-compliant.\n• Do not add explanations or markdown fences such as ```json.\n• Ensure all keys defined in normalized_json_schema appear either in \"original\" or \"enriched\"; if a key referenced in enrichment_configuration is missing from normalized_json_schema, include it in both \"original\" and \"enriched\" with the value null.\n\n# Example\n\n## Input:\n{\n\"skill_id\": \"100004030333\",\n\"skill_name\": \"Financial Modeling\",\n\"skill_description\": null,\n\"content_item_catalog\": \"Finance & Accounting Skills\",\n\"skill_business_domain\": \"Finance\",\n\"skill_synonyms\": [\"Financial Analysis & Reporting\", \"Business Modeling\"],\n\"organization_information\": \"QuantumLeap Financial is a forward-thinking investment management firm ...\"\n}\n\n## Expected Output (truncated for brevity):\n{\n\"original\": {\n\"skill_id\": \"100004030333\",\n\"skill_name\": \"Financial Modeling\",\n...\n},\n\"enriched\": {\n\"skill_description\": \"Financial modeling involves structuring quantitative representations ...\",\n\"skill_synonyms\": [\n\"Quantitative Financial Forecasting\",\n\"Financial Planning and Analysis (FP&A)\",\n...\n]\n}\n}\n\n# FINAL STEP – CRITICAL – Validate Output\nAlways ensure that your response contains ONLY a valid RFC 8259-compliant JSON object adhering to the rules above. Do not include any additional commentary."
+            }
+          ],
+          "type": "LLM"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {},
+      "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+      "model": "OCI_GPT_5_MINI",
+      "provider": "CERT_PREMIUM"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1770327984372",
+            "name": "enrichmentConfiguration",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1770327977208",
+            "name": "normalizedJsonSchema",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1770327920978",
+            "name": "textToSummarize",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "LEARNING",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

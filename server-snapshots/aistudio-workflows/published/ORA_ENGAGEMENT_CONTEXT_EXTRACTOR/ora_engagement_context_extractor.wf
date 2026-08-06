@@ -1,0 +1,324 @@
+{
+  "workflowId": "300000331067535",
+  "workflowCode": "ORA_ENGAGEMENT_CONTEXT_EXTRACTOR",
+  "name": "Engagement Context Extractor",
+  "description": "Generates a complete engagement snapshot for any conversation, capturing association state and key participants in one structured response.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1775726801375"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START",
+          "diagram": {
+            "x": 5351,
+            "y": 5000
+          }
+        },
+        {
+          "id": "1775726801375",
+          "code": "GET_CONVERSATION_REFERENCES",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CONVERSATIONS",
+            "functionName": "get_conversationReferences",
+            "processJson": true,
+            "name": "Get conversation references",
+            "errorNodeId": "1776061172604"
+          },
+          "diagram": {
+            "x": 5247.5,
+            "y": 5246
+          },
+          "outcomes": {
+            "success": "1775727764585"
+          },
+          "inputs": [
+            {
+              "id": "1774872692003_1",
+              "name": "conversationNumber",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.conversationNumber}}"
+            }
+          ]
+        },
+        {
+          "id": "1775727764585",
+          "code": "PROCESS_CONVERSATION_REFERENCES",
+          "type": "CODE",
+          "metadata": {
+            "name": "Process conversation references",
+            "sourceCode": "const referenceResponse = $context.$nodes.GET_CONVERSATION_REFERENCES.$output || {};\n\nconst referenceItems = Array.isArray(referenceResponse.items) ? referenceResponse.items : [];\nconst referenceCount = Number(referenceResponse.count) || referenceItems.length;\n\nlet hasAccount = false;\nlet hasOpportunity = false;\nlet hasOnlyAccountRefs = true;\nconst accounts = [];\n\n/**\n * canProcess rules:\n * - false if reference records exist AND at least one OPTY or SERVICE_REQUEST reference exists\n * - true if no references OR references are only ORA_HZ_ORGANIZATION_PROFILES\n */\nlet canProcess = referenceCount === 0;\n\nif (referenceCount > 0) {\n  canProcess = true;\n\n  for (let i = 0; i < referenceItems.length; i += 1) {\n    const ref = referenceItems[i] || {};\n    const type = ref.ObjectTypeCd || '';\n\n    // OPTY or SERVICE_REQUEST reference found -> stop and block processing.\n    if (type === 'ORA_MOO_OPTY' || type === 'ORA_SVC_SERVICE_REQUESTS') {\n      hasOpportunity = true;\n      canProcess = false;\n      break;\n    }\n\n    if (type === 'ORA_HZ_ORGANIZATION_PROFILES') {\n      hasAccount = true;\n      accounts.push({\n        accountPartyNumber: ref.ObjectNumber,\n        accountPartyId: ref.ObjectId\n      });\n      continue;\n    }\n\n    hasOnlyAccountRefs = false;\n  }\n\n  // If loop completed without OPTY/SR, allow only account-only references.\n  if (canProcess) {\n    canProcess = hasOnlyAccountRefs;\n  }\n}\n\nconst association = {\n  isAssociated: hasAccount || hasOpportunity,\n  isAcntAssociated: hasAccount,\n  isOptyAssociated: hasOpportunity,\n  accounts\n};\n\nconst result = {\n  canProcess,\n  association\n};\n\nreturn result;",
+            "returnType": "object",
+            "description": "",
+            "errorNodeId": "1776061172604"
+          },
+          "diagram": {
+            "x": 5229.5,
+            "y": 5468
+          },
+          "outcomes": {
+            "success": "1775726888650"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1775726888650",
+          "code": "CAN_PROCESS",
+          "type": "CONDITION",
+          "convergenceTargetId": "end",
+          "metadata": {
+            "name": "Can process"
+          },
+          "diagram": {
+            "x": 5249,
+            "y": 5690
+          },
+          "outcomes": {
+            "false": "1775729013751",
+            "true": "1776314558522"
+          },
+          "inputs": [
+            {
+              "id": "1775726888650_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_CONVERSATION_REFERENCES.$output.result.canProcess === true}}"
+            }
+          ]
+        },
+        {
+          "id": "1775729013751",
+          "code": "ALREADY_ASSOCIATED",
+          "type": "RETURN",
+          "metadata": {
+            "name": "Already associated"
+          },
+          "diagram": {
+            "x": 5000,
+            "y": 5912
+          },
+          "outcomes": {},
+          "inputs": [
+            {
+              "id": "1775729013751_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_CONVERSATION_REFERENCES.$output.result}}"
+            }
+          ]
+        },
+        {
+          "id": "1776314558522",
+          "code": "BUILD_CONVERSATION_MESSAGE_QUERY",
+          "type": "CODE",
+          "metadata": {
+            "name": "Build conversation message query",
+            "returnType": "object",
+            "sourceCode": "const conversationId = Number($context.$triggers.REST.$input.conversationId); \nif (Number.isNaN(conversationId)) {\n  throw new Error('conversationId is required');\n}\n\nconst emailTypeCode = 'ORA_SVC_EMAIL'; // TODO: filter emails only\n\nconst query = `ConversationId=${conversationId}`;\nconst fields =  'MessageId,MessageNumber,MessageTypeCd,MessageTitle,SenderPartyTypeCd,SenderFreeFormAddress,recipients';\nconst sort = 'CreationDate:asc';\nconst payload = { query, fields, sort };\nreturn payload;",
+            "errorNodeId": "1776061172604"
+          },
+          "diagram": {
+            "x": 5450,
+            "y": 5912
+          },
+          "outcomes": {
+            "success": "1776314558523"
+          },
+          "inputs": []
+        },
+        {
+          "id": "1776314558523",
+          "code": "GET_EMAIL_MESSAGES",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "processJson": true,
+            "name": "Get email messages",
+            "businessObjectCode": "ORA_CX_SALESFORCE_EMAILS",
+            "functionName": "get_all_emails_with_recipients"
+          },
+          "diagram": {
+            "x": 5837.466953828069,
+            "y": 6115.823414553573
+          },
+          "outcomes": {
+            "success": "1774874858207"
+          },
+          "inputs": [
+            {
+              "id": "1776314558523_query",
+              "name": "query",
+              "value": "{{$context.$nodes.BUILD_CONVERSATION_MESSAGE_QUERY.$output.result.query}}",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "id": "1776314558523_fields",
+              "name": "fields",
+              "value": "{{$context.$nodes.BUILD_CONVERSATION_MESSAGE_QUERY.$output.result.fields}}",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "id": "1776314558523_sort",
+              "name": "sort",
+              "value": "{{$context.$nodes.BUILD_CONVERSATION_MESSAGE_QUERY.$output.result.sort}}",
+              "required": false,
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "name": "Build engagement metadata",
+            "returnType": "object",
+            "sourceCode": "const referenceProcessingResult = $context.$nodes.PROCESS_CONVERSATION_REFERENCES.$output.result || {};\nconst messageResponse = $context.$nodes.GET_EMAIL_MESSAGES.$output || {};\n\nconst conversationId = Number($context.$triggers.REST.$input.conversationId);\nconst conversationNumber = String($context.$triggers.REST.$input.conversationNumber || '');\n\nconst association = referenceProcessingResult.association || {\n  isAssociated: false,\n  isAcntAssociated: false,\n  isOptyAssociated: false,\n  accounts: []\n};\n\n// Message & participant extraction\nconst customerSet = new Set();\nconst salesSet = new Set();\nconst messageItems = messageResponse.items || [];\n\n/**\n * Full message chain metadata used for downstream attachment processing.\n */\nconst messageChain = [];\nfor (let i = 0; i < messageItems.length; i += 1) {\n  const msg = messageItems[i];\n\n  // Collect message id/number for every message in the thread.\n  messageChain.push({\n    messageId: msg.MessageId,\n    messageNumber: msg.MessageNumber || ''\n  });\n\n  const senderEmail = (msg.SenderFreeFormAddress || '').trim().toLowerCase();\n  const senderType = msg.SenderPartyTypeCd;\n\n  // Sender classification: sales users come through as ORA_SVC_RESOURCE;\n  // everyone else (customer contacts, partners, etc.) goes into customerSet.\n  if (senderEmail) {\n    if (senderType === 'ORA_SVC_RESOURCE') {\n      salesSet.add(senderEmail);\n    } else {\n      customerSet.add(senderEmail);\n    }\n  }\n\n  const recipientContainer = msg.recipients || [];\n  const recipients = recipientContainer.items || recipientContainer;\n\n  // Recipient classification: iterate every address, normalize casing,\n  // skip empties, then bucket by party type exactly as we do for senders.\n  for (let j = 0; j < recipients.length; j += 1) {\n    const rec = recipients[j];\n    const email = (rec.FreeFormAddress || '').trim().toLowerCase();\n    if (!email) continue;\n\n    if (rec.RecipientPartyTypeCd === 'ORA_SVC_RESOURCE') {\n      salesSet.add(email);\n    } else {\n      customerSet.add(email);\n    }\n  }\n}\n\n/**\n * Store the most recent message's detailed metadata separately.\n * Messages are already in ascending CreationDate order.\n */\nconst latestMessage = messageItems.length\n  ? messageItems[messageItems.length - 1]\n  : null;\n\nconst recentMessage = latestMessage\n  ? {\n      messageId: latestMessage.MessageId,\n      messageNumber: latestMessage.MessageNumber,\n      messageTitle: latestMessage.MessageTitle || '',\n      direction: latestMessage.MessageTypeCd || '',\n      senderEmail: (latestMessage.SenderFreeFormAddress || '').trim().toLowerCase(),\n      sentDate: latestMessage.CreationDate || null\n    }\n  : null;\n\nconst engagementContext = {\n  conversationId,\n  conversationNumber,\n  association,\n  recentMessage,\n  messageChain,\n  customerContactEmails: Array.from(customerSet),\n  salesUserEmails: Array.from(salesSet)\n};\n\nreturn engagementContext;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "BUILD_ENGAGEMENT_METADATA",
+          "id": "1774874858207",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 5249,
+            "y": 6356
+          }
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1774872634753",
+            "name": "conversationNumber",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1774872488854",
+            "name": "conversationId",
+            "scope": "JOB",
+            "type": "number"
+          }
+        ]
+      }
+    ],
+    "deletedTriggerTypes": [],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "dtRunProfiles": {
+      "activeProfileId": "97339660-7b90-438a-9850-794bcb3b402e",
+      "profiles": [
+        {
+          "id": "25d6a82a-7d79-4514-9f44-bd852106a820",
+          "name": "New run profile 1",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"conversationNumber\": \"CDRM_0000016501\",\n  \"conversationId\": 300100649572621\n}"
+        },
+        {
+          "id": "9d778bb0-d109-4c8a-a67f-28801bbe4672",
+          "name": "single att",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n            \"conversationId\": 300100649612920,\n            \"conversationNumber\": \"CDRM_0000016510\",\n}"
+        },
+        {
+          "id": "97339660-7b90-438a-9850-794bcb3b402e",
+          "name": "New run profile 3",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"conversationNumber\": \"CDRM_0000016519\",\n  \"conversationId\": 300100650535591\n}"
+        }
+      ]
+    },
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    }
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "SALES_FORCE_AUTOMATION",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "FULL",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

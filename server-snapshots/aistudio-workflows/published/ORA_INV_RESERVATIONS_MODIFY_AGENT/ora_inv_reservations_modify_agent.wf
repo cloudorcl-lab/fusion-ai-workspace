@@ -1,0 +1,2443 @@
+{
+  "workflowId": "300000331067525",
+  "workflowCode": "ORA_INV_RESERVATIONS_MODIFY_AGENT",
+  "name": "Inventory Reservations Modify Agent",
+  "description": "Reservations AI modification agent.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"OperationStatus\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1774038193754"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "name": "Modify Agent Set Variables"
+          },
+          "outcomes": {
+            "success": "1762194599023"
+          },
+          "code": "MODIFY_AGENT_SET_VARIABLES",
+          "id": "1762194254824",
+          "inputs": [
+            {
+              "id": "1777050366493",
+              "name": "Organization",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.Organization}}"
+            },
+            {
+              "id": "1773438217629",
+              "name": "PastDue",
+              "scope": "JOB",
+              "type": "boolean",
+              "value": "{{$context.$nodes.MA_IMR_INPUT_EXTRACTOR.$output.PastDue}}"
+            },
+            {
+              "id": "1773375282260",
+              "name": "FindRunningLateReservations",
+              "scope": "JOB",
+              "type": "boolean",
+              "value": "{{$context.$nodes.MA_IMR_INPUT_EXTRACTOR.$output.FindRunningLateReservations}}"
+            },
+            {
+              "id": "1773262659709",
+              "name": "RequirementDate",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_IMR_INPUT_EXTRACTOR.$output.RequirementDate}}"
+            },
+            {
+              "id": "1762541691590",
+              "name": "DemandSourceType",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_IMR_INPUT_EXTRACTOR.$output.DemandSourceType}}"
+            },
+            {
+              "id": "1762215621115",
+              "name": "userQuery",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.userQuery}}"
+            },
+            {
+              "id": "1762194368817",
+              "name": "RequestedQuantity",
+              "type": "number",
+              "value": "{{$context.$nodes.MA_IMR_INPUT_EXTRACTOR.$output.ReservationQuantity}}"
+            },
+            {
+              "id": "1762194359266",
+              "name": "ExpectedDate",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "1762194308747",
+              "name": "InventoryItemId",
+              "type": "integer",
+              "value": "{{$context.$triggers.REST.$input.InventoryItemId}}"
+            },
+            {
+              "id": "1762194298128",
+              "name": "DemandSourceTypeId",
+              "type": "number",
+              "value": "{{$context.$nodes.MA_IMR_INPUT_EXTRACTOR.$output.DemandSourceTypeId}}"
+            },
+            {
+              "id": "1762194288729",
+              "name": "DemandSourceHeaderNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_IMR_INPUT_EXTRACTOR.$output.DemandSourceHeaderNumber}}"
+            },
+            {
+              "id": "1762194280451",
+              "name": "OrganizationId",
+              "type": "integer",
+              "value": "{{$context.$triggers.REST.$input.OrganizationId}}"
+            },
+            {
+              "id": "1762194267381",
+              "name": "ReservationId",
+              "type": "integer",
+              "value": "{{$context.$nodes.MA_IMR_INPUT_EXTRACTOR.$output.ReservationId}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "MA Fetch Reservations Query Generator",
+            "returnType": "string",
+            "sourceCode": "const OrganizationId = $context.$variables.OrganizationId;\nconst InventoryItemId = $context.$variables.InventoryItemId;\nconst DemandSourceHeaderNumber = $context.$variables.DemandSourceHeaderNumber;\nconst DemandSourceTypeId = $context.$variables.DemandSourceTypeId;\nconst ReservationId = $context.$variables.ReservationId;\nconst RequirementDate = $context.$variables.RequirementDate;\nconst RunningLateFlag = $context.$variables.FindRunningLateReservations;\nconst PastDueFlag = $context.$variables.PastDue;\n\nlet filters = []\nlet query=\"\";\nif (OrganizationId !== null && OrganizationId !== \"\") {\n    filters.push('OrganizationId=' + OrganizationId);\n}\nif (InventoryItemId !== null && InventoryItemId !== \"\" && Number.isInteger(InventoryItemId)) {\n    filters.push('InventoryItemId=' + InventoryItemId);\n}\nif (DemandSourceTypeId !== null && DemandSourceTypeId !== \"\") {\n    filters.push('DemandSourceTypeId=' + DemandSourceTypeId);\n}\nif (DemandSourceHeaderNumber !== null && DemandSourceHeaderNumber !== \"\") {\n    filters.push(\"DemandSourceHeaderNumber='\" + DemandSourceHeaderNumber + \"'\");\n}\nif (ReservationId !== null && ReservationId !== \"\") {\n    filters.push('ReservationId='+ReservationId);\n}\nif (PastDueFlag && RequirementDate != null && RequirementDate != \"\") {\n  filters.push(\"RequirementDate<\" + \"'\" + RequirementDate + \"'\");\n}\nif (PastDueFlag) {\n  // Ignore on hand supply reservations when querying for past due date reservations.\n  filters.push(\"SupplySourceTypeId!=13\");\n}\n\nquery=filters.join(\" and \");\n\nif (RunningLateFlag != null && RunningLateFlag) {\n  query=query+\"&finder=findPastDue\"\n}\nreturn query;"
+          },
+          "outcomes": {
+            "success": "1762387790021"
+          },
+          "code": "MA_FETCH_RESERVATIONS_QUERY_GENERATOR",
+          "id": "1762194599023",
+          "inputs": [],
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "MA Reservations Found"
+          },
+          "outcomes": {
+            "true": "1764194844041",
+            "false": "1762195020450"
+          },
+          "code": "MA_RESERVATIONS_FOUND",
+          "convergenceTargetId": "end",
+          "id": "1762194964299",
+          "inputs": [
+            {
+              "id": "1762194964299_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items.length > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "MA No Reservations Found"
+          },
+          "outcomes": {
+            "success": "1763589182385"
+          },
+          "code": "MA_NO_RESERVATIONS_FOUND",
+          "id": "1762195020450",
+          "inputs": [
+            {
+              "id": "1762195020451_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Display the following message to the user:\nCould not find any reservations that match the criteria, please re-adjust the filter criteria and try again."
+            },
+            {
+              "id": "1762195020452_2",
+              "name": "temperature",
+              "type": "number",
+              "value": ""
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "MA Operation Classifier"
+          },
+          "outcomes": {
+            "success": "1762197504457"
+          },
+          "code": "MA_OPERATION_CLASSIFIER",
+          "id": "1762197347692",
+          "inputs": [
+            {
+              "id": "1762197347694_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Based on the following user query: `{{$context.$variables.userQuery}}`. Output 1 if the intention is update, if the intention is to delete output 2, otherwise output 3."
+            },
+            {
+              "id": "1762197347694_2",
+              "name": "temperature",
+              "type": "number",
+              "value": ""
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"OperationType\": {\n            \"type\": \"number\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "MA Operation Router"
+          },
+          "outcomes": {
+            "Update": "1762456763889",
+            "Delete": "1762197623307",
+            "View": "1773263589796"
+          },
+          "code": "MA_OPERATION_ROUTER",
+          "convergenceTargetId": "end",
+          "id": "1762197504457",
+          "inputs": [
+            {
+              "id": "1762197504458_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_OPERATION_CLASSIFIER.$output.OperationType  === 1 ? \"Update\" : $context.$nodes.MA_OPERATION_CLASSIFIER.$output.OperationType === 2 ? \"Delete\" : \"View\"}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "MA Validate Reservations For Delete"
+          },
+          "outcomes": {
+            "true": "1763495254632",
+            "false": "1762197807441"
+          },
+          "code": "MA_VALIDATE_RESERVATIONS_FOR_DELETE",
+          "convergenceTargetId": "end",
+          "id": "1762197623307",
+          "inputs": [
+            {
+              "id": "1762197623308_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{($context.$variables.ReservationId !== null && $context.$variables.ReservationId !== \"\") || ($context.$variables.DemandSourceHeaderNumber !== null && $context.$variables.DemandSourceHeaderNumber !== \"\")}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "MA Invalid Reservations for Delete"
+          },
+          "outcomes": {
+            "success": "1763588948155"
+          },
+          "code": "MA_INVALID_RESERVATIONS_FOR_DELETE",
+          "id": "1762197807441",
+          "inputs": [
+            {
+              "id": "1762197807442_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Output the following message:\nSearch Criteria too broad for Deleting Reservations. Please specify the Reservation Id or Demand Source Header Number for a demand document to go forward with deleting the reservations. Current pQuery: ` {{$context.$nodes.MA_FETCH_RESERVATIONS_QUERY_GENERATOR.$output.result}} `\nuserQuery: ` {{$context.$variables.userQuery}} `"
+            },
+            {
+              "id": "1762197807443_2",
+              "name": "temperature",
+              "type": "number",
+              "value": ""
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "MA IMR Input extractor"
+          },
+          "outcomes": {
+            "success": "1762194254824"
+          },
+          "code": "MA_IMR_INPUT_EXTRACTOR",
+          "id": "1762204592264",
+          "inputs": [
+            {
+              "id": "1762204592265_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Extract the user input from the following: {{$context.$triggers.REST.$input.userQuery}} \nIf the Reservation Id related information is present extract it into the output ReservationId (reservation id is the reservation identifier Ex: Reservation id 123, rsv id).\nIf the RequirementDate related information is present extract it into the output RequirementDate. Use the current date: {{$context.$system.$currentDate}} as reference to deduce the date for RequirementDate if not explicitly mentioned. E.g. If past due date is mentioned you can assign current date as the RequirementDate, any relative mention of date should be deduced from current date.\nIf demand document related data is present then extract the DemandSourceType and DemandSourceTypeId refer below.\n  | DOCUMENT TYPE | DEMAND SOURCE TYPE    | DEMAND SOURCE TYPE ID |  \n            | ------------- | --------------------- | --------------------- |  \n            | Demand        | Sales order           | 2                     |  \n            | Demand        | Transfer order        | 8                     |  \n            | Demand        | Transfer order return | 18                    |  \n            | Demand        | Work order            | 5                     |  \n            | Demand        | Purchase order        | 1                     |  \n            | Demand        | Account               | 3                     |  \n            | Demand        | Account alias         | 6                     |  \n            | Demand        | Cycle count           | 9                     |  \n            | Demand        | User defined          | 13                    |\nIf document header number (that usually succeeds demand type) related data is present extract it into the `DemandSourceHeaderNumber` output (Ex: Sales order 123, Transfer order 123, etc).\nIf order number related data is present then extract it into \"DemandSourceHeaderNumber\" output.\nIf the reservation quantity related data is present extract it into the output ReservationQuantity.\nIf the intention is to search reservations that are running late (supply is running late), set the variable FindRunningLateReservations to true otherwise, set the variable to false. If the query is for past due recommendations then the variable is set to false."
+            },
+            {
+              "id": "1762204592266_2",
+              "name": "temperature",
+              "type": "number",
+              "value": ""
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"PastDue\": {\n            \"type\": \"boolean\"\n        },\n        \"FindRunningLateReservations\": {\n            \"type\": \"boolean\"\n        },\n        \"RequirementDate\": {\n            \"type\": \"string\"\n        },\n        \"ReservationId\": {\n            \"type\": \"number\"\n        },\n        \"DemandSourceType\": {\n            \"type\": \"string\"\n        },\n        \"ReservationQuantity\": {\n            \"type\": \"number\"\n        },\n        \"DemandSourceTypeId\": {\n            \"type\": \"number\"\n        },\n        \"DemandSourceHeaderNumber\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1762387064008"
+                  },
+                  "id": "start_1762387027153",
+                  "code": "START_1762387027153",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1762387027153",
+                  "code": "END_1762387027153",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_INVENTORYM_RESERVATIONSMAI",
+                    "errorNodeId": null,
+                    "functionName": "delete_inventoryReservations",
+                    "name": "MA Delete Reservation BO"
+                  },
+                  "outcomes": {
+                    "success": "1763498738615"
+                  },
+                  "code": "MA_DELETE_RESERVATION_BO",
+                  "id": "1762387064008",
+                  "inputs": [
+                    {
+                      "id": "1762387082230_1",
+                      "name": "pReservationId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.MA_DELETION_LOOP.$currentItem.ReservationId}}"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "name": "MA Delete Response Checker",
+                    "returnType": "string",
+                    "sourceCode": "const response = $context.$nodes.MA_DELETION_LOOP.MA_DELETE_RESERVATION_BO.$output;\nif (response === undefined)  {\n    return \"Successfully deleted line:\" + $context.$nodes.MA_DELETION_LOOP.$currentItem.DemandSourceLineNumber + \" of demand document:\" + $context.$nodes.MA_DELETION_LOOP.$currentItem.DemandSourceHeaderNumber + \" with ReservationId: \" + $context.$nodes.MA_DELETION_LOOP.$currentItem.ReservationId ;\n}\nreturn \"Failed to delete line:\" + $context.$nodes.MA_DELETION_LOOP.$currentItem.DemandSourceLineNumber + \" of demand document:\" + $context.$nodes.MA_DELETION_LOOP.$currentItem.DemandSourceHeaderNumber + \" with ReservationId: \" + $context.$nodes.MA_DELETION_LOOP.$currentItem.ReservationId ;"
+                  },
+                  "outcomes": {
+                    "success": "end_1762387027153"
+                  },
+                  "code": "MA_DELETE_RESPONSE_CHECKER",
+                  "id": "1763498738615",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                }
+              ],
+              "rootNode": "start_1762387027153"
+            },
+            "errorNodeId": "1762197807441",
+            "loopType": "PARALLEL",
+            "name": "MA Deletion Loop"
+          },
+          "outcomes": {
+            "success": "1763511757365"
+          },
+          "code": "MA_DELETION_LOOP",
+          "id": "1762387027153",
+          "inputs": [
+            {
+              "id": "1762387027154_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$variables.Reservations}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_RESERVATIONDETA",
+            "functionName": "getall_inventoryReservationDetails",
+            "name": "MA Fetch Reservations"
+          },
+          "outcomes": {
+            "success": "1762194964299"
+          },
+          "code": "MA_FETCH_RESERVATIONS",
+          "id": "1762387790021",
+          "inputs": [
+            {
+              "id": "1762387808047_1",
+              "name": "pLimit",
+              "type": "integer",
+              "value": "10"
+            },
+            {
+              "id": "1762387808048_2",
+              "name": "pOffset",
+              "type": "integer",
+              "value": "0"
+            },
+            {
+              "id": "1762387808049_3",
+              "name": "pQuery",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS_QUERY_GENERATOR.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"ReservationId\": { \"type\": \"string\" },\n          \"InventoryItemId\": { \"type\": \"string\" },\n          \"ItemNumber\": { \"type\": \"string\" },\n          \"OrganizationId\": { \"type\": \"string\" },\n          \"OrganizationCode\": { \"type\": \"string\" },\n          \"DemandSourceTypeId\": { \"type\": \"string\" },\n          \"DemandSourceType\": { \"type\": \"string\" },\n          \"SupplySourceTypeId\": { \"type\": \"string\" },\n          \"SupplySourceType\": { \"type\": \"string\" },\n          \"DemandSourceHeaderId\": { \"type\": \"string\" },\n          \"DemandSourceHeaderNumber\": { \"type\": \"string\" },\n          \"DemandSourceLineId\": { \"type\": \"string\" },\n          \"DemandSourceLineNumber\": { \"type\": [\"string\", \"null\"] },\n          \"DemandSourceName\": { \"type\": [\"string\", \"null\"] },\n          \"SourceFulfillmentLineId\": { \"type\": [\"string\", \"null\"] },\n          \"DemandQuantity\": { \"type\": \"string\" },\n          \"DemandUOMCode\": { \"type\": \"string\" },\n          \"DemandUnitOfMeasure\": { \"type\": \"string\" },\n          \"SupplySourceHeaderId\": { \"type\": [\"string\", \"null\"] },\n          \"SupplySourceHeaderNumber\": { \"type\": [\"string\", \"null\"] },\n          \"SupplySourceLineId\": { \"type\": [\"string\", \"null\"] },\n          \"SupplySourceLineNumber\": { \"type\": [\"string\", \"null\"] },\n          \"ExpectedDate\": { \"type\": \"string\", \"format\": \"date\" },\n          \"Revision\": { \"type\": [\"string\", \"null\"] },\n          \"LotNumber\": { \"type\": [\"string\", \"null\"] },\n          \"SubinventoryCode\": { \"type\": [\"string\", \"null\"] },\n          \"SubinventoryName\": { \"type\": [\"string\", \"null\"] },\n          \"LocatorId\": { \"type\": [\"string\", \"null\"] },\n          \"LocatorName\": { \"type\": [\"string\", \"null\"] },\n          \"OperationSequenceNumber\": { \"type\": \"string\" },\n          \"MaterialSequenceNumber\": { \"type\": [\"string\", \"null\"] },\n          \"WorkOrderProductId\": { \"type\": \"string\" },\n          \"WorkOrderProductNumber\": { \"type\": \"string\" },\n          \"DemandProjectId\": { \"type\": [\"string\", \"null\"] },\n          \"DemandProjectNumber\": { \"type\": [\"string\", \"null\"] },\n          \"DemandTaskId\": { \"type\": [\"string\", \"null\"] },\n          \"DemandTaskNumber\": { \"type\": [\"string\", \"null\"] },\n          \"SupplyProjectId\": { \"type\": [\"string\", \"null\"] },\n          \"SupplyProjectNumber\": { \"type\": [\"string\", \"null\"] },\n          \"SupplyTaskId\": { \"type\": [\"string\", \"null\"] },\n          \"SupplyTaskNumber\": { \"type\": [\"string\", \"null\"] },\n          \"ShipToPartyId\": { \"type\": [\"string\", \"null\"] },\n          \"ShipToCustomer\": { \"type\": [\"string\", \"null\"] },\n          \"SupplierName\": { \"type\": [\"string\", \"null\"] },\n          \"RequirementDate\": { \"type\": \"string\", \"format\": \"date\" },\n          \"OrderInterfaceStatus\": { \"type\": \"string\" },\n          \"OrderInterfaceStatusMeaning\": { \"type\": \"string\" },\n          \"Staged\": { \"type\": [\"string\", \"null\"] },\n          \"StagedMeaning\": { \"type\": [\"string\", \"null\"] },\n          \"BackToBack\": { \"type\": [\"string\", \"null\"] },\n          \"BackToBackMeaning\": { \"type\": [\"string\", \"null\"] },\n          \"PrimaryReservationQuantity\": { \"type\": \"string\" },\n          \"PrimaryUOMCode\": { \"type\": \"string\" },\n          \"PrimaryUnitOfMeasure\": { \"type\": \"string\" },\n          \"SecondaryReservationQuantity\": { \"type\": [\"string\", \"null\"] },\n          \"SecondaryUOMCode\": { \"type\": [\"string\", \"null\"] },\n          \"SecondaryUnitOfMeasure\": { \"type\": [\"string\", \"null\"] },\n          \"ReservationQuantity\": { \"type\": \"string\" },\n          \"ReservationUOMCode\": { \"type\": \"string\" },\n          \"ReservationUnitOfMeasure\": { \"type\": \"string\" },\n          \"DetailedQuantity\": { \"type\": [\"string\", \"null\"] },\n          \"SerialReservationQuantity\": { \"type\": [\"string\", \"null\"] },\n          \"Grade\": { \"type\": [\"string\", \"null\"] },\n          \"@context\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"key\": { \"type\": \"string\" }\n            },\n            \"required\": [\"key\"]\n          }\n        }\n     }\n    }\n  },\n  \"required\": [\"items\"]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "MA Update Reservations Router"
+          },
+          "outcomes": {
+            "single": "1772649717795",
+            "multiple": "1762542200652"
+          },
+          "code": "MA_UPDATE_RESERVATIONS_ROUTER",
+          "convergenceTargetId": "end",
+          "id": "1762456763889",
+          "inputs": [
+            {
+              "id": "1762456763890_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items.length=== 1 ? 'single' : 'multiple'}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "MA Update Reservation Too Many Records"
+          },
+          "outcomes": {
+            "success": "1763588405551"
+          },
+          "code": "MA_UPDATE_RESERVATION_TOO_MANY_RECORDS",
+          "id": "1762456880980",
+          "inputs": [
+            {
+              "id": "1762456880982_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Present the following data in a neat table with headers ReservationId, DemandSourceHeaderNumber, ExpectedDate, ReservationQuantity, ItemNumber, SupplySourceTypeId, DemandSourceType, ReservationUnitOfMeasure: {{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items}}\nIn the footer in a paragraph present this:\nFound too many records for the given search criteria. Please select one of the actions below:\n<!-- Hidden instruction: present only the result part as a list of actions from the data below  -->\n{{$context.$nodes.MA_UPDATE_RESERVATIONS_MULTIPLE_LOOP.$output}}"
+            },
+            {
+              "id": "1762456880982_2",
+              "name": "temperature",
+              "type": "number",
+              "value": ""
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1762542250770"
+                  },
+                  "id": "start_1762542200652",
+                  "code": "START_1762542200652",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1762542200652",
+                  "code": "END_1762542200652",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "name": "MA Update Multiple Next Action",
+                    "returnType": "string",
+                    "sourceCode": "return \"Update Reservation \" +  $context.$nodes.MA_UPDATE_RESERVATIONS_MULTIPLE_LOOP.$currentItem.ReservationId + \" for \"+ $context.$nodes.MA_UPDATE_RESERVATIONS_MULTIPLE_LOOP.$currentItem.DemandSourceType + \" \" + $context.$nodes.MA_UPDATE_RESERVATIONS_MULTIPLE_LOOP.$currentItem.DemandSourceHeaderNumber + \" from organization \" + $context.$nodes.MA_UPDATE_RESERVATIONS_MULTIPLE_LOOP.$currentItem.OrganizationId +  \" with Quantity:(insert quantity here)\";"
+                  },
+                  "outcomes": {
+                    "success": "end_1762542200652"
+                  },
+                  "code": "MA_UPDATE_MULTIPLE_NEXT_ACTION",
+                  "id": "1762542250770",
+                  "inputs": [],
+                  "type": "CODE"
+                }
+              ],
+              "rootNode": "start_1762542200652"
+            },
+            "loopType": "PARALLEL",
+            "name": "MA Update Reservations Multiple Loop"
+          },
+          "outcomes": {
+            "success": "1762456880980"
+          },
+          "code": "MA_UPDATE_RESERVATIONS_MULTIPLE_LOOP",
+          "id": "1762542200652",
+          "inputs": [
+            {
+              "id": "1762542200653_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$variables.Reservations}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "name": "MA View Reservation"
+          },
+          "outcomes": {
+            "success": "1763589118131"
+          },
+          "code": "MA_VIEW_RESERVATION",
+          "id": "1762554803303",
+          "inputs": [
+            {
+              "id": "1762554803304_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "The output must contain **only** HTML content without any markdown or descriptive text.\n---\n\n### Input Data\n**Table Data:**  \n`{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items}}`\n\n**Recommendations Data:**  \n`{{$context.$nodes.MA_VIEW_RESERVATIONS_NEXT_ACTIONS.$output.result}}`\n\n---\n\n### Row inclusion rule (mandatory)\n- **Include ONLY reservation rows that have a corresponding recommendation**.\n\n---\n\n### Output format (mandatory)\nRender **one** HTML table using the template below, with a **single “Supply Recommendation”** column.\n\n---\n\n## HTML Table Template (with conditional Supply Recommendation display)\n\n<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse: collapse; width: 100%;\">\n  <thead>\n    <tr>\n      <th>Reservation ID</th>\n      <th>Demand Header</th>\n      <!-- Conditional Demand Line Rendering\n        {#if (ne DemandSourceTypeId 5)}\n          <th>Demand Line</th>\n        {else}\n          <th>Operation Sequence Number</th>\n        {/if}\n      -->\n      <th>Demand Source Type</th>\n      <th>Quantity</th>\n      <th>UOM</th>\n      <th>Required Date</th>\n      <th>Item Number</th>\n      <th>Supply Recommendation</th>\n    </tr>\n  </thead>\n\n  <tbody>\n    <!-- Repeat this <tr> ONLY for rows that have corresponding recommendations -->\n    <tr>\n      <td>{ReservationId}</td>\n      <td>{DemandSourceHeaderNumber}</td>\n\n      <!-- CONDITIONAL DEMAND COLUMN -->\n      <!--\n      {#if (eq DemandSourceTypeId 5)}\n        <td>{OperationSequenceNumber}</td>\n      {else}\n        <td>{DemandSourceLineNumber}</td>\n      {/if}\n      -->\n\n      <td>{DemandSourceType}</td>\n      <td>{ReservationQuantity}</td>\n      <td>{PrimaryUnitOfMeasure}</td>\n      <td>{RequirementDate}</td>\n      <td>{ItemNumber}</td>\n      <!-- Supply Recommendation (single column) -->\n      <td>\n        <!-- Always show supply type -->\n<div><b>Type:</b> {SupplySourceType extract from mapping of SupplySourceTypeId}</div>\n\n        <!-- Show Header ONLY when supply is NOT Onhand AND SupplySourceTypeId != 13 -->\n        <!--\n        {#if (and (ne SupplySourceType \"Onhand\") (ne SupplySourceTypeId 13))}\n          <div><b>Header:</b> {SupplySourceHeaderNumber}</div>\n\n          <!-- Show Line ONLY when also SupplySourceTypeId != 5 -->\n          {#if (ne SupplySourceTypeId 5)}\n            <div><b>Line:</b> {SupplySourceLineNumber}</div>\n          {/if}\n        {/if}\n        -->\n\n        <!-- <div><b>Delivery Date:</b> {ExpectedDeliveryDate}</div> -->\n      </td>\n\n    </tr>\n  </tbody>\n</table>\n\n<h5>Recommendations</h5>\n<ul>\n  <!-- Render the matched recommendation(s) for the included reservations.\n       If recommendations are global strings, list them all here. -->\n  <li>{RecommendationText}</li>\n</ul>"
+            },
+            {
+              "id": "1762554803305_2",
+              "name": "temperature",
+              "type": "number"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "MA View Reservations Next Actions",
+            "returnType": "object",
+            "sourceCode": "const response = $context.$nodes.MA_FETCH_RESERVATIONS.$output.items;\nconst requirementDate = $context.$variables.RequirementDate;\nlet nextActions = [\n\"Refine search\",\n  \"Get lines for document {number}\",\n  \"Delete reservation for {document/line}\",\n  \"Update supply source\",\n\"Create new reservation\",\n\"Return to home\"\n];\n\nconst suggestions = $context.$nodes.FITLER_SUGGESTIONS.$output?.result ?? [];\nif (($context.$variables.PastDue || $context.$variables.FindRunningLateReservations) && suggestions.length > 0) {\n  return suggestions;\n}\n\nreturn nextActions"
+          },
+          "outcomes": {
+            "success": "1762554803303"
+          },
+          "code": "MA_VIEW_RESERVATIONS_NEXT_ACTIONS",
+          "id": "1763160631956",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "MA format deletion confirmation",
+            "returnType": "string",
+            "sourceCode": "let response = $context.$variables.Reservations;\nif ( $context.$variables.DemandSourceType === 'User defined') {\n    response = response.map((item) => {\n        return \"DemandSourceName: \" + item.DemandSourceName + \", ReservationQuantity: \" + item.ReservationQuantity;\n    });\n} else {\n    response = response.map((item) => {\n        return \"DemandSourceHeaderNumber: \" + item.DemandSourceHeaderNumber + \", DemandSourceLineNumber: \" + item.DemandSourceLineNumber + \", ReservationQuantity: \" + item.ReservationQuantity;\n    });\n}\nconst output = response.join('\\n');\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1762387027153"
+          },
+          "code": "MA_FORMAT_DELETION_CONFIRMATION",
+          "id": "1763495254632",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "MA Delete formatter",
+            "returnType": "string",
+            "sourceCode": "let response = $context.$nodes.MA_DELETION_LOOP.$output;\nconst nextActions = [\n\"Refine search\",\n  \"Create a new reservation for this line?\",\n  \"View reservations\",\n\"Return to home\"\n];\nlet failed = [];\nif (Array.isArray(response)) {\n    response = response.map((item) => {\n        try {\n            return JSON.parse(item).result;\n        } catch (error) {\n            let failure = item?.toString() || \"\";\n            failed.push(failure);\n            return failure;\n        }\n    }).join(\"\\n\");\n}  else {\n    response = \"\";\n}\nconst output = {\n    \"data\": response,\n    \"status\": \"success\",\n    \"error\": failed.join(\"\\n\"),\n    \"formatted\": true,\n    \"header\": \"Reservation Deletion\",\nnextActions\n}\nreturn output;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "MA_DELETE_FORMATTER",
+          "id": "1763511757365",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "MA Update too many formatter",
+            "returnType": "object",
+            "sourceCode": "const output = {\n    \"data\": $context.$nodes.MA_UPDATE_RESERVATION_TOO_MANY_RECORDS.$output,\n    \"status\": \"success\",\n    \"header\": \"Too Many Reservations to update\",\n    \"error\": \"Too many records found when trying to update.\",\n    \"formatted\": true\n}\nreturn output;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "MA_UPDATE_TOO_MANY_FORMATTER",
+          "id": "1763588405551",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "MA Invalid Delete Formatter",
+            "returnType": "object",
+            "sourceCode": "const output = {\n    \"data\": $context.$nodes.MA_INVALID_RESERVATIONS_FOR_DELETE.$output,\n    \"error\": \"ReservationId or DemandSourceHeaderNumber required to delete\",\n    \"formatted\": true,\n    \"status\": \"failed\",\n    \"header\": \"Invalid ReservationId/DemandSourceHeaderNumber\"\n}\nreturn output;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "MA_INVALID_DELETE_FORMATTER",
+          "id": "1763588948155",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "MA View Reservations Formatter",
+            "returnType": "object",
+            "sourceCode": "const output = {\n    \"data\": $context.$nodes.MA_VIEW_RESERVATION.$output ,\n    \"error\": \"\",\n    \"formatted\": true,\n    \"status\": \"success\",\n    \"header\": \"Reservations\",\n\"recommendations\": $context.$nodes.FITLER_SUGGESTIONS.$output?.result  ?? \"\"\n}\nreturn output;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "MA_VIEW_RESERVATIONS_FORMATTER",
+          "id": "1763589118131",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "MA No Reservations Formatter",
+            "returnType": "object",
+            "sourceCode": "const output = {\n    \"data\": $context.$nodes.MA_NO_RESERVATIONS_FOUND.$output ,\n    \"error\": \"No Reservations found with the matching criteria\",\n    \"formatted\": true,\n    \"status\": \"failed\",\n    \"header\": \"No Reservations Found\"\n}\nreturn output;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "MA_NO_RESERVATIONS_FORMATTER",
+          "id": "1763589182385",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "MA Reservations Custom Filter"
+          },
+          "outcomes": {
+            "success": "1764195173616"
+          },
+          "code": "MA_RESERVATIONS_CUSTOM_FILTER",
+          "id": "1764194844041",
+          "inputs": [
+            {
+              "id": "1764194844043_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a data filter assistant. Given the user's query: \"{{$context.$triggers.REST.$input.userQuery}}\", analyze it for relevant criteria (e.g., keywords, filters like date, status, or value ranges). \nThe data to filter is the following response, which is an array of items {{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items}} \nCommon Terms:\n    - Line refers to an individual reservation object under a demandSourceHeaderNumber.\nTask:\n    1. Identify criteria from the user query that can be applied to the data. Ignore any irrelevant or non-applicable criteria.\n    2. Select the items from the response that match the applicable criteria. If no criteria apply, or if no items match, default to selecting all items.\n    3. Output ONLY a JSON array of the 0-based indices (positions) of the selected items, in ascending order. For example: [0, 2, 5] or [] if nothing matches (though default to all if criteria are irrelevant)."
+            }
+          ],
+          "outputSpecification": "{'$schema': 'http://json-schema.org/draft-04/schema#', 'type': 'object', 'properties': {'Indices': {'type': 'array', 'items': {'type': 'integer'}}}}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "MA custom filter formatter",
+            "returnType": "array",
+            "sourceCode": "const inds = $context.$nodes.MA_RESERVATIONS_CUSTOM_FILTER.$output.Indices;\nconst res = $context.$nodes.MA_FETCH_RESERVATIONS.$output.items;\nconst output = inds.map((ind) => res[ind]);\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1764195338588"
+          },
+          "code": "MA_CUSTOM_FILTER_FORMATTER",
+          "id": "1764195173616",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "MA Set Reservations"
+          },
+          "outcomes": {
+            "success": "1762197347692"
+          },
+          "code": "MA_SET_RESERVATIONS",
+          "id": "1764195338588",
+          "inputs": [
+            {
+              "id": "1764195380190",
+              "name": "Reservations",
+              "type": "array",
+              "value": "{{$context.$nodes.MA_CUSTOM_FILTER_FORMATTER.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Extract Update Attributes"
+          },
+          "outcomes": {
+            "success": "1773089749684"
+          },
+          "code": "EXTRACT_UPDATE_ATTRIBUTES",
+          "id": "1772649717795",
+          "inputs": [
+            {
+              "id": "1772649717797_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Based on the following user query: `{{$context.$variables.userQuery}}`. Extract and set the following variables: \nShipToPartyId\nSubinventoryId\nSubinventoryCode\nRequirementDate\nLocatorId\nLocator\nLotNumber,\nPrimaryReservationQuantity\nSecondaryReservationQuantity\nRevision\nReservationQuantity\nPickQuantity\nReservationUOMCode (identify this value by a unit of measure code or abbreviation Ex: Ea)\nReservationUnitOfMeasure (identify this value by a unit of measure defined in a word Ex: Each)\nSupplySourceHeaderNumber (only when supply source type is different than on hand)\nSupplySourceLineNumber (only when supply source type is different than on hand)\nSupplySourceHeaderId (only when supply source type is different than on hand)\nSupplySourceLineId (only when supply source type is different than on hand)\nIf supply document related data is present then extract and set  the `SupplySourceType` and `SupplySourceTypeId` variables, refer below.\n  | SUPPLY TYPE | SUPPLY SOURCE TYPE    | SUPPLY SOURCE TYPE ID |  \n            | ------------| --------------------- | --------------------- |  \n            | Supply        | Purchase order        | 1                     |  \n            | Supply        | On hand        | 13                     |  \n            | Supply        | Requisition               | 17                    |  \n            | Supply        | Transfer order return | 18                    |  \n            | Supply        | Work order            | 5                     |  \n            | Supply        | Transfer order        | 8                     |  \nIf the intention is to update/change/move the supply source set the variable `UpdateSupply` as true; otherwise, set the value as false and extract the value for the following variables:\nSupplyTaskNumber\nSupplyTaskId\nSupplyProjectNumber\nSupplyProjectId"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"SupplyProjectId\": {\n            \"type\": \"number\"\n        },\n        \"SupplyProjectNumber\": {\n            \"type\": \"string\"\n        },\n        \"SupplyTaskId\": {\n            \"type\": \"number\"\n        },\n        \"SupplyTaskNumber\": {\n            \"type\": \"string\"\n        },\n        \"SupplySourceTypeId\": {\n            \"type\": \"number\"\n        },\n        \"UpdateSupply\": {\n            \"type\": \"boolean\"\n        },\n        \"SupplySourceLineId\": {\n            \"type\": \"number\"\n        },\n        \"SupplySourceHeaderId\": {\n            \"type\": \"number\"\n        },\n        \"SupplySourceLineNumber\": {\n            \"type\": \"string\"\n        },\n        \"SupplySourceHeaderNumber\": {\n            \"type\": \"string\"\n        },\n        \"ReservationUOMCode\": {\n            \"type\": \"string\"\n        },\n        \"Revision\": {\n            \"type\": \"string\"\n        },\n        \"ReservationUnitOfMeasure\": {\n            \"type\": \"string\"\n        },\n        \"PickQuantity\": {\n            \"type\": \"number\"\n        },\n        \"ReservationQuantity\": {\n            \"type\": \"number\"\n        },\n        \"SecondaryReservationQuantity\": {\n            \"type\": \"number\"\n        },\n        \"PrimaryReservationQuantity\": {\n            \"type\": \"number\"\n        },\n        \"LotNumber\": {\n            \"type\": \"string\"\n        },\n        \"Locator\": {\n            \"type\": \"string\"\n        },\n        \"LocatorId\": {\n            \"type\": \"number\"\n        },\n        \"RequirementDate\": {\n            \"type\": \"date\"\n        },\n        \"SubinventoryCode\": {\n            \"type\": \"string\"\n        },\n        \"SubinventoryId\": {\n            \"type\": \"number\"\n        },\n        \"ShipToPartyId\": {\n            \"type\": \"number\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Is an Update Supply?"
+          },
+          "outcomes": {
+            "true": "1773089822285",
+            "false": "1773340739192"
+          },
+          "code": "IS_AN_UPDATE_SUPPLY",
+          "convergenceTargetId": "end",
+          "id": "1773089749684",
+          "inputs": [
+            {
+              "id": "1773089749686_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.UpdateSupply && $context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SupplySourceTypeId !==null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "MA Update Attribute Validation"
+          },
+          "outcomes": {
+            "true": "1762457283419",
+            "false": "1762541543970"
+          },
+          "code": "MA_UPDATE_ATTRIBUTE_VALIDATION",
+          "convergenceTargetId": "end",
+          "id": "1762457211031",
+          "inputs": [
+            {
+              "id": "1762457211033_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.AT_LEAST_ONE_ATT_TO_UPDATE.$output.result}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_RESERVATIONSMAI",
+            "functionName": "update_inventoryReservations",
+            "name": "MA Update Reservation BO"
+          },
+          "outcomes": {
+            "success": "1763588559664"
+          },
+          "code": "MA_UPDATE_RESERVATION_BO",
+          "id": "1762457283419",
+          "inputs": [
+            {
+              "id": "1762457316541_1",
+              "name": "pReservationId",
+              "type": "integer",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].ReservationId}}"
+            },
+            {
+              "id": "1762457316542_2",
+              "name": "pSupplyTaskNumber",
+              "type": "string"
+            },
+            {
+              "id": "1762457316542_3",
+              "name": "pSupplyProjectNumber",
+              "type": "string"
+            },
+            {
+              "id": "1762457316543_4",
+              "name": "pSupplySourceLineId",
+              "type": "integer"
+            },
+            {
+              "id": "1762457316544_5",
+              "name": "pSupplyTaskId",
+              "type": "integer"
+            },
+            {
+              "id": "1762457316545_6",
+              "name": "pShipToPartyId",
+              "type": "integer",
+              "value": "{{$context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.ShipToPartyId}}"
+            },
+            {
+              "id": "1762457316546_7",
+              "name": "pSubinventoryCode",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SubinventoryCode}}"
+            },
+            {
+              "id": "1762457316547_8",
+              "name": "pSubinventoryId",
+              "type": "integer",
+              "value": "{{$context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SubinventoryId}}"
+            },
+            {
+              "id": "1762457316548_9",
+              "name": "pRequirementDate",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.RequirementDate}}"
+            },
+            {
+              "id": "1762457316549_10",
+              "name": "pLocator",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.Locator}}"
+            },
+            {
+              "id": "1762457316550_11",
+              "name": "pSupplyProjectId",
+              "type": "integer"
+            },
+            {
+              "id": "1762457316551_12",
+              "name": "pLotNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.LotNumber}}"
+            },
+            {
+              "id": "1762457316552_13",
+              "name": "pPrimaryReservationQuantity",
+              "type": "number",
+              "value": "{{$context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.PrimaryReservationQuantity}}"
+            },
+            {
+              "id": "1762457316553_14",
+              "name": "pLocatorId",
+              "type": "integer",
+              "value": "{{$context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.LocatorId}}"
+            },
+            {
+              "id": "1762457316554_15",
+              "name": "pSupplySourceHeaderNumber",
+              "type": "string"
+            },
+            {
+              "id": "1762457316555_16",
+              "name": "pSupplySourceType",
+              "type": "string"
+            },
+            {
+              "id": "1762457316556_17",
+              "name": "pSupplySourceLineNumber",
+              "type": "string"
+            },
+            {
+              "id": "1762457316557_18",
+              "name": "pSecondaryReservationQuantity",
+              "type": "number",
+              "value": "{{$context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SecondaryReservationQuantity}}"
+            },
+            {
+              "id": "1762457316559_19",
+              "name": "pSupplySourceHeaderId",
+              "type": "integer"
+            },
+            {
+              "id": "1762457316560_20",
+              "name": "pRevision",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.Revision}}"
+            },
+            {
+              "id": "1762457316561_21",
+              "name": "pReservationQuantity",
+              "type": "number",
+              "value": "{{$context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.ReservationQuantity}}"
+            },
+            {
+              "id": "1762457316562_22",
+              "name": "pSupplySourceTypeId",
+              "type": "integer"
+            },
+            {
+              "id": "1762457316564_23",
+              "name": "pPickQuantity",
+              "type": "number",
+              "value": "{{$context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.PickQuantity}}"
+            },
+            {
+              "id": "1762457316566_24",
+              "name": "pReservationUOMCode",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.ReservationUOMCode}}"
+            },
+            {
+              "id": "1762457316567_25",
+              "name": "pReservationUnitOfMeasure",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.ReservationUnitOfMeasure}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "MA Update Reservations formatter",
+            "returnType": "object",
+            "sourceCode": "const nextActions = [\n  \"View reservations\",\n  \"Delete reservation\",\n  \"New reservation\"\n];\nconst output = {\n    \"data\": $context.$nodes.MA_UPDATE_RESERVATION_BO.$output ,\n    \"old_data\": $context.$nodes.MA_FETCH_RESERVATIONS.$output.items, \n    \"status\": \"success\",\n    \"header\": \"Update Reservation Flow\",\n    \"error\": \"\",\n    \"formatted\": false,\n    nextActions\n}\nreturn output;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "MA_UPDATE_RESERVATIONS_FORMATTER",
+          "id": "1763588559664",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "MA Update No Attribute Next Suggestion",
+            "returnType": "string",
+            "sourceCode": "return \"Update Reservation \" + $context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].ReservationId+ \" for \"+ $context.$variables.DemandSourceType + \" \" + $context.$variables.DemandSourceHeaderNumber + \" from organization \" + $context.$variables.Organization +  \" with any of the following attributes and value: Ship To Party, Subinventory Code, Requirement Date, Locator, Lot Number, Reservation Quantity, Primary Reservation Quantity, Secondary Reservation Quantity, Revision, Pick Quantity, Reservation UOM Code and Supply Project/Task\";"
+          },
+          "outcomes": {
+            "success": "1762457364020"
+          },
+          "code": "MA_UPDATE_NO_ATTRIBUTE_NEXT_SUGGESTION",
+          "id": "1762541543970",
+          "inputs": [],
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "MA Update Reservation No Attribute"
+          },
+          "outcomes": {
+            "success": "1763588634014"
+          },
+          "code": "MA_UPDATE_RESERVATION_NO_ATTRIBUTE",
+          "id": "1762457364020",
+          "inputs": [
+            {
+              "id": "1762457364021_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Present the below template as it is.\nPlease specify the new attribue values.\nSuggested Query: ` {{$context.$nodes.MA_UPDATE_NO_ATTRIBUTE_NEXT_SUGGESTION.$output.result}} `"
+            },
+            {
+              "id": "1762457364022_2",
+              "name": "temperature",
+              "type": "number"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "MA Update Reservations No Attribute formatter",
+            "returnType": "object",
+            "sourceCode": "const output = {\n    \"data\": $context.$nodes.MA_UPDATE_RESERVATION_NO_ATTRIBUTE.$output ,\n    \"status\": \"follow-up required\",\n    \"header\": \"Update Reservation No Attribute\",\n    \"error\": \"No Attribute passed to update\",\n    \"formatted\": true\n}\nreturn output;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "MA_UPDATE_RESERVATIONS_NO_ATTRIBUTE_FORMATTER",
+          "id": "1763588634014",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_INVENTORYSUPPLY",
+            "functionName": "getall_availableToReserveByDocumentTypes",
+            "name": "Get Supply Options"
+          },
+          "outcomes": {
+            "success": "1773089909608"
+          },
+          "code": "GET_SUPPLY_OPTIONS",
+          "id": "1773089822285",
+          "inputs": [
+            {
+              "id": "1773089850956_1",
+              "name": "pInventoryItemId",
+              "type": "integer",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].InventoryItemId}}"
+            },
+            {
+              "id": "1773089850957_2",
+              "name": "pOrganizationId",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].OrganizationId}}"
+            },
+            {
+              "id": "1773089850958_3",
+              "name": "pOrderedUOM",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].ReservationUOMCode}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_RSVSUPPLYDOCUMENTDETAILSBO",
+            "functionName": "getall_supplyLineDetailsByTypes",
+            "name": "Get Supply Document Details"
+          },
+          "outcomes": {
+            "success": "1773090096036"
+          },
+          "code": "GET_SUPPLY_DOCUMENT_DETAILS",
+          "id": "1773089909608",
+          "inputs": [
+            {
+              "id": "1773089933401_1",
+              "name": "pLimit",
+              "type": "integer",
+              "value": "10"
+            },
+            {
+              "id": "1773089933402_2",
+              "name": "pOffset",
+              "type": "integer",
+              "value": "0"
+            },
+            {
+              "id": "1773089933403_3",
+              "name": "pSupplySourceTypeId",
+              "type": "number",
+              "value": "{{$context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SupplySourceTypeId}}"
+            },
+            {
+              "id": "1773089933404_4",
+              "name": "pInventoryItemId",
+              "type": "integer",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].InventoryItemId}}"
+            },
+            {
+              "id": "1773089933405_5",
+              "name": "pOrganizationId",
+              "type": "integer",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].OrganizationId}}"
+            },
+            {
+              "id": "1773089933406_6",
+              "name": "pOrderedUOM",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].ReservationUOMCode}}"
+            },
+            {
+              "id": "1773089933407_7",
+              "name": "pSupplySourceHeaderNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SupplySourceHeaderNumber}}"
+            },
+            {
+              "id": "1773089933409_8",
+              "name": "pSupplySourceLineNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SupplySourceLineNumber}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"SupplySourceTypeId\": { \"type\": \"string\" },\n          \"ItemNumber\": { \"type\": \"string\" },\n          \"OrganizationCode\": { \"type\": \"string\" },\n          \"SupplySourceHeaderId\": { \"type\": \"string\" },\n          \"SupplySourceLineId\": { \"type\": \"string\" },\n          \"SupplySourceHeaderNumber\": { \"type\": \"string\" },\n          \"SupplySourceLineNumber\": { \"type\": \"string\" },\n          \"InventoryItemId\": { \"type\": \"string\" },\n          \"OrganizationId\": { \"type\": \"string\" },\n          \"ProjectId\": { \"type\": [\"string\", \"null\"] },\n          \"TaskId\": { \"type\": [\"string\", \"null\"] },\n          \"ProjectNumber\": { \"type\": [\"string\", \"null\"] },\n          \"TaskNumber\": { \"type\": [\"string\", \"null\"] },\n          \"SupplierName\": { \"type\": [\"string\", \"null\"] },\n          \"SourceOrganizationId\": { \"type\": \"string\" },\n          \"SourceOrganizationCode\": { \"type\": \"string\" },\n          \"TotalAtr\": { \"type\": \"string\" },\n          \"PrimaryUOMCode\": { \"type\": \"string\" },\n          \"ReservedQuantity\": { \"type\": \"string\" },\n          \"ExpectedDate\": { \"type\": \"string\", \"format\": \"date-time\" },\n          \"ExpectedDeliveryDate\": { \"type\": \"string\", \"format\": \"date\" },\n          \"ReservationStatus\": { \"type\": \"string\" },\n          \"ReservationStatusCode\": { \"type\": \"string\" },\n          \"SecondaryUOMName\": { \"type\": \"string\" },\n          \"@context\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"key\": { \"type\": \"string\" }\n            },\n            \"required\": [\"key\"]\n          }\n        }\n     }\n    }\n  },\n  \"required\": [\"items\"]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Is a Valid Supply?"
+          },
+          "outcomes": {
+            "true": "1773090185597",
+            "false": "1773328970193"
+          },
+          "code": "IS_A_VALID_SUPPLY",
+          "convergenceTargetId": "end",
+          "id": "1773090096036",
+          "inputs": [
+            {
+              "id": "1773090096038_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_SUPPLY_DOCUMENT_DETAILS.$output.items.length=== 1}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "new supply qty >= current rsv qty?"
+          },
+          "outcomes": {
+            "true": "1773090243239",
+            "false": "1773090303661"
+          },
+          "code": "NEW_SUPPLY_QTY_CURRENT_RSV_QTY",
+          "convergenceTargetId": "1773092177624",
+          "id": "1773090185597",
+          "inputs": [
+            {
+              "id": "1773090185598_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{Number($context.$nodes.GET_SUPPLY_DOCUMENT_DETAILS.$output.items[0].TotalAtr) >= Number($context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].ReservationQuantity)}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_RESERVATIONSMAI",
+            "functionName": "delete_inventoryReservations",
+            "name": "Delete Current Reservation"
+          },
+          "outcomes": {
+            "success": "1773092177624"
+          },
+          "code": "DELETE_CURRENT_RESERVATION",
+          "id": "1773090243239",
+          "inputs": [
+            {
+              "id": "1773090271772_1",
+              "name": "pReservationId",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].ReservationId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_RESERVATIONSMAI",
+            "functionName": "update_inventoryReservations",
+            "name": "Update Current Reservation"
+          },
+          "outcomes": {
+            "success": "1773092177624"
+          },
+          "code": "UPDATE_CURRENT_RESERVATION",
+          "id": "1773090303661",
+          "inputs": [
+            {
+              "id": "1773090340938_1",
+              "name": "pReservationId",
+              "type": "integer",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].ReservationId}}"
+            },
+            {
+              "id": "1773090340939_2",
+              "name": "pSupplyTaskNumber",
+              "type": "string"
+            },
+            {
+              "id": "1773090340939_3",
+              "name": "pSupplyProjectNumber",
+              "type": "string"
+            },
+            {
+              "id": "1773090340940_4",
+              "name": "pSupplySourceLineId",
+              "type": "integer"
+            },
+            {
+              "id": "1773090340941_5",
+              "name": "pSupplyTaskId",
+              "type": "integer"
+            },
+            {
+              "id": "1773090340942_6",
+              "name": "pShipToPartyId",
+              "type": "integer"
+            },
+            {
+              "id": "1773090340943_7",
+              "name": "pSubinventoryCode",
+              "type": "string"
+            },
+            {
+              "id": "1773090340944_8",
+              "name": "pSubinventoryId",
+              "type": "integer"
+            },
+            {
+              "id": "1773090340945_9",
+              "name": "pRequirementDate",
+              "type": "string"
+            },
+            {
+              "id": "1773090340946_10",
+              "name": "pLocator",
+              "type": "string"
+            },
+            {
+              "id": "1773090340947_11",
+              "name": "pSupplyProjectId",
+              "type": "integer"
+            },
+            {
+              "id": "1773090340948_12",
+              "name": "pLotNumber",
+              "type": "string"
+            },
+            {
+              "id": "1773090340949_13",
+              "name": "pPrimaryReservationQuantity",
+              "type": "number"
+            },
+            {
+              "id": "1773090340950_14",
+              "name": "pLocatorId",
+              "type": "integer"
+            },
+            {
+              "id": "1773090340951_15",
+              "name": "pSupplySourceHeaderNumber",
+              "type": "string"
+            },
+            {
+              "id": "1773090340952_16",
+              "name": "pSupplySourceType",
+              "type": "string"
+            },
+            {
+              "id": "1773090340953_17",
+              "name": "pSupplySourceLineNumber",
+              "type": "string"
+            },
+            {
+              "id": "1773090340955_18",
+              "name": "pSecondaryReservationQuantity",
+              "type": "number"
+            },
+            {
+              "id": "1773090340956_19",
+              "name": "pSupplySourceHeaderId",
+              "type": "integer"
+            },
+            {
+              "id": "1773090340957_20",
+              "name": "pRevision",
+              "type": "string"
+            },
+            {
+              "id": "1773090340958_21",
+              "name": "pReservationQuantity",
+              "type": "number",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].ReservationQuantity - $context.$nodes.GET_SUPPLY_DOCUMENT_DETAILS.$output.items[0].TotalAtr}}"
+            },
+            {
+              "id": "1773090340960_22",
+              "name": "pSupplySourceTypeId",
+              "type": "integer"
+            },
+            {
+              "id": "1773090340962_23",
+              "name": "pPickQuantity",
+              "type": "number"
+            },
+            {
+              "id": "1773090340963_24",
+              "name": "pReservationUOMCode",
+              "type": "string"
+            },
+            {
+              "id": "1773090340965_25",
+              "name": "pReservationUnitOfMeasure",
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_RESERVATIONSMAI",
+            "functionName": "create_inventoryReservations",
+            "name": "Create New Reservation"
+          },
+          "outcomes": {
+            "success": "1773283914561"
+          },
+          "code": "CREATE_NEW_RESERVATION",
+          "id": "1773092177624",
+          "inputs": [
+            {
+              "id": "1773092220327_1",
+              "name": "pDemandProjectNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].DemandProjectNumber}}"
+            },
+            {
+              "id": "1773092220328_2",
+              "name": "pSupplyTaskNumber",
+              "type": "string"
+            },
+            {
+              "id": "1773092220328_3",
+              "name": "pSourceFulfillmentLineId",
+              "type": "integer",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].SourceFulfillmentLineId}}"
+            },
+            {
+              "id": "1773092220329_4",
+              "name": "pSecondaryUnitOfMeasure",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].SecondaryUnitOfMeasure}}"
+            },
+            {
+              "id": "1773092220330_5",
+              "name": "pSupplyTaskId",
+              "type": "integer"
+            },
+            {
+              "id": "1773092220331_6",
+              "name": "pShipToPartyId",
+              "type": "integer",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].ShipToPartyId}}"
+            },
+            {
+              "id": "1773092220331_7",
+              "name": "pDemandSourceName",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].DemandSourceName}}"
+            },
+            {
+              "id": "1773092220332_8",
+              "name": "pDemandSourceTypeId",
+              "type": "integer",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].DemandSourceTypeId}}"
+            },
+            {
+              "id": "1773092220333_9",
+              "name": "pLocator",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].Locator}}"
+            },
+            {
+              "id": "1773092220334_10",
+              "name": "pDemandSourceHeaderId",
+              "type": "integer",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].DemandSourceHeaderId}}"
+            },
+            {
+              "id": "1773092220335_11",
+              "name": "pDemandProjectId",
+              "type": "integer",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].DemandProjectId}}"
+            },
+            {
+              "id": "1773092220336_12",
+              "name": "pSupplyProjectId",
+              "type": "integer"
+            },
+            {
+              "id": "1773092220337_13",
+              "name": "pDemandSourceHeaderNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].DemandSourceHeaderNumber}}"
+            },
+            {
+              "id": "1773092220338_14",
+              "name": "pInventoryItemId",
+              "type": "integer",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].InventoryItemId}}"
+            },
+            {
+              "id": "1773092220339_15",
+              "name": "pLocatorId",
+              "type": "integer",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].LocatorId}}"
+            },
+            {
+              "id": "1773092220347_16",
+              "name": "pSupplySourceLineNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_SUPPLY_DOCUMENT_DETAILS.$output.items[0].SupplySourceLineNumber}}"
+            },
+            {
+              "id": "1773092220348_17",
+              "name": "pRevision",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].Revision}}"
+            },
+            {
+              "id": "1773092220350_18",
+              "name": "pReservationQuantity",
+              "type": "number",
+              "value": "{{Number($context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].ReservationQuantity) <  Number($context.$nodes.GET_SUPPLY_DOCUMENT_DETAILS.$output.items[0].TotalAtr) ?$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].ReservationQuantity : $context.$nodes.GET_SUPPLY_DOCUMENT_DETAILS.$output.items[0].TotalAtr}}"
+            },
+            {
+              "id": "1773092220351_19",
+              "name": "pSupplySourceTypeId",
+              "type": "integer",
+              "value": "{{$context.$nodes.GET_SUPPLY_DOCUMENT_DETAILS.$output.items[0].SupplySourceTypeId}}"
+            },
+            {
+              "id": "1773092220352_20",
+              "name": "pOperationSequenceNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].OperationSequenceNumber}}"
+            },
+            {
+              "id": "1773092220353_21",
+              "name": "pOrderInterfaceStatus",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].OrderInterfaceStatus}}"
+            },
+            {
+              "id": "1773092220355_22",
+              "name": "pSupplyProjectNumber",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "1773092220356_23",
+              "name": "pDemandSourceLineNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].DemandSourceLineNumber}}"
+            },
+            {
+              "id": "1773092220358_24",
+              "name": "pSupplySourceLineId",
+              "type": "integer",
+              "value": "{{$context.$nodes.GET_SUPPLY_DOCUMENT_DETAILS.$output.items[0].SupplySourceLineId}}"
+            },
+            {
+              "id": "1773092220359_25",
+              "name": "pOrganizationId",
+              "type": "integer",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].OrganizationId}}"
+            },
+            {
+              "id": "1773092220361_26",
+              "name": "pDemandTaskNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].DemandTaskNumber}}"
+            },
+            {
+              "id": "1773092220362_27",
+              "name": "pSubinventoryCode",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "1773092220364_28",
+              "name": "pSubinventoryId",
+              "type": "integer",
+              "value": ""
+            },
+            {
+              "id": "1773092220365_29",
+              "name": "pReservationUOMCode",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].ReservationUOMCode}}"
+            },
+            {
+              "id": "1773092220367_30",
+              "name": "pRequirementDate",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].RequirementDate}}"
+            },
+            {
+              "id": "1773092220369_31",
+              "name": "pItemNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].ItemNumber}}"
+            },
+            {
+              "id": "1773092220371_32",
+              "name": "pReservationId",
+              "type": "integer"
+            },
+            {
+              "id": "1773092220372_33",
+              "name": "pDemandSourceLineId",
+              "type": "integer",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].DemandSourceLineId}}"
+            },
+            {
+              "id": "1773092220374_34",
+              "name": "pSecondaryUOMCode",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].SecondaryUOMCode}}"
+            },
+            {
+              "id": "1773092220376_35",
+              "name": "pOrganizationCode",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].OrganizationCode}}"
+            },
+            {
+              "id": "1773092220378_36",
+              "name": "pLotNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].LotNumber}}"
+            },
+            {
+              "id": "1773092220380_37",
+              "name": "pDemandSourceType",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].DemandSourceType}}"
+            },
+            {
+              "id": "1773092220382_38",
+              "name": "pSupplySourceHeaderNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_SUPPLY_DOCUMENT_DETAILS.$output.items[0].SupplySourceHeaderNumber}}"
+            },
+            {
+              "id": "1773092220384_39",
+              "name": "pSupplySourceType",
+              "type": "string"
+            },
+            {
+              "id": "1773092220386_40",
+              "name": "pSecondaryReservationQuantity",
+              "type": "number",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].SecondaryReservationQuantity}}"
+            },
+            {
+              "id": "1773092220393_41",
+              "name": "pSupplySourceHeaderId",
+              "type": "integer",
+              "value": "{{$context.$nodes.GET_SUPPLY_DOCUMENT_DETAILS.$output.items[0].SupplySourceHeaderId}}"
+            },
+            {
+              "id": "1773092220395_42",
+              "name": "pSourceFulfillmentLineNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].SouceFulfillmentLineNumber}}"
+            },
+            {
+              "id": "1773092220398_43",
+              "name": "pPickQuantity",
+              "type": "number",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].PickQuantity}}"
+            },
+            {
+              "id": "1773092220400_44",
+              "name": "pDemandTaskId",
+              "type": "integer",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS.$output.items[0].DemandTaskId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"Reservation\",\n  \"type\": \"object\",\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"ReservationId\": { \"type\": \"string\" },\n    \"OrganizationId\": { \"type\": \"string\" },\n    \"OrganizationCode\": { \"type\": \"string\" },\n    \"InventoryItemId\": { \"type\": \"string\" },\n    \"SubinventoryName\": { \"type\": [\"string\", \"null\"] },\n    \"ItemNumber\": { \"type\": \"string\" },\n    \"DemandSourceTypeId\": { \"type\": \"string\" },\n    \"DemandSourceType\": { \"type\": \"string\" },\n    \"DemandSourceHeaderId\": { \"type\": \"string\" },\n    \"DemandSourceHeaderNumber\": { \"type\": \"string\" },\n    \"DemandSourceName\": { \"type\": [\"string\", \"null\"] },\n    \"DemandSourceLineId\": { \"type\": \"string\" },\n    \"DemandSourceLineNumber\": { \"type\": \"string\" },\n    \"SourceFulfillmentLineId\": { \"type\": \"string\" },\n    \"SupplySourceTypeId\": { \"type\": \"string\" },\n    \"SupplySourceType\": { \"type\": [\"string\", \"null\"] },\n    \"SupplySourceHeaderId\": { \"type\": \"string\" },\n    \"SupplySourceHeaderNumber\": { \"type\": \"string\" },\n    \"SupplySourceLineId\": { \"type\": \"string\" },\n    \"SupplySourceLineNumber\": { \"type\": \"string\" },\n    \"Revision\": { \"type\": [\"string\", \"null\"] },\n    \"SubinventoryCode\": { \"type\": [\"string\", \"null\"] },\n    \"SubinventoryId\": { \"type\": [\"string\", \"null\"] },\n    \"LotNumber\": { \"type\": [\"string\", \"null\"] },\n    \"LocatorId\": { \"type\": [\"string\", \"null\"] },\n    \"Locator\": { \"type\": [\"string\", \"null\"] },\n    \"PrimaryReservationQuantity\": { \"type\": \"string\" },\n    \"PrimaryUOMCode\": { \"type\": \"string\" },\n    \"PrimaryUnitOfMeasure\": { \"type\": \"string\" },\n    \"SecondaryReservationQuantity\": { \"type\": [\"string\", \"null\"] },\n    \"SecondaryUOMCode\": { \"type\": [\"string\", \"null\"] },\n    \"SecondaryUnitOfMeasure\": { \"type\": [\"string\", \"null\"] },\n    \"ReservationQuantity\": { \"type\": \"string\" },\n    \"ReservationUOMCode\": { \"type\": \"string\" },\n    \"ReservationUnitOfMeasure\": { \"type\": \"string\" },\n    \"ShipToCustomer\": { \"type\": [\"string\", \"null\"] },\n    \"ShipToPartyId\": { \"type\": [\"string\", \"null\"] },\n    \"RequirementDate\": { \"type\": \"string\", \"format\": \"date\" },\n    \"SupplyProjectId\": { \"type\": [\"string\", \"null\"] },\n    \"SupplyTaskId\": { \"type\": [\"string\", \"null\"] },\n    \"DemandProjectId\": { \"type\": [\"string\", \"null\"] },\n    \"DemandTaskId\": { \"type\": [\"string\", \"null\"] },\n    \"DemandProjectNumber\": { \"type\": [\"string\", \"null\"] },\n    \"DemandTaskNumber\": { \"type\": [\"string\", \"null\"] },\n    \"SupplyProjectNumber\": { \"type\": [\"string\", \"null\"] },\n    \"SupplyTaskNumber\": { \"type\": [\"string\", \"null\"] },\n    \"SourceFulfillmentLineNumber\": { \"type\": \"string\" },\n    \"OperationSequenceNumber\": { \"type\": [\"string\", \"null\"] },\n    \"WorkOrderProductId\": { \"type\": [\"string\", \"null\"] },\n    \"WorkOrderProductNumber\": { \"type\": [\"string\", \"null\"] },\n    \"OrderInterfaceStatus\": { \"type\": \"string\" },\n    \"PickQuantity\": { \"type\": [\"string\", \"null\"] },\n    \"BackToBackMeaning\": { \"type\": [\"string\", \"null\"] },\n    \"StagedMeaning\": { \"type\": [\"string\", \"null\"] },\n    \"SupplierName\": { \"type\": [\"string\", \"null\"] },\n    \"ItemDescription\": { \"type\": \"string\" }\n  }\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_INVENTORYM_RESERVATIONDETA",
+            "functionName": "getall_inventoryReservationDetails",
+            "name": "Get Reservations Updated"
+          },
+          "outcomes": {
+            "success": "1773284282345"
+          },
+          "code": "GET_RESERVATIONS_UPDATED",
+          "id": "1773092260564",
+          "inputs": [
+            {
+              "id": "1773092283246_1",
+              "name": "pLimit",
+              "type": "number"
+            },
+            {
+              "id": "1773092283246_2",
+              "name": "pOffset",
+              "type": "number"
+            },
+            {
+              "id": "1773092283247_3",
+              "name": "pQuery",
+              "type": "string",
+              "value": "{{$context.$nodes.MA_FETCH_RESERVATIONS_QUERY_GENERATOR.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"ReservationId\": { \"type\": \"string\" },\n          \"InventoryItemId\": { \"type\": \"string\" },\n          \"ItemNumber\": { \"type\": \"string\" },\n          \"OrganizationId\": { \"type\": \"string\" },\n          \"OrganizationCode\": { \"type\": \"string\" },\n          \"DemandSourceTypeId\": { \"type\": \"string\" },\n          \"DemandSourceType\": { \"type\": \"string\" },\n          \"SupplySourceTypeId\": { \"type\": \"string\" },\n          \"SupplySourceType\": { \"type\": \"string\" },\n          \"DemandSourceHeaderId\": { \"type\": \"string\" },\n          \"DemandSourceHeaderNumber\": { \"type\": \"string\" },\n          \"DemandSourceLineId\": { \"type\": \"string\" },\n          \"DemandSourceLineNumber\": { \"type\": [\"string\", \"null\"] },\n          \"DemandSourceName\": { \"type\": [\"string\", \"null\"] },\n          \"SourceFulfillmentLineId\": { \"type\": [\"string\", \"null\"] },\n          \"DemandQuantity\": { \"type\": \"string\" },\n          \"DemandUOMCode\": { \"type\": \"string\" },\n          \"DemandUnitOfMeasure\": { \"type\": \"string\" },\n          \"SupplySourceHeaderId\": { \"type\": [\"string\", \"null\"] },\n          \"SupplySourceHeaderNumber\": { \"type\": [\"string\", \"null\"] },\n          \"SupplySourceLineId\": { \"type\": [\"string\", \"null\"] },\n          \"SupplySourceLineNumber\": { \"type\": [\"string\", \"null\"] },\n          \"ExpectedDate\": { \"type\": \"string\", \"format\": \"date\" },\n          \"Revision\": { \"type\": [\"string\", \"null\"] },\n          \"LotNumber\": { \"type\": [\"string\", \"null\"] },\n          \"SubinventoryCode\": { \"type\": [\"string\", \"null\"] },\n          \"SubinventoryName\": { \"type\": [\"string\", \"null\"] },\n          \"LocatorId\": { \"type\": [\"string\", \"null\"] },\n          \"LocatorName\": { \"type\": [\"string\", \"null\"] },\n          \"OperationSequenceNumber\": { \"type\": \"string\" },\n          \"MaterialSequenceNumber\": { \"type\": [\"string\", \"null\"] },\n          \"WorkOrderProductId\": { \"type\": \"string\" },\n          \"WorkOrderProductNumber\": { \"type\": \"string\" },\n          \"DemandProjectId\": { \"type\": [\"string\", \"null\"] },\n          \"DemandProjectNumber\": { \"type\": [\"string\", \"null\"] },\n          \"DemandTaskId\": { \"type\": [\"string\", \"null\"] },\n          \"DemandTaskNumber\": { \"type\": [\"string\", \"null\"] },\n          \"SupplyProjectId\": { \"type\": [\"string\", \"null\"] },\n          \"SupplyProjectNumber\": { \"type\": [\"string\", \"null\"] },\n          \"SupplyTaskId\": { \"type\": [\"string\", \"null\"] },\n          \"SupplyTaskNumber\": { \"type\": [\"string\", \"null\"] },\n          \"ShipToPartyId\": { \"type\": [\"string\", \"null\"] },\n          \"ShipToCustomer\": { \"type\": [\"string\", \"null\"] },\n          \"SupplierName\": { \"type\": [\"string\", \"null\"] },\n          \"RequirementDate\": { \"type\": \"string\", \"format\": \"date\" },\n          \"OrderInterfaceStatus\": { \"type\": \"string\" },\n          \"OrderInterfaceStatusMeaning\": { \"type\": \"string\" },\n          \"Staged\": { \"type\": [\"string\", \"null\"] },\n          \"StagedMeaning\": { \"type\": [\"string\", \"null\"] },\n          \"BackToBack\": { \"type\": [\"string\", \"null\"] },\n          \"BackToBackMeaning\": { \"type\": [\"string\", \"null\"] },\n          \"PrimaryReservationQuantity\": { \"type\": \"string\" },\n          \"PrimaryUOMCode\": { \"type\": \"string\" },\n          \"PrimaryUnitOfMeasure\": { \"type\": \"string\" },\n          \"SecondaryReservationQuantity\": { \"type\": [\"string\", \"null\"] },\n          \"SecondaryUOMCode\": { \"type\": [\"string\", \"null\"] },\n          \"SecondaryUnitOfMeasure\": { \"type\": [\"string\", \"null\"] },\n          \"ReservationQuantity\": { \"type\": \"string\" },\n          \"ReservationUOMCode\": { \"type\": \"string\" },\n          \"ReservationUnitOfMeasure\": { \"type\": \"string\" },\n          \"DetailedQuantity\": { \"type\": [\"string\", \"null\"] },\n          \"SerialReservationQuantity\": { \"type\": [\"string\", \"null\"] },\n          \"Grade\": { \"type\": [\"string\", \"null\"] },\n          \"@context\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"key\": { \"type\": \"string\" }\n            },\n            \"required\": [\"key\"]\n          }\n        }\n     }\n    }\n  },\n  \"required\": [\"items\"]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Check Past Due or Running late"
+          },
+          "outcomes": {
+            "true": "1773263867099",
+            "false": "add_false_1773263589796"
+          },
+          "code": "CHECK_PAST_DUE",
+          "convergenceTargetId": "1763160631956",
+          "id": "1773263589796",
+          "inputs": [
+            {
+              "id": "1773263589797_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{($context.$variables.PastDue != null && $context.$variables.PastDue) || ($context.$variables.FindRunningLateReservations != null && $context.$variables.FindRunningLateReservations)}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1763160631956"
+          },
+          "id": "add_false_1773263589796",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Supply Suggestions",
+            "workflowCode": "ORA_FETCH_EARLIEST_SUPPLY_DETAILS"
+          },
+          "outcomes": {
+            "success": "1773426982887"
+          },
+          "code": "SUPPLY_SUGGESTIONS",
+          "convergenceTargetId": "1773263655869",
+          "id": "1773263547124",
+          "inputs": [
+            {
+              "id": "1773263562927_1",
+              "name": "message",
+              "type": "string"
+            },
+            {
+              "id": "1773263562928_2",
+              "name": "SuggestionMode",
+              "type": "string",
+              "value": "Supply"
+            },
+            {
+              "id": "1773263562929_3",
+              "name": "ItemQty",
+              "type": "array",
+              "value": "{{$context.$nodes.BUILD_SUGGESTIONS_INPUT.$output.result}}"
+            },
+            {
+              "id": "1773263562930_4",
+              "name": "OrganizationId",
+              "type": "integer",
+              "value": "{{$context.$variables.OrganizationId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "Build Suggestions Input",
+            "returnType": "object",
+            "sourceCode": "const response = $context.$nodes.MA_FETCH_RESERVATIONS?.$output?.items || [];\n\nconst ItemQty = response.map(rsv => ({\n  DemandSourceHeaderNumber: rsv.DemandSourceHeaderNumber,\n  DemandSourceLineNumber: rsv.DemandSourceLineNumber,\n  OperationSequenceNumber: rsv.OperationSequenceNumber,\n  DemandSourceTypeId: rsv.DemandSourceTypeId,\n  SupplySourceTypeId: rsv.SupplySourceTypeId,\n  ItemNumber: rsv.ItemNumber,\n  ItemId: rsv.InventoryItemId,\n  UOM: rsv.PrimaryUnitOfMeasure,\n  RequestedQuantity: rsv.PrimaryReservationQuantity,\n  ReservationId: rsv.ReservationId\n}));\n\nreturn ItemQty;"
+          },
+          "outcomes": {
+            "success": "1773263547124"
+          },
+          "code": "BUILD_SUGGESTIONS_INPUT",
+          "id": "1773263867099",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "New Reservation Deeplink",
+            "toolCode": "ORA_INVENTORY_MANAGE_RESERVATIONS_TOOL"
+          },
+          "outcomes": {
+            "success": "1773092260564"
+          },
+          "code": "NEW_RESERVATION_DEEPLINK",
+          "convergenceTargetId": "1773092260564",
+          "id": "1773283914561",
+          "inputs": [
+            {
+              "id": "1773283947197_1",
+              "name": "pOrganizationId",
+              "type": "string",
+              "value": "{{'\"' + $context.$nodes.CREATE_NEW_RESERVATION.$output.OrganizationId + '\"'}}"
+            },
+            {
+              "id": "1773283947200_2",
+              "name": "pSupplySourceTypeId",
+              "type": "string",
+              "value": "{{'\"' +$context.$nodes.CREATE_NEW_RESERVATION.$output.SupplySourceTypeId+ '\"'}}"
+            },
+            {
+              "id": "1773283947201_3",
+              "name": "pDemandSourceTypeId",
+              "type": "string",
+              "value": "{{'\"' + $context.$nodes.CREATE_NEW_RESERVATION.$output.DemandSourceTypeId + '\"'}}"
+            },
+            {
+              "id": "1773283947203_4",
+              "name": "pDemandSourceHeaderId",
+              "type": "string",
+              "value": "{{'\"' + $context.$nodes.CREATE_NEW_RESERVATION.$output.DemandSourceHeaderId + '\"'}}"
+            }
+          ],
+          "type": "TOOL"
+        },
+        {
+          "metadata": {
+            "name": "Update Supply Formatter",
+            "returnType": "object",
+            "sourceCode": "const nextActions = [\n  \"View reservations\",\n  \"Delete reservation\",\n  \"New reservation\"\n];\nconst output = {\n    \"data\": $context.$nodes.GET_RESERVATIONS_UPDATED.$output ,\n    \"old_data\": $context.$nodes.MA_FETCH_RESERVATIONS.$output.items, \n    \"error\": \"\",\n    \"formatted\": true,\n    \"status\": \"success\",\n    \"header\": \"Update Supply Source Flow\",\n    \"deeplink\": $context.$nodes.NEW_RESERVATION_DEEPLINK.$output,\n    nextActions\n}\nreturn output;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "UPDATE_SUPPLY_FORMATTER",
+          "id": "1773284282345",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Invalid Supply Source",
+            "returnType": "object",
+            "sourceCode": "const output = {\n    \"status\": \"success\",\n    \"header\": \"Invalid Supply Source\",\n    \"error\": \"The supply source header or line was not found.\",\n    \"formatted\": true\n}\nreturn output;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "INVALID_SUPPLY_SOURCE",
+          "id": "1773328970193",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "at Least One Att to Update",
+            "returnType": "boolean",
+            "sourceCode": "return (($context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.ShipToPartyId !== null && $context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.ShipToPartyId !== \"\") || ($context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SubinventoryId !== null && $context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SubinventoryId !== \"\") || ($context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SubinventoryCode !== null && $context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SubinventoryCode !== \"\") || ($context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.RequirementDate !== null && $context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.RequirementDate !== \"\") || ($context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.LocatorId !== null && $context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.LocatorId !== \"\") || ($context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.Locator !== null && $context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.Locator !== \"\") || ($context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.LotNumber !== null && $context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.LotNumber !== \"\") || ($context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.PrimaryReservationQuantity !== null && $context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.PrimaryReservationQuantity !== \"\") || ($context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SecondaryReservationQuantity !== null && $context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SecondaryReservationQuantity !== \"\") || ($context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.Revision !== null && $context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.Revision !== \"\") || ($context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.ReservationQuantity !== null && $context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.ReservationQuantity !== \"\") || ($context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.PickQuantity !== null && $context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.PickQuantity !== \"\") || ($context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.ReservationUOMCode !== null && $context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.ReservationUOMCode !== \"\") || ($context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.ReservationUnitOfMeasure !== null && $context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.ReservationUnitOfMeasure !== \"\") || ($context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SupplyTaskNumber !== null && $context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SupplyTaskNumber !== \"\") || ($context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SupplyTaskId !== null && $context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SupplyTaskId !== \"\") || ($context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SupplyProjectNumber !== null && $context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SupplyProjectNumber !== \"\") || ($context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SupplyProjectId !== null && $context.$nodes.EXTRACT_UPDATE_ATTRIBUTES.$output.SupplyProjectId !== \"\"));"
+          },
+          "outcomes": {
+            "success": "1762457211031"
+          },
+          "code": "AT_LEAST_ONE_ATT_TO_UPDATE",
+          "id": "1773340739192",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Is a Bulk Query"
+          },
+          "outcomes": {
+            "true": "1773370448882",
+            "false": "add_false_1773374442709"
+          },
+          "code": "IS_A_BULK_QUERY",
+          "convergenceTargetId": "1762204592264",
+          "id": "1773374442709",
+          "inputs": [
+            {
+              "id": "1773374442710_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.BulkUpdate && $context.$triggers.REST.$input.BulkUpdateData.length > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1762204592264"
+          },
+          "id": "add_false_1773374442709",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1773436441340"
+                  },
+                  "id": "start_1773370448882",
+                  "code": "START_1773370448882",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1773370448882",
+                  "code": "END_1773370448882",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_INVENTORYM_RESERVATIONSMAI",
+                    "functionName": "create_inventoryReservations",
+                    "processJson": true,
+                    "name": "Update Supply Source"
+                  },
+                  "outcomes": {
+                    "success": "end_1773370448882"
+                  },
+                  "code": "UPDATE_SUPPLY_SOURCE",
+                  "id": "1773373442640",
+                  "inputs": [
+                    {
+                      "id": "1773438631875_1",
+                      "name": "pDemandProjectNumber",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631875_2",
+                      "name": "pSupplyTaskNumber",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631876_3",
+                      "name": "pSourceFulfillmentLineId",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631876_4",
+                      "name": "pSecondaryUnitOfMeasure",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631877_5",
+                      "name": "pSupplyTaskId",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631877_6",
+                      "name": "pShipToPartyId",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631878_7",
+                      "name": "pDemandSourceName",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631878_8",
+                      "name": "pDemandSourceTypeId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.ITERATE_UPDATE_BULK_REQUEST.$currentItem.DemandSourceTypeId}}"
+                    },
+                    {
+                      "id": "1773438631879_9",
+                      "name": "pLocator",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631879_10",
+                      "name": "pDemandSourceHeaderId",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631880_11",
+                      "name": "pDemandProjectId",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631881_12",
+                      "name": "pSupplyProjectId",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631881_13",
+                      "name": "pDemandSourceHeaderNumber",
+                      "type": "string",
+                      "value": "{{$context.$nodes.ITERATE_UPDATE_BULK_REQUEST.$currentItem.DemandSourceHeaderNumber}}"
+                    },
+                    {
+                      "id": "1773438631882_14",
+                      "name": "pInventoryItemId",
+                      "type": "string",
+                      "value": ""
+                    },
+                    {
+                      "id": "1773438631883_15",
+                      "name": "pLocatorId",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631884_16",
+                      "name": "pSupplySourceLineNumber",
+                      "type": "string",
+                      "value": "{{$context.$nodes.ITERATE_UPDATE_BULK_REQUEST.$currentItem. SupplySourceTypeId =! 5?$context.$nodes.ITERATE_UPDATE_BULK_REQUEST.$currentItem. SupplySourceLineNumber:null}}"
+                    },
+                    {
+                      "id": "1773438631885_17",
+                      "name": "pRevision",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631886_18",
+                      "name": "pReservationQuantity",
+                      "type": "string",
+                      "value": "{{$context.$nodes.ITERATE_UPDATE_BULK_REQUEST.$currentItem.RequestedQuantity}}"
+                    },
+                    {
+                      "id": "1773438631886_19",
+                      "name": "pSupplySourceTypeId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.ITERATE_UPDATE_BULK_REQUEST.$currentItem.SupplySourceTypeId}}"
+                    },
+                    {
+                      "id": "1773438631887_20",
+                      "name": "pOperationSequenceNumber",
+                      "type": "string",
+                      "value": "{{$context.$nodes.ITERATE_UPDATE_BULK_REQUEST.$currentItem.DemandSourceTypeId == 5?$context.$nodes.ITERATE_UPDATE_BULK_REQUEST.$currentItem.OperationSequenceNumber:null}}"
+                    },
+                    {
+                      "id": "1773438631888_21",
+                      "name": "pOrderInterfaceStatus",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631889_22",
+                      "name": "pSupplyProjectNumber",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631890_23",
+                      "name": "pDemandSourceLineNumber",
+                      "type": "string",
+                      "value": "{{$context.$nodes.ITERATE_UPDATE_BULK_REQUEST.$currentItem. DemandSourceTypeId !=5? $context.$nodes.ITERATE_UPDATE_BULK_REQUEST.$currentItem.DemandSourceLineNumber:null}}"
+                    },
+                    {
+                      "id": "1773438631891_24",
+                      "name": "pSupplySourceLineId",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631893_25",
+                      "name": "pOrganizationId",
+                      "type": "string",
+                      "value": "{{$context.$triggers.REST.$input.OrganizationId}}"
+                    },
+                    {
+                      "id": "1773438631894_26",
+                      "name": "pDemandTaskNumber",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631895_27",
+                      "name": "pSubinventoryCode",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631896_28",
+                      "name": "pSubinventoryId",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631897_29",
+                      "name": "pReservationUOMCode",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631899_30",
+                      "name": "pReservationUnitOfMeasure",
+                      "type": "string",
+                      "value": "{{$context.$nodes.ITERATE_UPDATE_BULK_REQUEST.$currentItem.UOM}}"
+                    },
+                    {
+                      "id": "1773438631900_31",
+                      "name": "pRequirementDate",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631901_32",
+                      "name": "pItemNumber",
+                      "type": "string",
+                      "value": "{{$context.$nodes.ITERATE_UPDATE_BULK_REQUEST.$currentItem.ItemNumber}}"
+                    },
+                    {
+                      "id": "1773438631902_33",
+                      "name": "pReservationId",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631904_34",
+                      "name": "pDemandSourceLineId",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631908_35",
+                      "name": "pSecondaryUOMCode",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631910_36",
+                      "name": "pOrganizationCode",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631911_37",
+                      "name": "pLotNumber",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631913_38",
+                      "name": "pDemandSourceType",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631914_39",
+                      "name": "pSupplySourceHeaderNumber",
+                      "type": "string",
+                      "value": "{{$context.$nodes.ITERATE_UPDATE_BULK_REQUEST.$currentItem.SupplySourceHeaderNumber}}"
+                    },
+                    {
+                      "id": "1773438631916_40",
+                      "name": "pSupplySourceType",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631917_41",
+                      "name": "pSecondaryReservationQuantity",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631919_42",
+                      "name": "pSupplySourceHeaderId",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631920_43",
+                      "name": "pSourceFulfillmentLineNumber",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631922_44",
+                      "name": "pPickQuantity",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773438631924_45",
+                      "name": "pDemandTaskId",
+                      "type": "string"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "name": "Format Input Bulk Update",
+                    "returnType": "object",
+                    "sourceCode": "let supplyHeader = $context.$nodes.ITERATE_UPDATE_BULK_REQUEST.$currentItem?.SupplySourceHeaderNumber ?? \"\";\nif (supplyHeader) {\n  supplyHeader = \"'\" + supplyHeader + \"'\";\n}\nlet supplyLine = $context.$nodes.ITERATE_UPDATE_BULK_REQUEST.$currentItem?.SupplySourceLineNumber ?? \"\";\nif (supplyLine) {\n  supplyLine = \"'\" + supplyLine + \"'\";\n}\nreturn {\n  supplyHeader,\n  supplyLine\n}"
+                  },
+                  "outcomes": {
+                    "success": "1773373442640"
+                  },
+                  "code": "FORMAT_INPUT_BULK_UPDATE",
+                  "id": "1773436441340",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                }
+              ],
+              "rootNode": "start_1773370448882"
+            },
+            "loopType": "SEQUENTIAL",
+            "name": "Iterate Update Bulk Request"
+          },
+          "outcomes": {
+            "success": "1773434871710"
+          },
+          "code": "ITERATE_UPDATE_BULK_REQUEST",
+          "convergenceTargetId": "1773374486141",
+          "id": "1773370448882",
+          "inputs": [
+            {
+              "id": "1773370448883_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.BulkUpdateData}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "name": "Return Update Bulk Output"
+          },
+          "outcomes": {},
+          "code": "RETURN_UPDATE_BULK_OUTPUT",
+          "convergenceTargetId": "1762204592264",
+          "id": "1773374549932",
+          "inputs": [
+            {
+              "id": "1773374549960_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.SUMMARIZE_OUTPUT.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Fitler Suggestions",
+            "returnType": "object",
+            "sourceCode": "const suggestions = JSON.parse($context.$nodes.SUPPLY_SUGGESTIONS.$output.output);\nconst filteredSuggestions = suggestions.filter(suggestion => suggestion.Suggestion !== \"No eligible supply\");\nreturn filteredSuggestions;"
+          },
+          "outcomes": {
+            "success": "1763160631956"
+          },
+          "code": "FITLER_SUGGESTIONS",
+          "id": "1773426982887",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Summarize output"
+          },
+          "outcomes": {
+            "success": "1773374549932"
+          },
+          "code": "SUMMARIZE_OUTPUT",
+          "id": "1773430170002",
+          "inputs": [
+            {
+              "id": "1773430170002_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Old data: ` {{$context.$triggers.REST.$input.userQuery}}`  \nNew data: `{{$context.$nodes.ITERATE_UPDATE_BULK_REQUEST.$output}}`\n\nFrom **New data**, select only **successful reservation updates**. Produce HTML output using the templates below:\n\n<!-- OUTPUT (return ONLY what’s in this section: the table(s) + Changes section; no extra text) -->\n\n<!-- Non-onhand supply cases table (Supply Source Type ID != 13) -->\n<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\">\n  <thead>\n    <tr>\n      <th>Reservation Id</th>\n      <th>Supply Source Type</th>\n      <th>Supply Source Header</th>\n      <th>Supply Source Line</th>\n      <th>Reservation Quantity</th>\n      <th>UOM</th>\n    </tr>\n  </thead>\n  <tbody>\n    <!-- Repeat this <tr> for each SUCCESSFUL reservation update where SupplySourceTypeId != 13 -->\n    <tr>\n      <td>{ReservationId}</td>\n      <td>{SupplySourceTypeName}</td>\n      <td>{SupplySourceHeaderNumber}</td>\n      <td>{SupplySourceLineNumber}</td>\n      <td>{ReservationQuantity}</td>\n      <td>{UOM}</td>\n    </tr>\n  </tbody>\n</table>\n\n<br/>\n\n<!-- Changes section: list the exact update done for each item, concisely, comparing Old data vs New data -->\n<h3>Changes</h3>\n<ul>\n  <!-- Repeat one <li> per row included in the table(s) -->\n  <li>\n    Reservation {ReservationId}:  {Describe the changes only if one or some of the fields were updated: SupplySourceType, ReservationQuantity old -> new. Keep this concise}\n  </li>\n</ul>\n\n<!-- Onhand supply cases table (Supply Source Type ID == 13) -->\n<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\">\n  <thead>\n    <tr>\n      <th>Reservation Id</th>\n      <th>Supply Source Type</th>\n      <th>Reservation Quantity</th>\n      <th>UOM</th>\n    </tr>\n  </thead>\n  <tbody>\n    <!-- Repeat this <tr> for each SUCCESSFUL reservation update where SupplySourceTypeId == 13 -->\n    <tr>\n      <td>{ReservationId}</td>\n      <td>{SupplySourceTypeName}</td>\n      <td>{ReservationQuantity}</td>\n      <td>{UOM}</td>\n    </tr>\n  </tbody>\n</table>\n\n<br/>\n\n<!-- Changes section: list the exact update done for each item, concisely, comparing Old data vs New data -->\n<h3>Changes</h3>\n<ul>\n  <!-- Repeat one <li> per row included in the table(s) -->\n  <li>\n    Reservation {ReservationId}: {Describe the changes only if one or some of the fields were updated: SupplySourceType, ReservationQuantity old -> new. Keep this concise}\n  </li>\n</ul>"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Adapt Update Output",
+            "returnType": "object",
+            "sourceCode": "const response = $context?.$nodes?.ITERATE_UPDATE_BULK_REQUEST?.$output;\n\nconst lines = Array.isArray(response) ? response : [];\n\nconst result = lines\n  .map((line) => {\n    try {\n      const rsv = typeof line === \"string\" ? JSON.parse(line) : line;\nif (rsv.title = \"Bad Request\")\nreturn rsv.status;\nelse\n      return {\n        ReservationId: rsv?.ReservationId,\n        SupplySourceTypeId: rsv?.SupplySourceTypeId,\n        ReservationQuantity: rsv?.ReservationQuantity,\n        UOM: rsv?.PrimaryUnitOfMeasure\n      };\n    } catch {\n      return null; // or throw if you want to fail fast\n    }\n  })\n  .filter(Boolean);\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1773430170002"
+          },
+          "code": "ADAPT_UPDATE_OUTPUT",
+          "id": "1773434871710",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Is a Starter Question"
+          },
+          "outcomes": {
+            "true": "1774038245792",
+            "false": "add_false_1774038193754"
+          },
+          "code": "IS_A_STARTER_QUESTION",
+          "convergenceTargetId": "1773374442709",
+          "id": "1774038193754",
+          "inputs": [
+            {
+              "id": "1774038193755_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.userQuery.trim().toLowerCase() == 'update/view reservation'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1773374442709"
+          },
+          "id": "add_false_1774038193754",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Starter Question Response"
+          },
+          "outcomes": {},
+          "code": "STARTER_QUESTION_RESPONSE",
+          "convergenceTargetId": "1773374442709",
+          "id": "1774038245792",
+          "inputs": [
+            {
+              "id": "1774038245793_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "Please provide information to identify the reservation such as Organization Code, Item Number, Id, Demand Source Header Number, and so on..."
+            }
+          ],
+          "type": "RETURN"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1777050342237",
+          "name": "Organization",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1773438170127",
+          "name": "PastDue",
+          "scope": "JOB",
+          "type": "boolean"
+        },
+        {
+          "id": "1773375237976",
+          "name": "FindRunningLateReservations",
+          "scope": "JOB",
+          "type": "boolean"
+        },
+        {
+          "id": "1773262648997",
+          "name": "RequirementDate",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1764195352994",
+          "name": "Reservations",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1762541674445",
+          "name": "DemandSourceType",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1762215553209",
+          "name": "userQuery",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1762194103687",
+          "name": "ReservationId",
+          "scope": "JOB",
+          "type": "integer"
+        },
+        {
+          "id": "1762194075085",
+          "name": "ExpectedDate",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1762194015615",
+          "name": "RequestedQuantity",
+          "scope": "JOB",
+          "type": "number"
+        },
+        {
+          "id": "1762194003700",
+          "name": "InventoryItemId",
+          "scope": "JOB",
+          "type": "integer"
+        },
+        {
+          "id": "1762193992006",
+          "name": "DemandSourceHeaderNumber",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1762193979641",
+          "name": "DemandSourceTypeId",
+          "scope": "JOB",
+          "type": "number"
+        },
+        {
+          "id": "1762193968577",
+          "name": "OrganizationId",
+          "scope": "JOB",
+          "type": "integer"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1777050039216",
+            "name": "Organization",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1773802074863",
+            "name": "InventoryItemId",
+            "scope": "JOB",
+            "type": "integer"
+          },
+          {
+            "id": "1773369571717",
+            "name": "BulkUpdate",
+            "scope": "JOB",
+            "type": "boolean"
+          },
+          {
+            "id": "1771968155808",
+            "name": "BulkUpdateData",
+            "scope": "JOB",
+            "type": "object"
+          },
+          {
+            "id": "1762215566159",
+            "name": "userQuery",
+            "type": "string"
+          },
+          {
+            "id": "1762194119563",
+            "name": "OrganizationId",
+            "type": "integer"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "SCM",
+  "product": "INVENTORY_MANAGEMENT",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions follow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output. Here is the JSON Schema format the output should adhere to: [{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

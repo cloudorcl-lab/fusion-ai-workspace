@@ -1,0 +1,870 @@
+{
+  "workflowId": "300000331068167",
+  "workflowCode": "ORA_TRANSACTION_BYPASS_APPROVAL_WORKFLOW",
+  "name": "Transaction ByPass Approval Workflow",
+  "description": "This worker gets the information on Approval disabled status.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1763969703051"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Process Identifier"
+          },
+          "outcomes": {
+            "success": "1763970263680"
+          },
+          "code": "PROCESS_IDENTIFIER",
+          "id": "1763969703051",
+          "inputs": [
+            {
+              "id": "1763969703053_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Take this as input {{$context.$system.$inputMessage}}\n\nFrom this response you will have to identify either the process name, action and if action is async or not. \n\nCase 1: Process name\nFrom this response identify the process name. Use following instructions to do it\n• From the user’s message, extract only the process name. \n• For example, if the input is “Enable bypass for promote”, extract promote as the process name and Enable bypass as action. \n• If user input specifically states to set async bypass then set isAsyncThere to true otherwise set it false. \n\nThese are the valid actions that you have to match from user input\n1. Enable bypass \n2. Disable bypass\n3. Update\n\nOutput action should follow this style \n1. enableBypass\n2. disableBypass\n3. update\n\nExamples - \n• Input: “Update approvalDisabled flag for Onboarding” \n• Output: {\"processName\":\"Onboarding\",\"action\":\"update\",\"isAsyncThere\":false}\n\n• Input: \"Enable async bypass for promote\"\n• Output: {\"processName\":\"Promote\",\"action\":\"enableBypass\",\"isAsyncThere\":true}\n\n• Input: \"Enable bypass for Change Personal Information\"\n• Output: {\"processName\":\"Change Personal Information\",\"action\":\"enable bypass\",\"isAsyncThere\":false}\n\n• Input: \"Disable bypass for Transfer\"\n• Output: {\"processName\":\"Transfer\",\"action\":\"disableBypass\",\"isAsyncThere\":false}\n\n• Input: \"Enable bypass for Approve Development Goal: Goal Share Action\"\n• Output: {\"processName\":\"Approve Development Goal: Goal Share Action\",\"action\":\"enable bypass\",\"isAsyncThere\":false}\n\n• Input: \"Enable bypass for Change Personal Information: Email Details\"\n• Output: {\"processName\":\"Change Personal Information: Email Details\",\"action\":\"enable bypass\",\"isAsyncThere\":false}\n\n\nMultiple processes example - \n• Input: “Set bypass for Promote, Hire” \n• Output: “Please specify only one process name for bypass status update.”\n\n\nReturn the identified processName as string, action as string and isAsyncThere as boolean value."
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"ProcessNameActionAsync\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"processName\": { \"type\": \"string\" },\n    \"action\": { \"type\": \"string\" },\n    \"isAsyncThere\": { \"type\": \"boolean\" }\n  },\n  \"required\": [\"processName\", \"action\", \"isAsyncThere\"],\n  \"additionalProperties\": false\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Check Process Name"
+          },
+          "outcomes": {
+            "true": "1763970323830",
+            "false": "add_false_1763970263680"
+          },
+          "code": "CHECK_PROCESS_NAME",
+          "convergenceTargetId": "end",
+          "id": "1763970263680",
+          "inputs": [
+            {
+              "id": "1763970263682_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_IDENTIFIER.$output.processName != \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_false_1763970263680",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_FINDPROCESSID",
+            "functionName": "process_id_finder",
+            "processJson": true,
+            "name": "Process Id Finder"
+          },
+          "outcomes": {
+            "success": "1763971873395"
+          },
+          "code": "PROCESS_ID_FINDER",
+          "id": "1763970323830",
+          "inputs": [
+            {
+              "id": "1767955803677_1",
+              "name": "process_name",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_IDENTIFIER.$output.processName}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Process Id Output Formatter"
+          },
+          "outcomes": {
+            "success": "1764058623003"
+          },
+          "code": "PROCESS_ID_OUTPUT_FORMATTER",
+          "id": "1763971873395",
+          "inputs": [
+            {
+              "id": "1763971873396_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Take this response as input {{$context.$nodes.PROCESS_ID_FINDER.$output}}\n\nFrom this response try to find the object which contains process name {{$context.$nodes.PROCESS_IDENTIFIER.$output.processName}} and return the process id,  approvalOptionsId, TransactionModuleIdentifier and TransactionSubModuleIdentifier from the same object. \n\nIncase process id is not found then return an empty string."
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"ProcessIdString\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"processId\": { \"type\": \"string\" },\n    \"TransactionModuleIdentifier\": { \"type\": \"string\" },\n    \"TransactionSubModuleIdentifier\": { \"type\": \"string\" },\n    \"approvalOptionsId\": { \"type\": \"string\" }\n  },\n  \"required\": [\"processId\", \"TransactionModuleIdentifier\", \"TransactionSubModuleIdentifier\", \n    \"approvalOptionsId\"],\n  \"additionalProperties\": false\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "isProcessIdThere"
+          },
+          "outcomes": {
+            "true": "1764067101266",
+            "false": "1764066621828"
+          },
+          "code": "ISPROCESSIDTHERE",
+          "convergenceTargetId": "end",
+          "id": "1764058623003",
+          "inputs": [
+            {
+              "id": "1764058623005_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_ID_OUTPUT_FORMATTER.$output.processId != \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Process Not Found Output",
+            "returnType": "string",
+            "sourceCode": "return \"Couldn't find the process. Please try with a different process name\";"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "PROCESS_NOT_FOUND_OUTPUT",
+          "id": "1764066621828",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check SubModule Identifier"
+          },
+          "outcomes": {
+            "true": "1764067335048",
+            "false": "1764062126169"
+          },
+          "code": "CHECK_SUBMODULE_IDENTIFIER",
+          "convergenceTargetId": "end",
+          "id": "1764067101266",
+          "inputs": [
+            {
+              "id": "1764067101267_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_ID_OUTPUT_FORMATTER.$output.TransactionSubModuleIdentifier != \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_ASYNCBYPASSAPPROVALSTATUS",
+            "functionName": "check_findByModuleIdentifierAsync",
+            "name": "Async ByPass Approval Status"
+          },
+          "outcomes": {
+            "success": "1764062769621"
+          },
+          "code": "ASYNC_BYPASS_APPROVAL_STATUS",
+          "convergenceTargetId": "1764067163571",
+          "id": "1764062126169",
+          "inputs": [
+            {
+              "id": "1764062173471_1",
+              "name": "module_identifier",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_ID_OUTPUT_FORMATTER.$output.TransactionModuleIdentifier}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"BusinessProcessApprovalOptionsFlags\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"ApprovalDisabledFlag\": { \"type\": \"boolean\" },\n          \"AsyncBypassEnabledFlag\": { \"type\": \"boolean\" },\n          \"BypassSupportedFlag\": { \"type\": \"boolean\" },\n          \"AsyncBypassSupportedFlag\": { \"type\": \"boolean\" },\n          \"@context\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"key\": { \"type\": \"string\" }\n            },\n            \"required\": [\"key\"]\n          }\n        },\n        \"required\": [\n          \"ApprovalDisabledFlag\",\n          \"AsyncBypassEnabledFlag\",\n          \"BypassSupportedFlag\",\n          \"AsyncBypassSupportedFlag\",\n          \"@context\"\n        ]\n      }\n    },\n    \"count\": { \"type\": \"integer\" },\n    \"hasMore\": { \"type\": \"boolean\" },\n    \"limit\": { \"type\": \"integer\" },\n    \"offset\": { \"type\": \"integer\" },\n    \"links\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"rel\": { \"type\": \"string\" },\n          \"href\": { \"type\": \"string\", \"format\": \"uri\" },\n          \"name\": { \"type\": \"string\" },\n          \"kind\": { \"type\": \"string\" }\n        },\n        \"required\": [\"rel\", \"href\", \"name\", \"kind\"]\n      }\n    }\n  },\n  \"required\": [\"items\", \"count\", \"hasMore\", \"limit\", \"offset\", \"links\"]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_ASYNCBYPASSAPPROVALSTATUS",
+            "functionName": "check_findByModuleIdentifierAndSubModuleIdentifierasync",
+            "name": "Async ByPass Approval Status SubModule"
+          },
+          "outcomes": {
+            "success": "1764156216404"
+          },
+          "code": "ASYNC_BYPASS_APPROVAL_STATUS_SUBMODULE",
+          "id": "1764067335048",
+          "inputs": [
+            {
+              "id": "1764163483054_1",
+              "name": "module_identifier",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_ID_OUTPUT_FORMATTER.$output.TransactionModuleIdentifier}}"
+            },
+            {
+              "id": "1764163483055_2",
+              "name": "SubModule_Identifier",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_ID_OUTPUT_FORMATTER.$output.TransactionSubModuleIdentifier}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"BusinessProcessApprovalOptionsFlags\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"ApprovalDisabledFlag\": { \"type\": \"boolean\" },\n          \"AsyncBypassEnabledFlag\": { \"type\": \"boolean\" },\n          \"BypassSupportedFlag\": { \"type\": \"boolean\" },\n          \"AsyncBypassSupportedFlag\": { \"type\": \"boolean\" },\n          \"@context\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"key\": { \"type\": \"string\" }\n            },\n            \"required\": [\"key\"]\n          }\n        },\n        \"required\": [\n          \"ApprovalDisabledFlag\",\n          \"AsyncBypassEnabledFlag\",\n          \"BypassSupportedFlag\",\n          \"AsyncBypassSupportedFlag\",\n          \"@context\"\n        ]\n      }\n    },\n    \"count\": { \"type\": \"integer\" },\n    \"hasMore\": { \"type\": \"boolean\" },\n    \"limit\": { \"type\": \"integer\" },\n    \"offset\": { \"type\": \"integer\" },\n    \"links\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"rel\": { \"type\": \"string\" },\n          \"href\": { \"type\": \"string\", \"format\": \"uri\" },\n          \"name\": { \"type\": \"string\" },\n          \"kind\": { \"type\": \"string\" }\n        },\n        \"required\": [\"rel\", \"href\", \"name\", \"kind\"]\n      }\n    }\n  },\n  \"required\": [\"items\", \"count\", \"hasMore\", \"limit\", \"offset\", \"links\"]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Doing Async Action Module"
+          },
+          "outcomes": {
+            "true": "1764580682557",
+            "false": "1764240751322"
+          },
+          "code": "DOING_ASYNC_ACTION_MODULE",
+          "convergenceTargetId": "end",
+          "id": "1764062769621",
+          "inputs": [
+            {
+              "id": "1764062769622_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_IDENTIFIER.$output.isAsyncThere}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Perform Async Action Module",
+            "returnType": "string",
+            "sourceCode": "if( !($context.$nodes.ASYNC_BYPASS_APPROVAL_STATUS.$output.items[0].AsyncBypassSupportedFlag) )\n  return \"Async bypass is not supported for this process.\";\nelse \n  return \"Async bypass can't be updated from this tool. Please go to transaction console to update its value.\";"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "PERFORM_ASYNC_ACTION_MODULE",
+          "id": "1764066272109",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Doing Async Action SubModule"
+          },
+          "outcomes": {
+            "true": "1764156642243",
+            "false": "1764663084855"
+          },
+          "code": "DOING_ASYNC_ACTION_SUBMODULE",
+          "convergenceTargetId": "end",
+          "id": "1764156216404",
+          "inputs": [
+            {
+              "id": "1764156216405_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_IDENTIFIER.$output.isAsyncThere}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Perform Async Action SubModule",
+            "returnType": "string",
+            "sourceCode": "if( $context.$nodes.ASYNC_BYPASS_APPROVAL_STATUS_SUBMODULE.$output.items[0].AsyncBypassSupportedFlag)\n    return \"Async bypass is not supported for this process.\";\nelse \n    return \"Async bypass can't be set from the tool. Please go to transaction console to update its value.\";"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "PERFORM_ASYNC_ACTION_SUBMODULE",
+          "id": "1764156642243",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check Bypass Supported Module"
+          },
+          "outcomes": {
+            "true": "1764583521890",
+            "false": "1764240811471"
+          },
+          "code": "CHECK_BYPASS_SUPPORTED_MODULE",
+          "id": "1764240751322",
+          "inputs": [
+            {
+              "id": "1764240751323_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.ASYNC_BYPASS_APPROVAL_STATUS.$output.items[0].BypassSupportedFlag == true}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "ByPass Not Supported Module",
+            "returnType": "string",
+            "sourceCode": "return \"Bypass is not supported for this process\";"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "BYPASS_NOT_SUPPORTED_MODULE",
+          "id": "1764240811471",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Bypass Actions Module"
+          },
+          "outcomes": {
+            "update": "1764581207919",
+            "enableBypass": "add_enableBypass_1764580682557"
+          },
+          "code": "BYPASS_ACTIONS_MODULE",
+          "convergenceTargetId": "1764066272109",
+          "id": "1764580682557",
+          "inputs": [
+            {
+              "id": "1764580682559_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_IDENTIFIER.$output.action}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "description": "Add node for enableBypass case branch",
+            "name": "Add (enableBypass Case)"
+          },
+          "outcomes": {
+            "success": "1764066272109"
+          },
+          "id": "add_enableBypass_1764580682557",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_DOAPPROVALBYPAS",
+            "functionName": "do_ApprovalByPass",
+            "name": "Do Approval Bypass Update Module"
+          },
+          "outcomes": {
+            "success": "1764066272109"
+          },
+          "code": "DO_APPROVAL_BYPASS_UPDATE_MODULE",
+          "id": "1764581207919",
+          "inputs": [
+            {
+              "id": "1764581231925_1",
+              "name": "approvalOptionsId",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_ID_OUTPUT_FORMATTER.$output.approvalOptionsId}}"
+            },
+            {
+              "id": "1764581231926_2",
+              "name": "approvalDisabled",
+              "type": "string",
+              "value": "{{!($context.$nodes.ASYNC_BYPASS_APPROVAL_STATUS.$output.items[0].ApprovalDisabledFlag)}}"
+            },
+            {
+              "id": "1764581231927_3",
+              "name": "processId",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_ID_OUTPUT_FORMATTER.$output.processId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Do Action Bypass Module"
+          },
+          "outcomes": {
+            "update": "1764583571148",
+            "enableBypass": "1764584171344",
+            "disableBypass": "1764585106772"
+          },
+          "code": "DO_ACTION_BYPASS_MODULE",
+          "convergenceTargetId": "end",
+          "id": "1764583521890",
+          "inputs": [
+            {
+              "id": "1764583521892_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_IDENTIFIER.$output.action}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_DOAPPROVALBYPAS",
+            "functionName": "do_ApprovalByPass",
+            "name": "Do Bypass Approval Update Module"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "DO_BYPASS_APPROVAL_UPDATE_MODULE",
+          "id": "1764583571148",
+          "inputs": [
+            {
+              "id": "1764583606370_1",
+              "name": "approvalOptionsId",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_ID_OUTPUT_FORMATTER.$output.approvalOptionsId}}"
+            },
+            {
+              "id": "1764583606370_2",
+              "name": "approvalDisabled",
+              "type": "string",
+              "value": "{{!($context.$nodes.ASYNC_BYPASS_APPROVAL_STATUS.$output.items[0].ApprovalDisabledFlag)}}"
+            },
+            {
+              "id": "1764583606371_3",
+              "name": "processId",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_ID_OUTPUT_FORMATTER.$output.processId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Check Bypass Enabled Module"
+          },
+          "outcomes": {
+            "true": "1764584292649",
+            "false": "1764584387139"
+          },
+          "code": "CHECK_BYPASS_ENABLED_MODULE",
+          "convergenceTargetId": "end",
+          "id": "1764584171344",
+          "inputs": [
+            {
+              "id": "1764584171346_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.ASYNC_BYPASS_APPROVAL_STATUS.$output.items[0].ApprovalDisabledFlag == true}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Bypass Already Enabled Module",
+            "returnType": "string",
+            "sourceCode": "return \"Bypass is already enabled. You can only disable it if is enabled.\""
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "BYPASS_ALREADY_ENABLED_MODULE",
+          "id": "1764584292649",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_DOAPPROVALBYPAS",
+            "functionName": "do_ApprovalByPass",
+            "name": "Do Approval Bypass Enable Module"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "DO_APPROVAL_BYPASS_ENABLE_MODULE",
+          "id": "1764584387139",
+          "inputs": [
+            {
+              "id": "1764584413499_1",
+              "name": "approvalOptionsId",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_ID_OUTPUT_FORMATTER.$output.approvalOptionsId}}"
+            },
+            {
+              "id": "1764584413500_2",
+              "name": "approvalDisabled",
+              "type": "string",
+              "value": "true"
+            },
+            {
+              "id": "1764584413501_3",
+              "name": "processId",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_ID_OUTPUT_FORMATTER.$output.processId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Check Bypass Disabled Module"
+          },
+          "outcomes": {
+            "true": "1764585169422",
+            "false": "1764585243691"
+          },
+          "code": "CHECK_BYPASS_DISABLED_MODULE",
+          "convergenceTargetId": "end",
+          "id": "1764585106772",
+          "inputs": [
+            {
+              "id": "1764585106773_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.ASYNC_BYPASS_APPROVAL_STATUS.$output.items[0].ApprovalDisabledFlag == false}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Bypass Already Disabled",
+            "returnType": "string",
+            "sourceCode": "return \"Bypass is already disabled. You can only enable it if it is disabled.\";"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "BYPASS_ALREADY_DISABLED",
+          "id": "1764585169422",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_DOAPPROVALBYPAS",
+            "functionName": "do_ApprovalByPass",
+            "name": "Do Approval Bypass Disable Module"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "DO_APPROVAL_BYPASS_DISABLE_MODULE",
+          "id": "1764585243691",
+          "inputs": [
+            {
+              "id": "1764585269158_1",
+              "name": "approvalOptionsId",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_ID_OUTPUT_FORMATTER.$output.approvalOptionsId}}"
+            },
+            {
+              "id": "1764585269159_2",
+              "name": "approvalDisabled",
+              "type": "string",
+              "value": "false"
+            },
+            {
+              "id": "1764585269159_3",
+              "name": "processId",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_ID_OUTPUT_FORMATTER.$output.processId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Do Action Bypass Submodule"
+          },
+          "outcomes": {
+            "update": "1764663158441",
+            "enableBypass": "1764663416600",
+            "disableBypass": "1764672536949"
+          },
+          "code": "DO_ACTION_BYPASS_SUBMODULE",
+          "convergenceTargetId": "end",
+          "id": "1764663084855",
+          "inputs": [
+            {
+              "id": "1764663084856_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_IDENTIFIER.$output.action}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_DOAPPROVALBYPAS",
+            "functionName": "do_ApprovalByPass",
+            "name": "Do Bypass Approval Update Submodule"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "DO_BYPASS_APPROVAL_UPDATE_SUBMODULE",
+          "id": "1764663158441",
+          "inputs": [
+            {
+              "id": "1764663179864_1",
+              "name": "approvalOptionsId",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_ID_OUTPUT_FORMATTER.$output.approvalOptionsId}}"
+            },
+            {
+              "id": "1764663179865_2",
+              "name": "approvalDisabled",
+              "type": "string",
+              "value": "{{!($context.$nodes.ASYNC_BYPASS_APPROVAL_STATUS_SUBMODULE.$output.items[0].ApprovalDisabledFlag)}}"
+            },
+            {
+              "id": "1764663179865_3",
+              "name": "processId",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_ID_OUTPUT_FORMATTER.$output.processId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Check Bypass Enabled Submodule"
+          },
+          "outcomes": {
+            "true": "1764664295551",
+            "false": "1764667932318"
+          },
+          "code": "CHECK_BYPASS_ENABLED_SUBMODULE",
+          "convergenceTargetId": "end",
+          "id": "1764663416600",
+          "inputs": [
+            {
+              "id": "1764663416601_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.ASYNC_BYPASS_APPROVAL_STATUS_SUBMODULE.$output.items[0].ApprovalDisabledFlag == true}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Bypass Already Enabled Submodule",
+            "returnType": "string",
+            "sourceCode": "return \"Bypass is already enabled. You can only disable it if it is already disabled.\";"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "BYPASS_ALREADY_ENABLED_SUBMODULE",
+          "id": "1764664295551",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_DOAPPROVALBYPAS",
+            "functionName": "do_ApprovalByPass",
+            "name": "Do Approval Bypass Enable Submodule"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "DO_APPROVAL_BYPASS_ENABLE_SUBMODULE",
+          "id": "1764667932318",
+          "inputs": [
+            {
+              "id": "1764667993105_1",
+              "name": "approvalOptionsId",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_ID_OUTPUT_FORMATTER.$output.approvalOptionsId}}"
+            },
+            {
+              "id": "1764667993106_2",
+              "name": "approvalDisabled",
+              "type": "string",
+              "value": "true"
+            },
+            {
+              "id": "1764667993107_3",
+              "name": "processId",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_ID_OUTPUT_FORMATTER.$output.processId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Check Disable Bypass Submodule"
+          },
+          "outcomes": {
+            "true": "1764672594093",
+            "false": "1764672669846"
+          },
+          "code": "CHECK_DISABLE_BYPASS_SUBMODULE",
+          "convergenceTargetId": "end",
+          "id": "1764672536949",
+          "inputs": [
+            {
+              "id": "1764672536951_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.ASYNC_BYPASS_APPROVAL_STATUS_SUBMODULE.$output.items[0].ApprovalDisabledFlag == false}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Bypass Already Disabled Submodule",
+            "returnType": "string",
+            "sourceCode": "return \"Bypass is already disabled for the process. You can only enable it if it is disabled.\""
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "BYPASS_ALREADY_DISABLED_SUBMODULE",
+          "id": "1764672594093",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_DOAPPROVALBYPAS",
+            "functionName": "do_ApprovalByPass",
+            "name": "Do Approval Bypass Disable SubModule"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "DO_APPROVAL_BYPASS_DISABLE_SUBMODULE",
+          "id": "1764672669846",
+          "inputs": [
+            {
+              "id": "1764672693237_1",
+              "name": "approvalOptionsId",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_ID_OUTPUT_FORMATTER.$output.approvalOptionsId}}"
+            },
+            {
+              "id": "1764672693238_2",
+              "name": "approvalDisabled",
+              "type": "string",
+              "value": "false"
+            },
+            {
+              "id": "1764672693239_3",
+              "name": "processId",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_ID_OUTPUT_FORMATTER.$output.processId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "GLOBAL_HUMAN_RESOURCES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

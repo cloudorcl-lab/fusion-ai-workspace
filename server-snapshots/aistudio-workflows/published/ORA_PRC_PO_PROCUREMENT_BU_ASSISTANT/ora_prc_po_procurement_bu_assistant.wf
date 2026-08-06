@@ -1,0 +1,449 @@
+{
+  "workflowId": "300000331063920",
+  "workflowCode": "ORA_PRC_PO_PROCUREMENT_BU_ASSISTANT",
+  "name": "Procurement Business Unit Assistant",
+  "description": "Assists procurement managers by maintaining Procurement Business Unit context, switching the active business unit on request, preserving it across interactions, and scoping requisition views and actions to the selected business unit. This assistant is designed to work with the Procurement Operations Workspace.",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1776968154871"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "name": "Intent Switcher"
+          },
+          "outcomes": {
+            "SWITCH_BU": "1776435961878",
+            "GET_BU": "1776583412675"
+          },
+          "code": "INTENT_SWITCHER",
+          "convergenceTargetId": "end",
+          "id": "1776968154871",
+          "inputs": [
+            {
+              "id": "1776968154871_caseExpression",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.intent}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM",
+              "model": "OCI_GPT_5_MINI"
+            },
+            "description": "",
+            "name": "BU Name Extractor",
+            "chatHistoryEnabled": true
+          },
+          "outcomes": {
+            "success": "1776967894701"
+          },
+          "code": "BU_NAME_EXTRACTOR",
+          "convergenceTargetId": "1776592576529",
+          "id": "1776435961878",
+          "inputs": [
+            {
+              "id": "1776435961880_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a strict value extraction agent for Procurement Business Unit switching.\n\nInput Data\n\nChat History: {{$context.$system.$chatHistory}}\nCurrent User Input: {{$context.$system.$inputMessage}}\n\nTask\n\nExtract the Procurement Business Unit name that should be used for an explicit or implicit context switch request.\n\nExtraction Rules\nIf the current user message explicitly names the Procurement Business Unit to switch to, extract that value.\nIf the current user message implicitly asks the app to refresh, display, load, open, or show workspace-level data for another Procurement Business Unit, extract that BU name.\nIf the chat history shows that the assistant previously asked the user which Procurement Business Unit to switch to, and the current user message is only the answer, extract the BU name from the current user message.\nIf the chat history shows that a specific Procurement Business Unit was already proposed or identified, and the current user message is only a confirmation such as \"go ahead and switch\", \"yes\", \"do it\", or \"proceed\", extract the most recent Procurement Business Unit from the chat history.\nIf the current user message is changing something other than the procurement business unit, return null.\nIf the current user message is only a read-only question about another business unit and does not require an app refresh, return null.\nIf no Procurement Business Unit can be confidently determined from the current message and chat history, return null.\nImplicit Context Switch Examples\n\nThese should extract the BU name:\n\n\"show data from Vision Germany\"\n\"display data from Vision Germany\"\n\"show the dashboard for Vision Germany\"\n\"open the workspace for Vision Germany\"\n\"refresh the panels for Vision Germany\"\nRead-Only Query Examples\n\nThese should return null because they are query requests, not context switches:\n\n\"How many lines are unassigned in Vision City Operations?\"\n\"List unprocessed requisition lines in Vision Germany\"\n\"Which categories have the highest volume in Vision Services?\"\nHard Exclusions\n\nReturn null when the user is changing or asking about:\n\nbuyer\nassigned buyer\nassignee\nowner\nrequester\npreparer\nrequisition assignment\nrequisition reassignment\nworkload assignment\n\nExamples that must return null:\n\n\"change buyer to vision operations\"\n\"switch buyer to Clare Furey\"\n\"update assigned buyer\"\n\"reassign requisition 123 to Cody\"\n\"show buyer workload for a category\"\n\"show buyers in a category\"\n\"show workload details for a category\"\n\"why is a category not balanced?\"\n\nAlso return null for category workload questions. Do not extract category names as Procurement Business Unit names. Terms in buyer workload, buyers in category, workload details for category, or balanced/not balanced category questions are category names, not Procurement Business Units.\nGuidelines\nPreserve the exact business unit wording when possible.\nTrim leading and trailing whitespace.\nDo not include surrounding quotes unless they are part of the name.\nDo not validate whether the business unit exists.\nDo not classify the user intent.\nDo not return explanations.\nDo not extract a BU value just because the message matches the pattern \"change X to Y\"; the target object must clearly be the procurement business unit, an implicit dashboard/workspace refresh request, or an active BU switch flow in chat history.\nIf multiple business unit names appear in chat history, use the most recent one that is clearly the target of the active switch conversation.\nTreat short answers like \"Vision Operations\" as valid values only when they answer a prior clarification question about switching the BU.\nTreat confirmation-only replies as permission to use the most recently discussed target BU only when one is clearly established in an active BU switch conversation.\nOutput\n\nReturn only a valid JSON object:\n{ \"ProcurementBUName\": \"<value or null>\" }"
+            },
+            {
+              "id": "1776435961878_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": ""
+            }
+          ],
+          "type": "LLM",
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"ProcurementBUName\": {\n      \"type\": [\"string\", \"null\"]\n    }\n  },\n  \"required\": [\"ProcurementBUName\"],\n  \"additionalProperties\": false\n}\n"
+        },
+        {
+          "metadata": {
+            "name": "Extract App Context",
+            "returnType": "object",
+            "sourceCode": "let appContext = $context.$triggers.REST.$input.OraAppContext;\n\nfunction parseAppContext(value) {\n  if (value && typeof value === 'object' && !Array.isArray(value)) {\n    return value;\n  }\n\n  if (typeof value === 'string' && value.trim() !== '') {\n    try {\n      let parsed = JSON.parse(value);\n\n      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {\n        return parsed;\n      }\n    } catch (e) {\n      return {};\n    }\n  }\n\n  return {};\n}\n\nlet contextObject = parseAppContext(appContext);\nlet payload = contextObject.payload && typeof contextObject.payload === 'object' ? contextObject.payload : {};\n\nlet prcBUId = payload.prcBUId != null ? payload.prcBUId : null;\nlet prcBUName = payload.prcBUName != null ? payload.prcBUName : null;\n\nreturn {\n  prcBUId: prcBUId,\n  prcBUName: prcBUName,\n  payload: payload\n};"
+          },
+          "outcomes": {
+            "success": "1776589173185"
+          },
+          "code": "EXTRACT_APP_CONTEXT",
+          "convergenceTargetId": "1776589173185",
+          "id": "1776583412675",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Has BU Name"
+          },
+          "outcomes": {
+            "true": "1776436638512",
+            "false": "1776968004252"
+          },
+          "code": "HAS_BU_NAME",
+          "convergenceTargetId": "1776968004252",
+          "id": "1776967894701",
+          "inputs": [
+            {
+              "id": "1776967894701_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.BU_NAME_EXTRACTOR.$output.ProcurementBUName != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Check BU Context"
+          },
+          "outcomes": {
+            "false": "1776593041642",
+            "true": "1776643870471"
+          },
+          "code": "CHECK_BU_CONTEXT",
+          "convergenceTargetId": "end",
+          "id": "1776589173185",
+          "inputs": [
+            {
+              "id": "1776589173186_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_APP_CONTEXT.$output.result.prcBUId != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_PURCHASING_PROCUREMENTBUSINESSUNITSLISTOFVALUES",
+            "name": "Get BU Info",
+            "functionName": "GetBusinessUnitDetailsByNameCaseInsensitive"
+          },
+          "outcomes": {
+            "success": "1776436768938"
+          },
+          "code": "GET_BU_INFO",
+          "convergenceTargetId": "1776436768938",
+          "id": "1776436638512",
+          "inputs": [
+            {
+              "id": "1776436638512_pBUName",
+              "name": "pBUName",
+              "value": "{{$context.$nodes.BU_NAME_EXTRACTOR.$output.ProcurementBUName}}",
+              "required": true,
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"ProcurementBU\": {\n            \"type\": \"string\"\n          },\n          \"ProcurementBUId\": {\n            \"type\": \"string\"\n          },\n          \"AgentAction\": {\n            \"type\": \"string\"\n          },\n          \"@context\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"key\": {\n                \"type\": \"string\"\n              }\n            },\n            \"required\": [\n              \"key\"\n            ],\n            \"additionalProperties\": false\n          }\n        },\n        \"required\": [\n          \"ProcurementBU\",\n          \"ProcurementBUId\",\n          \"AgentAction\",\n          \"@context\"\n        ],\n        \"additionalProperties\": false\n      }\n    },\n    \"count\": {\n      \"type\": \"number\"\n    },\n    \"hasMore\": {\n      \"type\": \"boolean\"\n    },\n    \"limit\": {\n      \"type\": \"number\"\n    },\n    \"offset\": {\n      \"type\": \"number\"\n    },\n    \"links\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"rel\": {\n            \"type\": \"string\"\n          },\n          \"href\": {\n            \"type\": \"string\"\n          },\n          \"name\": {\n            \"type\": \"string\"\n          },\n          \"kind\": {\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\n          \"rel\",\n          \"href\",\n          \"name\",\n          \"kind\"\n        ],\n        \"additionalProperties\": false\n      }\n    }\n  },\n  \"required\": [\n    \"items\",\n    \"count\",\n    \"hasMore\",\n    \"limit\",\n    \"offset\",\n    \"links\"\n  ],\n  \"additionalProperties\": false\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_PURCHASING_PROFILEOPTIONSFORPURCHASING",
+            "functionName": "GetProfileOptionValue",
+            "name": "Get Default BU ID"
+          },
+          "outcomes": {
+            "success": "1776594904421"
+          },
+          "code": "GET_DEFAULT_BU_ID",
+          "id": "1776593041642",
+          "inputs": [
+            {
+              "id": "1776593041642_pProfileCode",
+              "name": "pProfileCode",
+              "value": "PO_DEFAULT_PRC_BU",
+              "required": false
+            }
+          ],
+          "outputSpecification": "",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Return App Context BU"
+          },
+          "outcomes": {},
+          "code": "RETURN_APP_CONTEXT_BU",
+          "id": "1776643870471",
+          "inputs": [
+            {
+              "id": "1776643870471_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_APP_CONTEXT.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Check BU Validity"
+          },
+          "outcomes": {
+            "true": "1776437243973",
+            "false": "1776968004252"
+          },
+          "code": "CHECK_BU_VALIDITY",
+          "convergenceTargetId": "end",
+          "id": "1776436768938",
+          "inputs": [
+            {
+              "id": "1776436768940_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_BU_INFO.$output.items.length > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_PURCHASING_PROCUREMENTBUSINESSUNITSLISTOFVALUES",
+            "functionName": "GetBusinessUnitNameById",
+            "name": "Get Default BU Name"
+          },
+          "outcomes": {
+            "success": "1776676119822"
+          },
+          "code": "GET_DEFAULT_BU_NAME",
+          "convergenceTargetId": "1776595272002",
+          "id": "1776594904421",
+          "inputs": [
+            {
+              "id": "1776594904421_pBusinessUnitId",
+              "name": "pBusinessUnitId",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_DEFAULT_BU_ID.$output.items[0].ProfileOptionValue}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"ProcurementBU\": {\n            \"type\": \"string\"\n          },\n          \"ProcurementBUId\": {\n            \"type\": \"number\"\n          },\n          \"AgentAction\": {\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\n          \"ProcurementBU\",\n          \"ProcurementBUId\",\n          \"AgentAction\"\n        ],\n        \"additionalProperties\": false\n      }\n    },\n    \"count\": {\n      \"type\": \"number\"\n    },\n    \"hasMore\": {\n      \"type\": \"boolean\"\n    },\n    \"limit\": {\n      \"type\": \"number\"\n    },\n    \"offset\": {\n      \"type\": \"number\"\n    },\n    \"links\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"rel\": {\n            \"type\": \"string\"\n          },\n          \"href\": {\n            \"type\": \"string\"\n          },\n          \"name\": {\n            \"type\": \"string\"\n          },\n          \"kind\": {\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\n          \"rel\",\n          \"href\",\n          \"name\",\n          \"kind\"\n        ],\n        \"additionalProperties\": false\n      }\n    }\n  },\n  \"required\": [\n    \"items\",\n    \"count\",\n    \"hasMore\",\n    \"limit\",\n    \"offset\",\n    \"links\"\n  ],\n  \"additionalProperties\": false\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "",
+            "name": "BU Clarification Message"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "BU_CLARIFICATION_MESSAGE",
+          "id": "1776968004252",
+          "inputs": [
+            {
+              "id": "1776968004252_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a helpful assistant.\n\nThe user sent the following message:\n{{$context.$system.$inputMessage}}\n\nExtracted Procurement Business Unit:\n{{$context.$nodes.BU_NAME_EXTRACTOR.$output.ProcurementBUName}}\n\nYour task:\n- Generate a short, polite, and user-friendly response.\n- If Extracted Procurement Business Unit is null or blank, ask the user to specify the Procurement Business Unit they want to switch to. Do not provide example business unit names.\n- If Extracted Procurement Business Unit has a value, do not ask the user to specify it again. Instead, say that the Procurement Business Unit \"<value>\" could not be found or is not available to them, and ask them to check the name or their access.\n- Do not say the Procurement Business Unit was missing when a value was extracted.\n- Keep the tone natural and concise.\n- Do not mention internal systems, extraction logic, APIs, lookup failures, or errors.\n\nOutput:\nReturn only the message text. Do not use JSON. Do not add explanations."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [],
+              "enableActions": true,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "name": "Perform Context Switch"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "PERFORM_CONTEXT_SWITCH",
+          "id": "1776437243973",
+          "inputs": [
+            {
+              "id": "1776437243981_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Selected Procurement BU:\n{{$context.$nodes.GET_BU_INFO.$output.items[0]}}\n\nCurrent app context:\n{{$context.$triggers.REST.$input.OraAppContext}}\n\nProduce one immediate actionable insight with a followUpCommand that calls SWITCHCONTEXT using a JSON object app context.\n\nThe followUpCommand must use this command shape:\nora.Invoke(\"SWITCHCONTEXT\", { \"payload\": <merged payload JSON object> })\n\nBuild <merged payload JSON object> by reading the payload from Current app context, preserving any existing payload keys such as riskType, and replacing or adding:\n- prcBUId: ProcurementBUId from the selected Procurement BU\n- prcBUName: ProcurementBU from the selected Procurement BU\n\nIf Current app context is empty or has no payload, use a payload containing only prcBUId and prcBUName.\nDo not output the placeholder text."
+            },
+            {
+              "id": "1776437243973_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": ""
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Extract BU Info",
+            "returnType": "object",
+            "sourceCode": "let output = $context.$nodes.GET_DEFAULT_BU_NAME.$output.items[0];\nlet buInfo = {\n  prcBUId: output.ProcurementBUId,\n  prcBUName: output.ProcurementBU\n};\nreturn buInfo;"
+          },
+          "outcomes": {
+            "success": "1776594572002"
+          },
+          "code": "EXTRACT_BU_INFO",
+          "id": "1776676119822",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Return Default BU"
+          },
+          "outcomes": {},
+          "code": "RETURN_DEFAULT_BU",
+          "convergenceTargetId": "end",
+          "id": "1776594572002",
+          "inputs": [
+            {
+              "id": "1776594572004_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_BU_INFO.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": "",
+    "agentsValueMappings": [],
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1776761648492",
+            "name": "OraAppContext",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1776583522319",
+            "name": "intent",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": [],
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+    "dtRunProfiles": {
+      "activeProfileId": "fb0cc711-0f45-47a5-a218-af86bd45d58f",
+      "profiles": [
+        {
+          "id": "c8127fed-afe2-4106-a000-7c25f67ec029",
+          "name": "intent = GET_BU",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"OraAppContext\": \"\",\n  \"intent\": \"GET_BU\"\n}"
+        },
+        {
+          "id": "fb0cc711-0f45-47a5-a218-af86bd45d58f",
+          "name": "intent =  SWITCH_BU",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"intent\": \"SWITCH_BU\"\n}",
+          "inputMessage": "swith procurment BU to Vision Services"
+        }
+      ]
+    },
+    "deletedTriggerTypes": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "PRC",
+  "product": "PURCHASING",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": true,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

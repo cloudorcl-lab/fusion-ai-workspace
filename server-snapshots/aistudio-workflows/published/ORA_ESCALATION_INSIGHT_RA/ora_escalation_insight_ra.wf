@@ -1,0 +1,2358 @@
+{
+  "workflowId": "300000331068144",
+  "workflowCode": "ORA_ESCALATION_INSIGHT_RA",
+  "name": "Escalations",
+  "description": "Provides real-time visibility into service request escalations and predicts potential high-risk cases.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1774996753797"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_CREATEAIAGENTME",
+            "errorNodeId": "1772758053370",
+            "functionName": "Create_Agent_AI_Metrics",
+            "name": "Create AI Metrics"
+          },
+          "outcomes": {
+            "success": "1772758053370"
+          },
+          "code": "CREATE_AI_METRICS",
+          "id": "1774996753797",
+          "inputs": [
+            {
+              "id": "1774996776868_1",
+              "name": "agentTeamCode",
+              "type": "string",
+              "value": "{{$context.$workflow.$name}}"
+            },
+            {
+              "id": "1774996776869_2",
+              "name": "jobId",
+              "type": "string",
+              "value": "{{$context.$workflow.$jobId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Filtering Required"
+          },
+          "outcomes": {
+            "true": "1773703121744",
+            "false": "add_false_1772758053370"
+          },
+          "code": "FILTERING_REQUIRED",
+          "convergenceTargetId": "1769207335237",
+          "id": "1772758053370",
+          "inputs": [
+            {
+              "id": "1772758053371_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$app.$OraMessageHint == 'Summary' || $context.$app.$OraMessageHint == 'InitDisplay' || $context.$app.$OraMessageHint == 'InitActions' || $context.$app.$OraMessageHint == 'InitCommunications' || $context.$app.$OraMessageHint == 'AdditionalContent'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1769207078157",
+            "1": "1773703182967"
+          },
+          "code": "PARALLEL_1773703121745",
+          "convergenceTargetId": "1773095982841",
+          "id": "1773703121744",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "name": "Clean Up SR Data",
+            "returnType": "object",
+            "sourceCode": "const data = $context.$nodes.GET_ESCALATED_SR_DETAILS.$output;\n\nif (data == null) {\n  return [];\n}\n\nconst escalationMap = $context.$nodes.EXTRACT_SR_NUMBERS.$output.result.srMap\nconst resourceData = $context.$nodes.GET_RESOURCE_PARTY_NUMBER.$output \n\nconst myPartyNumber = resourceData?.items?.length > 0 \n  ? resourceData.items[0].PartyNumber \n  : null;\n\n\nconst cleanedData = data.items.map(item => {\n  // Remove @context and @links from top-level attributes\n  delete item[\"@context\"];\n  delete item[\"@links\"];\n\n  const assignToMe = myPartyNumber && item.AssigneeResourceNumber === myPartyNumber;\n  \n  const filteredMessages = item.messages.items\n    .filter(msg => {\n      if (msg.MessageTypeCd === \"ORA_SVC_AI_SYSTEM_NOTE\") {\n        return msg.MessageContent && msg.MessageContent.includes(\"ORA_SERVICE_OPERATIONS_WORKSPACE\");\n\n      } else {\n        return msg.MessageTypeCd === \"ORA_SVC_CUSTOMER_ENTRY\" || \n               msg.MessageTypeCd === \"ORA_SVC_RESPONSE\" || \n               msg.MessageTypeCd === \"ORA_SVC_INTERNAL_NOTE\";\n      }\n    })\n    .map(msg => {\n      // Remove @context and @links from each message\n      delete msg[\"@context\"];\n      delete msg[\"@links\"];\n      return msg;\n    });\n\n \nconst now = Date.now();\nconst srCreation = new Date(item.CreationDate).getTime();\n\nconst srOlderThan24h = now - srCreation > 24 * 60 * 60 * 1000;\n\nconst hasRecentActivity = filteredMessages.some(msg => {\n    const msgTime = new Date(msg.CreationDate).getTime();\n    if (msg.MessageTypeCd === \"ORA_SVC_INTERNAL_NOTE\") {\n      return msgTime >= now - 24 * 60 * 60 * 1000;\n    }\n    if (msg.MessageTypeCd === \"ORA_SVC_RESPONSE\") {\n      if (!assignToMe && msg.CreatedBy === $context.$user.$name) {\n        return false; // ignore my own response if not assigned\n      }\n      return msgTime >= now - 24 * 60 * 60 * 1000;\n    }\n    return false;\n  });\n\n const hasRecentManagerAction = filteredMessages.some(msg =>\n    msg.MessageTypeCd === \"ORA_SVC_AI_SYSTEM_NOTE\" &&\n    msg.MessageContent &&\n    msg.MessageContent.includes(\"ORA_SERVICE_OPERATIONS_WORKSPACE\") &&\n    (msg.MessageContent.includes(\"Reassign\") || msg.MessageContent.includes(\"AddTeamMember\")) &&\n    new Date(msg.CreationDate).getTime() >= now - 24 * 60 * 60 * 1000\n  );\n\n  // Determine lackOfProgress\n  const lackOfProgress = srOlderThan24h && !hasRecentActivity && !hasRecentManagerAction;\n\n\nconst escalationDate = escalationMap[item.SrNumber] || null;\n\nlet escalationElapsed = null;\n\n  if (escalationDate) {\n    const escTime = new Date(escalationDate).getTime();\n    const diffMs = now - escTime;\n\n    const minutes = Math.floor(diffMs / (60 * 1000));\n    const hours = Math.floor(diffMs / (60 * 60 * 1000));\n    const days = Math.floor(diffMs / (24 * 60 * 60 * 1000));\n\n    if (minutes < 60) {\n      escalationElapsed = `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;\n    } else if (hours < 24) {\n      escalationElapsed = `${hours} hour${hours !== 1 ? 's' : ''} ago`;\n    } else {\n      escalationElapsed = `${days} day${days !== 1 ? 's' : ''} ago`;\n    }\n  }\n\n\n\n\n  return {\n    ...item,\n   lackOfProgress,\n   assignToMe,\n   escalationElapsed,\n    messages: {\n      ...item.messages,\n      items: filteredMessages.length > 0 ? filteredMessages : []\n    }\n  };\n});\n\nreturn cleanedData;"
+          },
+          "outcomes": {
+            "success": "1773334308515"
+          },
+          "code": "CLEAN_UP_SR_DATA",
+          "convergenceTargetId": "1773334308515",
+          "id": "1773095982841",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Extract New SR Messages",
+            "returnType": "object",
+            "sourceCode": "const data = $context.$nodes.CLEAN_UP_SR_DATA.$output.result;\n\nconst cleanedData = data.map(item => {\n  const messages = item.messages?.items || [];\n\n  // Find manager notes\n  const managerNotes = messages.filter(msg =>\n    msg.MessageTypeCd === \"ORA_SVC_AI_SYSTEM_NOTE\" &&\n    msg.MessageContent &&\n    msg.MessageContent.includes(\"ORA_SERVICE_OPERATIONS_WORKSPACE\") &&\n    msg.MessageContent.includes(\"A communication message was sent within the Agentic App by\")\n  );\n\n  // Latest manager note, if any\n  const latestManagerNote = managerNotes.reduce((latest, current) => {\n    if (!latest) return current;\n    return new Date(current.CreationDate) > new Date(latest.CreationDate)\n      ? current\n      : latest;\n  }, null);\n\n  const allowedTypes = [\n    \"ORA_SVC_RESPONSE\",\n    \"ORA_SVC_INTERNAL_NOTE\",\n    \"ORA_SVC_CUSTOMER_ENTRY\"\n  ];\n\n  let filteredMessages = [];\n\n  if (latestManagerNote) {\n    const managerTime = new Date(latestManagerNote.CreationDate).getTime();\n\n    // Pass only new messages after the latest manager note\n    filteredMessages = messages.filter(msg => {\n      const msgTime = new Date(msg.CreationDate).getTime();\n      const type = msg.MessageTypeCd?.trim();\n\n      return msgTime > managerTime && allowedTypes.includes(type);\n    }).map(({ \"@context\": _, \"@links\": __, ...rest }) => rest);\n\n    return {\n      SrNumber: item.SrNumber,\n      messages: {\n        ...item.messages,\n        items: filteredMessages\n      }\n    };\n  }\n\n  // No manager note exists: keep Title, ProblemDescription, and all 3 message types\n  filteredMessages = messages\n    .filter(msg => allowedTypes.includes(msg.MessageTypeCd?.trim()))\n    .map(({ \"@context\": _, \"@links\": __, ...rest }) => rest);\n\n  return {\n    SrNumber: item.SrNumber,\n    Title: item.Title,\n    ProblemDescription: item.ProblemDescription,\n    messages: {\n      ...item.messages,\n      items: filteredMessages\n    }\n  };\n});\n\nreturn cleanedData;"
+          },
+          "outcomes": {
+            "success": "1772758097454"
+          },
+          "code": "EXTRACT_NEW_SR_MESSAGES",
+          "convergenceTargetId": "1773257376134",
+          "id": "1773334308515",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Filter SR Requiring Attention"
+          },
+          "outcomes": {
+            "success": "1772764967256"
+          },
+          "code": "FILTER_SR_REQUIRING_ATTENTION",
+          "id": "1772758097454",
+          "inputs": [
+            {
+              "id": "1772758097455_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Task:\nReview each SR(SrNumber) in the escalated SR details {{$context.$nodes.EXTRACT_NEW_SR_MESSAGES.$output.result}} to determine whether it requires manager attention. If the escalated SR details are empty, return an empty JSON array\n\nAn SR requires manager attention if any of the following conditions are met. Evaluate all conditions sequentially and do not infer anything beyond what is explicitly stated by the customer. For each SR, be sure to explicitly check whether the customer explicitly expresses doubt about the agent. \n\n1: Customer Doubts the Agent: The customer has **explicitly** expressed doubt that the representative/agent understands the issue or can make satisfactory progress.\n2. Customer Questions Urgency Handling: The customer has **explicitly** expressed doubt that the issue is not being handled with the appropriate level of urgency.\n3. Customer Requested Management Response but None Provided: The customer has requested a response from a manager, supervisor, or executive, and no such response has been provided.\n\nImportant Constraints:\n- Verify that all analysis is based only on the details of the specified SrNumber. Do not reference or use information from any other SR.\n- Only consider the three criteria listed above.\n- Do not use any additional assumptions, external context, or inferred conditions.\n- Base the decision strictly on explicit evidence.\n- Do not overanalyze beyond the provided information.\n\nOutput Format:\nReturn all SRs from the input in the following JSON format:\n[\n  {\n    \"SrNumber\": \"<SR1>\",\n    \"Reason\": \"<Concise, natural-language explanation of why this SR requires manager attention, based only on the defined conditions. Include **all** relevant conditions. Do not reference internal attribute names. If the SR does not require manager attention, return an empty string. Explicitly mention if customer explicitly doubts the agent.>\",\n    \"PriorityActionNeeded\": \"<Return true if the customer doubts the agent or questions the urgency handling; otherwise, return false>\",\n     \"ActionCount\": \"<Number of total conditions that currently require attention, based only on the defined conditions above>\"\n  },\n  {\n    \"SrNumber\": \"<SR2>\",\n    \"Reason\": \"<Concise explanation as above>\",\n    \"PriorityActionNeeded\": \"<true or false as above>\",\n    \"ActionCount\": \"<Number of conditions requiring attention>\"\n\n  }\n  // ...additional SRs as applicable\n]"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "SR Requiring Attention",
+            "returnType": "object",
+            "sourceCode": "const attentionSRs = $context.$nodes.FILTER_SR_REQUIRING_ATTENTION.$output;\nconst compareSRs = $context.$nodes.CLEAN_UP_SR_DATA.$output.result;\n\nconst filteredSRs = compareSRs\n  .map(compareSR => {\n\n     //Remove unwanted system notes\n   const cleanedMessages = (compareSR.messages?.items || []).filter(msg => \n        msg.MessageTypeCd !== \"ORA_SVC_AI_SYSTEM_NOTE\"\n   );\n\n    // Replace messages with cleaned version\n    compareSR = {\n      ...compareSR,\n      messages: {\n        ...compareSR.messages,\n        items: cleanedMessages\n      }\n    };\n\n    // Find existing attention info\n    const attentionSR = attentionSRs.find(attentionSR => attentionSR.SrNumber === compareSR.SrNumber);\n\n    // Start with existing values or defaults\n    let reason = attentionSR?.Reason || \"\";\n    let actionCount = attentionSR?.ActionCount || 0;\n    let priority = attentionSR?.PriorityActionNeeded === true || attentionSR?.PriorityActionNeeded === \"true\";\n\n \n    // Append reason messages if flags are true\n    if (compareSR.lackOfProgress) {\n      reason = reason ? reason + \"; No progress on SR\" : \"No progress on SR\";\n    }\n\n    if (compareSR.assignToMe) {\n      reason = reason ? reason + \"; SR is assigned to you\" : \"SR is assigned to you\";\n    }\n\n   // Only update ActionCount and Priority if PriorityActionNeeded was false\n  if (!priority) {\n    if (compareSR.lackOfProgress || compareSR.assignToMe) {\n      actionCount += 1;\n      priority = true;\n    }\n  }\n\n    return {\n      ...compareSR,\n      Reason: reason,\n      ActionCount: actionCount,\n      PriorityActionNeeded: priority\n    };\n  })\n  // Only keep SRs that currently require attention\n  .filter(sr => sr.ActionCount > 0);\n\n\nconst uniqueAccounts = [\n  ...new Map(\n    filteredSRs\n.filter(sr => sr.AccountPartyUniqueName != null) \n.map(sr => [\n      sr.AccountPartyUniqueName,\n      {\n        AccountPartyUniqueName: sr.AccountPartyUniqueName,\n        AccountPartyNumber: sr.AccountPartyNumber\n      }\n    ])\n  ).values()\n];\n\nconst accountNamesSingle = uniqueAccounts\n  .map(a => `'${a.AccountPartyUniqueName}'`)\n  .join(',');\n\n\nconst accountNamesString = uniqueAccounts\n  .map(a => `\"${a.AccountPartyUniqueName}\"`)\n  .join(',');\n\n\nconst accountNamesPartyNums= uniqueAccounts\n  .map(a => `'${a.AccountPartyNumber}'`)\n  .join(',');\n\n\nconst output = {\n SRDetails: filteredSRs,\n  AccounNames: accountNamesString,\n  AccountNamesSingle: accountNamesSingle,\n  AccountPatryNums: accountNamesPartyNums\n};\n\nreturn output"
+          },
+          "outcomes": {
+            "success": "1773085212092"
+          },
+          "code": "SR_REQUIRING_ATTENTION",
+          "id": "1772764967256",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1773069264315",
+            "1": "1773083274461",
+            "2": "1773188799672"
+          },
+          "code": "PARALLEL_1773085212093",
+          "convergenceTargetId": "1773003548258",
+          "id": "1773085212092",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "name": "Prioritize SR Requiring Attention"
+          },
+          "outcomes": {
+            "success": "1773004968321"
+          },
+          "code": "PRIORITIZE_SR_REQUIRING_ATTENTION",
+          "id": "1773003548258",
+          "inputs": [
+            {
+              "id": "1773003548260_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Task:\nReview the following inputs:\n\nSR requiring attention List: {{$context.$nodes.SR_REQUIRING_ATTENTION.$output.result.SRDetails}}\nCustomer Opportunity / Revenue Information: {{$context.$nodes.GET_OPEN_OPPORTUNITY.$output}}\nCustomer Highest-Severity Open SRs Information: {{$context.$nodes.HIGH_SEVERITY_OPEN_SR_BY_ACCOUNT.$output.result}}\n\nUsing these inputs, prioritize the input SR requiring attention List. If no SR Requiring Attention, return an empty JSON array\n\nInstructions:\nFor each SR in the input, generate a CSM-facing reason that includes:\n1. Why the SR requires attention, make sure to use the Reason attribute from the input for the given SR to explain why it requires attention.\n2. Why the SR is prioritized, based strictly on the prioritization criteria listed below.\n\nImportant constraints:\n- Ensure that **every** SR from the \"SR requiring attention List\" is included in the output\n- Do not include any recommended actions in the explanation.\n- Use only the criteria listed below for prioritization. Emphasize the first three criteria naturally when present. \n- The explanation should be clear, concise, and suitable for a CSM audience.\n\nPrioritization Criteria (Highest → Lowest Priority):\n- Human Safety Threat: The issue poses a potential threat to human safety.\n- Significant Financial Cost: The issue has the potential for significant financial cost to the customer or the implementing company (the higher the cost potential, the higher the priority).\n- Product Usability Impact: The issue renders the product unusable or severely impacts the benefits realized from the product.\n- Multiple Open Escalated SRs: The customer has multiple open SRs that are currently escalated. (the more escalated SRs, the higher the priority).\n- High Severity of Open SRs: The customer has additional open SRs of the highest severity. Refer to the Customer Highest-Severity Open SRs information for the **total** high-severity SRs, excluding the current SR when checking for additional SRs.\n- Significant Near-Term Opportunities: The customer has significant opportunities in progress. Refer to Customer Opportunity / Revenue Information.\n- Multiple Recommended Actions: The SR has multiple recommended actions to perform. This is indicated by ActionCount.\n\n\n\nOutput:\nReturn the Prioritized result in the following JSON format. Ensure that **every** SR from the \"SR requiring attention List\" is included in the output. For each SR, the Reason must clearly combine both the attention reason (from the input Reason attribute) and the prioritization rationale, explaining why the SR requires attention and why it is prioritized based on the criteria listed above.\n\n[\n  {\n    \"SrNumber\": \"<SR1>\",\n    \"Reason\": \"<Brief reason combining why the SR needs attention and the prioritization explanation, following the criteria naturally. Do not repeat ‘Meets’ or ‘Prioritization’ directly.>\"\n  },\n  {\n    \"SrNumber\": \"<SR2>\",\n    \"Reason\": \"<Brief reason combining why the SR needs attention and the prioritization explanation, following the criteria naturally. Do not repeat ‘Meets’ or ‘Prioritization’ directly.>\"\n  },\n // ...add more as appropriate\n]"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Prioritized SR Requiring Attention",
+            "returnType": "object",
+            "sourceCode": "const attentionSRs = $context.$nodes.PRIORITIZE_SR_REQUIRING_ATTENTION.$output \nconst compareSRs = $context.$nodes.SR_REQUIRING_ATTENTION.$output.result.SRDetails\nconst account = $context.$nodes.FETCH_ALL_ACCOUNT_SCORE.$output.items\n\nconst attentionSRCount = compareSRs.length;\n\n\nconst accountTierMap = new Map(\n  account.map(a => [a.PartyNumber, a.AccountScoringTier])\n);\n\n\nconst allSRs = attentionSRs.map(attentionSR => {\n  const matchingSR = compareSRs.find(compareSR => compareSR.SrNumber === attentionSR.SrNumber);\n  return {\n    ...(matchingSR || {}),\n    Reason: attentionSR.Reason,\n    AccountTier: accountTierMap.get(matchingSR?.AccountPartyNumber) || null\n  };\n});\n\n\nconst top3SRs = allSRs.slice(0, 3);\n\nconst remainingSRs = allSRs.slice(3);\nconst remainingSRCount = remainingSRs.length;\n\n\n\nconst srNumbers = top3SRs\n  .map(s => `\"${s.SrNumber}\"`)\n  .join(',');\n\nconst output = {\n  SRDetails: top3SRs,\n  RemainingSRDetails: remainingSRs,\n  SRNumber: srNumbers,\n  attentionSRCount: attentionSRCount,\n  remainingSRCount: remainingSRCount\n};\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1769207335237"
+          },
+          "code": "PRIORITIZED_SR_REQUIRING_ATTENTION",
+          "id": "1773004968321",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Message Hint"
+          },
+          "outcomes": {
+            "Summary": "1777047145864",
+            "InitDisplay": "1773168464319",
+            "InvokeAction": "1770983197431",
+            "SendCommunication": "1777647813223",
+            "AdditionalContent": "1773966303362",
+            "InitActions": "add_InitActions_1769207335237",
+            "InitCommunications": "add_InitCommunications_1769207335237",
+            "Query": "add_Query_1769207335237"
+          },
+          "code": "MESSAGE_HINT",
+          "convergenceTargetId": "end",
+          "id": "1769207335237",
+          "inputs": [
+            {
+              "id": "1769207335239_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.OraMessageHint}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "Perform Action"
+          },
+          "outcomes": {
+            "Reassign": "1770983429189",
+            "AddTeamMember": "1770983507162",
+            "Review": "1775642330470",
+            "ShowAlternatives": "1775738519043"
+          },
+          "code": "PERFORM_ACTION",
+          "convergenceTargetId": "end",
+          "id": "1770983197431",
+          "inputs": [
+            {
+              "id": "1770983197432_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{JSON.parse($context.$triggers.REST.$input.OraAction).action}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MESSAGES_LIST"
+              ],
+              "enableActions": false,
+              "enableCommunications": false,
+              "customNotes": "Set the title of messageListWidget based on the value of \n{{$context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.remainingSRCount}} (refer to it as <count>).\n\nRules:\n- If <count> = 0, set the title to:\n  \"No more escalations\".\n- If <count> > 0, Do not populate title, leave it empty. \n\n\nDo not populate the description or subtitle fields; leave them empty."
+            }
+          },
+          "metadata": {
+            "name": "Additional SR Requiring Attention"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ADDITIONAL_SR_REQUIRING_ATTENTION",
+          "id": "1773966303362",
+          "inputs": [
+            {
+              "id": "1773966303364_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Generate a messageListWidget for all the SRs from the following input {{$context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.RemainingSRDetails}}.  Ensure the original input order is preserved in the output list.\n\nFor each item in the input, set the following attributes, making sure to include all attributes mentioned below. Do not set status attribute. \n{\n  \"title\": \"<Generate the SR title in this format: <SR Title> (<SRNumber>). For example, if the SR title is 'Solar Inverter Not Exporting Power' and the SR number is 12345, the output should be 'Solar Inverter Not Exporting Power (12345)'.>\",\n   \"subtitle\": \"<AccountPartyUniqueName - 'Tier X' if AccountTier exists; otherwise only show AccountPartyUniqueName. Format AccountTier as 'Tier 1', 'Tier 2', etc. If AccountPartyUniqueName is null, leave subtitle empty.>\"\n   \"summary\": \"<Do not include SR number. In 1–3 concise sentences (maximum 50 words), summarize the issue, focusing on critical or high-impact symptoms and operational risk. Seamlessly incorporate the attention and prioritization reasons from the SR Reason attribute within the sentences so they flow naturally with the issue. Use professional, CSM-facing language. Do not invent new information or include technical details.>\",\n  \"badgeText\": \"<SeverityCdMeaning>\",\n  \"timestamp\": \"<escalationElapsed>\",\n  \"priority\": \"<Set based on SeverityCd Sev1 → alert, Sev2 → warning>\"\n}\n\nReturn only messageListWidget, no extra text."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "SR Requires Resource",
+            "returnType": "object",
+            "sourceCode": "const prioritizedSRs = ($context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.SRDetails || [])\n  .filter(item => item.PriorityActionNeeded === true);\n\nconst escalatedSRData = $context.$nodes.CLEAN_UP_SR_DATA.$output.result || []\nconst now = new Date();\n\n// Build lookup map from SR number → SR data\nconst escalatedMap = new Map(\n  escalatedSRData.map(item => [item.SrNumber, item])\n);\n\nconst srData = {};\n\nprioritizedSRs.forEach(prioritized => {\n  const srNumber = prioritized.SrNumber;\n  const item = escalatedMap.get(srNumber);\n  if (!item) return; // safety check\n\n const actionHistory = (item.messages?.items || [])\n    .filter(msg =>\n      msg.MessageTypeCd === \"ORA_SVC_AI_SYSTEM_NOTE\" &&\n      msg.MessageContent &&\n      msg.MessageContent.includes(\"ORA_SERVICE_OPERATIONS_WORKSPACE\") &&\n      (msg.MessageContent.includes(\"Reassign\") || msg.MessageContent.includes(\"AddTeamMember\"))\n    )\n    .map(msg => {\n      let summary = \"\";\n      let actionTaken = \"\";\n      try {\n        const parsed = JSON.parse(msg.MessageContent);\n        if (parsed.output?.Summary) summary = parsed.output.Summary;\n        if (parsed.ActionTaken) actionTaken = parsed.ActionTaken;\n      } catch (e) {\n        // ignore parsing errors, leave summary/actionTaken empty\n      }\n      return {\n        Summary: summary,\n        ActionTaken: actionTaken,\n        CreationDate: msg.CreationDate\n      };\n    });\n\n  if (actionHistory.length > 0) {\n    const latestMsgDate = actionHistory\n      .map(msg => new Date(msg.CreationDate))\n      .reduce((a, b) => (a > b ? a : b)); \n\n    // Only include SR if latest message > 24h\n    const isOlderThan24h = (now - latestMsgDate) / (1000 * 60 * 60) > 24;\n    if (!isOlderThan24h) return;\n\n    srData[srNumber] = {\n      ActionHistory: actionHistory,\n      LatestMessageTimestamp: latestMsgDate.toISOString()\n    };\n  } else {\n    srData[srNumber] = {\n      ActionHistory: [],\n      LatestMessageTimestamp: \"\"\n    };\n  }\n});\n\n// Check if any SR requires attention\nconst requireResource = Object.keys(srData).length > 0;\n\n\nconst output =  {\n  srData,\n  requireResource\n};\n\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1773169479308"
+          },
+          "code": "SR_REQUIRES_RESOURCE",
+          "convergenceTargetId": "1769540034859",
+          "id": "1773168464319",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SERVICEREQUESTS11131805",
+            "errorNodeId": "1776251375923",
+            "functionName": "reassignServiceRequests",
+            "name": "Reassign"
+          },
+          "outcomes": {
+            "success": "1776251375923"
+          },
+          "code": "REASSIGN",
+          "id": "1770983429189",
+          "inputs": [
+            {
+              "id": "1770983442720_1",
+              "name": "SrNumber",
+              "type": "string",
+              "value": "{{JSON.parse($context.$triggers.REST.$input.OraAction).srNumber}}"
+            },
+            {
+              "id": "1770983442721_2",
+              "name": "AssigneeResourceId",
+              "type": "string",
+              "value": "{{JSON.parse($context.$triggers.REST.$input.OraAction).assigneeId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SERVICEREQUESTS11131805",
+            "errorNodeId": "1776247137037",
+            "functionName": "addResourceMember",
+            "name": "Add Resource Member"
+          },
+          "outcomes": {
+            "success": "1776247137037"
+          },
+          "code": "ADD_RESOURCE_MEMBER",
+          "id": "1770983507162",
+          "inputs": [
+            {
+              "id": "1770983528643_1",
+              "name": "SrNumber",
+              "type": "string",
+              "value": "{{JSON.parse($context.$triggers.REST.$input.OraAction).srNumber}}"
+            },
+            {
+              "id": "1770983528643_2",
+              "name": "ObjectId",
+              "type": "string",
+              "value": "{{JSON.parse($context.$triggers.REST.$input.OraAction).assigneeId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Form Action Param Info Query",
+            "returnType": "object",
+            "sourceCode": "let incomingAction = JSON.parse($context.$triggers.REST.$input.OraAction);\nlet objJson = {};\n\nobjJson.srNumber = incomingAction.record.SrNumber;\nobjJson.action = incomingAction.record.Action;\nobjJson.assigneeId = incomingAction.record.AssigneeId;\nobjJson.assigneeName = incomingAction.record.AssigneeName;\nobjJson.reason = incomingAction.record.Reason;\nobjJson.record = incomingAction.record;\n\n\nreturn objJson;"
+          },
+          "outcomes": {
+            "success": "1775642361536"
+          },
+          "code": "FORM_ACTION_PARAM_INFO_QUERY",
+          "id": "1775642330470",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Form Alternative Finder Query",
+            "returnType": "object",
+            "sourceCode": "const record = JSON.parse($context.$triggers.REST.$input.OraAction).record;\nreturn record;"
+          },
+          "outcomes": {
+            "success": "1775804730468"
+          },
+          "code": "FORM_ALTERNATIVE_FINDER_QUERY",
+          "id": "1775738519043",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "If SR Requires Resource"
+          },
+          "outcomes": {
+            "true": "1770981575208",
+            "false": "add_false_1773169479308"
+          },
+          "code": "IF_SR_REQUIRES_RESOURCE",
+          "convergenceTargetId": "1769540034859",
+          "id": "1773169479308",
+          "inputs": [
+            {
+              "id": "1773169479310_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.SR_REQUIRES_RESOURCE.$output.result.requireResource}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "If Reassign Status"
+          },
+          "outcomes": {
+            "true": "1776251445818",
+            "false": "1775808185841"
+          },
+          "code": "IF_REASSIGN_STATUS",
+          "convergenceTargetId": "end",
+          "id": "1776251375923",
+          "inputs": [
+            {
+              "id": "1776251375924_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.REASSIGN.$status == \"failure\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "If Add Team Member Status"
+          },
+          "outcomes": {
+            "true": "1776247247825",
+            "false": "1775808185841"
+          },
+          "code": "IF_ADD_TEAM_MEMBER_STATUS",
+          "convergenceTargetId": "end",
+          "id": "1776247137037",
+          "inputs": [
+            {
+              "id": "1776247137039_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.ADD_RESOURCE_MEMBER.$status == \"failure\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SERVICEREQUESTS11131805",
+            "functionName": "getSRDetailsByQueryWithFields",
+            "name": "Get SR Info"
+          },
+          "outcomes": {
+            "success": "1775642459387"
+          },
+          "code": "GET_SR_INFO",
+          "id": "1775642361536",
+          "inputs": [
+            {
+              "id": "1775642379715_1",
+              "name": "query",
+              "type": "string",
+              "value": "{{ \"SrNumber ='\" + $context.$nodes.FORM_ACTION_PARAM_INFO_QUERY.$output.result.srNumber + \"'\"}}"
+            },
+            {
+              "id": "1775642379716_2",
+              "name": "fields",
+              "type": "string",
+              "value": "SrNumber,Title,CreationDate,ProblemDescription,SeverityCdMeaning,AssigneePartyId,AssigneePersonName,PrimaryContactPartyUniqueName,AccountPartyUniqueName,AccountPartyNumber;messages:MessageContent,MessageTypeCd,CreationDate"
+            },
+            {
+              "id": "1775642379717_3",
+              "name": "expand",
+              "type": "string",
+              "value": "messages,messages.MessageContent"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Checking Alternatives"
+          },
+          "outcomes": {
+            "true": "1775804774525",
+            "false": "1775804833156"
+          },
+          "code": "CHECKING_ALTERNATIVES",
+          "convergenceTargetId": "end",
+          "id": "1775804730468",
+          "inputs": [
+            {
+              "id": "1775804730469_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FORM_ALTERNATIVE_FINDER_QUERY.$output.result.RecommendedAgents.length > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Allocate Resource",
+            "workflowCode": "ORA_RESOURCE_ALLOCATION_AGENT_RA"
+          },
+          "outcomes": {
+            "success": "1775730455812"
+          },
+          "code": "ALLOCATE_RESOURCE",
+          "convergenceTargetId": "1770982535901",
+          "id": "1770981575208",
+          "inputs": [
+            {
+              "id": "1777253088914_1",
+              "name": "message",
+              "type": "string"
+            },
+            {
+              "id": "1777253088915_2",
+              "name": "srData",
+              "type": "object",
+              "value": "{{$context.$nodes.SR_REQUIRES_RESOURCE.$output.result.srData}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SERVICEREQUESTS11131805",
+            "functionName": "createSrEmailMessageWithPayload",
+            "name": "Create SR Message and Send Email"
+          },
+          "outcomes": {
+            "success": "1771022389550"
+          },
+          "code": "CREATE_SR_MESSAGE_AND_SEND_EMAIL",
+          "convergenceTargetId": "1769560796279",
+          "id": "1769561880459",
+          "inputs": [
+            {
+              "id": "1777075594367_1",
+              "name": "SrNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PARAMETERS.$output.result.srNumber}}"
+            },
+            {
+              "id": "1777075594367_2",
+              "name": "Payload",
+              "type": "string",
+              "value": "{{$context.$nodes.FORM_COMMUNICATION_PAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Generate Reassign Error Message"
+          },
+          "outcomes": {
+            "success": "1776251593787"
+          },
+          "code": "GENERATE_REASSIGN_ERROR_MESSAGE",
+          "id": "1776251445818",
+          "inputs": [
+            {
+              "id": "1776251445819_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Generate a short summary about the error detail from {{$context.$nodes.REASSIGN.$error}}.\nDo not include the error code, http code, any code in the final output.\nJust the plain error detail as readable for non-technical people.\nReduce the duplicate detail.\nDo not assume the error detail.\nRead the error details from the given input.\nFinal output must as string."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Generate Add Team Member Message"
+          },
+          "outcomes": {
+            "success": "1776247363366"
+          },
+          "code": "GENERATE_ADD_TEAM_MEMBER_MESSAGE",
+          "id": "1776247247825",
+          "inputs": [
+            {
+              "id": "1776247247826_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Generate a short summary about the error detail from {{$context.$nodes.ADD_RESOURCE_MEMBER.$error}}.\nDo not include the error code, http code, any code in the final output.\nJust the plain error detail as readable for non-technical people.\nReduce the duplicate detail.\nDo not assume the error detail.\nRead the error details from the given input.\nFinal output must as string."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1775642568280",
+            "1": "1775642709616",
+            "2": "1775642775384",
+            "3": "1775642876035",
+            "4": "1776239638734"
+          },
+          "code": "PARALLEL_1775642459388",
+          "convergenceTargetId": "1775642989822",
+          "id": "1775642459387",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MULTIRECORD"
+              ],
+              "enableActions": false,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "name": "Alternatives Summary"
+          },
+          "outcomes": {
+            "success": "1775804794019"
+          },
+          "code": "ALTERNATIVES_SUMMARY",
+          "id": "1775804774525",
+          "inputs": [
+            {
+              "id": "1775804774527_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Based on {{$context.$nodes.FORM_ALTERNATIVE_FINDER_QUERY.$output.result}} \n\n\n1. Generate a table using the following column structure:\n\n\"cols\": [\"Name\", \"Number of Currently Assigned SRs\", \"Competence Rating\"]\n\nPopulate the rows using the provided data.\n\nRules:\n- Do not add or remove columns.\n- Use only the information explicitly provided. Do not infer or generate missing values.\n\n2. Add an action button at the end each row\n\"action\": {\n  \"text\": \"<`Action`>\",\n  \"command\": \"ora.Invoke(\"<`Action`>\",{\"action\": \"<`Action`>\",\"srNumber\":\"<SrNumber>\",\"assigneeId\":<`assigneeId`>,\"assigneeName\":<`assigneeName`>,\"currentAssigneeName\": \"<currentAssigneeName>\",\"reason\": <`Reason`>})\"\n}\n\n3. Provide a separate text section explaining why the agent is recommended.\n\nUse only the information explicitly provided in the data. Do not infer, assume, or generate any missing values."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "No Alternatives Found"
+          },
+          "outcomes": {
+            "success": "1775804874102"
+          },
+          "code": "NO_ALTERNATIVES_FOUND",
+          "id": "1775804833156",
+          "inputs": [
+            {
+              "id": "1775804833158_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Based on {{$context.$nodes.FIND_ALTERNATIVES.$output.output}}, generate a clear and user-friendly explanation of why no alternative agents were found.\nThe title of the response should be: No Alternatives are Found."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Formatting the SR Response",
+            "returnType": "array",
+            "sourceCode": "let inputData = JSON.parse($context.$nodes.ALLOCATE_RESOURCE.$output.output).result; \n\nconst outputData = inputData.filter(\n    (item) =>\n      Array.isArray(item.RecommendedAgents) && item.RecommendedAgents.length > 0\n  ).map((item) => {\n    const firstAgent = item.RecommendedAgents[0];\n    return {\n      SrNumber: item.ObjectNumber,\n      CurrentAssigneeName: item.CurrentAssigneeName,\n      Reason: item.Reason,\n      Action: item.Action.replace(/\\s+/g, \"\"), // \"Add Team Member\" -> \"AddTeamMember\",\n      RecommendedAgents: item.RecommendedAgents,\n      AgentName: firstAgent.AgentName,\n      AgentPartyId: firstAgent.AgentPartyId,\n    };\n  });\n\n\nreturn outputData;"
+          },
+          "outcomes": {
+            "success": "1777017257825"
+          },
+          "code": "FORMATTING_THE_SR_RESPONSE",
+          "id": "1775730455812",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Form System Message",
+            "returnType": "string",
+            "sourceCode": "const obj = {\n  output: {\n    Summary: \"A communication message was sent within the Agentic App by \" + $context.$user.$name + \" to \" + $context.$nodes.GET_PARAMETERS.$output.result.email + \",\" +$context.$nodes.GET_PARAMETERS.$output.result.cc + \" at \" + $context.$system.$currentDateTime\n  },\n workflowCode: \"ORA_SERVICE_OPERATIONS_WORKSPACE\"\n};\n\n\nconst jsonString = JSON.stringify(obj);\n\nreturn jsonString"
+          },
+          "outcomes": {
+            "success": "1770071767807"
+          },
+          "code": "FORM_SYSTEM_MESSAGE",
+          "id": "1771022389550",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Return Reassign Error"
+          },
+          "outcomes": {},
+          "code": "RETURN_REASSIGN_ERROR",
+          "convergenceTargetId": "1775808185841",
+          "id": "1776251593787",
+          "inputs": [
+            {
+              "id": "1776251593788_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.GENERATE_REASSIGN_ERROR_MESSAGE.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return AddMember Error"
+          },
+          "outcomes": {},
+          "code": "RETURN_ADDMEMBER_ERROR",
+          "convergenceTargetId": "1775808185841",
+          "id": "1776247363366",
+          "inputs": [
+            {
+              "id": "1776247363368_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.GENERATE_ADD_TEAM_MEMBER_MESSAGE.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Clean SR Data",
+            "returnType": "object",
+            "sourceCode": "const data = $context.$nodes.GET_SR_INFO.$output.items;\nconst cleanedData = JSON.parse(\n  JSON.stringify(data, (key, value) => {\n    if (key === \"@context\") return undefined;\n    return value;\n  })\n);\nreturn cleanedData;"
+          },
+          "outcomes": {
+            "success": "1776239725445"
+          },
+          "code": "CLEAN_SR_DATA",
+          "id": "1775642989822",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Return Alternatives Summary"
+          },
+          "outcomes": {},
+          "code": "RETURN_ALTERNATIVES_SUMMARY",
+          "convergenceTargetId": "1775808185841",
+          "id": "1775804794019",
+          "inputs": [
+            {
+              "id": "1775804794020_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.ALTERNATIVES_SUMMARY.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Set No Alternative Found"
+          },
+          "outcomes": {
+            "success": "1775808185841"
+          },
+          "code": "SET_NO_ALTERNATIVE_FOUND",
+          "id": "1775804874102",
+          "inputs": [
+            {
+              "id": "1775804880989",
+              "name": "actionReturnContent",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.NO_ALTERNATIVES_FOUND.$output}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Set PriorityAction List"
+          },
+          "outcomes": {
+            "success": "1773352111682"
+          },
+          "code": "SET_PRIORITYACTION_LIST",
+          "id": "1777017257825",
+          "inputs": [
+            {
+              "id": "1777017265291",
+              "name": "priorityActionList",
+              "scope": "JOB",
+              "type": "array",
+              "value": "{{$context.$nodes.FORMATTING_THE_SR_RESPONSE.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SERVICEREQUESTS11131805",
+            "functionName": "createAISystemNote",
+            "name": "Create AI System Note"
+          },
+          "outcomes": {
+            "success": "1774995622865"
+          },
+          "code": "CREATE_AI_SYSTEM_NOTE",
+          "id": "1770071767807",
+          "inputs": [
+            {
+              "id": "1770071796099_1",
+              "name": "SrNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PARAMETERS.$output.result.srNumber}}"
+            },
+            {
+              "id": "1770071796100_2",
+              "name": "Subject",
+              "type": "string",
+              "value": "Agentic App Communication Completed"
+            },
+            {
+              "id": "1770071796101_3",
+              "name": "MessageContent",
+              "type": "string",
+              "value": "{{$context.$nodes.FORM_SYSTEM_MESSAGE.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Check Assignee In Reportees",
+            "returnType": "boolean",
+            "sourceCode": "const srData = $context.$nodes.GET_SR_INFO.$output;\nconst reportees = $context.$nodes.GET_MY_REPORTEES.$output;\nconst assigneePartyId = srData.items[0]?.AssigneePartyId;\n\nconst isInReportees = reportees.items.some(\n  item => String(item.PartyId) === String(assigneePartyId)\n);\n\nreturn isInReportees;"
+          },
+          "outcomes": {
+            "success": "1776239769820"
+          },
+          "code": "CHECK_ASSIGNEE_IN_REPORTEES",
+          "id": "1776239725445",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "If Only ReAssign and AddTeam"
+          },
+          "outcomes": {
+            "true": "1775808243680",
+            "false": "add_false_1775808185841"
+          },
+          "code": "IF_ONLY_REASSIGN_AND_ADDTEAM",
+          "convergenceTargetId": "1770986302742",
+          "id": "1775808185841",
+          "inputs": [
+            {
+              "id": "1775808185849_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{JSON.parse($context.$triggers.REST.$input.OraAction).action == \"Reassign\" || JSON.parse($context.$triggers.REST.$input.OraAction).action == \"AddTeamMember\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_CREATEAIAGENTME",
+            "errorNodeId": "1770940812164",
+            "functionName": "Create_Agent_AI_Metrics_OutcomeType",
+            "name": "Create Communication Message Engagement Record"
+          },
+          "outcomes": {
+            "success": "1770940812164"
+          },
+          "code": "CREATE_COMMUNICATION_MESSAGE_ENGAGEMENT_RECORD",
+          "id": "1774995622865",
+          "inputs": [
+            {
+              "id": "1774995682633_1",
+              "name": "agentTeamCode",
+              "type": "string",
+              "value": "{{$context.$workflow.$name}}"
+            },
+            {
+              "id": "1774995682634_2",
+              "name": "jobId",
+              "type": "string",
+              "value": "{{$context.$workflow.$jobId}}"
+            },
+            {
+              "id": "1774995682635_3",
+              "name": "objectReferenceNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_PARAMETERS.$output.result.srNumber}}"
+            },
+            {
+              "id": "1774995682637_4",
+              "name": "outcomeObjectIdentifier",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_ACTION_AI_SYSTEM_NOTE.$output.MessageId}}"
+            },
+            {
+              "id": "1774995682638_5",
+              "name": "outcomeType",
+              "type": "string",
+              "value": "ORA_SVC_SR_MESSAGE"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "SR Assignee Is My Reportee"
+          },
+          "outcomes": {
+            "true": "1776239791377",
+            "false": "1776239899641"
+          },
+          "code": "SR_ASSIGNEE_IS_MY_REPORTEE",
+          "convergenceTargetId": "end",
+          "id": "1776239769820",
+          "inputs": [
+            {
+              "id": "1776239769821_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_ASSIGNEE_IN_REPORTEES.$output.result}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Form Message",
+            "returnType": "array",
+            "sourceCode": "let reason = JSON.parse($context.$triggers.REST.$input.OraAction).reason\nlet action = JSON.parse($context.$triggers.REST.$input.OraAction).action\nlet recommendedAgent = JSON.parse($context.$triggers.REST.$input.OraAction).assigneeName\nlet current =  JSON.parse($context.$triggers.REST.$input.OraAction).currentAssigneeName\nlet sr = JSON.parse($context.$triggers.REST.$input.OraAction).srNumber\nvar summary;\nvar returnMsg;\nif (action === 'Reassign') {\n   summary = \"Assigned to \" + recommendedAgent + \"\\n\";\n   returnMsg = sr + \" was successfully assigned to \" + recommendedAgent;\n} else {\n   summary = \"Added \" + recommendedAgent + \" to SR team.\\n\";\n   returnMsg = recommendedAgent + \" has been successfully added to the \" + sr + \" team.\";\n}\n\nconst obj = {\n  output: {\n    Summary: summary + \" \" + reason\n  },\n  workflowCode: \"ORA_SERVICE_OPERATIONS_WORKSPACE\",\n  ActionTaken: action\n};\n\n\nconst jsonString = JSON.stringify(obj);\n\nreturn [jsonString, returnMsg];"
+          },
+          "outcomes": {
+            "success": "1775808288342"
+          },
+          "code": "FORM_MESSAGE",
+          "id": "1775808243680",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Email Notification",
+            "returnType": "string",
+            "sourceCode": "return \"Email Sent Successfully!\""
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "EMAIL_NOTIFICATION",
+          "id": "1770940812164",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [],
+              "enableActions": true,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "name": "Review Reportee SR Synopsis"
+          },
+          "outcomes": {
+            "success": "1776239864331"
+          },
+          "code": "REVIEW_REPORTEE_SR_SYNOPSIS",
+          "id": "1776239791377",
+          "inputs": [
+            {
+              "id": "1776239791378_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Based on the service request context {{$context.$nodes.CLEAN_SR_DATA.$output.result}}, generate a concise, structured summary for a service manager.\n\n`Action`: {{$context.$nodes.FORM_ACTION_PARAM_INFO_QUERY.$output.result.action}}\n`SRnumber`: {{$context.$nodes.FORM_ACTION_PARAM_INFO_QUERY.$output.result.srNumber}}\n`RecommendedAgentName`: {{$context.$nodes.FORM_ACTION_PARAM_INFO_QUERY.$output.result.assigneeName}}\n`RecommendedAgentPartyId`: {{$context.$nodes.FORM_ACTION_PARAM_INFO_QUERY.$output.result.assigneeId}}\n`CurrentAssigneeName`: {{$context.$nodes.GET_SR_INFO.$output.items[0].AssigneePersonName}}\n`Reason`: {{$context.$nodes.FORM_ACTION_PARAM_INFO_QUERY.$output.result.reason}}\n`SrRecord`: {{$context.$nodes.FORM_ACTION_PARAM_INFO_QUERY.$output.result.record}}\n\n\nFirst, generate texts that include the following 4 sections:\n\n1. Section title: SR summary\nWrite a concise single-paragraph summary of the SR and what has happened so far. This section must always appear first and must not be omitted. Include SRnumber as well.\n\n2. Section title: “Service request was created <relative time> ago”\nNote: Calculate the relative time from the SR creation timestamp using the current date and time {{$context.$system.$currentDateTime}} (e.g., “18 hours ago”).\nInclude affected product and description of the issue\n\n3. Section Title:\n- If both AccountPartyUniqueName and AccountScoringTier are available:\n  \"{{$context.$nodes.CLEAN_SR_DATA.$output.result[0].AccountPartyUniqueName}} is a Tier {{$context.$nodes.FETCH_ACCOUNT_SCORE.$output.items[0].AccountScoringTier}} account\"\n- If AccountPartyUniqueName is available but AccountScoringTier is not:\n  \"{{$context.$nodes.CLEAN_SR_DATA.$output.result[0].AccountPartyUniqueName}}\"\n- Otherwise:\n  \"Account information is unavailable\"\n\nInclude:\n- Open SR count: {{$context.$nodes.GET_OPEN_SR_COUNT_FOR_ACCOUNT.$output.count}}, only if account information is available.\n- Contact information, only if explicitly available\n\n4. Section Title:\n- If AssigneePersonName is available:\n  \"Assigned to {{$context.$nodes.CLEAN_SR_DATA.$output.result[0].AssigneePersonName}} who has {{$context.$nodes.GET_OPEN_SR_COUNT_FOR_ASSIGNEE.$output.count}} open SR{{ $context.$nodes.GET_OPEN_SR_COUNT_FOR_ASSIGNEE.$output.count === 1 ? '' : 's' }}\"\n- Otherwise:\n  \"Assignee information is unavailable\"\nUse only the information explicitly provided in the data. Do not infer, assume, or generate missing values.\n\nFormatting Guidelines:\n\n- Use the SR title as the main title and bold it.\n- Make each section title a top-level bullet point and bold it.\n- Place all details under each section as nested bullet points (indented one level).\n- Prioritize important operational and customer impact details.\n- Keep the tone concise and actionable.\n\nSecond, generate an <oraInsight> in new row\n{\n  \"title\": \"<Pick Action text based on `Action`. Reassign to <`RecommendedAgentName`> or Add <`RecommendedAgentName`> as Team Member.>\",\n  \"followUpCommand\": \"ora.Invoke(\"<`Action`>\", {\"action\":\"<`Action`>\",\"srNumber\":\"<`SRnumber`>\", \"assigneeId\":<`RecommendedAgentPartyId`>, \"assigneeName\":<`RecommendedAgentName`>,\"currentAssigneeName\":<`CurrentAssigneeName`>,\"reason\":<`Reason`>}) \"\n}\n\nGenerate another <oraInsight> in same row with space between\n{\n  \"title\": \"Who else is qualified?\",\n  \"followUpCommand\": \"ora.Invoke(\"ShowAlternatives\",{\"action\":\"ShowAlternatives\",\"record\":<`SrRecord`>\"})\"\n}\n\nEnsure that all four sections are included, and add the button at the end."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Review Non Reportee SR Synopsis"
+          },
+          "outcomes": {
+            "success": "1775643153912"
+          },
+          "code": "REVIEW_NON_REPORTEE_SR_SYNOPSIS",
+          "id": "1776239899641",
+          "inputs": [
+            {
+              "id": "1776239899643_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Based on the service request context {{$context.$nodes.CLEAN_SR_DATA.$output.result}}, generate a concise, structured summary for a service manager.\n\nFirst, generate texts that include the following 4 sections:\n\n1. Section title: SR summary\nWrite a concise single-paragraph summary of the SR and what has happened so far. This section must always appear first and must not be omitted.\n\n2. Section title: “Service request was created <relative time> ago”\nNote: Calculate the relative time from the SR creation timestamp using the current date and time {{$context.$system.$currentDateTime}} (e.g., “18 hours ago”).\nInclude affected product and description of the issue\n\n3. Section Title:\n- If both AccountPartyUniqueName and AccountScoringTier are available:\n  \"{{$context.$nodes.CLEAN_SR_DATA.$output.result[0].AccountPartyUniqueName}} is a Tier {{$context.$nodes.FETCH_ACCOUNT_SCORE.$output.items[0].AccountScoringTier}} account\"\n- If AccountPartyUniqueName is available but AccountScoringTier is not:\n  \"{{$context.$nodes.CLEAN_SR_DATA.$output.result[0].AccountPartyUniqueName}}\"\n- Otherwise:\n  \"Account information is unavailable\"\n\nInclude:\n- Open SR count: {{$context.$nodes.GET_OPEN_SR_COUNT_FOR_ACCOUNT.$output.count}}, only if account information is available.\n- Contact information, only if explicitly available\n\n4. Section Title:\n- If AssigneePersonName is available:\n  \"Assigned to {{$context.$nodes.CLEAN_SR_DATA.$output.result[0].AssigneePersonName}} who has {{$context.$nodes.GET_OPEN_SR_COUNT_FOR_ASSIGNEE.$output.count}} open SR{{$context.$nodes.GET_OPEN_SR_COUNT_FOR_ASSIGNEE.$output.count === 1 ? '' : 's' }}\"\n- Otherwise:\n  \"Assignee information is unavailable\"\nUse only the information explicitly provided in the data. Do not infer, assume, or generate missing values.\n\nFormatting Guidelines:\n\n- Use the SR title as the main title and bold it.\n- Make each section title a top-level bullet point and bold it.\n- Place all details under each section as nested bullet points (indented one level).\n- Prioritize important operational and customer impact details.\n- Keep the tone concise and actionable.\n\nEnsure that all four sections are included."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_FETCHMESSAGES",
+            "functionName": "CreateMessages",
+            "name": "Create Action AI System Note"
+          },
+          "outcomes": {
+            "success": "1775808396357"
+          },
+          "code": "CREATE_ACTION_AI_SYSTEM_NOTE",
+          "id": "1775808288342",
+          "inputs": [
+            {
+              "id": "1775808322003_1",
+              "name": "entity",
+              "type": "string",
+              "value": "serviceRequests"
+            },
+            {
+              "id": "1775808322004_2",
+              "name": "objectNumber",
+              "type": "string",
+              "value": "{{JSON.parse($context.$triggers.REST.$input.OraAction).srNumber}}"
+            },
+            {
+              "id": "1775808322005_3",
+              "name": "msgPathParam",
+              "type": "string",
+              "value": "messages"
+            },
+            {
+              "id": "1775808322005_4",
+              "name": "agent Summary",
+              "type": "string",
+              "value": "{{$context.$nodes.FORM_MESSAGE.$output.result[0]}}"
+            },
+            {
+              "id": "1775808322006_5",
+              "name": "agentOutcome",
+              "type": "string",
+              "value": "Agentic App Action"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Return Reportee SR Synopsis"
+          },
+          "outcomes": {},
+          "code": "RETURN_REPORTEE_SR_SYNOPSIS",
+          "convergenceTargetId": "1775643153912",
+          "id": "1776239864331",
+          "inputs": [
+            {
+              "id": "1776239864333_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.REVIEW_REPORTEE_SR_SYNOPSIS.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Non Reportee SR Synopsis"
+          },
+          "outcomes": {},
+          "code": "RETURN_SR_INFO_SUMMARY",
+          "convergenceTargetId": "1775808185841",
+          "id": "1775643153912",
+          "inputs": [
+            {
+              "id": "1775643153913_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.REVIEW_NON_REPORTEE_SR_SYNOPSIS.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_CREATEAIAGENTME",
+            "errorNodeId": "1775808516464",
+            "functionName": "Create_Agent_AI_Metrics_OutcomeType",
+            "name": "Create Action Message Engagement"
+          },
+          "outcomes": {
+            "success": "1775808516464"
+          },
+          "code": "CREATE_ACTION_MESSAGE_ENGAGEMENT",
+          "id": "1775808396357",
+          "inputs": [
+            {
+              "id": "1775808436051_1",
+              "name": "agentTeamCode",
+              "type": "string",
+              "value": "{{$context.$workflow.$name}}"
+            },
+            {
+              "id": "1775808436052_2",
+              "name": "jobId",
+              "type": "string",
+              "value": "{{$context.$workflow.$jobId}}"
+            },
+            {
+              "id": "1775808436054_3",
+              "name": "objectReferenceNumber",
+              "type": "string",
+              "value": "{{JSON.parse($context.$triggers.REST.$input.OraAction).srNumber}}"
+            },
+            {
+              "id": "1775808436055_4",
+              "name": "outcomeObjectIdentifier",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_ACTION_AI_SYSTEM_NOTE.$output.MessageId}}"
+            },
+            {
+              "id": "1775808436056_5",
+              "name": "outcomeType",
+              "type": "string",
+              "value": "ORA_SVC_SR_MESSAGE"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Set Action Return"
+          },
+          "outcomes": {
+            "success": "1770986302742"
+          },
+          "code": "SET_ACTION_RETURN",
+          "id": "1775808516464",
+          "inputs": [
+            {
+              "id": "1775808527889",
+              "name": "actionReturnContent",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.FORM_MESSAGE.$output.result[1]}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Present Action Result"
+          },
+          "outcomes": {},
+          "code": "PRESENT_ACTION_RESULT",
+          "convergenceTargetId": "end",
+          "id": "1770986302742",
+          "inputs": [
+            {
+              "id": "1770986302743_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$variables.actionReturnContent}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MESSAGES_LIST"
+              ],
+              "enableActions": true,
+              "enableCommunications": true,
+              "customNotes": "Set the title of messageListWidget based on the value of \n{{$context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.attentionSRCount}} (refer to it as <count>).\n\nRules:\n- If <count> = 0, set the title to:\n  \"There are no escalated service requests that require your attention\".\n- If <count> = 1, set the title to:\n  \"{{$context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.attentionSRCount}} escalated service request requires your attention\".\n- If <count> > 1, set the title to:\n  \"{{$context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.attentionSRCount}} escalated service requests require your attention\".\nEnsure the grammar and pluralization (\"request\" vs \"requests\", \"requires\" vs \"require\") are correct based on the value of <count>.\n\nDo not populate the description or subtitle fields; leave them empty."
+            }
+          },
+          "metadata": {
+            "name": "Escalation Details"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ESCALATION_DETAILS",
+          "id": "1769540034859",
+          "inputs": [
+            {
+              "id": "1769540034861_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "1. Generate a messageListWidget for the first 3 Escalated Service Requests from the following input {{$context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.SRDetails}}.  Ensure the original input order is preserved in the output list.\n\nFor the first 3 Escalated Service Request in the input, set the following attributes, making sure to include all attributes mentioned below. Do not set status attribute. \n{\n  \"title\": \"<Generate the SR title in this format: <SR Title> (<SRNumber>). For example, if the SR title is 'Solar Inverter Not Exporting Power' and the SR number is 12345, the output should be 'Solar Inverter Not Exporting Power (12345)'.>\",\n   \"subtitle\": \"<AccountPartyUniqueName - 'Tier X' if AccountTier exists; otherwise only show AccountPartyUniqueName. Format AccountTier as 'Tier 1', 'Tier 2', etc. If AccountPartyUniqueName is null, leave subtitle empty.>\"\n   \"summary\": \"<Do not include SR number. In 1–3 concise sentences (maximum 50 words), summarize the issue, focusing on critical or high-impact symptoms and operational risk. Seamlessly incorporate the attention and prioritization reasons from the SR Reason attribute within the sentences so they flow naturally with the issue. Use professional, CSM-facing language. Do not invent new information or include technical details.>\",\n  \"badgeText\": \"<SeverityCdMeaning>\",\n  \"timestamp\": \"<escalationElapsed>\",\n  \"priority\": \"<Set based on SeverityCd Sev1 → alert, Sev2 → warning>\"\n}\n\nSet the title of messageListWidget based on the value of \n{{$context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.attentionSRCount}} (refer to it as <count>).\n\nRules:\n- If <count> = 0, set the title to:\n  \"There are no escalated service requests that require your attention\".\n- If <count> = 1, set the title to:\n  \"{{$context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.attentionSRCount}} escalated service request requires your attention\".\n- If <count> > 1, set the title to:\n  \"{{$context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.attentionSRCount}} escalated service requests require your attention\".\nEnsure the grammar and pluralization (\"request\" vs \"requests\", \"requires\" vs \"require\") are correct based on the value of <count>.\n\nIMPORTANT: You must not generate any text other than content inside <oraInfoDisplay>, <oraInsight>, and <oraComms> tags.\n\n2. **High Priority Action Insight**\n\nGiven the data `PriorityActionList` {{$context.$variables.priorityActionList}}\n\n## Filter the `PriorityActionList` \n- Collect the Objects which is having Action as \"Reassign\" or \"AddTeamMember\". Do not consider any other Actions.\n- Ignore the Object which is having Action as empty.\n\nGenerate a High Priority Action Insight for each item within the `PriorityActionList` with the following specifications, ensure the original input order is preserved in the output list.\n\n- \"priority\": true (IMPORTANT: MUST set priority to true)\n- \"followUpCommand\": ora.Invoke(\"Review\",{\"action\":\"Review\",\"record\":<PriorityActionList object>})\n- \"shortDescription\": \"<Reason>\",\n- \"actionText\": \"Review\"\n- \"title\": clearly show the SR number and the recommended action. \n- Do not create Priority Insight without priority parameter.\n\nEnsure that the High Priority Action Insight follows the same order as the SR Number listed in the `PriorityActionList` Response.\n\n3. **High Priority Communication**\n\nSR Details: {{$context.$nodes.ESCALATION_COMMUNICATION_FILTER.$output}}\n\nProduce {{$context.$nodes.SHOW_ONLY_SRS_WITH_DEFAULT_CHANNELS.$output.result.length}} high priority (set priority parameter to true) communications <oraComms> with the following details. If no SRs are present, do not produce any output.\nRetrieve the SR number, the reason it requires communication, and the default channel display name from {{$context.$nodes.SHOW_ONLY_SRS_WITH_DEFAULT_CHANNELS.$output.result}}.\n\n- title: <SrNumber>: Generate a short phrase describing the email action required by the Customer Service Manager.\n- shortDescription: the reason it requires communication \n- to: primary contact email address\n- actionText: 'Send Email'\n- type: email\n- subject: a concise and professional email subject line for an escalation communication\n- content: Generate a professional and empathetic email draft from a Customer Service Manager to the customer. The purpose of this email is to offer comfort and reassurance, address any frustrations or concerns shown in the past messages. Where appropriate, acknowledge the customer’s feelings, summarize their main concerns, and describe the actions being taken or next steps. The tone should be professional, polite, and reassuring. You may use the primary contact name in the greeting (e.g., \"Hi [Name],\") at the start of the email body. Include a polite sign-off at the end, followed by the sender's name {{$context.$triggers.REST.$input.OraUserContext.fullName}}. Ensure the email is concise and easy to read — avoid unnecessary details or repetition. Important: Do not include a subject line or any other metadata — output only the email body. The email content must be properly formatted with line breaks and clear paragraphs, and should not be written as one continuous block of text. Generate the output as HTML.\n- \"non editable params\": \n    {\n      { \"id\": \"srNumber\", \"title\": \"SR number\"}\n    }\n- \"editable params\":\nInclude the following editable parameter and make it required\n    {\n      { \"id\": \"channelDisplayName\", \"title\": \"Channel Display Name\"}\n    }\n\n- \"priority\": true (IMPORTANT: MUST set priority to true)\n\nYou **must** generate srNumber and channelDisplayName parameters and assign them their corresponding values. \nIMPORTANT: Set the targetAgent of the communication to {{$context.$workflow.$name}} and set priority to true."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SERVICEREQUESTV1",
+            "errorNodeId": "1772758097454",
+            "functionName": "getEscalatedSRs",
+            "name": "Get Escalated SRs"
+          },
+          "outcomes": {
+            "success": "1769466959828"
+          },
+          "code": "GET_ESCALATED_SRS",
+          "convergenceTargetId": "1769466959828",
+          "id": "1769207078157",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_RESOURCES",
+            "functionName": "getResourceByUsername",
+            "name": "Get Resource Party Number"
+          },
+          "outcomes": {
+            "success": "1773095982841"
+          },
+          "code": "GET_RESOURCE_PARTY_NUMBER",
+          "id": "1773703182967",
+          "inputs": [
+            {
+              "id": "1773703737881_1",
+              "name": "username",
+              "type": "string",
+              "value": "{{$context.$user.$name}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Extract SR Numbers",
+            "returnType": "object",
+            "sourceCode": "const items = $context.$nodes.GET_ESCALATED_SRS.$output.items;\n\nconst filteredItems = items.filter(item => item.serviceRequest && item.serviceRequest.number);\n\nconst srNumbers = filteredItems.map(item => item.serviceRequest.number);\nconst singleQuoted = srNumbers.map(n => `'${n}'`).join(',');\n\nconst query = `SrNumber IN (${singleQuoted}) and RecordSet = 'ORA_SVC_MY_SUBORD_SRS' and StatusCd not in ('ORA_SVC_RESOLVED','ORA_SVC_CLOSED','ORA_SVC_WAITING')`;\n\nconst srEscalationMap = {};\nfilteredItems.forEach(item => {\n  srEscalationMap[item.serviceRequest.number] = item.escalationDate; \n});\n\nconst output =  {\n  query: query,\n  srMap: srEscalationMap\n};\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1769467157038"
+          },
+          "code": "EXTRACT_SR_NUMBERS",
+          "convergenceTargetId": "1769467157038",
+          "id": "1769466959828",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SERVICEREQUESTS11131805",
+            "functionName": "getSRDetailsByQueryWithFields",
+            "name": "Get Escalated SR Details"
+          },
+          "outcomes": {
+            "success": "1773095982841"
+          },
+          "code": "GET_ESCALATED_SR_DETAILS",
+          "convergenceTargetId": "1773703127307",
+          "id": "1769467157038",
+          "inputs": [
+            {
+              "id": "1772749948663_1",
+              "name": "query",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_SR_NUMBERS.$output.result.query}}"
+            },
+            {
+              "id": "1772749948663_2",
+              "name": "fields",
+              "type": "string",
+              "value": "SrNumber,SeverityCdMeaning,SeverityCd,StatusCdMeaning,Title,ProblemDescription,CriticalFlag,CreationDate,DueDate,TimeRemaining,ComplianceFlag,TransferCount,AccountPartyUniqueName,AccountPartyNumber,PrimaryContactEmailAddress,AssigneePersonName,AssigneeResourceNumber;messages:MessageContent,MessageTypeCd,CreationDate,CreatedBy"
+            },
+            {
+              "id": "1772749948664_3",
+              "name": "expand",
+              "type": "string",
+              "value": "messages,messages.MessageContent"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_ADAPTIVESEARCHQUERIES",
+            "functionName": "getOpenOpportunity",
+            "name": "Get Open Opportunity"
+          },
+          "outcomes": {
+            "success": "1773003548258"
+          },
+          "code": "GET_OPEN_OPPORTUNITY",
+          "convergenceTargetId": "1773085219301",
+          "id": "1773069264315",
+          "inputs": [
+            {
+              "id": "1773080860165_1",
+              "name": "AccountNames",
+              "type": "string",
+              "value": "{{$context.$nodes.SR_REQUIRING_ATTENTION.$output.result.AccounNames}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SERVICEREQUESTS11131805",
+            "functionName": "getSRsByQueryWithFields",
+            "name": "Get High Severity Open SR"
+          },
+          "outcomes": {
+            "success": "1773084214220"
+          },
+          "code": "GET_HIGH_SEVERITY_OPEN_SR",
+          "convergenceTargetId": "1773084214220",
+          "id": "1773083274461",
+          "inputs": [
+            {
+              "id": "1773083325045_1",
+              "name": "query",
+              "type": "string",
+              "value": "{{\"AccountPartyUniqueName in (\" + $context.$nodes.SR_REQUIRING_ATTENTION.$output.result.AccountNamesSingle + \") and SeverityCd = 'ORA_SVC_SEV1'\"}}"
+            },
+            {
+              "id": "1773083325046_2",
+              "name": "fields",
+              "type": "string",
+              "value": "SrNumber,AccountPartyUniqueName"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_ACCOUNTS",
+            "functionName": "getMultipleAccounts",
+            "name": "Fetch All Account Score"
+          },
+          "outcomes": {
+            "success": "1773003548258"
+          },
+          "code": "FETCH_ALL_ACCOUNT_SCORE",
+          "id": "1773188799672",
+          "inputs": [
+            {
+              "id": "1773188821149_1",
+              "name": "PartyNumbers",
+              "type": "string",
+              "value": "{{$context.$nodes.SR_REQUIRING_ATTENTION.$output.result.AccountPatryNums}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "High Severity Open SR By Account",
+            "returnType": "object",
+            "sourceCode": "const data = $context.$nodes.GET_HIGH_SEVERITY_OPEN_SR.$output \n\nconst counts = data.items.reduce((acc, item) => {\n  const name = (item.AccountPartyUniqueName ?? \"\").trim();\n  acc[name] = (acc[name] || 0) + 1;\n  return acc;\n}, {});\n\nreturn counts"
+          },
+          "outcomes": {
+            "success": "1773003548258"
+          },
+          "code": "HIGH_SEVERITY_OPEN_SR_BY_ACCOUNT",
+          "convergenceTargetId": "1773085245155",
+          "id": "1773084214220",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_ACCOUNTS",
+            "functionName": "getAccountsForPartyNumber",
+            "name": "Fetch Account Score"
+          },
+          "outcomes": {
+            "success": "1775642989822"
+          },
+          "code": "FETCH_ACCOUNT_SCORE",
+          "id": "1775642568280",
+          "inputs": [
+            {
+              "id": "1775642591463_1",
+              "name": "account_party_number",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_SR_INFO.$output.items[0].AccountPartyNumber}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_ADAPTIVESEARCHQUERIES",
+            "functionName": "getOpenOpportunity",
+            "name": "Get Account Open Opportunity"
+          },
+          "outcomes": {
+            "success": "1775642989822"
+          },
+          "code": "GET_ACCOUNT_OPEN_OPPORTUNITY",
+          "id": "1775642709616",
+          "inputs": [
+            {
+              "id": "1775642749703_1",
+              "name": "AccountNames",
+              "type": "string",
+              "value": "{{\"'\"+$context.$nodes.GET_SR_INFO.$output.items[0].AccountPartyUniqueName+\"'\"}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Form Query for Account",
+            "returnType": "string",
+            "sourceCode": "return `AccountPartyUniqueName='${$context.$nodes.GET_SR_INFO.$output.items[0].AccountPartyUniqueName}' AND StatusTypeCd != 'ORA_SVC_RESOLVED' AND StatusTypeCd != 'ORA_SVC_CLOSED'`;"
+          },
+          "outcomes": {
+            "success": "1775642811670"
+          },
+          "code": "FORM_QUERY_FOR_ACCOUNT",
+          "id": "1775642775384",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Form Query for Assignee",
+            "returnType": "string",
+            "sourceCode": "return `AssigneePersonName='${$context.$nodes.GET_SR_INFO.$output.items[0].AssigneePersonName}' AND StatusTypeCd != 'ORA_SVC_RESOLVED' AND StatusTypeCd != 'ORA_SVC_CLOSED'`;"
+          },
+          "outcomes": {
+            "success": "1775642905473"
+          },
+          "code": "FORM_QUERY_FOR_ASSIGNEE",
+          "id": "1775642876035",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_RESOURCES",
+            "functionName": "getResourcesByQueryWithFields",
+            "name": "Get My Reportees"
+          },
+          "outcomes": {
+            "success": "1775642989822"
+          },
+          "code": "GET_MY_REPORTEES",
+          "id": "1776239638734",
+          "inputs": [
+            {
+              "id": "1776239656812_1",
+              "name": "query",
+              "type": "string",
+              "value": "{{ \"RecordSet='ORA_MYREPORTEES' OR Username ='\" + $context.$user.$name + \"'\"}}"
+            },
+            {
+              "id": "1776239656813_2",
+              "name": "fields",
+              "type": "string",
+              "value": "PartyId"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SERVICEREQUESTS11131805",
+            "functionName": "getSRsByQueryWithFields",
+            "name": "Get Open SR Count for Account"
+          },
+          "outcomes": {
+            "success": "1775642989822"
+          },
+          "code": "GET_OPEN_SR_COUNT_FOR_ACCOUNT",
+          "id": "1775642811670",
+          "inputs": [
+            {
+              "id": "1775642834493_1",
+              "name": "query",
+              "type": "string",
+              "value": "{{$context.$nodes.FORM_QUERY_FOR_ACCOUNT.$output.result}}"
+            },
+            {
+              "id": "1775642834494_2",
+              "name": "fields",
+              "type": "string",
+              "value": "SrNumber"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SERVICEREQUESTS11131805",
+            "functionName": "getSRsByQueryWithFields",
+            "name": "Get Open SR Count for Assignee"
+          },
+          "outcomes": {
+            "success": "1775642989822"
+          },
+          "code": "GET_OPEN_SR_COUNT_FOR_ASSIGNEE",
+          "id": "1775642905473",
+          "inputs": [
+            {
+              "id": "1775642923069_1",
+              "name": "query",
+              "type": "string",
+              "value": "{{$context.$nodes.FORM_QUERY_FOR_ASSIGNEE.$output.result}}"
+            },
+            {
+              "id": "1775642923069_2",
+              "name": "fields",
+              "type": "string",
+              "value": "SrNumber"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "description": "Add node for InitActions case branch",
+            "name": "Add (InitActions Case)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_InitActions_1769207335237",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "description": "Add node for InitCommunications case branch",
+            "name": "Add (InitCommunications Case)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_InitCommunications_1769207335237",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "description": "Add node for Query case branch",
+            "name": "Add (Query Case)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_Query_1769207335237",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Escalations Requiring Attention Exist"
+          },
+          "outcomes": {
+            "true": "1773762516514",
+            "false": "1777047315636"
+          },
+          "code": "ESCALATIONS_REQUIRING_ATTENTION_EXIST",
+          "convergenceTargetId": "end",
+          "id": "1777047145864",
+          "inputs": [
+            {
+              "id": "1777047145865_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.attentionSRCount > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1769207335237"
+          },
+          "id": "add_false_1772758053370",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1773352111682"
+          },
+          "id": "add_false_1773169479308",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1770986302742"
+          },
+          "id": "add_false_1775808185841",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Escalation Summary"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ESCALATION_SUMMARY",
+          "convergenceTargetId": "1777047221988",
+          "id": "1773762516514",
+          "inputs": [
+            {
+              "id": "1773762516515_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Based on the Service Request (SR) details:\n{{$context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.SRDetails[0]}}\n\nWrite a concise internal summary for a Service Manager.\n\nThe summary must follow this format:\n\"The most urgent escalation requiring your attention is <SR number>: [SR summary + reason].\"\n\nRequirements:\n\n- Include a brief description of the escalation\n\n- Clearly state why it is critical (e.g., customer impact, severity, risk, or explicit escalation request)\n\n- Use only the provided SR details (do not make up information)\n\n- Limit to no more than 50 words\n\n- Include the following sentence at the end:\n\"Always summarize escalations first, followed by stalled SRs, in a single paragraph or section. For escalation summaries, start with 'The most urgent escalation requiring your attention is <SR number> [SR summary + reason]'.\""
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "No Escalations Requiring Attention"
+          },
+          "outcomes": {},
+          "code": "NO_ESCALATIONS_REQUIRING_ATTENTION",
+          "convergenceTargetId": "end",
+          "id": "1777047315636",
+          "inputs": [
+            {
+              "id": "1777047315637_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "There’s no escalation requiring your attention right now."
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Form Communication Payload",
+            "returnType": "object",
+            "sourceCode": "const toEmails = ($context.$nodes.GET_PARAMETERS.$output.result.email || \"\")\n  .split(\",\")\n  .map(email => email.trim())\n  .filter(email => email);\n\nconst ccEmails = ($context.$nodes.GET_PARAMETERS.$output.result.cc || \"\")\n  .split(\",\")\n  .map(email => email.trim())\n  .filter(email => email);\n\nconst channelId = $context.$nodes.GET_EMAIL_CHANNEL_ID.$output.items[0].ChannelId;\n\nconst channelCommunication = [\n  ...toEmails.map(email => ({\n    ChannelId: channelId,\n    RoutingCd: \"ORA_SVC_TO\",\n    PartyViaEndPoint: email\n  })),\n  ...ccEmails.map(email => ({\n    ChannelId: channelId,\n    RoutingCd: \"ORA_SVC_CC\",\n    PartyViaEndPoint: email\n  }))\n];\n\nconst preparedAttachments = $context.$nodes.PREPARE_ATTACHMENT_DATA.$output.result || [];\n\nconst Attachment = preparedAttachments\n  .filter(file => file && file.fileName && file.base64Content)\n  .map(file => ({\n    FileName: file.fileName,\n    FileContents: file.base64Content\n  }));\n\nreturn {\n  MessageTypeCd: \"ORA_SVC_RESPONSE\",\n  StatusCd: \"ORA_SVC_COMMITTED\",\n  Subject: $context.$nodes.GET_PARAMETERS.$output.result.subject,\n  MessageContent: $context.$system.$inputMessage,\n  ChannelTypeCd: \"ORA_SVC_EMAIL\",\n  channelCommunication,\n  Attachment\n};"
+          },
+          "outcomes": {
+            "success": "1769561880459"
+          },
+          "code": "FORM_COMMUNICATION_PAYLOAD",
+          "id": "1777075652102",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "SR Requiring Attention Exists"
+          },
+          "outcomes": {
+            "true": "1773870608866",
+            "false": "add_false_1773352111682"
+          },
+          "code": "SR_REQUIRING_ATTENTION_EXISTS",
+          "convergenceTargetId": "1769540034859",
+          "id": "1773352111682",
+          "inputs": [
+            {
+              "id": "1773352111683_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.attentionSRCount > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Get New SR Messages",
+            "returnType": "object",
+            "sourceCode": "const top3SRs = $context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.SRDetails;\nconst top3SRNumbers = new Set(top3SRs.map(sr => sr.SrNumber));\n\nconst data = $context.$nodes.EXTRACT_NEW_SR_MESSAGES.$output.result;\nconst simplifiedData = data.map(({ SrNumber, messages }) => ({\n  SrNumber,\n  messages: {\n    items: messages.items\n  }\n}));\n\nreturn simplifiedData.filter(sr => top3SRNumbers.has(sr.SrNumber));"
+          },
+          "outcomes": {
+            "success": "1772753094740"
+          },
+          "code": "GET_NEW_SR_MESSAGES",
+          "id": "1773870608866",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Escalation Communication Filter"
+          },
+          "outcomes": {
+            "success": "1773860530122"
+          },
+          "code": "ESCALATION_COMMUNICATION_FILTER",
+          "convergenceTargetId": "1773267143626",
+          "id": "1772753094740",
+          "inputs": [
+            {
+              "id": "1772753094742_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are given a list of Service Requests (SRs) with their details in {{$context.$nodes.GET_NEW_SR_MESSAGES.$output.result}}.\n\nTask: Identify SRs where ANY of the following conditions are explicitly met:\n\n1. The customer has requested to \"speak to a supervisor\" or similar request for the involvement of management or confirming that management has visibility to the issue.\n2. The customer has expressed doubt that the issue is being treated with the correct urgency.\n3. The customer has expressed doubt that the representative understands the issue or can make satisfactory progress.\n\nBase your decision strictly and only on the content of the SR message.\n\nIf one or more of these requirements are met, output the SR numbers in order of importance (highest priority or urgency first). \n\nOutput format:\n[\n  {\n    \"SRNumber\": \"<SR_Number1>\",\n    \"Reason\": \"<Brief explanation for why this SR needs manager communication>\"\n  },\n  {\n    \"SRNumber\": \"<SR_Number2>\",\n    \"Reason\": \"<Brief explanation for why this SR needs manager communication>\"\n  },\n  // ...add more as appropriate\n]\n\nOutput only this list and nothing else."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Escalation Requiring Communications"
+          },
+          "outcomes": {
+            "true": "1777312688190",
+            "false": "1777569930976"
+          },
+          "code": "ESCALATION_REQUIRING_COMMUNICATIONS",
+          "convergenceTargetId": "1769540034859",
+          "id": "1773860530122",
+          "inputs": [
+            {
+              "id": "1773860530123_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.ESCALATION_COMMUNICATION_FILTER.$output.length > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1769540034859"
+          },
+          "id": "add_false_1773352111682",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_SERVICEREQUESTS11131805",
+            "functionName": "getBUOrgId",
+            "name": "Get BUOrgId"
+          },
+          "outcomes": {
+            "success": "1777313055915"
+          },
+          "code": "GET_BUORGID",
+          "id": "1777312688190",
+          "inputs": [
+            {
+              "id": "1777312733909_1",
+              "name": "SrNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.ESCALATION_COMMUNICATION_FILTER.$output[0].SRNumber}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_CHANNELS",
+            "functionName": "getEmailSupportChannels",
+            "name": "Get Email Support Channels"
+          },
+          "outcomes": {
+            "success": "1777313601426"
+          },
+          "code": "GET_EMAIL_SUPPORT_CHANNELS",
+          "id": "1777313055915",
+          "inputs": [
+            {
+              "id": "1777313097491_1",
+              "name": "BUOrgId",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_BUORGID.$output.BUOrgId ?? 0}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Email Support Channel Found"
+          },
+          "outcomes": {
+            "true": "1777313720261",
+            "false": "add_false_1777313601426"
+          },
+          "code": "EMAIL_SUPPORT_CHANNEL_FOUND",
+          "convergenceTargetId": "1769540034859",
+          "id": "1777313601426",
+          "inputs": [
+            {
+              "id": "1777313601427_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_EMAIL_SUPPORT_CHANNELS.$output.count > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1769540034859"
+          },
+          "id": "add_false_1777313601426",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1777313838783"
+                  },
+                  "id": "start_1777313720261",
+                  "code": "START_1777313720261",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1777313720261",
+                  "code": "END_1777313720261",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_SERVICECEN_SERVICEREQUESTS11131805",
+                    "functionName": "getLatestSRMessageChannel",
+                    "processJson": true,
+                    "name": "Get Last Used Email Channel"
+                  },
+                  "outcomes": {
+                    "success": "1777314120124"
+                  },
+                  "code": "GET_LAST_USED_EMAIL_CHANNEL",
+                  "id": "1777313838783",
+                  "inputs": [
+                    {
+                      "id": "1777313858231_1",
+                      "name": "SrNumber",
+                      "type": "string",
+                      "value": "{{$context.$nodes.GET_DEFAULT_EMAIL_CHANNEL.$currentItem}}"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "name": "Last Used Channel ID Found"
+                  },
+                  "outcomes": {
+                    "true": "1777314234994",
+                    "false": "1777315689452"
+                  },
+                  "code": "LAST_USED_CHANNEL_ID_FOUND",
+                  "convergenceTargetId": "end_1777313720261",
+                  "id": "1777314120124",
+                  "inputs": [
+                    {
+                      "id": "1777314120124_1",
+                      "name": "condition",
+                      "type": "string",
+                      "value": "{{$context.$nodes.GET_DEFAULT_EMAIL_CHANNEL.GET_LAST_USED_EMAIL_CHANNEL.$output.count > 0 && $context.$nodes.GET_DEFAULT_EMAIL_CHANNEL.GET_LAST_USED_EMAIL_CHANNEL.$output.items[0].ChannelId != null}}"
+                    }
+                  ],
+                  "type": "CONDITION"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_CX_SERVICECEN_CHANNELS",
+                    "functionName": "getChannelNameById",
+                    "processJson": true,
+                    "name": "Get Last Used Channel Display Name"
+                  },
+                  "outcomes": {
+                    "success": "1777314440663"
+                  },
+                  "code": "GET_LAST_USED_CHANNEL_DISPLAY_NAME",
+                  "id": "1777314234994",
+                  "inputs": [
+                    {
+                      "id": "1777314257300_1",
+                      "name": "ChannelId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.GET_DEFAULT_EMAIL_CHANNEL.GET_LAST_USED_EMAIL_CHANNEL.$output.items[0].ChannelId}}"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "name": "Last Used Channel Display Name",
+                    "returnType": "object",
+                    "sourceCode": "const srNumber = $context.$nodes.GET_DEFAULT_EMAIL_CHANNEL.$currentItem;\nconst channelDisplayName = $context.$nodes.GET_DEFAULT_EMAIL_CHANNEL.GET_LAST_USED_CHANNEL_DISPLAY_NAME.$output.DisplayName;\nconst data = {\n  SRNumber: srNumber,\n  ChannelDisplayName: channelDisplayName\n}\n\nreturn data;"
+                  },
+                  "outcomes": {
+                    "success": "end_1777313720261"
+                  },
+                  "code": "LAST_USED_CHANNEL_DISPLAY_NAME",
+                  "id": "1777314440663",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "name": "Set Default Email Channel",
+                    "returnType": "object",
+                    "sourceCode": "const data = $context.$nodes.GET_EMAIL_SUPPORT_CHANNELS.$output.items;\n\n// Find the first where BUOrgId is NOT null\nlet item = data.find(row => row.BUOrgId !== null);\n\nif (!item) {\n    // Fallback: find first where BUOrgId is null\n    item = data.find(row => row.BUOrgId === null);\n}\n\nconst displayName = item ? item.DisplayName : null;\n\nconst srNumber = $context.$nodes.GET_DEFAULT_EMAIL_CHANNEL.$currentItem;\n\nconst data2 = {\n  SRNumber: srNumber,\n  ChannelDisplayName: displayName\n}\n\nreturn data2;"
+                  },
+                  "outcomes": {
+                    "success": "end_1777313720261"
+                  },
+                  "code": "SET_DEFAULT_EMAIL_CHANNEL",
+                  "id": "1777315689452",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                }
+              ],
+              "rootNode": "start_1777313720261"
+            },
+            "loopType": "PARALLEL",
+            "name": "Get Default Email Channel"
+          },
+          "outcomes": {
+            "success": "1774293301347"
+          },
+          "code": "GET_DEFAULT_EMAIL_CHANNEL",
+          "id": "1777313720261",
+          "inputs": [
+            {
+              "id": "1777313720262_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$nodes.ESCALATION_COMMUNICATION_FILTER.$output.map(item => item.SRNumber)}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "name": "Show Only SRs With Default Channels",
+            "returnType": "object",
+            "sourceCode": "const data1 = $context.$nodes.ESCALATION_COMMUNICATION_FILTER.$output;\nconst data2 = $context.$nodes.GET_DEFAULT_EMAIL_CHANNEL.$output;\n\n// Safely parse and normalize data2\nconst parsedData2 = data2\n  .map(item => {\n    try {\n      const parsed = typeof item === 'string' ? JSON.parse(item) : item;\n\n      // Normalize structure (handle wrapped \"result\")\n      const record = parsed.result ? parsed.result : parsed;\n\n      return {\n        SRNumber: record.SRNumber,\n        ChannelDisplayName: record.ChannelDisplayName\n      };\n    } catch (e) {\n      return null;\n    }\n  })\n  .filter(d => d && d.SRNumber && d.ChannelDisplayName);\n\n// Create lookup\nconst channelLookup = Object.fromEntries(\n  parsedData2.map(d => [d.SRNumber, d.ChannelDisplayName])\n);\n\n// Merge only when ChannelDisplayName exists\nconst result = data1\n  .filter(item => channelLookup[item.SRNumber])\n  .map(item => ({\n    ...item,\n    ChannelDisplayName: channelLookup[item.SRNumber]\n  }));\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1777017324886"
+          },
+          "code": "SHOW_ONLY_SRS_WITH_DEFAULT_CHANNELS",
+          "convergenceTargetId": "1777316220188",
+          "id": "1774293301347",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set CommunicationList"
+          },
+          "outcomes": {
+            "success": "1769540034859"
+          },
+          "code": "SET_COMMUNICATIONLIST",
+          "convergenceTargetId": "1777316220188",
+          "id": "1777017324886",
+          "inputs": [
+            {
+              "id": "1777017327298",
+              "name": "communicationAction",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.SHOW_ONLY_SRS_WITH_DEFAULT_CHANNELS.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MESSAGES_LIST"
+              ],
+              "enableActions": true,
+              "enableCommunications": true,
+              "customNotes": "Set the title of messageListWidget based on the value of \n{{$context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.attentionSRCount}} (refer to it as <count>).\n\nRules:\n- If <count> = 0, set the title to:\n  \"There are no escalated service requests that require your attention\".\n- If <count> = 1, set the title to:\n  \"{{$context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.attentionSRCount}} escalated service request requires your attention\".\n- If <count> > 1, set the title to:\n  \"{{$context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.attentionSRCount}} escalated service requests require your attention\".\nEnsure the grammar and pluralization (\"request\" vs \"requests\", \"requires\" vs \"require\") are correct based on the value of <count>.\n\nDo not populate the description or subtitle fields; leave them empty."
+            }
+          },
+          "metadata": {
+            "name": "Escalations Not Requiring Communication"
+          },
+          "outcomes": {
+            "success": "1777570536784"
+          },
+          "code": "ESCALATIONS_NOT_REQUIRING_COMMUNICATION",
+          "id": "1777569930976",
+          "inputs": [
+            {
+              "id": "1777569930977_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "1. Generate a messageListWidget for the first 3 Escalated Service Requests from the following input {{$context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.SRDetails}}.  Ensure the original input order is preserved in the output list.\n\nFor the first 3 Escalated Service Request in the input, set the following attributes, making sure to include all attributes mentioned below. Do not set status attribute. \n{\n  \"title\": \"<Generate the SR title in this format: <SR Title> (<SRNumber>). For example, if the SR title is 'Solar Inverter Not Exporting Power' and the SR number is 12345, the output should be 'Solar Inverter Not Exporting Power (12345)'.>\",\n   \"subtitle\": \"<AccountPartyUniqueName - 'Tier X' if AccountTier exists; otherwise only show AccountPartyUniqueName. Format AccountTier as 'Tier 1', 'Tier 2', etc. If AccountPartyUniqueName is null, leave subtitle empty.>\"\n   \"summary\": \"<Do not include SR number. In 1–3 concise sentences (maximum 50 words), summarize the issue, focusing on critical or high-impact symptoms and operational risk. Seamlessly incorporate the attention and prioritization reasons from the SR Reason attribute within the sentences so they flow naturally with the issue. Use professional, CSM-facing language. Do not invent new information or include technical details.>\",\n  \"badgeText\": \"<SeverityCdMeaning>\",\n  \"timestamp\": \"<escalationElapsed>\",\n  \"priority\": \"<Set based on SeverityCd Sev1 → alert, Sev2 → warning>\"\n}\n\nSet the title of messageListWidget based on the value of \n{{$context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.attentionSRCount}} (refer to it as <count>).\n\nRules:\n- If <count> = 0, set the title to:\n  \"There are no escalated service requests that require your attention\".\n- If <count> = 1, set the title to:\n  \"{{$context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.attentionSRCount}} escalated service request requires your attention\".\n- If <count> > 1, set the title to:\n  \"{{$context.$nodes.PRIORITIZED_SR_REQUIRING_ATTENTION.$output.result.attentionSRCount}} escalated service requests require your attention\".\nEnsure the grammar and pluralization (\"request\" vs \"requests\", \"requires\" vs \"require\") are correct based on the value of <count>.\n\nIMPORTANT: You must not generate any text other than content inside <oraInfoDisplay>, <oraInsight>, and <oraComms> tags.\n\n2. **High Priority Action Insight**\n\nGiven the data `PriorityActionList` {{$context.$variables.priorityActionList}}\n\n## Filter the `PriorityActionList` \n- Collect the Objects which is having Action as \"Reassign\" or \"AddTeamMember\". Do not consider any other Actions.\n- Ignore the Object which is having Action as empty.\n\nGenerate a High Priority Action Insight for each item within the `PriorityActionList` with the following specifications, ensure the original input order is preserved in the output list.\n\n- \"priority\": true (IMPORTANT: MUST set priority to true)\n- \"followUpCommand\": ora.Invoke(\"Review\",{\"action\":\"Review\",\"record\":<PriorityActionList object>})\n- \"shortDescription\": \"<Reason>\",\n- \"actionText\": \"Review\"\n- \"title\": clearly show the SR number and the recommended action. \n- Do not create Priority Insight without priority parameter.\n\nEnsure that the High Priority Action Insight follows the same order as the SR Number listed in the `PriorityActionList` Response."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Return Escalations Not Requiring Communication"
+          },
+          "outcomes": {},
+          "code": "RETURN_ESCALATIONS_NOT_REQUIRING_COMMUNICATION",
+          "convergenceTargetId": "1769540034859",
+          "id": "1777570536784",
+          "inputs": [
+            {
+              "id": "1777570536785_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.ESCALATIONS_NOT_REQUIRING_COMMUNICATION.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1769560796279",
+            "1": "1777559110126",
+            "2": "add_1777647813223_2"
+          },
+          "code": "PARALLEL_1777647813224",
+          "convergenceTargetId": "1777075652102",
+          "id": "1777647813223",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "description": "Add node for branch 2",
+            "name": "Add 2"
+          },
+          "outcomes": {
+            "success": "1777075652102"
+          },
+          "id": "add_1777647813223_2",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Get Parameters",
+            "returnType": "object",
+            "sourceCode": "const input = $context.$triggers.REST.$input.OraCommNonTemplateParamList;\nconst result = {};\n\nif (input && Array.isArray(input)) {\n  for (const item of input) {\n    if (typeof item === 'object' && item !== null && item.id) {\n      switch (item.id) {\n        case 'email':\n          result[\"email\"] = item.value;\n          break;\n        case 'subject':\n          result[\"subject\"] = item.value;\n          break;\n        case 'srNumber':\n          result[\"srNumber\"] = item.value;\n          break;\n        case 'cc':\n          result[\"cc\"] = item.value;\n          break;\n        case 'channelDisplayName':\n          result[\"channelDisplayName\"] = item.value;\n          break;\n      }\n    }\n  }\n}\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1776271902909"
+          },
+          "code": "GET_PARAMETERS",
+          "convergenceTargetId": "1777647819369",
+          "id": "1769560796279",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Form Channel Query",
+            "returnType": "string",
+            "sourceCode": "const query = `ChannelTypeCd='ORA_SVC_EMAIL' and StripeCd='ORA_SVC_CRM' and DisplayName='${$context.$nodes.GET_PARAMETERS.$output.result.channelDisplayName}'&onlyData=true`;\nreturn query;"
+          },
+          "outcomes": {
+            "success": "1769715685243"
+          },
+          "code": "FORM_CHANNEL_QUERY",
+          "convergenceTargetId": "1777647819369",
+          "id": "1776271902909",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SERVICECEN_CHANNELS",
+            "functionName": "getChannelByQueryWithFields",
+            "name": "Get Email Channel ID"
+          },
+          "outcomes": {
+            "success": "1777075652102"
+          },
+          "code": "GET_EMAIL_CHANNEL_ID",
+          "convergenceTargetId": "1777647819369",
+          "id": "1769715685243",
+          "inputs": [
+            {
+              "id": "1776272129107_1",
+              "name": "query",
+              "type": "string",
+              "value": "{{$context.$nodes.FORM_CHANNEL_QUERY.$output.result}}"
+            },
+            {
+              "id": "1776272129107_2",
+              "name": "fields",
+              "type": "string",
+              "value": "ChannelId"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Read Attachments",
+            "toolCode": "ORA_MULTI_FILE_PROCESSOR_TOOL",
+            "makeRawFilesAvailable": true
+          },
+          "outcomes": {
+            "success": "1777559180489"
+          },
+          "code": "READ_ATTACHMENTS",
+          "convergenceTargetId": "1777647828051",
+          "id": "1777559110126",
+          "inputs": [
+            {
+              "id": "1777559143059",
+              "name": "conversationId",
+              "type": "string",
+              "value": "{{$context.$workflow.$conversationId}}"
+            }
+          ],
+          "type": "TOOL"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Attachment Data",
+            "returnType": "array",
+            "sourceCode": "let result = [];\nconst filesObject = $context.$nodes.READ_ATTACHMENTS.$output?.ORA_CHAT_ATTACHMENTS_RAW_FILECONTENT || {};\n// Initialize an array to hold file info objects\nconst filesArray = [];\n// Iterate over each key in the filesObject\nfor( const fileName in filesObject) {\n  if( filesObject.hasOwnProperty( fileName)) {\n    const fileData = filesObject[ fileName];\n    if( fileData && typeof fileData === \"object\") {\n      // Extract contentType and base64 content\n      \n      const mimeType = fileData.contentType || \"\";\n      const base64Content = fileData.bas64EncodedFileContent || \"\";\n      // Construct the file info object\n      filesArray.push( {\n        type: \"base64\",\n        fileName: fileName,\n        mimeType: mimeType,\n        base64Content: base64Content\n      });\n    }\n  }\n} \nresult = filesArray;\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1777075652102"
+          },
+          "code": "PREPARE_ATTACHMENT_DATA",
+          "convergenceTargetId": "1777647828051",
+          "id": "1777559180489",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1777017234788",
+          "name": "communicationAction",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1777017226697",
+          "name": "priorityActionList",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1776247231759",
+          "name": "errorSummary",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1775804642197",
+          "name": "actionReturnContent",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1773267079894",
+          "name": "CommunicationParam",
+          "scope": "JOB",
+          "type": "object"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.75
+      },
+      "code": "ORA_LLM_PREMIUM",
+      "model": "OPEN_AI_GPT_4_1_MINI",
+      "modelName": "GPT-4.1 Mini",
+      "provider": "CERT_PREMIUM"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1770986915473",
+            "name": "OraAction",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1769557584077",
+            "name": "OraCommNonTemplateParamList",
+            "scope": "JOB",
+            "type": "object"
+          },
+          {
+            "id": "1769541604201",
+            "name": "OraUserContext",
+            "scope": "JOB",
+            "type": "object"
+          },
+          {
+            "id": "1769207323469",
+            "name": "OraMessageHint",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "SERVICE_CENTER",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": true,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

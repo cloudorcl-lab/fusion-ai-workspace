@@ -1,0 +1,361 @@
+{
+  "workflowId": "100002355227047",
+  "workflowCode": "ORA_RMC_ROLE_REVOCATION_ASSISTANT",
+  "name": "RMC Role Revocation Assistant",
+  "description": "Revokes role assignments for a selected account through access-management APIs and returns operation outcomes.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [
+      {
+        "id": "input_userName",
+        "name": "userName",
+        "type": "string",
+        "description": "Username of the user whose role should be revoked"
+      },
+      {
+        "id": "input_roleCode",
+        "name": "roleCode",
+        "type": "string",
+        "description": "Code of the role to revoke"
+      },
+      {
+        "id": "input_roleName",
+        "name": "roleName",
+        "type": "string",
+        "description": "Display name of the role to revoke"
+      }
+    ],
+    "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"success\": {\"type\": \"boolean\"},\n    \"message\": {\"type\": \"string\"}\n  }\n}",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of role revocation workflow",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "EXTRACT_PARAMETERS"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of role revocation workflow",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Extract Parameters",
+            "returnType": "object",
+            "sourceCode": "var userName = $context.$input.userName || '';\nvar roleCode = $context.$input.roleCode || '';\nvar roleName = $context.$input.roleName || '';\n\n// Extract logged-in user information\nvar loggedInUser = $context.$app && $context.$app.$OraUserContext ? $context.$app.$OraUserContext : {};\nvar removedByUserDisplayName = loggedInUser.displayName || loggedInUser.username || 'System';\nvar removedByUserGuid = loggedInUser.personNumber || loggedInUser.userId || loggedInUser.id || '';\n\nvar result = {\n  userName: userName,\n  roleCode: roleCode,\n  roleName: roleName,\n  removedByUserDisplayName: removedByUserDisplayName,\n  removedByUserGuid: removedByUserGuid,\n  timestamp: new Date().toISOString(),\n  _debug: {\n    hasUserName: userName.length > 0,\n    hasRoleCode: roleCode.length > 0,\n    hasRoleName: roleName.length > 0,\n    hasLoggedInUser: removedByUserGuid.length > 0\n  }\n};\nreturn result;"
+          },
+          "outcomes": {
+            "success": "VALIDATE_PARAMETERS"
+          },
+          "code": "EXTRACT_PARAMETERS",
+          "id": "EXTRACT_PARAMETERS",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"userName\": {\"type\": \"string\"},\n    \"roleCode\": {\"type\": \"string\"},\n    \"roleName\": {\"type\": \"string\"},\n    \"removedByUserDisplayName\": {\"type\": \"string\"},\n    \"removedByUserGuid\": {\"type\": \"string\"}\n  }\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Validate Parameters"
+          },
+          "outcomes": {
+            "true": "LOOKUP_USER_GUID",
+            "false": "INVALID_PARAMETERS_RESPONSE"
+          },
+          "code": "VALIDATE_PARAMETERS",
+          "convergenceTargetId": "end",
+          "id": "VALIDATE_PARAMETERS",
+          "inputs": [
+            {
+              "id": "validate_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_PARAMETERS.$output.result.userName != '' && $context.$nodes.EXTRACT_PARAMETERS.$output.result.roleCode != ''}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_GRC_OTHER_SCIMUSERLOOKUP",
+            "functionName": "lookup_user",
+            "processJson": true,
+            "name": "Lookup User GUID"
+          },
+          "outcomes": {
+            "success": "EXTRACT_USER_GUID"
+          },
+          "code": "LOOKUP_USER_GUID",
+          "id": "LOOKUP_USER_GUID",
+          "inputs": [
+            {
+              "id": "lookup_username",
+              "name": "username",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_PARAMETERS.$output.result.userName}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Extract User GUID",
+            "returnType": "object",
+            "sourceCode": "var userLookup = $context.$nodes.LOOKUP_USER_GUID.$output || {};\nvar params = ($context.$nodes.EXTRACT_PARAMETERS && $context.$nodes.EXTRACT_PARAMETERS.$output && $context.$nodes.EXTRACT_PARAMETERS.$output.result) ? $context.$nodes.EXTRACT_PARAMETERS.$output.result : {};\n\nvar userGuid = '';\nvar userId = '';\nvar displayName = '';\nvar roleId = '';\nvar found = false;\n\nif (userLookup && userLookup.Resources && userLookup.Resources.length > 0) {\n  var user = userLookup.Resources[0] || {};\n  userGuid = user.id || '';\n  userId = user.userName || '';\n  displayName = user.displayName || '';\n  found = !!userGuid;\n\n  // Extract RoleId corresponding to input roleCode from SCIM roles array\n  var targetRoleCode = params && params.roleCode ? params.roleCode : '';\n  var rolesArr = user.roles || [];\n  if (targetRoleCode && rolesArr && rolesArr.length > 0) {\n    for (var i = 0; i < rolesArr.length; i++) {\n      var r = rolesArr[i] || {};\n      var code = r.value || '';\n      if (code === targetRoleCode) {\n        roleId = r.id || '';\n        break;\n      }\n    }\n  }\n}\n\nvar result = {\n  userGuid: userGuid,\n  userId: userId,\n  displayName: displayName,\n  roleId: roleId,\n  found: found,\n  _debug: {\n    hasUserGuid: userGuid.length > 0,\n    userFound: found,\n    hasRoleIdForCode: roleId.length > 0\n  }\n};\nreturn result;"
+          },
+          "outcomes": {
+            "success": "CHECK_USER_FOUND"
+          },
+          "code": "EXTRACT_USER_GUID",
+          "id": "EXTRACT_USER_GUID",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"userGuid\": {\"type\": \"string\"},\n    \"userId\": {\"type\": \"string\"},\n    \"displayName\": {\"type\": \"string\"},\n    \"roleId\": {\"type\": \"string\"},\n    \"found\": {\"type\": \"boolean\"}\n  }\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check User Found"
+          },
+          "outcomes": {
+            "true": "REVOKE_ROLE",
+            "false": "USER_NOT_FOUND_RESPONSE"
+          },
+          "code": "CHECK_USER_FOUND",
+          "convergenceTargetId": "end",
+          "id": "CHECK_USER_FOUND",
+          "inputs": [
+            {
+              "id": "user_found_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_USER_GUID.$output.result.found == true}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_GRC_OTHER_SCIMROLESMANAGEMENT",
+            "functionName": "update_role_members",
+            "processJson": true,
+            "name": "Revoke Role"
+          },
+          "outcomes": {
+            "success": "PROCESS_REVOCATION_RESULT"
+          },
+          "code": "REVOKE_ROLE",
+          "id": "REVOKE_ROLE",
+          "inputs": [
+            {
+              "id": "role_id_param",
+              "name": "roleId",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_USER_GUID.$output.result.roleId}}"
+            },
+            {
+              "id": "user_guid_param",
+              "name": "userGuid",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_USER_GUID.$output.result.userGuid}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Process Revocation Result",
+            "returnType": "object",
+            "sourceCode": "var revocationResponse = $context.$nodes.REVOKE_ROLE.$output || {};\nvar success = false;\nvar message = '';\nvar errorCode = '';\n\n// SCIM PATCH typically returns 200 with updated role or empty body. Treat as success if no explicit error.\nif (revocationResponse && !revocationResponse.error) {\n  success = true;\n  message = 'Role revocation completed successfully';\n} else if (revocationResponse && revocationResponse.error) {\n  success = false;\n  message = revocationResponse.error.message || 'Role revocation failed';\n  errorCode = revocationResponse.error.code || 'UNKNOWN_ERROR';\n} else {\n  success = false;\n  message = 'Role revocation failed - unknown response';\n  errorCode = 'UNKNOWN_RESPONSE';\n}\n\nvar result = {\n  success: success,\n  message: message,\n  errorCode: errorCode,\n  timestamp: new Date().toISOString(),\n  _debug: {\n    operationSuccessful: success,\n    errorCode: errorCode\n  }\n};\nreturn result;"
+          },
+          "outcomes": {
+            "success": "GENERATE_RESPONSE"
+          },
+          "code": "PROCESS_REVOCATION_RESULT",
+          "id": "PROCESS_REVOCATION_RESULT",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"success\": {\"type\": \"boolean\"},\n    \"message\": {\"type\": \"string\"}\n  }\n}",
+          "type": "CODE"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_CARD"
+              ],
+              "enableActions": false,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Generate Response"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "GENERATE_RESPONSE",
+          "id": "GENERATE_RESPONSE",
+          "inputs": [
+            {
+              "id": "response_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Generate a response for role revocation:\n\nUser: {{$context.$nodes.EXTRACT_PARAMETERS.$output.result.userName}}\nRole: {{$context.$nodes.EXTRACT_PARAMETERS.$output.result.roleName}}\nSuccess: {{$context.$nodes.PROCESS_REVOCATION_RESULT.$output.result.success}}\nMessage: {{$context.$nodes.PROCESS_REVOCATION_RESULT.$output.result.message}}\n\nCreate a cardWidget response with appropriate styling (success=green/info, failure=red/error)."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_CARD"
+              ],
+              "enableActions": false,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Invalid Parameters Response"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "INVALID_PARAMETERS_RESPONSE",
+          "id": "INVALID_PARAMETERS_RESPONSE",
+          "inputs": [
+            {
+              "id": "invalid_params_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Generate an error response with this exact message: 'Required parameters are missing or invalid. Received: userName=\"{{$context.$nodes.EXTRACT_PARAMETERS.$output.result.userName}}\", roleCode=\"{{$context.$nodes.EXTRACT_PARAMETERS.$output.result.roleCode}}\", roleName=\"{{$context.$nodes.EXTRACT_PARAMETERS.$output.result.roleName}}\"'"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_CARD"
+              ],
+              "enableActions": false,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "User Not Found Response"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "USER_NOT_FOUND_RESPONSE",
+          "id": "USER_NOT_FOUND_RESPONSE",
+          "inputs": [
+            {
+              "id": "user_not_found_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Generate an error response indicating that the user {{$context.$nodes.EXTRACT_PARAMETERS.$output.result.userName}} was not found in the system."
+            }
+          ],
+          "type": "LLM"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": "security-admin@company.com"
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": "Role Revocation Workflow Error"
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": "An error occurred during role revocation for user {{$context.$nodes.EXTRACT_PARAMETERS.$output.result.userName}} and role {{$context.$nodes.EXTRACT_PARAMETERS.$output.result.roleName}}. Error details: {{$errorMessage}}"
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "GRC",
+  "product": "OTHER",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"1\""
+  }
+}

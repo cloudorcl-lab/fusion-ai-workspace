@@ -1,0 +1,611 @@
+{
+  "workflowId": "300000327004240",
+  "workflowCode": "ORA_ASSET_HEALTH_MONITOR",
+  "name": "Asset Health Monitor",
+  "description": "Monitors event and prediction data from connected equipment to identify and alert on assets at risk due to severe anomalies or high failure probability. Highlights asset health issues and provides actionable alerts for proactive maintenance.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1767997418859"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Set Org and Date Range"
+          },
+          "outcomes": {
+            "success": "1770640027592"
+          },
+          "code": "SET_ORG_AND_DATE_RANGE",
+          "id": "1767996727739",
+          "inputs": [
+            {
+              "id": "1771246014214",
+              "name": "Limit",
+              "scope": "JOB",
+              "type": "integer",
+              "value": "{{$context.$nodes.GET_DATE_RANGE.$output.result.Limit}}"
+            },
+            {
+              "id": "1767997702828",
+              "name": "endTime",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_DATE_RANGE.$output.result.endTime}}"
+            },
+            {
+              "id": "1767997673503",
+              "name": "startTime",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_DATE_RANGE.$output.result.startTime}}"
+            },
+            {
+              "id": "1767996750220",
+              "name": "OrganizationId",
+              "scope": "JOB",
+              "type": "number",
+              "value": "{{$context.$nodes.GET_DATE_RANGE.$output.result.OrganizationId}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Get Date Range",
+            "returnType": "object",
+            "sourceCode": "// Get current date (string or Date depending on platform)\nconst today = new Date($context.$system.$currentDate);\n\nconst Limit = 100;\n\n// startTime = today - 14 days (start of day)\nconst startDateObj = new Date(today);\nstartDateObj.setDate(startDateObj.getDate() - 14);\nstartDateObj.setHours(0, 0, 0, 0);\n\n// endTime = today \nconst endDateObj = new Date(today);\nendDateObj.setDate(endDateObj.getDate());\nendDateObj.setHours(23, 59, 59, 999);\n\n// Full ISO date-time strings\nconst startTime = startDateObj.toISOString();\nconst endTime = endDateObj.toISOString();\n\n//Get Org Context\nconst appContext = $context.$app.$OraAppContext ?? $context.$triggers.REST.$input.OraAppContext;\nlet OrganizationId;\n\n// Check for all empty cases: undefined, null, empty string, and whitespace only\nif (appContext && String(appContext).trim() !== '') {\n    try {\n        // Try parsing as JSON\n        const contextObj = JSON.parse(appContext);\n        OrganizationId = contextObj.OrganizationId;\n    } catch (e) {\n        // Fallback: comma-separated string\n       OrganizationId= String(appContext).trim();\n    }\n}\n\n\nreturn { startTime, endTime,OrganizationId,Limit };"
+          },
+          "outcomes": {
+            "success": "1767996727739"
+          },
+          "code": "GET_DATE_RANGE",
+          "id": "1767997418859",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check Org from Context"
+          },
+          "outcomes": {
+            "true": "1768000664425",
+            "false": "1770640062501"
+          },
+          "code": "CHECK_ORG_FROM_CONTEXT",
+          "convergenceTargetId": "end",
+          "id": "1770640027592",
+          "inputs": [
+            {
+              "id": "1770640027594_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.OrganizationId != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Return"
+          },
+          "outcomes": {},
+          "code": "RETURN",
+          "convergenceTargetId": "end",
+          "id": "1770640062501",
+          "inputs": [
+            {
+              "id": "1770640062504_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "Organization is not set in the Context."
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_MAINTENANC_SMARTOPERATIONSRUNTIMEEVENTDATA",
+            "functionName": "oraScmMnt_getFailureAndAnomaly_For_Organization_In_TimeFrame",
+            "name": "Get Asset Condition Predictions"
+          },
+          "outcomes": {
+            "success": "1770629827725"
+          },
+          "code": "GET_ASSET_CONDITION_PREDICTIONS",
+          "convergenceTargetId": "1770640230353",
+          "id": "1768000664425",
+          "inputs": [
+            {
+              "id": "1771239481510_1",
+              "name": "startTime",
+              "type": "string",
+              "value": "{{$context.$variables.startTime}}"
+            },
+            {
+              "id": "1771239481511_2",
+              "name": "endTime",
+              "type": "string",
+              "value": "{{$context.$variables.endTime}}"
+            },
+            {
+              "id": "1771239481513_3",
+              "name": "EventTypeCode",
+              "type": "string",
+              "value": "'CA_ANOMALY','CA_FAILURE_PREDICTION'"
+            },
+            {
+              "id": "1771239481514_4",
+              "name": "organizationId",
+              "type": "string",
+              "value": "{{$context.$variables.OrganizationId}}"
+            },
+            {
+              "id": "1771239481515_5",
+              "name": "pLimit",
+              "type": "integer",
+              "value": "{{$context.$variables.Limit}}"
+            },
+            {
+              "id": "1771239481516_6",
+              "name": "pOffset",
+              "type": "integer"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Context Type"
+          },
+          "outcomes": {
+            "InitDisplay": "1768003735389",
+            "InitActions": "1768198074307",
+            "Summary": "1768004265831",
+            "InvokeAction": "1770644316902",
+            "Query": "1770872427039"
+          },
+          "code": "CONTEXT_TYPE",
+          "convergenceTargetId": "end",
+          "id": "1768003682578",
+          "inputs": [
+            {
+              "id": "1768003682580_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.OraMessageHint}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MESSAGES_LIST"
+              ],
+              "enableActions": false,
+              "enableCommunications": true
+            }
+          },
+          "metadata": {
+            "name": "Display Predicted Failures and Anomalies"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "DISPLAY_PREDICTED_FAILURES_AND_ANOMALIES",
+          "id": "1768003735389",
+          "inputs": [
+            {
+              "id": "1768003735391_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Use  `EventData` having below value to obtain prediction and anomaly event data, where `boId` matches `AssetId`.\n`{{$context.$nodes.GET_ASSET_CONDITION_PREDICTIONS.$output}}`  \n\n- If `EventData` is blank, missing, null, `[]`, `{}`, or rendered as an empty code block, return only the empty `messageListWidget` and never fabricate event rows.\n  - summary: No events reported from connected assets in the time period.\n  - badgeText\": INFO\n  - priority: medium \n- Under no circumstances should you ask for further Canvas clarification or request user input if no events are present. Only display the message.\n\n- If `EventData` is present:\n  - Use  `Asset and Workorders` data having below value, to retrieve corresponding asset details (such as AssetNumber and AssetDescription) and any recently created corrective work order numbers (an array of `WorkOrderNumber`), if available.\n    `{{$context.$nodes.GET_ASSETS_DETAIL_AND_RECENT_WORK_ORDER_CREATED.$output}}`  \n  - For each event, create an entry in a `messageListWidget` that includes:\n    - `title`: AssetNumber - Event Type\n    - `subtitle`: Details on event metrics, such as Probability, Confidence Interval, Severity, and Duration.\n    - `badgeText`: Appropriate badge text indicating priority or severity.\n    - `priority`: Assign according to these rules:\n      - Set to `alert` if (a) failure prediction probability is over 80% and no recent corrective work order is present for the asset, or (b) anomaly event severity is High and no recent corrective work order is present for the asset.\n      - Otherwise, determine priority as warning, medium, or success based on event details.\n    - `summary`: Summarize key details from available event and asset data. If recently created work orders are present for the asset, include and highlight up to 5 work order numbers.\n    - `timestamp`: Event date  \n  - Show at most top 10 most critical rows in non-expanded mode.\n\n- Do not generate any actionable insights or additional actions.  \n- Return only the messageListWidget as specified.\n- Set the overall `title` as below:\n  - Connected Asset Events , indicating the time range from {{$context.$variables.startTime}} to {{$context.$variables.endTime}} in natural language, without specific dates, where current date is {{$context.$system.$currentDate}} . eg. `Connected Asset Events — Past 14 Days`\n- Do not include any internal identifiers (IDs) in the output."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [],
+              "enableActions": true,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "name": "Priority Action"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "PRIORITY_ACTION",
+          "id": "1768198074307",
+          "inputs": [
+            {
+              "id": "1768198074310_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "**Use**  `EventData` having below value:\n`{{$context.$nodes.GET_ASSET_CONDITION_PREDICTIONS.$output}}`  \nto obtain prediction and anomaly events, where the `boId` corresponds to the `AssetId`.\n\n**Use**  `Asset and Workorders` having below value:\n`{{$context.$nodes.GET_ASSETS_DETAIL_AND_RECENT_WORK_ORDER_CREATED.$output}}`  \nto retrieve the corresponding asset information (`AssetDetails`) like AssetNumber and any recently created corrective work order numbers (an array of `WorkOrderNumber`), if available.\n\n\n**Task:**\n- Only consider events for assets  where recent work order list is empty.\n- Analyze all prediction and anomaly events and identify assets at highest risk of failure.\n\n**Criteria:**\n- Failure prediction probability exceeds 80% and prediction window is ≤ 240 hours\n- Anomaly event with severity `\"High\"`\n\n**Action Generation:**\n- If qualifying assets are found, select up to the top 3 highest-risk assets (choose fewer if less than 3 qualify).\n- For each qualifying event (per asset), create one action object:\n\n  - **For failure prediction events:**\n    - `title`: `<AssetNumber> |` Briefly state the predicted failure (≤15 words, no internal IDs)\n    - `shortDescription`: Summarize event in natural language.\n    - `actionText`: `\"Create Work Order for this Prediction\"`\n    - `followUpCommand`:\n      ```\n      ora.Invoke(actionCreateWorkOrderSmoEvent, {\"EventTypeCode\":\"...\", \"AssetId\":\"...\", \"AssetNumber\":\"...\", \"Description\":\"...\", \"OrganizationId\":\"...\"})\n      ```\n    - `priority`: true\n\n  - **For high-severity anomaly events:**\n    - `title`: `<AssetNumber> |` Briefly state the anomaly (≤15 words, no internal IDs)\n    - `shortDescription`: Summarize event in natural language\n    - `actionText`: `\"Create Work Order for this Anomaly\"`\n    - `followUpCommand`:\n      ```\n      ora.Invoke(actionCreateWorkOrderSmoEvent, {\"EventTypeCode\":\"...\", \"AssetId\":\"...\", \"AssetNumber\":\"...\", \"Description\":\"...\", \"OrganizationId\":\"...\"})\n      ```\n    - `priority`: true\n\n**Output Requirements:**\n- If `EventData` data or `Asset and Workorders` data is missing/empty/null, return an empty response with no data. Never fabricate example outputs.\n- Return only the actionable insight objects (do not include any data for assets with recent work orders).\n- Each insight must be independently actionable.\n- Do not include internal identifiers (ID) in title or descriptions.\n- IF no priority action is found, then return an empty response with no data."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Summarize Predicted Failures"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SUMMARIZE_PREDICTED_FAILURES",
+          "id": "1768004265831",
+          "inputs": [
+            {
+              "id": "1768004265833_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Use  \n`{{$context.$nodes.GET_ASSET_CONDITION_PREDICTIONS.$output}}`  \nto obtain prediction and anomaly event data, where `boId` matches `AssetId`.\n\n- If the prediction and anomaly event data is null or empty, return:  \n  `No events reported from connected assets in the time period.`\n\n- If data is present:\n  - Use  \n    `{{$context.$nodes.GET_ASSETS_DETAIL_AND_RECENT_WORK_ORDER_CREATED.$output}}`  \n    to retrieve corresponding asset details (such as AssetNumber and AssetDescription) and any recently created corrective work order numbers (an array of `WorkOrderNumber`), if available.\n  - Generate one newspaper-style headline (≤ 25 words) highlighting the most critical predictions.\n\nDo not list assets, do not explain, do not include numbers. You may use statements like \"Review predicted failures and anomalies for critical assets\" in your summary.\nDo not include any internal identifiers (IDs) in the output."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_MAINTENANCE_WO",
+            "functionName": "oraScmMnt_createWorkOrderHeader",
+            "name": "Create Work Order For Asset From SMO Event"
+          },
+          "outcomes": {
+            "success": "1770646642331"
+          },
+          "code": "CREATE_WORK_ORDER_FOR_ASSET_FROM_SMO_EVENT",
+          "id": "1770642041482",
+          "inputs": [
+            {
+              "id": "1770642080950_1",
+              "name": "json_payload",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_JSON_PAYLOAD_FOR_CREATE.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Create Json Payload for Create",
+            "returnType": "object",
+            "sourceCode": "const raw = $context.$app.$OraAction ?? null;\nlet actionParamObj = null;\n\nif (raw != null) {\n  try {\n    actionParamObj = (typeof raw === 'object') ? raw : JSON.parse(String(raw));\n   } catch (e) {\n    actionParamObj = raw;\n  }\n}\n\nconst payload = {\nAssetId: actionParamObj.AssetId, \nOrganizationId: actionParamObj?.OrganizationId,\nWorkOrderDescription: actionParamObj?.Description,\nWorkOrderStatusCode: 'ORA_UNRELEASED',\nWorkOrderTypeCode: 'CORRECTIVE',\nWorkOrderSubTypeCode: 'ORA_CONDITION_BASED'\n};\n\nreturn JSON.stringify(payload);"
+          },
+          "outcomes": {
+            "success": "1770642041482"
+          },
+          "code": "CREATE_JSON_PAYLOAD_FOR_CREATE",
+          "id": "1770644316902",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Created WO Details As Response"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "CREATED_WO_DETAILS_AS_RESPONSE",
+          "id": "1770645703435",
+          "inputs": [
+            {
+              "id": "1770645703436_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Generate summary of the newly created work order.\nUse {{$context.$nodes.GET_CREATED_WORK_ORDER_DETAILS.$output}}\n\nResponse must include Work Order Number, Asset Number, Type, Sub Type, Status, Organization Code, Item Number, Planned Start Date, Planned Completion Date, Description.\n\nDo not show any internal identifier(ID) in the response.\nAvoid showing Code where ever field value like Meaning or Description are available.\nDo not suggest further action."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_MAINTENANCE_WO",
+            "functionName": "oraScmMnt_getwobywonumber",
+            "name": "Get Created Work Order Details"
+          },
+          "outcomes": {
+            "success": "1770645703435"
+          },
+          "code": "GET_CREATED_WORK_ORDER_DETAILS",
+          "id": "1770646642331",
+          "inputs": [
+            {
+              "id": "1770646680378_1",
+              "name": "pWorkOrderNumber",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_WORK_ORDER_FOR_ASSET_FROM_SMO_EVENT.$output.WorkOrderNumber}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Query"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "QUERY",
+          "id": "1770872427039",
+          "inputs": [
+            {
+              "id": "1770872427040_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "### Asset Health Monitoring: Purpose & Context\n\nThis workflow agent leverages real-time event data and predictive analytics from connected equipment (IoT) to evaluate and monitor asset health. Its goal is to highlight assets at higher risk of failure or severe anomalies, and to identify where proactive or preventive maintenance may be necessary. Insights from asset-condition monitoring are contextualized within broader maintenance planning to help supervisors respond quickly, prioritize interventions, and minimize downtime.\n\n---\n\n### Maintenance Operations Overview\n\nMaintenance operations are built around work orders created for assets that require preventive or corrective service. Each work order can include multiple operations, each possibly requiring materials and resources. Estimated costs are based on planned quantities and actual costs are determined by completed transactions. All analysis and actions are performed in the context of a specific organization.\n\n#### Key Terms  \n- **Work Order:** (work order number, WO, wo#, etc.) — Maintenance instructions for an asset, detailing operations, resources, and schedules.\n- **Asset:** (Asset Number, asset#, assetnum, etc.) — Equipment, machine, or facility item managed throughout its lifecycle.\n- **Operation:** (operation, OP, op, step, steps) — A discrete step in a work order specifying the sequence and resources needed.\n- **Organization:** (Organization Code, Org, org code) — The plant or business context for asset management and work order execution.\n\n---\n\n### Data Provided\n\n- **Asset Condition Event Data:**  \n  `{{$context.$nodes.GET_ASSET_CONDITION_PREDICTIONS.$output}}`  \n  Includes event-based failure predictions and anomaly detections (by `boId`/`AssetId`) within the period {{$context.$variables.startTime}} to {{$context.$variables.endTime}}.\n\n- **Asset Information and Recent Work Orders:**  \n  `{{$context.$nodes.GET_ASSETS_DETAIL_AND_RECENT_WORK_ORDER_CREATED.$output}}`  \n  Provides asset details (e.g., Asset Number) and any recent corrective work order numbers for each asset.\n\n- **Chat History:**  \n  `{{$context.$system.$chatHistory}}`\n\n---\n\n### Query Task\n\n- Use only the above data and information to answer the user's query from:  \n  `{{$context.$system.$inputMessage}}`\n- Do **not** infer or fabricate missing data.\n\n---\n\n### Output & Response Rules\n\n- Where available, include asset names/numbers, affected event type or anomaly, relevant status, and notable recent corrective work orders.\n- Use only user-facing descriptions or codes—never display internal IDs or technical field names.\n- Do **not** specify or mention the underlying data source or dataset.\n- Provide concise, factual answers directly relevant to the user’s query.\n- Do **not** suggest further actions, next steps, or additional queries.\n- If insufficient information is available to answer the question, state this explicitly.\n- Only respond to the specific user query from the input message.\n\n---"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1771241370380"
+                  },
+                  "id": "start_1770629827725",
+                  "code": "START_1770629827725",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1770629827725",
+                  "code": "END_1770629827725",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_MAINTENANCE_WO",
+                    "functionName": "oraScmMnt_getWorkOrderByQparam",
+                    "processJson": true,
+                    "name": "Get Asset From Work Order"
+                  },
+                  "outcomes": {
+                    "success": "1770706514402"
+                  },
+                  "code": "GET_ASSET_FROM_WORK_ORDER",
+                  "id": "1770629883544",
+                  "inputs": [
+                    {
+                      "id": "1771244571707_1",
+                      "name": "pQparam",
+                      "type": "string",
+                      "value": "{{\"(PlannedStartDate BETWEEN '\" + $context.$variables.startTime.trim() + \"' AND '\" + $context.$variables.endTime.trim() + \"') AND OrganizationId=\"+$context.$variables.OrganizationId+\" AND WorkOrderTypeCode = 'CORRECTIVE' AND WorkOrderSubTypeCode = 'ORA_CONDITION_BASED' AND WorkOrderStatusCode = 'ORA_UNRELEASED' AND AssetId = \"+ $context.$nodes.GET_ASSETS_DETAIL_AND_RECENT_WORK_ORDER_CREATED.$currentItem}}"
+                    },
+                    {
+                      "id": "1771244571708_2",
+                      "name": "pLimit",
+                      "type": "integer"
+                    },
+                    {
+                      "id": "1771244571708_3",
+                      "name": "pOffset",
+                      "type": "integer"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_MNT_MAINTENANCE_ASSETS",
+                    "functionName": "oraScmMnt_getAssetByAssetId",
+                    "processJson": true,
+                    "name": "Get Asset Information"
+                  },
+                  "outcomes": {
+                    "success": "1770629883544"
+                  },
+                  "code": "GET_ASSET_INFORMATION",
+                  "id": "1771241370380",
+                  "inputs": [
+                    {
+                      "id": "1771244417248_1",
+                      "name": "AssetId",
+                      "type": "integer",
+                      "value": "{{$context.$nodes.GET_ASSETS_DETAIL_AND_RECENT_WORK_ORDER_CREATED.$currentItem}}"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "name": "Asset And Work Order Information",
+                    "returnType": "array",
+                    "sourceCode": "const assetDetails = $context.$nodes.GET_ASSETS_DETAIL_AND_RECENT_WORK_ORDER_CREATED.GET_ASSET_INFORMATION.$output?.items?.[0]; \nconst selectedAssetDetails = assetDetails\n      ? {\n      AssetId: assetDetails.AssetId,\n      AssetNumber: assetDetails.AssetNumber,\n      Description: assetDetails.Description,\n      ItemNumber: assetDetails.ItemNumber,\n      ItemDescription: assetDetails.ItemDescription,\n      OperatingOrganizationCode: assetDetails.OperatingOrganizationCode,\n      LocationOrganizationCode: assetDetails.LocationOrganizationCode,\n      CurrentLocationContext: assetDetails.CurrentLocationContext,\n      CurrentLocationName: assetDetails.CurrentLocationName\n    }\n  : null;\n\nconst assetWorkOrders = $context.$nodes.GET_ASSETS_DETAIL_AND_RECENT_WORK_ORDER_CREATED.GET_ASSET_FROM_WORK_ORDER.$output?.items?.map(item => item.WorkOrderNumber) || [];\nconst rec = {AssetDetails: selectedAssetDetails, WorkOrderNumber: assetWorkOrders };\n\nreturn rec;"
+                  },
+                  "outcomes": {
+                    "success": "end_1770629827725"
+                  },
+                  "code": "ASSET_AND_WORK_ORDER_INFORMATION",
+                  "convergenceTargetId": "1771241853963",
+                  "id": "1770706514402",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                }
+              ],
+              "rootNode": "start_1770629827725"
+            },
+            "loopType": "PARALLEL",
+            "name": "Get Assets detail and Recent Work Order created"
+          },
+          "outcomes": {
+            "success": "1768003682578"
+          },
+          "code": "GET_ASSETS_DETAIL_AND_RECENT_WORK_ORDER_CREATED",
+          "convergenceTargetId": "1768003682578",
+          "id": "1770629827725",
+          "inputs": [
+            {
+              "id": "1770629827727_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{ Array.from(new Set(($context?.$nodes?.GET_ASSET_CONDITION_PREDICTIONS?.$output?.items ?? []).map(i => i?.boId))).filter(v => v != null) }}"
+            }
+          ],
+          "type": "LOOP"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1771245969649",
+          "name": "Limit",
+          "scope": "JOB",
+          "type": "integer"
+        },
+        {
+          "id": "1767996926072",
+          "name": "endTime",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1767996880510",
+          "name": "startTime",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1767992034932",
+          "name": "OrganizationId",
+          "scope": "JOB",
+          "type": "number"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1770727090309",
+            "name": "InvokeAction",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1770727073967",
+            "name": "OraAppContext",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1767992005205",
+            "name": "OraAction",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1767991993293",
+            "name": "OraMessageHint",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "SCM",
+  "product": "MAINTENANCE",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": true,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"2\""
+  }
+}

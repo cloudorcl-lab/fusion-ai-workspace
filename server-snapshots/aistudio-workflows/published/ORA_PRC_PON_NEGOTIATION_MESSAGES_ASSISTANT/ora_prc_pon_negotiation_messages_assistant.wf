@@ -1,0 +1,284 @@
+{
+  "workflowId": "300000331056309",
+  "workflowCode": "ORA_PRC_PON_NEGOTIATION_MESSAGES_ASSISTANT",
+  "name": "Messages Assistant for Negotiations",
+  "description": "Assists category managers, collaboration team members, and suppliers with composing new messages and replies in negotiations.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1776297227392"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "If New Message"
+          },
+          "outcomes": {
+            "true": "1773877101618",
+            "false": "1773877141035"
+          },
+          "code": "IF_NEW_MESSAGE",
+          "convergenceTargetId": "end",
+          "id": "1773876967781",
+          "inputs": [
+            {
+              "id": "1773876967786_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.isNewMessageFlag == true}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 2000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "Gpt Oss",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Compose New Messages"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "COMPOSE_NEW_MESSAGES",
+          "id": "1773877101618",
+          "inputs": [
+            {
+              "id": "1773877101620_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "## context\nThe {{$context.$triggers.REST.$input.senderRole}} is {{$context.$triggers.REST.$input.senderCompany}}.\nThe {{$context.$triggers.REST.$input.senderRole}} and the {{$context.$triggers.REST.$input.recipientRole}} are working together on a negotiation of type: {{$context.$triggers.REST.$input.negotiationType}} for the negotiation title: {{$context.$triggers.REST.$input.negotiationTitle}}.\n\n## subject rules\nSubject value:  {{$context.$triggers.REST.$input.subject}}, if subject value is missing you must use this value: {{$context.$triggers.REST.$input.negotiationTitle}}.\n\n## task\nAssume the role of a {{$context.$triggers.REST.$input.senderRole}} sending an email to the {{$context.$triggers.REST.$input.recipientRole}}.\nExpand the following text into a professional message from the {{$context.$triggers.REST.$input.senderRole}} to the {{$context.$triggers.REST.$input.recipientRole}} on the subject of <Subject>:\n```{{$context.$triggers.REST.$input.message}}```\n\nMaintain the inflection and intent (inquisitive, exploratory, collaborative, etc) of the original message. \nThe message should be in neutral business language.\nYour knowledge is limited to the message and subject. \nThe message should have at least 50 words. \nFormat the message as an HTML snippet. \nBegin and end your message with <p>.\nDo not use the new line character \"\\n\". Instead, use line break tags, \"<br>\". \nThe message should not contain a subject or header with h2 or h3 tags. \nUse multiple short paragraphs when the message contains more than one idea.\n\n\nStart your message with \"Hello, <br><br>\". \nEnd your message with \"<br><br>Thank you, <br> {{$context.$triggers.REST.$input.senderCompany}}\"\n\n## output format \nOutput an RFC8259-compliant JSON object in the following format : \n{ \n    subject: \"subject value\", \n    message: <insert generated message as an HTML snippet>\n}\n\n### Formatting Criteria\nMust translate ONLY the value for \"message\"  to ({{$context.$nodes.GET_USER_SESSION.$output.items[0].Language}}) language."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 2000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "Gpt Oss",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Compose Message Replies"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "COMPOSE_MESSAGE_REPLIES",
+          "id": "1773877141035",
+          "inputs": [
+            {
+              "id": "1773877141037_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "## context\nYou are the {{$context.$triggers.REST.$input.senderRole}} from {{$context.$triggers.REST.$input.senderCompany}}. You received a message from {{$context.$triggers.REST.$input.recipientRole}}.\nThe {{$context.$triggers.REST.$input.senderRole}} and the {{$context.$triggers.REST.$input.recipientRole}} are working together on a negotiation of type: {{$context.$triggers.REST.$input.negotiationType}}, for the negotiation title: {{$context.$triggers.REST.$input.negotiationTitle}}.\nThe subject of the message is {{$context.$triggers.REST.$input.subject}}.\n\n\n## task\nAssume the role of a {{$context.$triggers.REST.$input.senderRole}}, looking to reply to a professional email sent by a {{$context.$triggers.REST.$input.recipientRole}}. The reply should be in response to the previous message: ```{{$context.$triggers.REST.$input.previousMessage}}```\n\nThe goal of the reply is: ```{{$context.$triggers.REST.$input.replyIntent}}```.\n\nAvoid repeating the previous message in your reply.\nThe message should be in neutral business language.\nYour knowledge is limited to the subject, replyIntent and previousMessage.\nThe message should have at least 50 words. \nFormat the message as an HTML snippet. \nBegin and end your message with <p>.\nDo not use the new line character \"\\n\". Instead, use line break tags, \"<br>\". \nThe message should not contain a subject or header with h2 or h3 tags.\nUse multiple short paragraphs when the message contains more than one idea.\n\nStart your message with \"Hello, <br><br>\". \nEnd your message with \"<br><br>Thank you, <br> {{$context.$triggers.REST.$input.senderCompany}}\".\n\n\n## output format\nOutput an RFC8259-compliant JSON object in the following format :\n{\n    subject: <If subject:  {{$context.$triggers.REST.$input.subject}} is not available generate new one, it must be concise, specific, and aligned with the message. Otherwise use exactly {{$context.$triggers.REST.$input.subject}}>,\n    message: <insert generated message as an HTML snippet>\n}\n\n### Formatting Criteria\nMust translate ONLY the values for \"subject\" and \"message\"  to ({{$context.$nodes.GET_USER_SESSION.$output.items[0].Language}}) language."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Get User Session",
+            "toolCode": "ORA_USER_SESSION_TOOL"
+          },
+          "outcomes": {
+            "success": "1773876967781"
+          },
+          "code": "GET_USER_SESSION",
+          "id": "1776297227392",
+          "inputs": [],
+          "type": "TOOL"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 2000,
+        "p": 0.75
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "modelName": "Gpt Oss",
+      "provider": "CERT_BASIC"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1773877398354",
+            "name": "replyIntent",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1773876717872",
+            "name": "previousMessage",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1773876653209",
+            "name": "isNewMessageFlag",
+            "scope": "JOB",
+            "type": "boolean"
+          },
+          {
+            "id": "1773763835052",
+            "name": "message",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1773763823827",
+            "name": "subject",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1773763810693",
+            "name": "negotiationTitle",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1773763796540",
+            "name": "negotiationType",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1773763786962",
+            "name": "recipientRole",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1773763782612",
+            "name": "senderCompany",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1773763772585",
+            "name": "senderRole",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "PRC",
+  "product": "SOURCING",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "FULL",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "tags": [
+    {
+      "id": "300100649895628",
+      "code": "ORA_FAI_PROMPT",
+      "name": "ORA_FAI_PROMPT",
+      "workflowTagId": "300000331056310"
+    }
+  ],
+  "initialTags": [
+    {
+      "id": "300100649895628",
+      "code": "ORA_FAI_PROMPT",
+      "name": "ORA_FAI_PROMPT",
+      "workflowTagId": "300000331056310"
+    }
+  ],
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

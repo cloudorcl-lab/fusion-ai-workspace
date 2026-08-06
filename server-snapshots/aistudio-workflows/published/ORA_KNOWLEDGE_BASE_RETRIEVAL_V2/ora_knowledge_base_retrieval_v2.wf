@@ -1,0 +1,852 @@
+{
+  "workflowId": "300000331058010",
+  "workflowCode": "ORA_KNOWLEDGE_BASE_RETRIEVAL_V2",
+  "name": "Knowledge Base Retrieval v2",
+  "description": "Description",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1777279053172"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "name": "set nodes"
+          },
+          "outcomes": {
+            "success": "1775158326747"
+          },
+          "code": "SET_NODES",
+          "id": "1777279053172",
+          "inputs": [
+            {
+              "id": "1777279054653",
+              "name": "nodes",
+              "scope": "JOB",
+              "type": "array",
+              "value": "{{$context.$triggers.REST.$input.nodes}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "process nodes",
+            "returnType": "object",
+            "sourceCode": "const nodes = $context.$variables.nodes;\nconst queries = [];\nfor (const node of nodes) {\n  const characteristic = node.characteristic;\n  queries.push({\n      \"entityType\": [\"BUSINESS_OBJECT\"],\n      \"query\": characteristic\n  });\n  node.inputs_has_combined_attribute = false;\n  if (node && node.inputs && node.inputs[0] &&  node.inputs[0].type == 'object' &&  node.inputs[0].source == 'node')  {\n    node.inputs_has_combined_attribute = true;\n  }\n}\nreturn {nodes, queries};"
+          },
+          "outcomes": {
+            "success": "1776717480003"
+          },
+          "code": "PROCESS_NODES",
+          "id": "1775158326747",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_OTHER_KDBSERVICE",
+            "functionName": "getByQueries",
+            "processJson": true,
+            "name": "Fetch from KB"
+          },
+          "outcomes": {
+            "success": "1776706392556"
+          },
+          "code": "FETCH_FROM_KB",
+          "id": "1776717480003",
+          "inputs": [
+            {
+              "id": "1779820895111_1",
+              "name": "queries",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_NODES.$output.result.queries}}"
+            },
+            {
+              "id": "1779820895112_2",
+              "name": "filters",
+              "type": "string",
+              "value": "{}"
+            },
+            {
+              "id": "1779820895113_3",
+              "name": "families",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.families ? $context.$triggers.REST.$input.families.join(',') : \"HCM\"}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Process Kb Output",
+            "returnType": "object",
+            "sourceCode": "const kbOutputArr = [];\n\nconst queries = $context.$nodes.FETCH_FROM_KB.$output.queries;\nconst nodes = $context.$nodes.PROCESS_NODES.$output.result.nodes;\nconst codeToFullOptions = {};\n\n/* Due to LLM token limitation, reduce the tokens by picking only necessary fields*/\nconst incorrect = [];\nconst boFunctions =  {} ; //$context.$triggers.REST.$input.businessObjects ? $context.$triggers.REST.$input.businessObjects :  {};\n\nif (queries) {\n  for (const queryObj of queries) {\n    const query = queryObj.query;\n    let node;\n    for (const innerNode of nodes) {\n      if (innerNode.characteristic == query) {\n        node = innerNode;\n        break;\n      }\n    }\n  node.businessObjectsFunction = [];\n\n    for (const boObjectMetaData of queryObj.results) {\n      const boObject = boObjectMetaData.metadata;\n      const boObjectFields = {\n        \"BusinessObjectCode\": boObject.BusinessObjectCode,\n        \"BusinessObjectName\": boObject.BusinessObjectName,\n        \"BusinessObjectDescription\": boObject.BusinessObjectDescription,\n        \"BusinessObjectCode\": boObject.BusinessObjectCode,\n      };\n      if (boObject.Functions && Array.isArray(boObject.Functions)) {\n        for (const boFunction of boObject.Functions) {\n          const matchKey = boObject.BusinessObjectCode + ':' + boFunction.FunctionName;\n         if (node.excludeBusinessObjectFunction && node.excludeBusinessObjectFunction == matchKey) {\n           continue;\n         }\n      const forceCollection = boFunction.FunctionName === 'get_person_information_by_assignment_id' || boFunction.FunctionName == 'fetch_loggedIn_user_assignmentId';\n\n          const boFunctionFields = {\n            \"FunctionName\": boFunction.FunctionName,\n            \"FunctionDescription\": boFunction.FunctionDescription,\n            \"ActionName\": boFunction.ActionName,\n            \"IsCollectionResource\": forceCollection ? true : boFunction.IsCollectionResource,\n            \"InputParmeters\": [],\n            \"OutputAttributes\": [],\n            \"ReferenceRelationships\": boFunction.ReferenceRelationships,\n            \"MatchKey\": matchKey,\n            ...boObjectFields\n          };\n          if (boFunction.InputParmeters) {\n            for (const input of boFunction.InputParmeters) {\n              boFunctionFields.InputParmeters.push({\n                Name: input.Name,\n                Description: input.Description,\n                DataType: input.DataType,\n                Sources: input.Sources,\n              });\n            }\n          }\n          if (boFunction.OutputAttributes) {\n            for (const output of boFunction.OutputAttributes) {\n              boFunctionFields.OutputAttributes.push({\n                Name: output.Name,\n                Description: output.Description,\n                DataType: output.DataType,\n                Sources: output.Sources,\n              });\n            }\n          }\n          boFunctions[matchKey] = boFunctionFields\n          node.businessObjectsFunction.push(boFunctionFields);\n        }\n      } else {\n        incorrect.push(boObjectMetaData);\n      }\n    }\n  }\n}\n\nconst ret = {boFunctions, incorrect, nodes};\n\nreturn ret;"
+          },
+          "outcomes": {
+            "success": "1777676920120"
+          },
+          "code": "PROCESS_KB_OUTPUT",
+          "id": "1776706392556",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set boFunctions"
+          },
+          "outcomes": {
+            "success": "1776719689088"
+          },
+          "code": "SET_BOOBJECTCODETOBO",
+          "id": "1777676920120",
+          "inputs": [
+            {
+              "id": "1777966918335",
+              "name": "boFunctions",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.PROCESS_KB_OUTPUT.$output.result.boFunctions}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Match KB"
+          },
+          "outcomes": {
+            "success": "1776728007895"
+          },
+          "code": "MATCH_KB",
+          "id": "1776719689088",
+          "inputs": [
+            {
+              "id": "1776719689089_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "# Variables\nNodes: {{$context.$nodes.PROCESS_KB_OUTPUT.$output.result.nodes}}\nExternal Rest Tools: {{$context.$triggers.REST.$input.minExternalRestTools}} \n\n# Steps to create \"nodes\" property\nFor each node in nodes, compare node.characteristic name/descriptions of  either\n1) a function (externalRestToolFunction) part of a tool (ExternalRestToolFunction) in the array \"External Rest Tools\", compare both function and tool name to determine fit\n2) an businessObjectsFunction entry in node.businessObjectsFunctions. If excludeBusinessObjectFunction is set, exclude the business object function with the corresponding MatchKey\n\nChoice the best match, either a businessObjectsFunction or externalRestToolFunction, not both. \n\n# Return \nReturn the following for each node\n\nIf businessObjectsFunction use businessObjectsFunction.InputParmeters whereever InputParmeters is referenced:\nIf external rest tool, use ExternalRestToolFunction.InputParmeters whereever InputParmeters is referenced:\n\n## For businessObjectsFunction match\n\n| Field Name | Value |\n| -------- | -------- |\n| code | node.code |\n| characteristic | node.characteristic |\n| MatchKey | matched businessObjectsFunction.MatchKey | \n| parametersMapping |  See \"parametersMapping\" section | \n| idField | if InputParmeters contains a field with \"id\" (case insensitive)  -- not \"ids\"-- a field that accepts a single id , set idField to the name of that field   | \n| outputMapping |  See \"outputMapping\" section | \n| is_collection |   if idField is not empty, set to false, otherwise use value of businessObjectsFunction.IsCollectionResource if available | \n| referenceRelationships | See \"referenceRelationships\" section |\n\n## For externalRestToolFunction match\n| Field Name | Value |\n| -------- | -------- |\n| code | node.code |\n| characteristic | node.characteristic |\n| ToolCode | ToolCode match from External Rest Tool |\n| FunctionName |  name of external rest tool function ExternalRestToolFunction.name  |\n| parametersMapping |  See \"parametersMapping\" section | \n| idField |  if InputParmeters contains a field with \"id\" (case insensitive)  -- not \"ids\"-- a field that accepts a single id , set idField to the name of that field   | \n| outputMapping |  See \"outputMapping\" section | \n| is_collection |  if idField is not empty, set to false, otherwise false | \n\n## parametersMapping\n\nIf businessObjectsFunction use businessObjectsFunction.InputParmeters\nIf external rest tool, use ExternalRestToolFunction.InputParmeters\nForeach item in InputParmeters:\n - match with node.inputs on type match and name similarity and return {param_name: <parameter name attribute>, name: <input name>, code: <input code>, type: <parameter type>, value: <input value>, source: <input source>, mainParameterSource: null}. Each entry in node.inputs should only ever be matched once\n - if node.inputs contains an item with type=object tha provides all or some the parameters, return {param_name: <parameter name attribute>, name: <input name>.<parameter name attribute>, code: <input code>, type: <parameter type>, value: <input value>, source: <input source>, mainParameterSource: null}. Each entry in node.inputs should only ever be matched once\n- If no close match, assess node.characteristic to see if a static value would work for this parameter. If so, return {param_name: <parameter name attribute>, name: null, code: null, type: <parameter type>, value: <static value>, source: \"kb_static\", mainParameterSource: null} \n- if neither match nor static, identify a mainParameterSource (See mainParameterSource section): If mainParameterSource businessObjectCode equals ORA_SYSTEM_CONSTANT and AttributeValue is set, return {param_name: <parameter name attribute>, name: null, code: null, type: <parameter type>, value: <mainParameterSource.AttributeValue>, source: \"kb_static\", mainParameterSource: null}  otherwise  return {param_name: <InputParmeter name attribute>, name: null, code: null, type: <InputParmeter type>, value: null, source: null,  mainParameterSource: <See mainParameterSource section>}. \n\n### mainParameterSource\n\nTo calculate mainParameterSource, for each InputParmeter \"Sources\" attribute, examine the entries for possible sources for this parameter and determine best fit, and set  mainParameterSource to that entry.\n\n## outputMapping\n\n If node.outputs has a child \"restResults\" with a children attribute, identify as restResultsChildren, foreach item in restResultsChildren, match with item in businessObjectsFunction.OutputAttributes, and return  {outputName: <output attribute name if match exist>, name: <restResultsChildren child name >, type: <output attribute DataType>. If restResultsChildren child name is id and there is no match, look for an id field in businessObjectFunction.OutputAttributes that is likely a main id for the object and match on that.\n\n## referenceRelationships\n\nForeach ReferenceRelationship of businessObjectsFunction.ReferenceRelationships, assess using node.characteristic whether the given ReferenceRelationship needs to be used to fulfill the users' request. RelationshipAttributes is the attributes that are used to fetched the given relationship. If alwaysPresent is true, this relationship is required. Return minimum needed ReferenceRelationship."
+            }
+          ],
+          "outputSpecification": "{\n   \"$schema\":\"http://json-schema.org/draft-04/schema#\",\n   \"type\":\"object\",\n   \"properties\":{\n      \"nodes\":{\n         \"type\":\"array\",\n         \"items\":{\n            \"type\":\"object\",\n            \"properties\":{\n               \"code\":{\n                  \"type\":\"string\"\n               },\n               \"FunctionName\":{\n                  \"type\":\"string\"\n               },\n               \"idField\":{\n                  \"type\":\"string\"\n               },\n               \"is_collection\":{\n                  \"type\":\"boolean\"\n               },\n               \"MatchKey\":{\n                  \"type\":\"string\"\n               },\n               \"BusinessObjectName\":{\n                  \"type\":\"string\"\n               },\n               \"ToolCode\":{\n                  \"type\":\"string\"\n               },\n               \"referenceRelationships\":{\n                  \"type\":\"array\",\n                  \"items\":{\n                     \"type\":\"object\",\n                     \"properties\":{\n                        \"BusinessObjectCode\":{ \"type\":\"string\"},\n                        \"BusinessObjectName\":{ \"type\":\"string\"},\n                        \"FunctionName\":{ \"type\":\"string\"},\n                        \"alwaysPresent\":{ \"type\":\"boolean\"},\n                        \"RelationshipAttributes\":{ \"type\":\"array\"}\n                     }\n                  }\n               },\n               \"parametersMapping\":{\n                  \"type\":\"array\",\n                  \"items\":{\n                     \"type\":\"object\",\n                     \"properties\":{\n                        \"param_name\":{ \"type\":\"string\"},\n                        \"name\":{ \"type\":\"string\"},\n                        \"code\":{ \"type\":\"string\"},\n                        \"type\":{ \"type\":\"string\"},\n                        \"value\":{ \"type\":\"string\"},\n                        \"source\":{ \"type\":\"string\"},\n                        \"mainParameterSource\":{ \"type\":\"object\"}\n                     }\n                  }\n               },\n               \"outputMapping\":{\n                  \"type\":\"array\"\n               },\n               \"input\":{\n                  \"type\":\"array\"\n               }\n            }\n         }\n      }\n  }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "post process",
+            "returnType": "object",
+            "sourceCode": "let nodes = $context.$nodes.PROCESS_KB_OUTPUT.$output.result.nodes;\nconst toolsByToolCode = $context.$triggers.REST.$input.toolsByToolCode;\nconst boFunctions = $context.$nodes.PROCESS_KB_OUTPUT.$output.result.boFunctions;\n\nconst matchOutput = $context.$nodes.MATCH_KB.$output.nodes;\n\nif (!nodes || !matchOutput || !Array.isArray(matchOutput) ) {\n  return;\n}\nconst matchOutputByCode = {};\nfor (const node of matchOutput) {\n  matchOutputByCode[node.code] = node;\n}\n\nconst newNodes = {};\n\nfor (const node of nodes) {\n  const match = matchOutputByCode[node.code];\n  let parametersMapping;\n  let restObj;\n  const matchKey = match && match.MatchKey ? match.MatchKey : null;\n  if (matchKey && boFunctions[matchKey]) {\n    node.matchKey = matchKey;\n    let kbBo = boFunctions[matchKey];\n    node.parametersMapping = match.parametersMapping;\n    parametersMapping = match.parametersMapping;\n    const forceCollection = kbBo.FunctionName === 'get_person_information_by_assignment_id' || kbBo.FunctionName == 'fetch_loggedIn_user_assignmentId';\n    node.businessObjectFunction = {\n      \"BusinessObjectCode\": kbBo.BusinessObjectCode,\n      \"FunctionName\": kbBo.FunctionName,\n      \"MatchKey\": matchKey,\n      \"ActionName\": kbBo.ActionName,\n      //\"parametersMapping\": match.parametersMapping,\n      \"parameters\": [],\n      \"IsCollectionResource\": forceCollection ? true : kbBo.OutputType === \"COLLECTION\",\n      \"OutputAttributes\": kbBo.OutputAttributes,\n      \"InputParmeters\": kbBo.InputParmeters,\n      \"outputMapping\": match.outputMapping,\n      \"referenceRelationships\": match.referenceRelationships,\n        \"OutputTypeUsage\": kbBo.OutputTypeUsage,\n        \"OutputType\": kbBo.OutputType,\n    };\n    if (match.referenceRelationships && match.referenceRelationships.length > 0) {\n      newNodes[node.code] = node;\n    }\n\n    for (const param of kbBo.InputParmeters) {\n      if (match.idField && match.idField === param.Name && !forceCollection) {\n        node.businessObjectFunction.IsCollectionResource = false;\n      }\n      node.businessObjectFunction.parameters.push({\n        name: param.Name,\n        dataType: param.DataType,\n      });\n    }\n    restObj = node.businessObjectFunction;\n  } else if (match && match.ToolCode && match.FunctionName &&  toolsByToolCode[match.ToolCode] && toolsByToolCode[match.ToolCode].functionByName && toolsByToolCode[match.ToolCode].functionByName[match.FunctionName]) {\n    node.externalRestTool = toolsByToolCode[match.ToolCode];\n    node.externalRestTool.FunctionName = match.FunctionName;\n    const endpointFunction = node.externalRestTool.functionByName[match.FunctionName];\n    node.parametersMapping = match.parametersMapping;\n    node.externalRestTool.endpointFunction = endpointFunction;\n    node.externalRestTool.parameterDefinitions =  endpointFunction.parameterDefinitions\n    delete node.externalRestTool.Specification;\n    delete node.externalRestTool.functionByName;\n    restObj = node.externalRestTool;\n\n    parametersMapping = match.parametersMapping;\n  }\n  node.missingInputs= [];\n  if (parametersMapping) {\n    for (const param of parametersMapping) {\n      if (param.mainParameterSource) {\n        const mainSource = param.mainParameterSource;\n        if (mainSource.BusinessObjectCode && mainSource.FunctionName && mainSource.BusinessObjectCode.indexOf('ORA_SYSTEM') === -1) {\n          newNodes[node.code] = node;\n        } else if (mainSource.Rules && Array.isArray(mainSource.Rules)) {\n          for (const rule of mainSource.Rules) {\n            if (rule.Inputs && Array.isArray(rule.Inputs)) {\n              for (const innerItem of rule.Inputs) {\n                if (innerItem.BusinessObjectCode && innerItem.FunctionName && innerItem.BusinessObjectCode.indexOf('ORA_SYSTEM') === -1) {\n                  newNodes[node.code] = node;\n                }\n              }\n            }\n          }\n        }\n      }\n      if (!param.mainParameterSource && !param.source) {\n        node.missingInputs.push(param);\n      }\n    }\n  }\n  node.inputMissing = node.missingInputs.length > 0;\n\n  const outputAttributes = {}; \n  node.missingOutputs = [];\n  if (restObj) {\n    restObj.outputs = [];\n    if (restObj.OutputAttributes) {\n      for (const output of restObj.OutputAttributes) {\n        restObj.outputs.push({name: output.Name, type: output.DataType});\n        outputAttributes[output.Name] = output;\n      }\n    }\n    if (node.outputMapping) {\n      for (const output of node.outputMapping) {\n        if (output &&  (!output.outputName || !outputAttributes[output.outputName])) {\n          output.outputName = '';\n          node.missingOutputs.push(output);\n        }\n      }\n    }\n  }\n  node.outputMissing = node.missingOutputs.length > 0;\n\n  delete node.businessObjectsFunction;\n}\n\n\nconst ret = {keys: Object.keys(boFunctions), newNodes: Object.values(newNodes), nodes};\n\nreturn ret;"
+          },
+          "outcomes": {
+            "success": "1777998969798"
+          },
+          "code": "POST_PROCESS",
+          "id": "1776728007895",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set ProcessNext Round1"
+          },
+          "outcomes": {
+            "success": "1778611452974"
+          },
+          "code": "SET_FIRST_PROCESSNEXT_",
+          "id": "1777998969798",
+          "inputs": [
+            {
+              "id": "1779392122554",
+              "name": "maxDepth",
+              "scope": "JOB",
+              "type": "number",
+              "value": "{{$context.$triggers.REST.$input.maxDepth || 4}}"
+            },
+            {
+              "id": "1779388497293",
+              "name": "recurisonPrevention",
+              "scope": "JOB",
+              "type": "number",
+              "value": "0"
+            },
+            {
+              "id": "1777998980009",
+              "name": "processNext",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.POST_PROCESS.$output.result.newNodes}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "If has new nodes"
+          },
+          "outcomes": {
+            "true": "1777964894447",
+            "false": "add_false_1778193548461"
+          },
+          "code": "IF_HAS_NEW_NODES",
+          "convergenceTargetId": "1777677099665",
+          "id": "1778193548461",
+          "inputs": [
+            {
+              "id": "1778193548462_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.IDENTIFY_BOS.$output.result.hasNewBos}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "GPT-5 Mini (Premium)",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Identify New Nodes"
+          },
+          "outcomes": {
+            "success": "1777677099665"
+          },
+          "code": "IDENTIFY_NEW_NODES",
+          "convergenceTargetId": "1778193578515",
+          "id": "1777964894447",
+          "inputs": [
+            {
+              "id": "1777964894449_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "# Variables\n\nsourceNodes:: {{$context.$variables.processNext}} \nBusinessObjectFunctionMappings: {{$context.$nodes.IDENTIFY_BOS.$output.result.boMapping}}\nAlreadyProcessedNodes: {{$context.$variables.processedNewNodes}} \n\n\n# Instructions for \"newNodes\"\n\nYou are helping to generate nodes to create an agent team.\n\nYou will traverse the array BusinessObjectFunctionMappings which contains a businessObjectFunction and mapping information for how that business object function is used. \n\n## BusinessObjectFunctionMappings format\n\nEach entries contains this info:\n\n| Field Name | Value |\n| -------- | -------- |\n| BusinessObjectCode | The object code for this BusinessObjectFunction |\n| FunctionName | The function name for this BusinessObjectFunction |\n| businessObjectFunction | the businessObjectFunction for this business object |\n| providesInputsFor | An array of parameters this business object function will be providing for other nodes |\n| providesOutputsFor | An array of nodes who's params will be used to call this business object function |\n\n### providesInputsFor contains these fields\n\n| Field Name | Value |\n| -------- | -------- |\n| sourceNodeCode | The code for sourceNode that needs a parameter supplied from this business object function |\n| paramName | The name of the parameter to supply to the sourceNode |\n| atrributeName | the name of the output attribute that this business object function will be supplying |\n| mainParameterSource | Data about how this Business Object Function supplies this to the source node |\n\n### providesOutputsFor contains these fields\n\n| Field Name | Value |\n| -------- | -------- |\n| sourceNodeCode | The code for sourceNode that provides a paramater to this business object function |\n| RelationshipAttributes | What attributes are provided as outputs |\n\n\n# Instruction for \"nodes\" output \nFor each businessObjectFunctionMapping in BusinessObjectFunctionMappings, then for each inputEntry  in  providesInputsFor, determine either:\n- If there is an existing node (existingNode) in AlreadyProcessedNodes or sourceNodes that has the same BusinessObjectCode and FunctionName  and can provide this parameter\n- or create a new node  (newNode) to satisfy this need.\n\nFor each businessObjectFunctionMapping in BusinessObjectFunctionMappings, then for each providesOutputsFor  in  providesOutputsFor, determine either:\n- Create a new node  (newNode) or merge with an existing node to satisfy this need. \n\n Each node can fulfill multiple entries in \"providesInputsFor\" and \"providesOutputsFor\", but order must be sensible such that a nodeA that provides outputs for nodeB is before nodeB.\n\nReturn below for each newNode or existingNode:\n\nbusinessObjectFunction refers to businessObjectFunctionMapping.businessObjectFunction below\n\n## If returning existingNode, return:\n\n| Field Name | Value |\n| -------- | -------- |\n| code | existingNode.code |\n| characteristic | existingNode.characteristic  |\n| BusinessObjectCode | BusinessObjectCode | \n| FunctionName | FunctionName  |\n| outputsParamsMapping |  See \"outputsParamsMapping\" section | \n| idField |  if businessObjectFunction.InputParmeters contains a field with \"id\" (case insensitive)  -- not \"ids\"-- a field that accepts a single id , set idField to the name of that field |\n| is_collection |  if idField is not empty, set to false, otherwise use value of businessObjectsFunction.IsCollectionResource if available | \n| parametersMapping |  See \"parametersMapping\" section | \n| referenceRelationships | See  \"referenceRelationships\" section |\n\n## For newNode, return: \n| Field Name | Value |\n| -------- | -------- |\n| code |  newly generated node code  (all upper case, alphanumeric + underscores) |\n| BusinessObjectCode | BusinessObjectCode | \n| FunctionName | FunctionName  |\n| characteristic |  describe what this node will be doing  |\n| BusinessObjectCode | BusinessObjectCode | \n| FunctionName | FunctionName  |\n| outputsParamsMapping |  See \"outputsParamsMapping\" section | \n| idField |  if businessObjectFunction.InputParmeters contains a field with \"id\" (case insensitive)  -- not \"ids\"-- a field that accepts a single id , set idField to the name of that field |\n| is_collection |  if idField is not empty, set to false, otherwise use value of businessObjectsFunction.IsCollectionResource if available | \n| parametersMapping |  See \"parametersMapping\" section | \n| referenceRelationships | See  \"referenceRelationships\" section |\n\n## outputsParamsMapping\n\nRequired if node is fulfilling a \"providesInputsFor\", an array containing an entry for each parameter this node will be providing parameters for. If this is an existing node, merge with existing outputsParamsMapping if set. Each entry will have these fields:\n\n| Field Name | Value |\n| -------- | -------- | \n| param_name | providesInputsForEntry.paramName |\n| code | providesInputsForEntry.sourceNodeCode |\n| mainParameterSource | providesInputsForEntry.mainParameterSource> |\n\n## parametersMapping\n\nForeach item in businessObjectFunction.InputParmeters:\n - If for providesInputsFor, return  {param_name: <InputParmeter name attribute>, name: null, code: null, type: <InputParmeter type>, value: null, source: null,  mainParameterSource: <See mainParameterSource section>}.\n- If via providesOutputsFor,  {param_name: <InputParmeter name attribute>, name: null, code: sourceNodeCode, type: <InputParmeter type>, value: null, source: \"node:, outnameName: name of sourceNodeCode output if different from input name,  mainParameterSource: null}.\n\n### mainParameterSource\n\nTo calculate mainParameterSource, for each InputParmeter \"Sources\" attribute, examine the entries for possible sources for this parameter and determine best fit, and set  mainParameterSource to that entry, including a newly generated nodeCode.\n\n## referenceRelationships\n\nForeach ReferenceRelationship of businessObjectFunctionMapping.businessObjectFunction.ReferenceRelationships, assess using node.characteristic whether the given ReferenceRelationship needs to be used to fulfill the users' request and include if an existing output does not cover this relation ship (e.g. the outputs of an node already cover this reference relationship). RelationshipAttributes is the attributes that are used to fetched the given relationship.  If alwaysPresent is true, this relationship is required. Return minimum needed ReferenceRelationships.\n\n# Instruction for \"explanation\" output\n\nFor explanation, return a summery of what was processed. If \"nodes\" is a blank array, explain why."
+            }
+          ],
+          "outputSpecification": "{\n   \"$schema\":\"http://json-schema.org/draft-04/schema#\",\n   \"type\":\"object\",\n   \"properties\":{\n      \"explanation\": {\n                  \"type\":\"string\"\n               },\n      \"newNodes\":{\n         \"type\":\"array\",\n         \"items\":{\n            \"type\":\"object\",\n            \"properties\":{\n               \"code\":{\n                  \"type\":\"string\"\n               },\n               \"FunctionName\":{\n                  \"type\":\"string\"\n               },\n               \"BusinessObjectCode\":{\n                  \"type\":\"string\"\n               },\n               \"is_collection\":{\n                  \"type\":\"boolean\"\n               },\n               \"referenceRelationships\": {\n                  \"type\":\"array\"\n               },\n               \"outputsParamsMapping\":{\n                  \"type\":\"array\",\n                  \"items\":{\n                     \"type\":\"object\",\n                     \"properties\":{\n                        \"param_name\":{\n                           \"type\":\"string\"\n                        },\n                        \"code\":{\n                           \"type\":\"string\"\n                        },\n                        \"mainParameterSource\":{\n                           \"type\":\"object\"\n                        }\n                     }\n                  }\n               },\n               \"idField\":{\n                  \"type\":\"string\"\n               },\n               \"parametersMapping\":{\n                  \"type\":\"array\"\n               }\n            }\n         }\n      }\n   }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Create BO Query",
+            "returnType": "object",
+            "sourceCode": "let nodes = $context.$nodes.POST_PROCESS.$output.result.nodes;\nlet newNodes =  $context.$nodes.IDENTIFY_NEW_NODES.$output ? $context.$nodes.IDENTIFY_NEW_NODES.$output.newNodes : [];\nconst processedNewNodes = $context.$variables.processedNewNodes || {};\nconst boFunctions = $context.$variables.boFunctions ;\n\nconst boToMapToNodes = {};\n\nconst boToFetch = {};\nconst boToNodeCharacteristic = {};\n\nconst nodesToFetchBo = [];\nconst processNext = [];\nif (newNodes) {\n  for (const node of newNodes) {\n    const matchKey = node.BusinessObjectCode + ':' + node.FunctionName;\n    const matchedBOF = boFunctions[matchKey];\n    if (!matchedBOF && node.BusinessObjectCode.indexOf('ORA_SYSTEM') === -1) {\n      boToFetch[\"BO_\" + node.BusinessObjectCode] = node;\n      nodesToFetchBo.push(node);\n    } else if (!processedNewNodes[node.code]) {\n      processedNewNodes[node.code] = node;\n      processNext.push(node);\n      if (!node.businessObjectFunction) {\n        node.businessObjectFunction = matchedBOF;\n      }\n    } else if (processedNewNodes[node.code]) {\n       processedNewNodes[node.code].outputsParamsMapping =  [...(node.outputsParamsMapping || []), ...(processedNewNodes[node.code].outputsParamsMapping || [])];\n      if (node.referenceRelationships || node.parametersMapping) {\n        processNext.push(node);\n      }\n    }\n  }\n}\n\nlet boQueries;\nlet boFilters;\nconst boKeys = Object.keys(boToFetch);\nif (boKeys.length) {\n  const boFilterCriteria = [];\n  for (const businessObjectCode of boKeys) {\n    boFilterCriteria.push({\n      \"field\":\"documentIdentifier\",\n      \"operator\":\"eq\",\n      \"value\": businessObjectCode\n    });\n  }\n  boQueries = [{\n    \"entityType\": [\"BUSINESS_OBJECT\"],\n    \"query\": boKeys.join(',')\n  }];\n  boFilters = {\n    \"operator\":\"or\",\n    \"criteria\": boFilterCriteria,\n  };\n}\n\n\nconst ret = {processNext, boFilters, boQueries, nodesToFetchBo, processedNewNodes};\n\nreturn ret;"
+          },
+          "outcomes": {
+            "success": "1777999232883"
+          },
+          "code": "CREATE_BO_QUERY",
+          "id": "1777677099665",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set processedNewNodes"
+          },
+          "outcomes": {
+            "success": "1777582841676"
+          },
+          "code": "SET_PROCESSEDNEWNODES",
+          "id": "1777999232883",
+          "inputs": [
+            {
+              "id": "1779388929042",
+              "name": "recurisonPrevention",
+              "scope": "JOB",
+              "type": "number",
+              "value": "{{$context.$variables.recurisonPrevention + 1}}"
+            },
+            {
+              "id": "1779319070114",
+              "name": "processNext",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.CREATE_BO_QUERY.$output.result.processNext}}"
+            },
+            {
+              "id": "1777999236937",
+              "name": "processedNewNodes",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.CREATE_BO_QUERY.$output.result.processedNewNodes}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "If BO To Fetch"
+          },
+          "outcomes": {
+            "true": "1777583890545",
+            "false": "1779319207358"
+          },
+          "code": "IF_BO_TO_FETCH",
+          "convergenceTargetId": "1776899985318",
+          "id": "1777582841676",
+          "inputs": [
+            {
+              "id": "1777582841677_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{!!$context.$nodes.CREATE_BO_QUERY.$output.result.boFilters}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_OTHER_KDBSERVICE",
+            "functionName": "getByQueries",
+            "processJson": true,
+            "name": "Fetch Referenced Bos"
+          },
+          "outcomes": {
+            "success": "1777911682171"
+          },
+          "code": "FETCH_REFERENCED_BOS",
+          "id": "1777583890545",
+          "inputs": [
+            {
+              "id": "1779821586045_1",
+              "name": "queries",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_BO_QUERY.$output.result.boQueries}}"
+            },
+            {
+              "id": "1779821586046_2",
+              "name": "filters",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_BO_QUERY.$output.result.boFilters}}"
+            },
+            {
+              "id": "1779821586046_3",
+              "name": "families",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.families ? $context.$triggers.REST.$input.families.join(',') : \"HCM\"}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Post Process Fetch Referenced",
+            "returnType": "object",
+            "sourceCode": "const queries = $context.$nodes.FETCH_REFERENCED_BOS.$output.queries;\nconst boFunctions = $context.$variables.boFunctions ;\n\n/* Due to LLM token limitation, reduce the tokens by picking only necessary fields*/\nconst newBosFunctions = [];\nif (queries) {\n  for (const queryObj of queries) {\n    for (const boObjectMetaData of queryObj.results) {\n      const boObject = boObjectMetaData.metadata;\n      const boObjectFields = {\n        \"BusinessObjectCode\": boObject.BusinessObjectCode,\n        \"BusinessObjectName\": boObject.BusinessObjectName,\n        \"BusinessObjectDescription\": boObject.BusinessObjectDescription,\n      };\n\n      if (boObject.Functions && Array.isArray(boObject.Functions)) {\n        for (const boFunction of boObject.Functions) {\n\n          const matchKey = boObject.BusinessObjectCode + ':' + boFunction.FunctionName;\n          const boFunctionFields = {\n            \"FunctionName\": boFunction.FunctionName,\n            \"FunctionDescription\": boFunction.FunctionDescription,\n            \"ActionName\": boFunction.ActionName,\n           \"IsCollectionResource\": boFunction.FunctionName === 'get_person_information_by_assignment_id' || boFunction.FunctionName == 'fetch_loggedIn_user_assignmentId' ? true : boFunction.OutputType === \"COLLECTION\",\n\n            \"InputParmeters\": boFunction.InputParmeters,\n            \"OutputAttributes\": boFunction.OutputAttributes,\n            \"ReferenceRelationships\": boFunction.ReferenceRelationships,\n            \"MatchKey\": matchKey,\n         \"OutputTypeUsage\": boFunction.OutputTypeUsage,\n         \"OutputType\": boFunction.OutputType,\n            ...boObjectFields\n          };\n          boFunctions[matchKey] = boFunctionFields;\n          newBosFunctions.push(boFunctionFields);\n\n        }\n      }\n    }\n  }\n}\n\nconst nodes = $context.$nodes.CREATE_BO_QUERY.$output.result.nodesToFetchBo;\nconst newNodes = [];\nfor (const node of nodes) { \n  node.businessObjectFunction = boFunctions[node.BusinessObjectCode + ':' + node.FunctionName];\n  if (node.businessObjectFunction) {\n     // Cleanup\n    delete node.InputParmeters;\n    delete node.parametersMapping;\n    delete node.is_collection;\n    delete node.idField;\n    newNodes.push(node);\n  }\n}\nconst ret = {newNodes, newBosFunctions, boFunctions};\n\nreturn ret;"
+          },
+          "outcomes": {
+            "success": "1777915421887"
+          },
+          "code": "POST_PROCESS_FETCH_REFERENCED",
+          "id": "1777911682171",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Update boFunctions"
+          },
+          "outcomes": {
+            "success": "1777913869004"
+          },
+          "code": "SET_BOOBJECTCODETOBO_AGAIN",
+          "id": "1777915421887",
+          "inputs": [
+            {
+              "id": "1778189409428",
+              "name": "boFunctions",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.POST_PROCESS_FETCH_REFERENCED.$output.result.boFunctions}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "If Fetched more BOs"
+          },
+          "outcomes": {
+            "true": "1777913954982",
+            "false": "add_false_1777913869004"
+          },
+          "code": "IF_FETCH_MORE_BOS",
+          "convergenceTargetId": "1776899985318",
+          "id": "1777913869004",
+          "inputs": [
+            {
+              "id": "1777913869005_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.POST_PROCESS_FETCH_REFERENCED.$output.result.newNodes.length > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Determine new sources"
+          },
+          "outcomes": {
+            "success": "1778630066505"
+          },
+          "code": "DETERMINE_NEW_SOURCES",
+          "id": "1777913954982",
+          "inputs": [
+            {
+              "id": "1777913954983_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "# Variables\n\nNodes: {{$context.$nodes.POST_PROCESS_FETCH_REFERENCED.$output.result.newNodes}} \n\n# Task\n\nFor each node in nodes:\n\n| Field | Value |\n| -------- | -------- | \n| code | node.code | \n| BusinessObjectCode | node.BusinessObjectCode | \n| FunctionName | node.FunctionName |\n| businessObjectsFunction | node.businessObjectsFunction |\n| paramaterMapping | See \"parametersMapping\" section below | \n| referenceRelationships | See \"referenceRelationships\" section below |\n\n\n## parametersMapping\n\nForeach item in node.businessObjectsFunction.InputParmeters:\n - return If there exists a referenceRelationships for this input, return {param_name: <InputParmeter name attribute>, name: null, code: null, type: <InputParmeter type>, value: null, source: node,  mainParameterSource: <See mainParameterSource section>}.\n - return {param_name: <InputParmeter name attribute>, name: null, code: null, type: <InputParmeter type>, value: null, source: null,  mainParameterSource: <See mainParameterSource section>}.\n\n### mainParameterSource\n\nTo calculate mainParameterSource, for each InputParmeter \"Sources\" attribute, examine the entries for possible sources for this parameter and determine best fit, and set  mainParameterSource to that entry.\n\n\n## referenceRelationships\n\nForeach ReferenceRelationship of businessObjectsFunction.ReferenceRelationships, assess using node.characteristic whether the given ReferenceRelationship needs to be used to fulfill the users' request. RelationshipAttributes is the attributes that are used to fetched the given relationship. If alwaysPresent is true, this relationship is required. Return minimum needed ReferenceRelationship."
+            }
+          ],
+          "outputSpecification": "{\n   \"$schema\":\"http://json-schema.org/draft-04/schema#\",\n   \"type\":\"object\",\n   \"properties\":{\n      \"nodes\":{\n         \"type\":\"array\",\n         \"items\":{\n            \"type\":\"object\",\n            \"properties\":{\n               \"code\":{\n                  \"type\":\"string\"\n               },\n               \"BusinessObjectCode\":{\n                  \"type\":\"string\"\n               },\n               \"businessObjectFunction\":{\n                  \"type\":\"object\"\n               },\n               \"param\":{\n                  \"type\":\"object\"\n               },\n               \"mainSource\":{\n                  \"type\":\"object\"\n               },\n               \"BusinessObjectName\":{\n                  \"type\":\"string\"\n               },\n               \"referenceRelationships\":{\n                  \"type\":\"array\"\n               },\n               \"FunctionName\":{\n                  \"type\":\"string\"\n               },\n               \"parametersMapping\":{\n                  \"type\":\"array\",\n                  \"items\":{\n                     \"type\":\"object\",\n                     \"properties\":{\n                        \"param_name\":{ \"type\":\"string\"},\n                        \"name\":{ \"type\":\"string\"},\n                        \"code\":{ \"type\":\"string\"},\n                        \"type\":{ \"type\":\"string\"},\n                        \"value\":{ \"type\":\"string\"},\n                        \"mainParameterSource\":{ \"type\":\"object\"}\n                     }\n                  }\n               }\n            }\n         }\n      }\n   }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "set processNext"
+          },
+          "outcomes": {
+            "success": "1777921011764"
+          },
+          "code": "SET_PROCESSNEXT",
+          "id": "1777920974599",
+          "inputs": [
+            {
+              "id": "1778630254251",
+              "name": "processedNewNodes",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.COMBINE_FOR_PROCESSEDNODES.$output.result.processedNewNodes}}"
+            },
+            {
+              "id": "1777920980344",
+              "name": "processNext",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.COMBINE_FOR_PROCESSEDNODES.$output.result.processNext}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "if process next"
+          },
+          "outcomes": {
+            "true": "1777921027281",
+            "false": "add_false_1777921011764"
+          },
+          "code": "IF_PROCESS_NEXT",
+          "convergenceTargetId": "1776899985318",
+          "id": "1777921011764",
+          "inputs": [
+            {
+              "id": "1777921011765_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.COMBINE_FOR_PROCESSEDNODES.$output.result.processNext.length > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1778611452974",
+            "name": "Recall newNodes",
+            "returnType": "object",
+            "sourceCode": "if ( $context.$variables.recurisonPrevention  < $context.$variables.maxDepth) {\n  throw new Error('process next');\n}"
+          },
+          "outcomes": {
+            "success": "1776899985318"
+          },
+          "code": "RECALL_CREATE_BO_QUERY",
+          "id": "1777921027281",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "blank if"
+          },
+          "outcomes": {
+            "true": "1778010184204",
+            "false": "add_false_1776899985318"
+          },
+          "code": "BLANK_IF",
+          "convergenceTargetId": "end",
+          "id": "1776899985318",
+          "inputs": [
+            {
+              "id": "1776899985321_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{true}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Create Suggestions",
+            "returnType": "object",
+            "sourceCode": "const processedNewNodes = $context.$variables.processedNewNodes;\nconst nodes = $context.$nodes.POST_PROCESS.$output.result.nodes;\n\n// Restrict boFunctions to BO that are used\nconst boFunctions = $context.$variables.boFunctions ;\n\nfor (const boFunction of Object.values(boFunctions)) {\n  delete boFunction.kbObject; \n}\n\nconst suggestions = [];\nconst processedNewNodesArr = Object.values(processedNewNodes);\n\nconst processNewNodesBoToNodes = {};\n\nfor (const node of nodes) {\n  node.existingNode = true;\n}\nfor (const node of [...processedNewNodesArr, ...nodes]) {\n  if (node.BusinessObjectCode && node.BusinessObjectCode.indexOf('ORA_SYSTEM') > -1) {\n    continue;\n  }\n  let suggestion;\n  const key = node.existingNode &&  node.businessObjectFunction ? node.businessObjectFunction.BusinessObjectCode + ':' + node.businessObjectFunction.FunctionName : node.BusinessObjectCode + ':' + node.FunctionName;\n  if (boFunctions[key]) {\n    boFunctions[key].usedByNode = true;\n  }\n  if (node.existingNode) {\n    delete node.existingNode;\n    if (!processedNewNodesArr.length) {\n      let processSuggestions  = false;\n      if (node.parametersMapping && node.parametersMapping.length) {\n        for (const param of node.parametersMapping) {\n          if (param && param.mainParameterSource && param.mainParameterSource.BusinessObjectCode === 'ORA_SYSTEM_CONSTANT' && param.mainParameterSource.AttributeValue) {\n            param.value = param.mainParameterSource.AttributeValue;\n            param.source = 'kb_static';\n          } else if (param && param.mainParameterSource && param.mainParameterSource.BusinessObjectCode === 'ORA_SYSTEM_USER') {\n            processSuggestions = true;\n            continue;\n          }\n        }\n      }\n      if (!processSuggestions) {\n        continue;\n      }\n    }\n    suggestion = `Set node ${node.code} to businessObject ${node.businessObjectFunction.BusinessObjectCode} function ${node.businessObjectFunction.FunctionName}.`;\n  } else {\n    const matchKey = node.BusinessObjectCode + ':' + node.FunctionName;\n    if (!processNewNodesBoToNodes[matchKey]) {\n      processNewNodesBoToNodes[matchKey] = [];\n    }\n    processNewNodesBoToNodes[matchKey].push(node);\n    suggestion = `Add a Business Object Function node with BusinessObjectCode ${node.BusinessObjectCode} and functionName ${node.FunctionName} with node code \"${node.code}\". `;\n    if (node.businessObjectFunction && node.businessObjectFunction.IsCollectionResource) {\n      suggestion += `This node is a collection and returns an \"items\" array. If need only the first item, use \"restResults.items[0]\". `;\n      if (node.businessObjectFunction.OutputTypeUsage == 'OBJECT' ) {\n        suggestion += \"It's typical to only ever use the first item of this BOF. \"\n      }\n    }\n  }\n  if (boFunctions[key]) {\n    boFunctions[key].usedByNode = true;\n  }\n  if (node.outputsParamsMapping && node.outputsParamsMapping.length) {\n    const suggestedOutputs = [];\n    for (const param of node.outputsParamsMapping) {\n      if (param && param.mainParameterSource ) {\n        const mainParameterSource = param.mainParameterSource;\n        if (mainParameterSource.BusinessObjectCode && mainParameterSource.AttributeName) {\n          if (node.businessObjectFunction && node.businessObjectFunction.IsCollectionResource) {\n            suggestedOutputs.push(`Output \"${mainParameterSource.AttributeName}\" as inout to node ${param.code} input name=\"${param.param_name}\". When need the value of the first item (e.g. when this node is expected to return one result and loop is not needed), use \"restResults.items[0].${mainParameterSource.AttributeName}\". `);\n          } else {\n            suggestedOutputs.push(`Output \"${mainParameterSource.AttributeName}\" for input to node ${param.code} input \"${param.param_name}\". `);\n          }\n        } else if (mainParameterSource.BusinessObjectCode === 'ORA_SYSTEM_CONSTANT' && mainParameterSource.Rules) {\n          for (const rule of mainParameterSource.Rules) {\n            if (rule.Inputs && Array.isArray(rule.Inputs)) {\n              for (const innerItem of rule.Inputs) {\n                suggestedOutputs.push(`Output ${innerItem.AttributeName} for input to node ${param.code} as part of a expression.`);\n              }\n            }\n          }\n        }\n      }\n    }\n    if (suggestedOutputs.length) {\n      suggestion += `Add or adjust these Outputs: ${suggestedOutputs.join('; ')}`;\n    }\n  }  \n  if (node.parametersMapping && node.parametersMapping.length) {\n    const suggestedInputs = [];\n    for (const param of node.parametersMapping) {\n      if (param && param.mainParameterSource) {\n        const mainParameterSource = param.mainParameterSource;\n        if (!mainParameterSource.BusinessObjectCode) {\n           param.mainParameterSource.missingBOC = true;\n          continue;\n        }\n        if (mainParameterSource.BusinessObjectCode.indexOf('ORA_SYSTEM') === -1) {\n          // Try and find the source node. \n          const matchKey = mainParameterSource.BusinessObjectCode + ':' + mainParameterSource.FunctionName;\n          const nodeCode = processNewNodesBoToNodes[matchKey] && processNewNodesBoToNodes[matchKey].length === 1 ? processNewNodesBoToNodes[matchKey][0].code : null;\n          const nodeIdentifier = nodeCode ? `node ${nodeCode}` : `businessObject ${mainParameterSource.BusinessObjectCode} function ${mainParameterSource.FunctionName}`;\n          suggestedInputs.push(`Input with name=\"${param.param_name}\" sourced via ${nodeIdentifier} output\"${mainParameterSource.AttributeName}\". `);\n        } else if (mainParameterSource.BusinessObjectCode === 'ORA_SYSTEM_USER') {\n          suggestedInputs.push(`\"${param.param_name}\" from user input.`);\n        } else if (mainParameterSource.BusinessObjectCode === 'ORA_SYSTEM_CONSTANT' && !mainParameterSource.Rules) {\n          suggestedInputs.push(`\"${param.param_name}\" with static value \"${mainParameterSource.AttributeValue}\".`);\n        } else if (mainParameterSource.BusinessObjectCode === 'ORA_SYSTEM_CONSTANT' && mainParameterSource.Rules) {\n          const outcomeTexts = [];\n          for (const outcome of mainParameterSource.Values) {\n            outcomeTexts.push(`If outcome equals \"${outcome.outcome}\", use value ${outcome.value}`);\n          }\n          const ruleTexts = []\n          for (const rule of mainParameterSource.Rules) {\n            const innerItemTexts = [];\n            if (rule.Inputs && Array.isArray(rule.Inputs)) {\n              for (const innerItem of rule.Inputs) {\n                const matchKey = innerItem.BusinessObjectCode.BusinessObjectCode + ':' + innerItem.BusinessObjectCode.FunctionName;\n                const nodeCode = processNewNodesBoToNodes[matchKey].length === 1 ? processNewNodesBoToNodes[matchKey][0].code : null;\n                const nodeIdentifier = nodeCode ? `node ${nodeCode}` : `businessObject ${innerItem.BusinessObjectCode.BusinessObjectCode} function ${innerItem.BusinessObjectCode.FunctionName}`;\n                innerItemTexts.push(`${nodeIdentifier} output ${innerItem.AttributeName} ${innerItem.Operator} ${innerItem.Value}`)\n              }\n            }\n            ruleTexts.push(`(${innerItemTexts.join(rule.InputOperation)})`)\n          }\n          suggestedInputs.push(`${mainParameterSource.AttributeName} based off this logic: Determine outcome via: ${ruleTexts.join(',')}, ${outcomeTexts.join(',')}.`);\n        }\n      }\n    }\n    if (suggestedInputs.length) {\n      suggestion += `Add or adjust these Inputs: ${suggestedInputs.join('; ')}`;\n    }\n  }\n  if (suggestion) {\n    suggestions.push(suggestion);\n  }\n}\n\nif (suggestions.length) {\n  suggestions.unshift('Inputs may have different capitlization from outputs, respect captilization, use outputName as needed to indicate correct capitlized ending.')\n}\n\n// Limit extra BOs\nconst max = 10;\nlet i = 0;\nfor (const key in boFunctions) {\n   if (!boFunctions[key].usedByNode) {\n     i++;\n     if (i > max) {\n        delete boFunctions[key];\n     }\n   }\n}\nconst obj = {suggestions, nodes, boFunctions};\n\nreturn obj;"
+          },
+          "outcomes": {
+            "success": "1776900003027"
+          },
+          "code": "CREATE_SUGGESTIONS",
+          "id": "1778010184204",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "return nodes"
+          },
+          "outcomes": {},
+          "code": "RETURN_NODES",
+          "convergenceTargetId": "end",
+          "id": "1776900003027",
+          "inputs": [
+            {
+              "id": "1776900003028_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_SUGGESTIONS.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_false_1776899985318",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1777677099665"
+          },
+          "id": "add_false_1778193548461",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1776899985318"
+          },
+          "id": "add_false_1777921011764",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "combine for processedNodes",
+            "returnType": "object",
+            "sourceCode": "const paramMap = {};\nconst newNodes = $context.$nodes.DETERMINE_NEW_SOURCES.$output.nodes;\nconst processNext = $context.$variables.processNext || [];\nif (newNodes && Array.isArray(newNodes)) {\n  for (const node of newNodes) {\n     paramMap[node.code] = node;\n  }\n}\nconst processedNewNodes =  $context.$variables.processedNewNodes; \n\nconst nodes = $context.$nodes.POST_PROCESS_FETCH_REFERENCED.$output.result.newNodes;\nfor (const node of nodes) { \n    node.parametersMapping = paramMap[node.code] ? paramMap[node.code].parametersMapping : [];\n    node.referenceRelationships = paramMap[node.code] ? paramMap[node.code].referenceRelationships : [];\n  if (!processedNewNodes[node.code]) {\n    processedNewNodes[node.code] = node;\n  } else {\n    processedNewNodes[node.code].parametersMapping = node.parametersMapping;\n  }\n  processNext.push(node);\n}\n\nreturn {processedNewNodes, processNext};"
+          },
+          "outcomes": {
+            "success": "1777920974599"
+          },
+          "code": "COMBINE_FOR_PROCESSEDNODES",
+          "id": "1778630066505",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Identify BOs",
+            "returnType": "object",
+            "sourceCode": "const boMapping = {};\nconst boFunctions = $context.$variables.boFunctions ;\nconst nodes = $context.$variables.processNext || [];\n\nfor (const node of nodes) {\n  const parametersMapping = node.parametersMapping ? node.parametersMapping : null;\n  if (!parametersMapping) {\n    node.missing = true;\n  }\n const referenceRelationships = node.referenceRelationships ? node.referenceRelationships : (node.businessObjectFunction && node.businessObjectFunction.referenceRelationships ? node.businessObjectFunction.referenceRelationships : null);\n  if (referenceRelationships) {\n    for (const rel of referenceRelationships) {\n      const matchKey = rel.BusinessObjectCode + ':' + rel.FunctionName;\n      if (!boMapping[matchKey]) {\n        boMapping[matchKey] = {\n          BusinessObjectCode: rel.BusinessObjectCode, \n          FunctionName: rel.FunctionName,\n          businessObjectFunction: boFunctions[matchKey],\n          providesInputsFor: [],\n          providesOutputsFor: []\n        };\n      }\n      boMapping[matchKey].providesOutputsFor.push( {\n        parentNodeCode: node.code,\n        RelationshipAttributes: rel.RelationshipAttributes,\n      });\n    }\n  }\n  if (parametersMapping) {\n    for (const param of parametersMapping) {\n      if (param.mainParameterSource) {\n        const mainSource = param.mainParameterSource;\n        if (mainSource.BusinessObjectCode && mainSource.FunctionName && mainSource.BusinessObjectCode.indexOf('ORA_SYSTEM') === -1) {\n          const matchKey = mainSource.BusinessObjectCode + ':' + mainSource.FunctionName;\n          if (!boMapping[matchKey]) {\n            boMapping[matchKey] = {\n              BusinessObjectCode: mainSource.BusinessObjectCode, \n              FunctionName: mainSource.FunctionName,\n              businessObjectFunction: boFunctions[matchKey],\n              providesInputsFor: [],\n              providesOutputsFor: [],\n              referenceRelationshipsNeeded: []\n            };\n          }\n          boMapping[matchKey].providesInputsFor.push( {\n            sourceNodeCode: node.code,\n            paramName: param.param_name,\n            atrributeName: mainSource.AttributeName,\n            mainParameterSource: param.mainParameterSource,\n          });\n        } else if (mainSource.Rules && Array.isArray(mainSource.Rules)) {\n          for (const rule of mainSource.Rules) {\n            if (rule.Inputs && Array.isArray(rule.Inputs)) {\n              for (const innerItem of rule.Inputs) {\n                if (innerItem.BusinessObjectCode && innerItem.FunctionName && innerItem.BusinessObjectCode.indexOf('ORA_SYSTEM') === -1) {\n                  const matchKey = innerItem.BusinessObjectCode + ':' + innerItem.FunctionName;\n                  if (!boMapping[matchKey]) {\n                    boMapping[matchKey] = {\n                      BusinessObjectCode: innerItem.BusinessObjectCode, \n                      FunctionName: innerItem.FunctionName,\n                      businessObjectFunction: boFunctions[matchKey],\n                      providesInputsFor: [],\n                      providesOutputsFor: [],\n                      referenceRelationshipsNeeded: []\n                    };\n                  }\n                  boMapping[matchKey].providesInputsFor.push( {\n                    sourceNodeCode: node.code,\n                    paramName: param.param_name,\n                    atrributeName: innerItem.AttributeName,\n                    mainParameterSource: param.mainParameterSource,\n                  });\n                }\n              }\n            }\n          }\n        } else {\n          node.noMap = true;\n        }\n      }\n    }\n  }\n}\nreturn {boMapping, hasNewBos: Object.values(boMapping).length > 0, nodes};"
+          },
+          "outcomes": {
+            "success": "1778193548461"
+          },
+          "code": "IDENTIFY_BOS",
+          "convergenceTargetId": "1778193548461",
+          "id": "1778611452974",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1776899985318"
+          },
+          "id": "add_false_1777913869004",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "If Process Next 2"
+          },
+          "outcomes": {
+            "true": "1779319263168",
+            "false": "add_false_1779319207358"
+          },
+          "code": "IF_PROCESS_NEXT_2",
+          "convergenceTargetId": "1776899985318",
+          "id": "1779319207358",
+          "inputs": [
+            {
+              "id": "1779319207359_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.processNext.length  > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1778611452974",
+            "name": "Throw to Trigger Identify BOs",
+            "returnType": "object",
+            "sourceCode": "if ( $context.$variables.recurisonPrevention  < $context.$variables.maxDepth ) {\n  throw new Error('process next');\n}"
+          },
+          "outcomes": {
+            "success": "1776899985318"
+          },
+          "code": "THROW_TO_TRIGGER_IDENTIFY_BOS",
+          "id": "1779319263168",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1776899985318"
+          },
+          "id": "add_false_1779319207358",
+          "inputs": [],
+          "type": "ADD"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1779392068806",
+          "name": "maxDepth",
+          "scope": "JOB",
+          "type": "number"
+        },
+        {
+          "id": "1779388474870",
+          "name": "recurisonPrevention",
+          "scope": "JOB",
+          "type": "number"
+        },
+        {
+          "id": "1777999136567",
+          "name": "processedNewNodes",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1777966908871",
+          "name": "boFunctions",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1777920941808",
+          "name": "processNext",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1777278998285",
+          "name": "nodes",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1775158380747",
+          "name": "node",
+          "scope": "JOB",
+          "type": "object"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1779392111112",
+            "name": "maxDepth",
+            "scope": "JOB",
+            "type": "number"
+          },
+          {
+            "id": "1778269442178",
+            "name": "minExternalRestTools",
+            "scope": "JOB",
+            "type": "object"
+          },
+          {
+            "id": "1778269437840",
+            "name": "toolsByToolCode",
+            "scope": "JOB",
+            "type": "object"
+          },
+          {
+            "id": "1778015050366",
+            "name": "families",
+            "scope": "JOB",
+            "type": "array"
+          },
+          {
+            "id": "1777100457102",
+            "name": "businessObjects",
+            "scope": "JOB",
+            "type": "object"
+          },
+          {
+            "id": "1777100440450",
+            "name": "externalRestTools",
+            "scope": "JOB",
+            "type": "array"
+          },
+          {
+            "id": "1775158118364",
+            "name": "nodes",
+            "scope": "JOB",
+            "type": "array"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "OTHER",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

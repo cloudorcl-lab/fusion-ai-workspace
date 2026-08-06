@@ -1,0 +1,1423 @@
+{
+  "workflowId": "100002240709072",
+  "workflowCode": "ORA_AI_STUDIO_SUGGESTIONS_AGENT",
+  "name": "AI Studio Suggestions Agent",
+  "description": "Provides suggestions on various artifacts using the indexed data",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1759606370158"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START",
+          "diagram": {
+            "x": 6319.75,
+            "y": 5000
+          }
+        },
+        {
+          "metadata": {
+            "name": "Calculate Vector Search Needed",
+            "returnType": "boolean",
+            "sourceCode": "let needVectorSearch = true;\nif (!$context.$triggers.REST.$input.QUERY || !$context.$triggers.REST.$input.QUERY.trim()==='') {\n    needVectorSearch = false;\n}\n\nreturn needVectorSearch;"
+          },
+          "outcomes": {
+            "success": "1759606515371"
+          },
+          "code": "CALCULATE_VECTOR_SEARCH_NEEDED",
+          "id": "1759606370158",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 6210.25,
+            "y": 5246
+          }
+        },
+        {
+          "metadata": {
+            "name": "Set Variables"
+          },
+          "outcomes": {
+            "success": "1774601483108"
+          },
+          "code": "SET_VARIABLES",
+          "id": "1759606515371",
+          "inputs": [
+            {
+              "id": "1759646391574",
+              "name": "responseSize",
+              "type": "number",
+              "value": "10"
+            },
+            {
+              "id": "1759606561947",
+              "name": "needVectorSearch",
+              "type": "boolean",
+              "value": "{{$context.$nodes.CALCULATE_VECTOR_SEARCH_NEEDED.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 6217.75,
+            "y": 5468
+          }
+        },
+        {
+          "id": "1774601483108",
+          "code": "CLEAN_QUERY_TYPE",
+          "type": "CODE",
+          "metadata": {
+            "name": "clean query type",
+            "returnType": "string",
+            "sourceCode": "const queryType = $context.$triggers.REST.$input.QUERYTYPE.trim();\nreturn queryType;"
+          },
+          "diagram": {
+            "x": 6217.75,
+            "y": 5690
+          },
+          "outcomes": {
+            "success": "1774888407009"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1774888407009",
+          "code": "GET_CURRENT_BLUE_GREEN",
+          "type": "VECTOR_DB_READER",
+          "metadata": {
+            "name": "Get Current Blue Green"
+          },
+          "diagram": {
+            "x": 6217.75,
+            "y": 5912
+          },
+          "outcomes": {
+            "success": "1774887812831"
+          },
+          "inputs": [
+            {
+              "id": "1774888407009_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "AI_STUDIO_INDEX_METADATA"
+            },
+            {
+              "id": "1774888407009_query",
+              "name": "query",
+              "type": "string",
+              "value": "blue or green"
+            },
+            {
+              "id": "1774888407009_documentId",
+              "name": "documentId",
+              "type": "string",
+              "value": "current_index"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"index\": {\n        \"type\": \"integer\"\n      },\n      \"text\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\n      \"index\",\n      \"text\"\n    ]\n  }\n}"
+        },
+        {
+          "id": "1774887812831",
+          "code": "GENERATE_INDEX_DETAIL",
+          "type": "CODE",
+          "metadata": {
+            "name": "Generate Index Detail",
+            "returnType": "object",
+            "sourceCode": "let indexName = \"\";\nlet filter= \"\";\nlet identifier = \"\";\nconst queryType = $context.$nodes.CLEAN_QUERY_TYPE.$output.result;\nconst currentActive = $context.$nodes.GET_CURRENT_BLUE_GREEN.$output;\nconst userFilter = $context.$triggers.REST.$input.FILTER;\n\nlet prefix;\nif (Array.isArray(currentActive) && currentActive.length > 0) {\n  prefix = currentActive[0].color;\n  prefix = prefix? prefix.trim(): prefix;\n}\nprefix = prefix ? prefix : \"BLUE\";\n\nif (userFilter) {\n  filter = {\n      \"operator\": \"and\",\n      \"criteria\": [\n        {\n          \"field\": userFilter.name,\n          \"operation\": \"eq\",\n          \"value\": userFilter.value\n        }\n      ]\n    }\n}\n\nif (queryType=== \"AGENTTEAMS\") {\n    indexName = \"ORA_AI_STUDIO_WORKFLOWS_\";\n    identifier = \"workflowCode\";\n} else if (queryType === \"BUSINESSOBJECTS\") {\n    indexName = \"ORA_AI_STUDIO_BO_\";\n    identifier = \"objectCode\"\n} else if (queryType=== \"TOOLS\") {\n    indexName = \"ORA_AI_STUDIO_TOOLS_\";\n    identifier = \"toolCode\"\n} else if (queryType=== \"AGENTS\") {\n    indexName = \"ORA_AI_STUDIO_AGENTS_\";\n    identifier = \"agentCode\"\n} else if (queryType=== \"TOPICS\") {\n    indexName = \"ORA_AI_STUDIO_TOPICS_\";\n    identifier = \"topicCode\"\n} else if (queryType=== \"DEEPLINKS\") {\n    indexName = \"ORA_AI_STUDIO_DEEPLINKS_\";\n    identifier = \"deepLinkCode\"\n} else if (queryType=== \"APPS\") {\n    indexName = \"ORA_AI_STUDIO_APPS_\";\n    identifier = \"code\"\n} else if (queryType=== \"POLICY\") {\n    indexName = \"ORA_AI_STUDIO_POLICY_\";\n    identifier = \"code\"\n}\nindexName= indexName + prefix;\nlet finalResult = {indexName: indexName, filter: filter, identifier: identifier};\n\nreturn finalResult;"
+          },
+          "diagram": {
+            "x": 6217.75,
+            "y": 6134
+          },
+          "outcomes": {
+            "success": "1774889396972"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1774889396972",
+          "code": "REQUIRE_VECTOR_SEARCH",
+          "type": "CONDITION",
+          "convergenceTargetId": "end",
+          "metadata": {
+            "name": "Require Vector Search"
+          },
+          "diagram": {
+            "x": 6217.75,
+            "y": 6356
+          },
+          "outcomes": {
+            "true": "1774889518088",
+            "false": "1774908787659"
+          },
+          "inputs": [
+            {
+              "id": "1774889396972_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.needVectorSearch}}"
+            }
+          ]
+        },
+        {
+          "id": "1774889518088",
+          "code": "READ_FROM_VECTOR",
+          "type": "VECTOR_DB_READER",
+          "metadata": {
+            "name": "Read From Vector"
+          },
+          "diagram": {
+            "x": 5001.122093023255,
+            "y": 6630.124031007753
+          },
+          "outcomes": {
+            "success": "1774898020380"
+          },
+          "inputs": [
+            {
+              "id": "1774889518088_indexName",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{$context.$nodes.GENERATE_INDEX_DETAIL.$output.result.indexName}}"
+            },
+            {
+              "id": "1774889518088_query",
+              "name": "query",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.QUERY}}"
+            },
+            {
+              "id": "1774889518088_parentObjectId",
+              "name": "parentObjectId",
+              "type": "string",
+              "value": "artifacts"
+            },
+            {
+              "id": "1774889518088_maximumResults",
+              "name": "maximumResults",
+              "type": "string",
+              "value": "50"
+            },
+            {
+              "id": "1774889518088_filterCriteria",
+              "name": "filterCriteria",
+              "type": "string",
+              "value": "{{$context.$nodes.GENERATE_INDEX_DETAIL.$output.result.filter}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"index\": {\n        \"type\": \"integer\"\n      },\n      \"text\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\n      \"index\",\n      \"text\"\n    ]\n  }\n}"
+        },
+        {
+          "id": "1774908787659",
+          "code": "GETDEFAULTSWITCHER",
+          "type": "SWITCH",
+          "convergenceTargetId": "1774914697417",
+          "metadata": {
+            "name": "GetDefaultSwitcher"
+          },
+          "diagram": {
+            "x": 6913.137596899225,
+            "y": 6622.496124031008
+          },
+          "outcomes": {
+            "BUSINESSOBJECTS": "1774908854286",
+            "AGENTTEAMS": "1774936426288",
+            "TOOLS": "1774973730603",
+            "AGENTS": "1774981501873",
+            "TOPICS": "1774984777037",
+            "DEEPLINKS": "1774989852583",
+            "APPS": "1774991740835",
+            "POLICY": "1774995363613"
+          },
+          "inputs": [
+            {
+              "id": "1774908787659_caseExpression",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.CLEAN_QUERY_TYPE.$output.result}}"
+            }
+          ]
+        },
+        {
+          "id": "1774898020380",
+          "code": "EXTRACT_CODES",
+          "type": "CODE",
+          "metadata": {
+            "name": "Extract Codes",
+            "sourceCode": "let result = \"\";\ntry {\n  // Access the array output from the Read From Vector node\n  const vectorItems = $context.$nodes?.READ_FROM_VECTOR?.$output || [];\n\n  // Extract the 'id' from each element and join them into a single string maintaining order\n  // No duplicates assumed as per user statement\n  result = vectorItems.map(item => (\"'\"+item.code+ \"'\") || \"\").join(\",\");\n} catch (error) {\n  // In case of error, return empty string as per return type\n  result = \"\";\n}\n\nreturn result;",
+            "returnType": "string"
+          },
+          "diagram": {
+            "x": 5000,
+            "y": 6800
+          },
+          "outcomes": {
+            "success": "1774974740926"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1774908854286",
+          "code": "GET_BO_FROM_DB_WITHOUT_FILTER",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get BO From DB Without Filter",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOBUSINESSOBJECTSBOSS",
+            "functionName": "List_All"
+          },
+          "diagram": {
+            "x": 5480.511627906976,
+            "y": 6821.612403100775
+          },
+          "outcomes": {
+            "success": "1774914720342"
+          },
+          "inputs": [
+            {
+              "id": "1774908854286_limit",
+              "name": "limit",
+              "type": "string",
+              "value": "{{$context.$variables.responseSize}}"
+            },
+            {
+              "id": "1774908854286_offset",
+              "name": "offset",
+              "type": "string",
+              "value": "0"
+            }
+          ]
+        },
+        {
+          "id": "1774936426288",
+          "code": "GET_WORKFLOWS_FROM_DB_WITHOUT_FILTER",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get Workflows From DB Without filter",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOAGENTTEAMSV2",
+            "functionName": "List_workflows"
+          },
+          "diagram": {
+            "x": 5846.748062015504,
+            "y": 6826.697674418604
+          },
+          "outcomes": {
+            "success": "1774936510397"
+          },
+          "inputs": [
+            {
+              "id": "1774936426288_limit",
+              "name": "limit",
+              "type": "string",
+              "value": "10"
+            },
+            {
+              "id": "1774936426288_offset",
+              "name": "offset",
+              "type": "string",
+              "value": "0"
+            }
+          ]
+        },
+        {
+          "id": "1774973730603",
+          "code": "GET_TOOLS_FROM_DB_WITHOUT_FILTER",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get Tools From DB without filter",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOTOOLSV2",
+            "functionName": "List_tools"
+          },
+          "diagram": {
+            "x": 6253.414728682171,
+            "y": 6836.868217054263
+          },
+          "outcomes": {
+            "success": "1774973797579"
+          },
+          "inputs": [
+            {
+              "id": "1774973730603_limit",
+              "name": "limit",
+              "type": "string",
+              "value": "10"
+            },
+            {
+              "id": "1774973730603_offset",
+              "name": "offset",
+              "type": "string",
+              "value": "0"
+            }
+          ]
+        },
+        {
+          "id": "1774981501873",
+          "code": "GET_AGENTS_FROM_DB_WITHOUT_FILTER",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get Agents From DB without filter",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOAGENTSV2",
+            "functionName": "List_agents"
+          },
+          "diagram": {
+            "x": 6683.290697674419,
+            "y": 6836.868217054264
+          },
+          "outcomes": {
+            "success": "1774981565210"
+          },
+          "inputs": [
+            {
+              "id": "1774981501873_limit",
+              "name": "limit",
+              "type": "string",
+              "value": "10"
+            },
+            {
+              "id": "1774981501873_offset",
+              "name": "offset",
+              "type": "string",
+              "value": "1"
+            }
+          ]
+        },
+        {
+          "id": "1774984777037",
+          "code": "GET_TOPICS_FROM_DB_WITHOUT_FILTER",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get Topics From DB without Filter",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOTOPICSV2",
+            "functionName": "List_topics"
+          },
+          "diagram": {
+            "x": 7164.891472868217,
+            "y": 6835.596899224806
+          },
+          "outcomes": {
+            "success": "1774984841168"
+          },
+          "inputs": [
+            {
+              "id": "1774984777037_limit",
+              "name": "limit",
+              "type": "string",
+              "value": "10"
+            },
+            {
+              "id": "1774984777037_offset",
+              "name": "offset",
+              "type": "string",
+              "value": "0"
+            }
+          ]
+        },
+        {
+          "id": "1774974740926",
+          "code": "HAS_ANY",
+          "type": "CONDITION",
+          "convergenceTargetId": "end",
+          "metadata": {
+            "name": "Has Any?"
+          },
+          "diagram": {
+            "x": 4996.12984496124,
+            "y": 7009.286821705426
+          },
+          "outcomes": {
+            "true": "1774900868003",
+            "false": "1774974808172"
+          },
+          "inputs": [
+            {
+              "id": "1774974740926_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_CODES.$output.result !== \"\"}}"
+            }
+          ]
+        },
+        {
+          "id": "1774914720342",
+          "code": "SET_BO_RESULTS",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set BO results"
+          },
+          "diagram": {
+            "x": 5480.455426356589,
+            "y": 7034.7131782945735
+          },
+          "outcomes": {
+            "success": "1774914697417"
+          },
+          "inputs": [
+            {
+              "id": "1774909155553_results",
+              "name": "results",
+              "value": "{{$context.$nodes.GET_BO_FROM_DB_WITHOUT_FILTER.$output}}"
+            }
+          ]
+        },
+        {
+          "id": "1774936510397",
+          "code": "SET_WORKFLOW_RESULTS",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set Workflow Results"
+          },
+          "diagram": {
+            "x": 5875.788759689923,
+            "y": 7028.356589147286
+          },
+          "outcomes": {
+            "success": "1774914697417"
+          },
+          "inputs": [
+            {
+              "id": "1774909155553_results",
+              "name": "results",
+              "value": "{{$context.$nodes.GET_WORKFLOWS_FROM_DB_WITHOUT_FILTER.$output}}"
+            }
+          ]
+        },
+        {
+          "id": "1774973797579",
+          "code": "SET_TOOLS_RESULTS",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set Tools Results"
+          },
+          "diagram": {
+            "x": 6264.7655038759685,
+            "y": 7027.085271317829
+          },
+          "outcomes": {
+            "success": "1774914697417"
+          },
+          "inputs": [
+            {
+              "id": "1774909155553_results",
+              "name": "results",
+              "value": "{{$context.$nodes.GET_TOOLS_FROM_DB_WITHOUT_FILTER.$output}}"
+            }
+          ]
+        },
+        {
+          "id": "1774981565210",
+          "code": "SET_AGENTS_RESULT",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set Agents Result"
+          },
+          "diagram": {
+            "x": 6703.323643410853,
+            "y": 7028.356589147287
+          },
+          "outcomes": {
+            "success": "1774914697417"
+          },
+          "inputs": [
+            {
+              "id": "1774909155553_results",
+              "name": "results",
+              "value": "{{$context.$nodes.GET_AGENTS_FROM_DB_WITHOUT_FILTER.$output}}"
+            }
+          ]
+        },
+        {
+          "id": "1774984841168",
+          "code": "SET_TOPICS_RESULT",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set Topics Result"
+          },
+          "diagram": {
+            "x": 7186.377906976744,
+            "y": 7034.713178294574
+          },
+          "outcomes": {
+            "success": "1774914697417"
+          },
+          "inputs": [
+            {
+              "id": "1774909155553_results",
+              "name": "results",
+              "value": "{{$context.$nodes.GET_TOPICS_FROM_DB_WITHOUT_FILTER.$output}}"
+            }
+          ]
+        },
+        {
+          "id": "1774900868003",
+          "code": "GET_FROM_DB_SWITCHER",
+          "type": "SWITCH",
+          "convergenceTargetId": "1774908284889",
+          "metadata": {
+            "name": "Get From DB Switcher"
+          },
+          "diagram": {
+            "x": 4979.532945736434,
+            "y": 7298.666666666667
+          },
+          "outcomes": {
+            "BUSINESSOBJECTS": "1774904186297",
+            "AGENTTEAMS": "1774932359355",
+            "TOOLS": "1774973413008",
+            "AGENTS": "1774981343133",
+            "TOPICS": "1774984586518",
+            "DEEPLINKS": "1774989731031",
+            "APPS": "1774991609353",
+            "POLICY": "1774995238908"
+          },
+          "inputs": [
+            {
+              "id": "1774900868003_caseExpression",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.CLEAN_QUERY_TYPE.$output.result}}"
+            }
+          ]
+        },
+        {
+          "id": "1774974808172",
+          "code": "RETURN_EMPTY",
+          "type": "CODE",
+          "metadata": {
+            "name": "Return Empty",
+            "returnType": "object",
+            "sourceCode": "let result = {\nitems:[]\n};\nreturn result;"
+          },
+          "diagram": {
+            "x": 4581.563953488372,
+            "y": 7268.15503875969
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1774914697417",
+          "code": "STANDARDIZE_RESULT",
+          "type": "CODE",
+          "metadata": {
+            "name": "Standardize Result",
+            "returnType": "object",
+            "sourceCode": "let result = {};\ntry {\n  // Safely access the results array from workflow variables\n  const data = $context.$variables.results?.items || [];\n\n  // Defensive copy to avoid mutating original data\n  const cleanedData = Array.isArray(data) ? data.map(item => {\n    // Create a shallow copy of each item\n    const newItem = { ...item };\n    // Remove any $context property if present\n    delete newItem['$context'];\n    return newItem;\n  }) : [];\n\n  // Return as object with items property\n  result = { items: cleanedData };\n} catch (error) {\n  // On error, return empty items array\n  result = { items: [] };\n}\n\nreturn result;"
+          },
+          "diagram": {
+            "x": 6667.75,
+            "y": 7244
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1774904186297",
+          "code": "GET_BO_FROM_DB",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get BO From DB",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOBUSINESSOBJECTSBOSS",
+            "functionName": "GetByCodes"
+          },
+          "diagram": {
+            "x": 4513.0058139534885,
+            "y": 7483.798449612403
+          },
+          "outcomes": {
+            "success": "1774909155553"
+          },
+          "inputs": [
+            {
+              "id": "1774904186297_codes",
+              "name": "codes",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_CODES.$output.result}}"
+            }
+          ]
+        },
+        {
+          "id": "1774932359355",
+          "code": "GET_WORKFLOWS_FROM_DB",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get Workflows from db",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOAGENTTEAMSV2",
+            "functionName": "GetByCodes"
+          },
+          "diagram": {
+            "x": 4844.773255813953,
+            "y": 7483.798449612404
+          },
+          "outcomes": {
+            "success": "1774934344495"
+          },
+          "inputs": [
+            {
+              "id": "1774932359355_codes",
+              "name": "codes",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_CODES.$output.result}}"
+            }
+          ]
+        },
+        {
+          "id": "1774973413008",
+          "code": "GET_TOOL_FROM_DB",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get Tool From DB",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOTOOLSV2",
+            "functionName": "GetByCodes"
+          },
+          "diagram": {
+            "x": 5179.083333333333,
+            "y": 7483.798449612403
+          },
+          "outcomes": {
+            "success": "1774973533897"
+          },
+          "inputs": [
+            {
+              "id": "1774973413008_codes",
+              "name": "codes",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_CODES.$output.result}}"
+            }
+          ]
+        },
+        {
+          "id": "1774981343133",
+          "code": "GET_AGENTS_FROM_DB",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get Agents From DB",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOAGENTSV2",
+            "functionName": "GetByCodes"
+          },
+          "diagram": {
+            "x": 5538.819767441861,
+            "y": 7483.798449612404
+          },
+          "outcomes": {
+            "success": "1774981415990"
+          },
+          "inputs": [
+            {
+              "id": "1774981343133_codes",
+              "name": "codes",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_CODES.$output.result}}"
+            }
+          ]
+        },
+        {
+          "id": "1774984586518",
+          "code": "GET_TOPICS_FROM_DB",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get Topics From Db",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOTOPICSV2",
+            "functionName": "GetByCode"
+          },
+          "diagram": {
+            "x": 5897.28488372093,
+            "y": 7471.085271317829
+          },
+          "outcomes": {
+            "success": "1774984657376"
+          },
+          "inputs": [
+            {
+              "id": "1774984586518_codes",
+              "name": "codes",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_CODES.$output.result}}"
+            }
+          ]
+        },
+        {
+          "id": "1774909155553",
+          "code": "SET_FINAL_BO_LIST",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set final BO list"
+          },
+          "diagram": {
+            "x": 4510.4631782945735,
+            "y": 7629.519379844961
+          },
+          "outcomes": {
+            "success": "1774908284889"
+          },
+          "inputs": [
+            {
+              "id": "1774909155553_results",
+              "name": "results",
+              "value": "{{$context.$nodes.GET_BO_FROM_DB.$output}}"
+            }
+          ]
+        },
+        {
+          "id": "1774934344495",
+          "code": "SET_FINAL_WORKFLOW_LIST",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set final Workflow List"
+          },
+          "diagram": {
+            "x": 4840.959302325581,
+            "y": 7623.162790697674
+          },
+          "outcomes": {
+            "success": "1774908284889"
+          },
+          "inputs": [
+            {
+              "id": "1774909155553_results",
+              "name": "results",
+              "value": "{{$context.$nodes.GET_WORKFLOWS_FROM_DB.$output}}"
+            }
+          ]
+        },
+        {
+          "id": "1774973533897",
+          "code": "SET_FINAL_TOOL_LIST",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set final Tool list"
+          },
+          "diagram": {
+            "x": 5187.982558139534,
+            "y": 7620.6201550387605
+          },
+          "outcomes": {
+            "success": "1774908284889"
+          },
+          "inputs": [
+            {
+              "id": "1774909155553_results",
+              "name": "results",
+              "value": "{{$context.$nodes.GET_TOOL_FROM_DB.$output}}"
+            }
+          ]
+        },
+        {
+          "id": "1774981415990",
+          "code": "SET_FINAL_AGENT_LIST",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set final Agent List"
+          },
+          "diagram": {
+            "x": 5533.7344961240315,
+            "y": 7615.534883720929
+          },
+          "outcomes": {
+            "success": "1774908284889"
+          },
+          "inputs": [
+            {
+              "id": "1774909155553_results",
+              "name": "results",
+              "value": "{{$context.$nodes.GET_AGENTS_FROM_DB.$output}}"
+            }
+          ]
+        },
+        {
+          "id": "1774984657376",
+          "code": "SET_FINAL_TOPICS_LIST",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set final Topics List"
+          },
+          "diagram": {
+            "x": 5892.1996124031,
+            "y": 7626.976744186047
+          },
+          "outcomes": {
+            "success": "1774908284889"
+          },
+          "inputs": [
+            {
+              "id": "1774909155553_results",
+              "name": "results",
+              "value": "{{$context.$nodes.GET_TOPICS_FROM_DB.$output}}"
+            }
+          ]
+        },
+        {
+          "id": "1774908284889",
+          "code": "REORDER_BASED_ON_VECTOR_RESULTS",
+          "type": "CODE",
+          "metadata": {
+            "name": "Reorder Based On Vector Results",
+            "sourceCode": "let result = [];\nconst resultMap = new Map();\nlet identifier = $context.$nodes.GENERATE_INDEX_DETAIL.$output.result.identifier;\nconst resultSize = $context.$variables.responseSize;\nlet codeList = $context.$nodes.EXTRACT_CODES.$output.result ? $context.$nodes.EXTRACT_CODES.$output.result : \"\";\nif( typeof codeList === 'number') {\n  codeList = codeList + \"\";\n}\nif( $context.$variables.results && $context.$variables.results.items) {\n  let data = $context.$variables.results.items;\n  // Loop through the input data and processes each item\n  \n  for( let i = 0; i < data.length; i++) {\n    delete data[ i][ '$context'];\n    resultMap.set( data[ i][ identifier], data[ i]);\n  } // we need to re order the elements to match the order returned from vector database\n  \n  const reorderedArray = [];\n  codeList = codeList.split( ',').map( id => {\n    let val = id.trim();\n    if(( val.startsWith( \"'\") && val.endsWith( \"'\")) || ( val.startsWith( '\"') && val.endsWith( '\"'))) {\n      val = val.substring( 1, val.length - 1);\n    }\n    return val;\n  }).filter( Boolean);\n\n  for( const code of codeList) {\n    if( resultMap.has( code) && reorderedArray.length < resultSize) {\n      reorderedArray.push( resultMap.get( code));\n      resultMap.delete( code);\n    }\n  } result = reorderedArray;\n}\nconst finalResult = {\n  items: result\n};\nreturn finalResult;",
+            "returnType": "object"
+          },
+          "diagram": {
+            "x": 4976.635658914729,
+            "y": 8185.875968992247
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1774989731031",
+          "code": "GET_DEEPLINKS_FROM_DB",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get Deeplinks From Db",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIODEEPLINKSV2",
+            "functionName": "getByCodes"
+          },
+          "diagram": {
+            "x": 6270.1996124031,
+            "y": 7474.604651162791
+          },
+          "outcomes": {
+            "success": "1774989731032"
+          },
+          "inputs": [
+            {
+              "id": "1774989731031_codes",
+              "name": "codes",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_CODES.$output.result}}"
+            }
+          ]
+        },
+        {
+          "id": "1774989731032",
+          "code": "SET_FINAL_DEEPLINK_LIST",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set final Deeplink List"
+          },
+          "diagram": {
+            "x": 6271.470930232557,
+            "y": 7624.139534883721
+          },
+          "outcomes": {
+            "success": "1774908284889"
+          },
+          "inputs": [
+            {
+              "id": "1774909155553_results",
+              "name": "results",
+              "value": "{{$context.$nodes.GET_DEEPLINKS_FROM_DB.$output}}"
+            }
+          ]
+        },
+        {
+          "id": "1774989852583",
+          "code": "GET_DEEPLINKS_FROM_DB_WITHOUT_FILTER",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get Deeplinks From DB without Filter",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIODEEPLINKSV2",
+            "functionName": "List_deepLinks"
+          },
+          "diagram": {
+            "x": 7547.976744186046,
+            "y": 6837.84496124031
+          },
+          "outcomes": {
+            "success": "1774989852584"
+          },
+          "inputs": [
+            {
+              "id": "1774989852583_limit",
+              "name": "limit",
+              "type": "string",
+              "value": "10"
+            },
+            {
+              "id": "1774989852583_offset",
+              "name": "offset",
+              "type": "string",
+              "value": "1"
+            }
+          ]
+        },
+        {
+          "id": "1774989852584",
+          "code": "SET_DEEPLINKS_RESULT",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set Deeplinks Result"
+          },
+          "diagram": {
+            "x": 7569.4631782945735,
+            "y": 7036.961240310078
+          },
+          "outcomes": {
+            "success": "1774914697417"
+          },
+          "inputs": [
+            {
+              "id": "1774909155553_results",
+              "name": "results",
+              "value": "{{$context.$nodes.GET_DEEPLINKS_FROM_DB_WITHOUT_FILTER.$output}}"
+            }
+          ]
+        },
+        {
+          "id": "1774991609353",
+          "code": "GET_APPS_FROM_DB",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get Apps From DB",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOAPPLICATIONSV2",
+            "functionName": "GetByCodes"
+          },
+          "diagram": {
+            "x": 6638.75,
+            "y": 7467
+          },
+          "outcomes": {
+            "success": "1774991609354"
+          },
+          "inputs": [
+            {
+              "id": "1774991609353_codes",
+              "name": "codes",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_CODES.$output.result}}"
+            }
+          ]
+        },
+        {
+          "id": "1774991609354",
+          "code": "SET_FINAL_APPS_LIST",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set final Apps List"
+          },
+          "diagram": {
+            "x": 6640.021317829457,
+            "y": 7616.53488372093
+          },
+          "outcomes": {
+            "success": "1774908284889"
+          },
+          "inputs": [
+            {
+              "id": "1774909155553_results",
+              "name": "results",
+              "value": "{{$context.$nodes.GET_APPS_FROM_DB.$output}}"
+            }
+          ]
+        },
+        {
+          "id": "1774991740835",
+          "code": "GET_APPS_FROM_DB_WITHOUT_FILTER",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get Apps From DB without Filter",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOAPPLICATIONSV2",
+            "functionName": "List_applications"
+          },
+          "diagram": {
+            "x": 7952.0821333485965,
+            "y": 6836.519544930219
+          },
+          "outcomes": {
+            "success": "1774991740836"
+          },
+          "inputs": [
+            {
+              "id": "1774991740835_limit",
+              "name": "limit",
+              "type": "string",
+              "value": "10"
+            },
+            {
+              "id": "1774991740835_offset",
+              "name": "offset",
+              "type": "string",
+              "value": "0"
+            }
+          ]
+        },
+        {
+          "id": "1774991740836",
+          "code": "SET_APPS_RESULT",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set Apps Result"
+          },
+          "diagram": {
+            "x": 7973.568567457124,
+            "y": 7035.635823999987
+          },
+          "outcomes": {
+            "success": "1774914697417"
+          },
+          "inputs": [
+            {
+              "id": "1774909155553_results",
+              "name": "results",
+              "value": "{{$context.$nodes.GET_APPS_FROM_DB_WITHOUT_FILTER.$output}}"
+            }
+          ]
+        },
+        {
+          "id": "1774995238908",
+          "code": "GET_POLICY_FROM_DB",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get Policy From DB",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOPOLICYV2",
+            "functionName": "getByCodes"
+          },
+          "diagram": {
+            "x": 7002.75,
+            "y": 7466
+          },
+          "outcomes": {
+            "success": "1774995238909"
+          },
+          "inputs": [
+            {
+              "id": "1774995238908_codes",
+              "name": "codes",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_CODES.$output.result}}"
+            }
+          ]
+        },
+        {
+          "id": "1774995238909",
+          "code": "SET_FINAL_POLICY_LIST",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set final Policy List"
+          },
+          "diagram": {
+            "x": 6996.021317829457,
+            "y": 7612.53488372093
+          },
+          "outcomes": {
+            "success": "1774908284889"
+          },
+          "inputs": [
+            {
+              "id": "1774909155553_results",
+              "name": "results",
+              "value": "{{$context.$nodes.GET_POLICY_FROM_DB.$output}}"
+            }
+          ]
+        },
+        {
+          "id": "1774995363613",
+          "code": "GET_POLICY_FROM_DB_WITHOUT_FILTER",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get Policy From DB without Filter",
+            "businessObjectCode": "ORA_HCM_OTHER_AISTUDIOPOLICYV2",
+            "functionName": "List_policies"
+          },
+          "diagram": {
+            "x": 8341.233581492594,
+            "y": 6835.2112746100065
+          },
+          "outcomes": {
+            "success": "1774995363614"
+          },
+          "inputs": [
+            {
+              "id": "1774995363613_limit",
+              "name": "limit",
+              "type": "string",
+              "value": "10"
+            },
+            {
+              "id": "1774995363613_offset",
+              "name": "offset",
+              "type": "string",
+              "value": "0"
+            }
+          ]
+        },
+        {
+          "id": "1774995363614",
+          "code": "SET_POLICY_RESULT",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set Policy Result"
+          },
+          "diagram": {
+            "x": 8362.72001560112,
+            "y": 7034.327553679775
+          },
+          "outcomes": {
+            "success": "1774914697417"
+          },
+          "inputs": [
+            {
+              "id": "1774909155553_results",
+              "name": "results",
+              "value": "{{$context.$nodes.GET_POLICY_FROM_DB_WITHOUT_FILTER.$output}}"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1759642755459",
+          "name": "results",
+          "scope": "JOB",
+          "type": "array",
+          "typeSpecification": "object"
+        },
+        {
+          "id": "1759606600552",
+          "name": "responseSize",
+          "scope": "JOB",
+          "type": "number"
+        },
+        {
+          "id": "1759606498299",
+          "name": "needVectorSearch",
+          "scope": "JOB",
+          "type": "boolean"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1774894767597",
+            "name": "FILTER",
+            "type": "object",
+            "typeSpecification": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"name\": {\n      \"type\": \"string\"\n    },\n    \"value\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"name\",\n    \"value\"\n  ],\n  \"additionalProperties\": false\n}"
+          },
+          {
+            "id": "1759735317393",
+            "name": "QUERY",
+            "type": "string"
+          },
+          {
+            "id": "1759606268493",
+            "name": "QUERYTYPE",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "deletedTriggerTypes": [],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "dtRunProfiles": {
+      "activeProfileId": "7fc9724b-9fec-4671-9d2b-15f02d15b1be",
+      "profiles": [
+        {
+          "id": "03843d05-1a3d-4011-9754-12214c7b3aec",
+          "name": "workflows",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"QUERY\": \"TAC workflows\",\n        \"QUERYTYPE\": \"AGENTTEAMS\",\n\"FILTER\": {\"name\": \"aiAppsCompatibleFlag\", \"value\": \"false\"}\n}"
+        },
+        {
+          "id": "7fc9724b-9fec-4671-9d2b-15f02d15b1be",
+          "name": "bo",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"QUERY\": \"sleep tracking\",\n  \"QUERYTYPE\": \"BUSINESSOBJECTS\"\n}"
+        },
+        {
+          "id": "f0274c59-2d9f-4b3b-aabc-486c767ecc9e",
+          "name": "bo with no query",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"QUERYTYPE\": \"BUSINESSOBJECTS\"\n}"
+        },
+        {
+          "id": "a9881fd5-a8aa-4479-8128-9dcb7ac61860",
+          "name": "workflow without query",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"QUERY\": \"\",\n        \"QUERYTYPE\": \"AGENTTEAMS\"\n}"
+        },
+        {
+          "id": "06ae671b-60f6-4a0f-92f0-3ad3c1a4ee0e",
+          "name": "tools with filter",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"QUERY\": \"Get User\",\n        \"QUERYTYPE\": \"TOOLS\",\n\"FILTER\": {\n    \"name\":\"type\",\n    \"value\": \"USER_SESSION\"\n  }\n}"
+        },
+        {
+          "id": "b57d4a61-a890-49d3-b2ef-8ab2315b59cd",
+          "name": "tools no query",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"QUERY\": \"\",\n        \"QUERYTYPE\": \"TOOLS\"\n}"
+        },
+        {
+          "id": "9cb9bb44-ffc3-4094-bc72-e5633c016118",
+          "name": "Agents without query",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"QUERY\": \"\",\n  \"QUERYTYPE\": \"AGENTS\"\n}"
+        },
+        {
+          "id": "11a6ba00-46f5-435f-9e74-349d13759ea1",
+          "name": "Agents",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"QUERY\": \"interview feedback\",\n  \"QUERYTYPE\": \"AGENTS\"\n}"
+        },
+        {
+          "id": "99b74ad7-df7b-414e-94f3-74bce6f6208f",
+          "name": "Topics",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"QUERY\": \"Gender Neutral Language\",\n  \"QUERYTYPE\": \"TOPICS\"\n}"
+        },
+        {
+          "id": "854d56cc-8a56-43fe-be90-aef418b1ee08",
+          "name": "TOPICS NO FILTER",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"FILTER\": {},\n  \"QUERY\": \"\",\n  \"QUERYTYPE\": \"TOPICS\"\n}"
+        },
+        {
+          "id": "4c62e0dc-36f2-4835-af13-2bc677a06aaa",
+          "name": "Deeplinks No filter",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"QUERY\": \"\",\n  \"QUERYTYPE\": \"DEEPLINKS\"\n}"
+        },
+        {
+          "id": "1f0a7e5c-91ac-4d56-9503-97ef00413e7d",
+          "name": "Deeplinks",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"QUERY\": \"URL to navigate to the Movement Requests\",\n  \"QUERYTYPE\": \"DEEPLINKS\"\n}"
+        },
+        {
+          "id": "06cba9a7-6dbf-4ff7-bcad-732208dd4ed5",
+          "name": "apps",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"QUERY\": \"Naizam\",\n  \"QUERYTYPE\": \"APPS\"\n}"
+        },
+        {
+          "id": "07ccb5a8-389f-4425-89f7-519fd796b42c",
+          "name": "App no filter",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"QUERYTYPE\": \"APPS\"\n}"
+        },
+        {
+          "id": "e1b5ccf0-bd91-4c5c-bfad-59670fc33d3e",
+          "name": "policy no filter",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"QUERY\": \"\",\n  \"QUERYTYPE\": \"POLICY\"\n}"
+        },
+        {
+          "id": "263fdb23-6a35-49c2-af9c-dcc15d06b430",
+          "name": "policy",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"QUERY\": \"command\",\n  \"QUERYTYPE\": \"POLICY\"\n}"
+        }
+      ]
+    },
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    }
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "OTHER",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": true,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"2\""
+  }
+}

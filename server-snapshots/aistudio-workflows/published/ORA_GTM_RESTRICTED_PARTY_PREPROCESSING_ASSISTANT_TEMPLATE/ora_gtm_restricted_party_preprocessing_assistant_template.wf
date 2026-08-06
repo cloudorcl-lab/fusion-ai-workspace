@@ -1,0 +1,503 @@
+{
+  "workflowId": "300000331058565",
+  "workflowCode": "ORA_GTM_RESTRICTED_PARTY_PREPROCESSING_ASSISTANT_TEMPLATE",
+  "name": "GTM Restricted Party Preprocessing Assistant",
+  "description": "Assists in improving Restricted Party Screening accuracy by preprocessing GTM Party (Contact and Location) data using AI-driven normalization (cleaning and restructuring data into a consistent format). This assistant standardizes names and addresses, removes noise (punctuation, abbreviations, diacritics), and persists normalized attributes so they align better with GTM restricted party screening matching logic, reducing false negatives and improving match quality.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1775039188123"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "name": "Identify Contact XID"
+          },
+          "outcomes": {
+            "success": "1776282328797"
+          },
+          "code": "IDENTIFY_CONTACT_XID",
+          "id": "1775039188123",
+          "inputs": [
+            {
+              "id": "1775039188125_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You extract the Contact/Party XID from the user’s message: {{$context.$system.$inputMessage}}.\n\nContext:\n- In this system, the DOMAIN is handled internally and must NOT be extracted.\n- The user will typically provide only the XID.\n- The XID uniquely identifies a contact within the user’s domain.\n\nWhat is an XID:\n- A string that identifies a contact or party.\n- It may contain letters, numbers, spaces, hyphens, or underscores.\n- Examples:\n  - CUSTOMER-ABC-123\n  - WQ_CONTACT_235\n  - JOHN SMITH\n\nRules:\n- Extract the single most likely Contact/Party XID from the message.\n- Prefer values that appear near words like “contact”, “party”, “gid”, \"xid\", “normalize”, or “use”.\n- If a value appears in DOMAIN.XID format:\n  - Extract ONLY the XID portion (ignore the domain).\n  - Example: MANUALSCREENER.CUSTOMER-ABC-123 → CUSTOMER-ABC-123\n- If multiple candidates exist, choose the one most clearly referenced as the contact/party identifier.\n- If no clear XID is present, return null.\n\nNormalization:\n- Convert the extracted XID to UPPERCASE.\n- Trim leading/trailing whitespace.\n- Preserve internal spaces, hyphens, and underscores.\n- Do NOT modify or infer missing parts.\n\nOutput:\n- Return ONLY a JSON object with exactly one key: contactXid\n- No additional text, no extra keys, no code fences.\n\nExamples:\n\nInput: “Please normalize contact MANUALSCREENER.customer-abc-123”\nOutput: {\"contactXid\":\"CUSTOMER-ABC-123\"}\n\nInput: “Normalize party gid: john smith”\nOutput: {\"contactXid\":\"JOHN SMITH\"}\n\nInput: “Use contact WQ_CONTACT_235 for screening”\nOutput: {\"contactXid\":\"WQ_CONTACT_235\"}\n\nInput: “Can you normalize the contact for me?”\nOutput: {\"contactXid\":null}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"contactXid\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Contact XID prompted assertion"
+          },
+          "outcomes": {
+            "true": "1774960168141",
+            "false": "1776284888896"
+          },
+          "code": "CONTACT_XID_PROMPTED_ASSERTION",
+          "convergenceTargetId": "end",
+          "id": "1776282328797",
+          "inputs": [
+            {
+              "id": "1776282328799_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{($context.$nodes.IDENTIFY_CONTACT_XID.$output.contactXid != null && $context.$nodes.IDENTIFY_CONTACT_XID.$output.contactXid !== \"\")}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_TRANSPORTA_GTMTRADEPARTY",
+            "errorNodeId": "1776285025107",
+            "functionName": "get_trade_party_expand_showPk",
+            "name": "Fetch Party details"
+          },
+          "outcomes": {
+            "success": "1777461183849"
+          },
+          "code": "FETCH_PARTY_DETAILS",
+          "id": "1774960168141",
+          "inputs": [
+            {
+              "id": "1777454260170_1",
+              "name": "contactXid",
+              "type": "string",
+              "value": "{{$context.$nodes.IDENTIFY_CONTACT_XID.$output.contactXid}}"
+            },
+            {
+              "id": "1777454260170_2",
+              "name": "expand",
+              "type": "string",
+              "value": "location,location.addresses"
+            },
+            {
+              "id": "1777454260171_3",
+              "name": "showPks",
+              "type": "string",
+              "value": "true"
+            }
+          ],
+          "outputSpecification": "{\n  \"type\": \"object\",\n  \"additionalProperties\": true,\n  \"properties\": {\n    \"hasMore\": { \"type\": \"boolean\" },\n    \"limit\": { \"type\": \"integer\" },\n    \"count\": { \"type\": \"integer\" },\n    \"offset\": { \"type\": \"integer\" },\n\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"additionalProperties\": true,\n        \"properties\": {\n          \"contactGid\": { \"type\": \"string\" },\n          \"contactXid\": { \"type\": \"string\" },\n          \"isPrimaryContact\": { \"type\": \"boolean\" },\n          \"routeThroughLocation\": { \"type\": \"boolean\" },\n          \"contactType\": { \"type\": \"string\" },\n          \"isBroadcast\": { \"type\": \"boolean\" },\n\n          \"location\": {\n            \"type\": \"object\",\n            \"additionalProperties\": true,\n            \"properties\": {\n              \"locationGid\": { \"type\": \"string\" },\n              \"locationXid\": { \"type\": \"string\" },\n              \"locationName\": { \"type\": \"string\" },\n              \"city\": { \"type\": \"string\" },\n              \"province\": { \"type\": \"string\" },\n              \"postalCode\": { \"type\": \"string\" },\n              \"countryCode3Gid\": { \"type\": \"string\" },\n              \"timeZoneGid\": { \"type\": \"string\" },\n\n              \"isTemporary\": { \"type\": \"boolean\" },\n              \"isMakeApptBeforePlan\": { \"type\": \"boolean\" },\n              \"isShipperKnown\": { \"type\": \"boolean\" },\n              \"isAddressValid\": { \"type\": \"string\" },\n              \"isLtlSplitable\": { \"type\": \"boolean\" },\n\n              \"useAppointmentPriority\": { \"type\": \"boolean\" },\n              \"scheduleLowPriorityAppoint\": { \"type\": \"boolean\" },\n              \"enforceTimeWindowAppoint\": { \"type\": \"boolean\" },\n              \"scheduleInfeasibleAppoint\": { \"type\": \"boolean\" },\n\n              \"bbIsNewStore\": { \"type\": \"boolean\" },\n              \"excludeFromRouteExecution\": { \"type\": \"boolean\" },\n              \"isTemplate\": { \"type\": \"boolean\" },\n              \"allowDriverRest\": { \"type\": \"boolean\" },\n\n              \"apptObjectType\": { \"type\": \"string\" },\n              \"isFixedAddress\": { \"type\": \"boolean\" },\n              \"primaryAddressLineSeq\": { \"type\": \"integer\" },\n\n              \"domainName\": { \"type\": \"string\" },\n              \"isActive\": { \"type\": \"boolean\" },\n\n              \"addressUpdateDate\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"value\": { \"type\": \"string\", \"format\": \"date-time\" }\n                }\n              },\n              \"updateDate\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"value\": { \"type\": \"string\", \"format\": \"date-time\" }\n                }\n              },\n              \"insertDate\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"value\": { \"type\": \"string\", \"format\": \"date-time\" }\n                }\n              },\n\n              \"normalizedAttrs\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"links\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"type\": \"object\",\n                      \"properties\": {\n                        \"rel\": { \"type\": \"string\" },\n                        \"href\": { \"type\": \"string\" }\n                      }\n                    }\n                  }\n                }\n              },\n\n              \"contacts\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"links\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"type\": \"object\",\n                      \"properties\": {\n                        \"rel\": { \"type\": \"string\" },\n                        \"href\": { \"type\": \"string\" }\n                      }\n                    }\n                  }\n                }\n              },\n\n              \"addresses\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"hasMore\": { \"type\": \"boolean\" },\n                  \"totalResults\": { \"type\": \"integer\" },\n                  \"limit\": { \"type\": \"integer\" },\n                  \"count\": { \"type\": \"integer\" },\n                  \"offset\": { \"type\": \"integer\" },\n\n                  \"items\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"type\": \"object\",\n                      \"properties\": {\n                        \"lineSequence\": { \"type\": \"integer\" },\n                        \"addressLine\": { \"type\": \"string\" },\n                        \"domainName\": { \"type\": \"string\" },\n                        \"insertDate\": {\n                          \"type\": \"object\",\n                          \"properties\": {\n                            \"value\": {\n                              \"type\": \"string\",\n                              \"format\": \"date-time\"\n                            }\n                          }\n                        },\n                        \"links\": {\n                          \"type\": \"array\",\n                          \"items\": {\n                            \"type\": \"object\",\n                            \"properties\": {\n                              \"rel\": { \"type\": \"string\" },\n                              \"href\": { \"type\": \"string\" }\n                            }\n                          }\n                        }\n                      },\n                      \"required\": [\"lineSequence\", \"addressLine\"]\n                    }\n                  }\n                },\n                \"required\": [\"items\"]\n              },\n\n              \"links\": {\n                \"type\": \"array\",\n                \"items\": {\n                  \"type\": \"object\",\n                  \"properties\": {\n                    \"rel\": { \"type\": \"string\" },\n                    \"href\": { \"type\": \"string\" }\n                  }\n                }\n              }\n            }\n          },\n\n          \"isEmailVirusProtected\": { \"type\": \"boolean\" },\n          \"consolidatedNotifyOnly\": { \"type\": \"boolean\" },\n          \"isNotificationOn\": { \"type\": \"boolean\" },\n          \"isFromAddress\": { \"type\": \"boolean\" },\n          \"sendAsMessage\": { \"type\": \"boolean\" },\n\n          \"domainName\": { \"type\": \"string\" },\n          \"alternateName\": { \"type\": \"string\" },\n          \"companyName\": { \"type\": \"string\" },\n\n          \"nameAddressUpdateDate\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"value\": { \"type\": \"string\", \"format\": \"date-time\" }\n            }\n          },\n          \"updateDate\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"value\": { \"type\": \"string\", \"format\": \"date-time\" }\n            }\n          },\n          \"insertDate\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"value\": { \"type\": \"string\", \"format\": \"date-time\" }\n            }\n          },\n\n          \"normalizedAttrs\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"links\": {\n                \"type\": \"array\",\n                \"items\": {\n                  \"type\": \"object\",\n                  \"properties\": {\n                    \"rel\": { \"type\": \"string\" },\n                    \"href\": { \"type\": \"string\" }\n                  }\n                }\n              }\n            }\n          },\n\n          \"links\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"rel\": { \"type\": \"string\" },\n                \"href\": { \"type\": \"string\" }\n              }\n            }\n          }\n        },\n        \"required\": [\"contactGid\", \"contactXid\"]\n      }\n    },\n\n    \"links\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"rel\": { \"type\": \"string\" },\n          \"href\": { \"type\": \"string\" }\n        }\n      }\n    }\n  },\n\n  \"required\": [\"items\"]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Contact XID not prompted"
+          },
+          "outcomes": {},
+          "code": "CONTACT_XID_NOT_PROMPTED",
+          "convergenceTargetId": "end",
+          "id": "1776284888896",
+          "inputs": [
+            {
+              "id": "1776284888897_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "Contact XID is not given in the prompt."
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Extract screening fields",
+            "returnType": "object",
+            "sourceCode": "const party = $context.$nodes.FETCH_PARTY_DETAILS.$output.items[0];\nconst addresses = party?.location?.addresses?.items ?? [];\n\nconst sortedAddresses = [...addresses]\n  .filter(a => a && typeof a.lineSequence === \"number\")\n  .sort((a, b) => a.lineSequence - b.lineSequence);\n\nconst result = {\n  firstName: party?.firstName ?? null,\n  lastName: party?.lastName ?? null,\n  alternateName: party?.alternateName ?? null,\n  companyName: party?.companyName ?? null,\n\n  addressLine1: sortedAddresses[0]?.addressLine ?? null,\n  addressLine2: sortedAddresses[1]?.addressLine ?? null,\n  addressLine3: sortedAddresses[2]?.addressLine ?? null,\n\n  city: party?.location?.city ?? null,\n  province: party?.location?.province ?? null,\n  postalCode: party?.location?.postalCode ?? null,\n  country: party?.location?.countryCode3Gid ?? null\n}\n\nconsole.log(result)\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1775071389481"
+          },
+          "code": "EXTRACT_SCREENING_FIELDS",
+          "id": "1775057718223",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1775071496474",
+            "1": "1775072533622"
+          },
+          "code": "PARALLEL_1775071389482",
+          "convergenceTargetId": "1776277420497",
+          "id": "1775071389481",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "name": "Log normalized attributes",
+            "returnType": "object",
+            "sourceCode": "const normalizedNameResult = $context.$nodes.NORMALIZE_NAME.$output;\nconst normalizedAddressResult = $context.$nodes.NORMALIZE_ADDRESS.$output;\n\nreturn {\n  \"firstNameNormalized\": normalizedNameResult.firstNameNormalized,\n  \"lastNameNormalized\": normalizedNameResult.lastNameNormalized,\n  \"companyNameNormalized\": normalizedNameResult.companyNameNormalized,\n  \"alternateNameNormalized\": normalizedNameResult.alternateNameNormalized,\n  \"normalizedAddressLine1\": normalizedAddressResult.normalizedAddressLine1,\n  \"normalizedAddressLine2\": normalizedAddressResult.normalizedAddressLine2,\n  \"normalizedAddressLine3\": normalizedAddressResult.normalizedAddressLine3,\n  \"normalizedCity\": normalizedAddressResult.normalizedCity,\n  \"normalizedProvince\": normalizedAddressResult.normalizedProvince,\n  \"normalizedPostalCode\": normalizedAddressResult.normalizedPostalCode,\n  \"normalizedCountry\": normalizedAddressResult.normalizedCountry\n}"
+          },
+          "outcomes": {
+            "success": "1776027272003"
+          },
+          "code": "LOG_NORMALIZED_ATTRIBUTES",
+          "id": "1776277420497",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Normalize Person and Company Name"
+          },
+          "outcomes": {
+            "success": "1776277420497"
+          },
+          "code": "NORMALIZE_NAME",
+          "id": "1775071496474",
+          "inputs": [
+            {
+              "id": "1775071496477_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Task:\nNormalize person/individual and party/company name for restricted-party screening comparison.\n\nInput:\nFirst Name = {{$context.$nodes.EXTRACT_SCREENING_FIELDS.$output.result.firstName}}\nLast Name = {{$context.$nodes.EXTRACT_SCREENING_FIELDS.$output.result.lastName}}\nCompany Name = {{$context.$nodes.EXTRACT_SCREENING_FIELDS.$output.result.companyName}}\nAlternate Name = {{$context.$nodes.EXTRACT_SCREENING_FIELDS.$output.result.alternateName}}\n\nInstructions:\n- Convert to uppercase.\n- Remove punctuation.\n- Collapse extra spaces.\n- Expand common abbreviations such as TRDG, INTL, CO, etc.\n- Remove legal suffixes such as INC, PLC, LTD, LLC, CORP, etc.\n- Remove common honorifics such as MR, MRS, DR, PROF, SIR, SHEIKH, etc.\n- Normalize diacritical characters to their ASCII equivalents (e.g., Á → A, É → E, Ñ → N).\n- Preserve meaningful terms.\n- Do not add new words that are not supported by the input.\n\nReturn only valid JSON in this exact format:\n{\n  \"firstNameNormalized\": string | null,\n  \"lastNameNormalized\": string | null,\n  \"companyNameNormalized\": string | null,\n  \"alternateNameNormalized\": string | null\n}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"firstNameNormalized\": {\n            \"type\": \"string\"\n        },\n        \"lastNameNormalized\": {\n            \"type\": \"string\"\n        },\n        \"companyNameNormalized\": {\n            \"type\": \"string\"\n        },\n        \"alternateNameNormalized\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Normalize Address"
+          },
+          "outcomes": {
+            "success": "1776277420497"
+          },
+          "code": "NORMALIZE_ADDRESS",
+          "id": "1775072533622",
+          "inputs": [
+            {
+              "id": "1775072533623_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Task:\nStandardize the address for screening comparison.\n\nInput:\nAddress Line 1 = {{$context.$nodes.EXTRACT_SCREENING_FIELDS.$output.result.addressLine1}}\nAddress Line 2 = {{$context.$nodes.EXTRACT_SCREENING_FIELDS.$output.result.addressLine2}}\nAddress Line 3 = {{$context.$nodes.EXTRACT_SCREENING_FIELDS.$output.result.addressLine3}}\nCity = {{$context.$nodes.EXTRACT_SCREENING_FIELDS.$output.result.city}}\nProvince/State = {{$context.$nodes.EXTRACT_SCREENING_FIELDS.$output.result.province}}\nPostal Code = {{$context.$nodes.EXTRACT_SCREENING_FIELDS.$output.result.postalCode}}\nCountry = {{$context.$nodes.EXTRACT_SCREENING_FIELDS.$output.result.country}}\n\nInstructions:\n- Convert to uppercase.\n- Normalize diacritical characters to their ASCII equivalents (e.g., Á → A, É → E, Ñ → N).\n- Expand common abbreviations such as RD, ST, AVE, BLVD, BLDG.\n- Remove filler words such as NEAR, OPP, ATTN, C/O when they do not add identity value.\n- Try to structure the address into components.\n- If the address is too vague, preserve partial values without guessing..\n- Do not infer a full address unless the evidence is strong.\n- If country is missing, infer only when there is strong evidence from the address.\n\nOutput JSON:\n{\n  \"normalizedAddressLine1\" : string | null,\n  \"normalizedAddressLine2\" : string | null,\n  \"normalizedAddressLine3\" : string | null,\n  \"normalizedCity\" : string | null,\n  \"normalizedProvince\" : string | null,\n  \"normalizedPostalCode\" : string | null,\n  \"normalizedCountry\" : string | null\n}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"normalizedAddressLine1\": {\n            \"type\": \"string\"\n        },\n        \"normalizedAddressLine2\": {\n            \"type\": \"string\"\n        },\n        \"normalizedAddressLine3\": {\n            \"type\": \"string\"\n        },\n        \"normalizedCity\": {\n            \"type\": \"string\"\n        },\n        \"normalizedProvince\": {\n            \"type\": \"string\"\n        },\n        \"normalizedPostalCode\": {\n            \"type\": \"string\"\n        },\n        \"normalizedCountry\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Fetch Party details failed"
+          },
+          "outcomes": {},
+          "code": "FETCH_PARTY_DETAILS_FAILED",
+          "id": "1776285025107",
+          "inputs": [
+            {
+              "id": "1776285025107_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "Failed to fetch Party details."
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Save normalized names failed"
+          },
+          "outcomes": {},
+          "code": "SAVE_NORMALIZED_NAMES_FAILED",
+          "id": "1776285364266",
+          "inputs": [
+            {
+              "id": "1776285364266_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "Failed to save the normalized individual/company name."
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Save normalized location failed"
+          },
+          "outcomes": {},
+          "code": "SAVE_NORMALIZED_LOCATION_FAILED",
+          "id": "1776285431882",
+          "inputs": [
+            {
+              "id": "1776285431882_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "Failed to save the normalized location."
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Prepare normalized contact attributes",
+            "returnType": "array",
+            "sourceCode": "function toText(value) {\n  if (value === null || value === undefined) return null;\n  const text = String(value).trim();\n  return text.length ? text : null;\n}\n\nconst party = $context.$nodes.FETCH_PARTY_DETAILS.$output.items[0] ?? {};\nconst normalized = $context.$nodes.NORMALIZE_NAME?.$output ?? {};\n\nconst contactGid = toText(party.contactGid);\nconst domainName =\n  toText(party.domainName) ??\n  (contactGid && contactGid.includes(\".\") ? contactGid.split(\".\")[0] : null);\n\nconst items = [\n  {\n    attributeName: \"FIRSTNAME\",\n    normalizedText: toText(normalized.firstNameNormalized),\n    domainName,\n    sourceType: \"AI\"\n  },\n  {\n    attributeName: \"LASTNAME\",\n    normalizedText: toText(normalized.lastNameNormalized),\n    domainName,\n    sourceType: \"AI\"\n  },\n  {\n    attributeName: \"COMPANYNAME\",\n    normalizedText: toText(normalized.companyNameNormalized),\n    domainName,\n    sourceType: \"AI\"\n  },\n  {\n    attributeName: \"ALTERNATENAME\",\n    normalizedText: toText(normalized.alternateNameNormalized),\n    domainName,\n    sourceType: \"AI\"\n  }\n].filter(item => item.normalizedText !== null);\n\nreturn items;"
+          },
+          "outcomes": {
+            "success": "1776060284356"
+          },
+          "code": "PREPARE_NORMALIZED_CONTACT_ATTRIBUTES",
+          "convergenceTargetId": "1776286223808",
+          "id": "1776027272003",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_TRANSPORTA_GTMTRADEPARTY",
+            "errorNodeId": "1776285364266",
+            "functionName": "update_normalized_attributes",
+            "name": "Save normalized names"
+          },
+          "outcomes": {
+            "success": "1776027340403"
+          },
+          "code": "SAVE_NORMALIZED_NAMES",
+          "convergenceTargetId": "1776286223808",
+          "id": "1776060284356",
+          "inputs": [
+            {
+              "id": "1776349489088_1",
+              "name": "contactGid",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCH_PARTY_DETAILS.$output.items[0].contactGid}}"
+            },
+            {
+              "id": "1776349489088_2",
+              "name": "normalizedAttrs",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_NORMALIZED_CONTACT_ATTRIBUTES.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Prepare normalized location attributes",
+            "returnType": "array",
+            "sourceCode": "function toText(value) {\n  if (value === null || value === undefined) return null;\n  const text = String(value).trim();\n  return text.length ? text : null;\n}\n\nconst party = $context.$nodes.FETCH_PARTY_DETAILS?.$output ?? {};\nconst normalized = $context.$nodes.NORMALIZE_ADDRESS?.$output ?? {};\n\nconst location = party.location ?? {};\nconst locationGid = toText(location.locationGid);\nconst domainName =\n  toText(location.domainName) ??\n  toText(party.domainName) ??\n  (locationGid && locationGid.includes(\".\") ? locationGid.split(\".\")[0] : null);\n\nconst items = [\n  {\n    attributeName: \"ADDRESSLINE1\",\n    normalizedText: toText(normalized.normalizedAddressLine1),\n    domainName,\n    sourceType: \"AI\"\n  },\n  {\n    attributeName: \"ADDRESSLINE2\",\n    normalizedText: toText(normalized.normalizedAddressLine2),\n    domainName,\n    sourceType: \"AI\"\n  },\n  {\n    attributeName: \"ADDRESSLINE3\",\n    normalizedText: toText(normalized.normalizedAddressLine3),\n    domainName,\n    sourceType: \"AI\"\n  },\n  {\n    attributeName: \"CITY\",\n    normalizedText: toText(normalized.normalizedCity),\n    domainName,\n    sourceType: \"AI\"\n  },\n  {\n    attributeName: \"PROVINCE\",\n    normalizedText: toText(normalized.normalizedProvince),\n    domainName,\n    sourceType: \"AI\"\n  },\n  {\n    attributeName: \"POSTALCODE\",\n    normalizedText: toText(normalized.normalizedPostalCode),\n    domainName,\n    sourceType: \"AI\"\n  },\n  {\n    attributeName: \"COUNTRY\",\n    normalizedText: toText(normalized.normalizedCountry),\n    domainName,\n    sourceType: \"AI\"\n  }\n].filter(item => item.normalizedText !== null);\n\nreturn items;"
+          },
+          "outcomes": {
+            "success": "1776352044529"
+          },
+          "code": "PREPARE_NORMALIZED_LOCATION_ATTRIBUTES",
+          "convergenceTargetId": "1776286223808",
+          "id": "1776027340403",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_TRANSPORTA_OTMLOCATION",
+            "errorNodeId": "1776285431882",
+            "functionName": "update_normalized_attributes",
+            "name": "Save normalized location"
+          },
+          "outcomes": {
+            "success": "1776285772699"
+          },
+          "code": "SAVE_NORMALIZED_LOCATION",
+          "convergenceTargetId": "1776286223808",
+          "id": "1776060336326",
+          "inputs": [
+            {
+              "id": "1776028094865_1",
+              "name": "locationGid",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_LOCATION_GID.$output.result}}"
+            },
+            {
+              "id": "1776028094866_2",
+              "name": "normalizedAttrs",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_NORMALIZED_LOCATION_ATTRIBUTES.$output.result}}"
+            }
+          ],
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Normalized attributes saved",
+            "returnType": "string",
+            "sourceCode": "console.log(\"Successfully saved the Party and Location normalized attributes\");"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "NORMALIZED_ATTRIBUTES_SAVED",
+          "convergenceTargetId": "1776286223808",
+          "id": "1776285772699",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Location GID",
+            "returnType": "string",
+            "sourceCode": "// This is a temporary workaround for the problem that 'SAVE_NORMALIZED_LOCATION' node is not able to read Location GID from FETCH_PARTY_DETAILS_NODE.\n\nreturn $context.$nodes.FETCH_PARTY_DETAILS.$output.items[0].location.locationGid ;"
+          },
+          "outcomes": {
+            "success": "1776060336326"
+          },
+          "code": "PREPARE_LOCATION_GID",
+          "id": "1776352044529",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Party Existence Assertion"
+          },
+          "outcomes": {
+            "true": "add_true_1777461183849",
+            "false": "1777461248835"
+          },
+          "code": "PARTY_EXISTENCE_ASSERTION",
+          "convergenceTargetId": "1775057718223",
+          "id": "1777461183849",
+          "inputs": [
+            {
+              "id": "1777461183850_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCH_PARTY_DETAILS.$output.count > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for true branch",
+            "name": "Add (True Branch)"
+          },
+          "outcomes": {
+            "success": "1775057718223"
+          },
+          "id": "add_true_1777461183849",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Party does not exist"
+          },
+          "outcomes": {},
+          "code": "PARTY_DOES_NOT_EXIST",
+          "convergenceTargetId": "1775057718223",
+          "id": "1777461248835",
+          "inputs": [
+            {
+              "id": "1777461248837_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "No Party exists by the ID {{$context.$nodes.IDENTIFY_CONTACT_XID.$output.contactXid}}."
+            }
+          ],
+          "type": "RETURN"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "SCM",
+  "product": "TRANSPORTATION_GLOBAL_TRADE",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": true,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

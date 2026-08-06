@@ -1,0 +1,752 @@
+{
+  "workflowId": "100002355226949",
+  "workflowCode": "ORA_FIN_AP_PAYMENT_PROCESS_REQUEST_TEMPLATE_ANALYST",
+  "name": "Payment Process Request Template Analyst",
+  "description": "Assists payables specialists in retrieving specific payment request template data. This analyst identifies details using criteria such as template names or dynamic discounting filters. While it facilitates information discovery, it does not modify existing templates or create new payment process request templates.",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1768144219728"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Identify Query type"
+          },
+          "outcomes": {
+            "success": "1768144678648"
+          },
+          "code": "FIN_AP_LLM_IDENTIFY_QUERY_TYPE",
+          "id": "1768144219728",
+          "inputs": [
+            {
+              "id": "1768144219730_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Use your intelligence to identify the filter from {{$context.$system.$inputMessage}} \nChat history: {{$context.$triggers.REST.$input.chatHistory }}\n\nIdentify which kind of following query user is asking:\n\n1. Get PPR templates by Business Unit and Currency\nUse this when the user asks for PPR templates by a business unit and currency, or when the query mentions a business unit and a currency together, even if the user also mentions:\n- payment programs\n- supported payment programs\n- supply chain financing\n- virtual card program\n- dynamic discounting\n→ Output: getPprTemplateByBUandCurrency\n\n2. Fuzzy match PPR templates based on a name the user gives\n\nUser mentions: template with name like\n→ Output: getPprTemplateByName\n\n3. Get PPR templates related to Dynamic Discount (DD) or early payment criteria\n\nUser mentions: Dynamic Discount, DD, early payment, termination date (this includes positive matches, exclusions, or complex conditions like \"don't include\" or \"don't only include\")\n→ Output: getPprTemplateForDD\n\n4. Get PPR template by other filters\n\nUser mentions other status that cannot be categorized as one of the above\n→ Output: others\n\nExample:\n- Is there any template has similar name to CPPOT_020042?\n  Output: getPprTemplateByName\n- Are there any template that has MNO in it?\n  Output: getPprTemplateByName\n- Tell me the PPR templates that can select early payment invoices.\n  Output: getPprTemplateForDD\n- Templates that don't only include DD invoices\n  Output: getPprTemplateForDD\n- Templates that don't include DD invoices\n  Output: getPprTemplateForDD\n- Show PPR templates for supplier Vision Operations\n  Output: others\n- Show PPR templates that use Brazil Check payment method\n  Output: others\n- Show all templates and classify them by DD behavior.\n  Output: others\n- Show payment process request templates for Virtual credit card program in Vision Operations for USD\n   Output : getPprTemplateByBUandCurrency\n-Show payment process request templates for supported Payment Programs in Vision Operations for USD\n  Output : getPprTemplateByBUandCurrency\n\n#Guard rail\n- Don’t add any other information other than the four keywords mentioned above\n\n# DD-coded template name rule:\t\nIf the user explicitly asks for a template by name, named, with name, exact name, or details for a specific template value such as PPR_ExcludeDD, PPR_IncludeDDOnly, or PPR_TestOne, classify the query as getPprTemplateByName.\t\nDo not treat DD inside a specific template name as a Dynamic Discount criteria search.\t\nOnly classify as getPprTemplateForDD when the user asks for DD / Dynamic Discount / early payment templates as a category or capability.\t\nExamples:\t\n- \"Are there any ppr template with name PPR_ExcludeDD?\" -> getPprTemplateByName\t\n- \"Is there any template named PPR_IncludeDDOnly?\" -> getPprTemplateByName\t\n- \"Show templates containing DD\" -> getPprTemplateForDD\t\n- \"Show DD templates\" -> getPprTemplateForDD"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Query Router"
+          },
+          "outcomes": {
+            "getPprTemplateForDD": "1768144709479",
+            "others": "1769704630143",
+            "getPprTemplateByName": "1768144790816",
+            "getPprTemplateByBUandCurrency": "1780570364269"
+          },
+          "code": "FIN_AP_QUERY_ROUTER",
+          "convergenceTargetId": "end",
+          "id": "1768144678648",
+          "inputs": [
+            {
+              "id": "1768144678649_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_LLM_IDENTIFY_QUERY_TYPE.$output}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Identify filter for PPR templates"
+          },
+          "outcomes": {
+            "success": "1768144751459"
+          },
+          "code": "FIN_AP_LLM_IDENTIFY_FILTER_FOR_PPR_TEMPLATES",
+          "id": "1768144709479",
+          "inputs": [
+            {
+              "id": "1768144709480_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "# Input\n{{$context.$system.$inputMessage}}\n\nFrom the above user message, identify the filter(s) from the below ones, that needs to be applied while fetching PPR templates\n- Templates that won't include early payment offer invoices\nacceleratedInvoicesCode='ORA_DD_NO' OR acceleratedInvoicesCode=null\n- Templates that will include early payment offer invoices\nacceleratedInvoicesCode='ORA_DD_YES' OR acceleratedInvoicesCode='ORA_DD_ONLY'\n- Templates that exclusively includes early payment offer invoices (Use this only if the input mentions exclusivity using only or any acronyms)\nacceleratedInvoicesCode='ORA_DD_ONLY'\n- Templates that do not exclusively include early payment offer invoices (Use this if the input says \"do not only\", \"not just\", or specifically negates exclusivity)\nacceleratedInvoicesCode='ORA_DD_YES'\n\n#Guardrails\n- Don't include anything other than one of the above provided outputs\n\n- DD / Dynamic Discount default rule:\t\n  If the user asks for templates containing DD, templates with DD, DD templates, Dynamic Discount templates, or templates related to DD, treat DD as Dynamic Discount / early payment offer invoice support, not as a literal template-name substring.\t\n  Unless the user explicitly says \"only\", \"exclusively\", \"do not include\", or \"do not only include\", output:\t\n  acceleratedInvoicesCode='ORA_DD_YES' OR acceleratedInvoicesCode='ORA_DD_ONLY'\n\n# Examples\nInput: Tell me the PPR templates that can select early payment invoices\nOutput: acceleratedInvoicesCode='ORA_DD_YES' OR acceleratedInvoicesCode='ORA_DD_ONLY'\n\nInput: Tell me the PPR templates that can only select early payment invoices\nOutput: acceleratedInvoicesCode='ORA_DD_ONLY'\n\nInput: Show me the PPR templates that do not select early payment invoices\nOutput: acceleratedInvoicesCode='ORA_DD_NO' OR acceleratedInvoicesCode=null\n\nInput: Templates that do not only include DD invoices\nOutput: acceleratedInvoicesCode='ORA_DD_YES'\n\nInput: Show templates containing DD\t\nOutput: acceleratedInvoicesCode='ORA_DD_YES' OR acceleratedInvoicesCode='ORA_DD_ONLY'"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Search template with NER",
+            "workflowCode": "ORA_FIN_AP_PAYMENT_EXECUTION_ENTITY_ASSISTANT"
+          },
+          "outcomes": {
+            "success": "1768144836674"
+          },
+          "code": "FIN_AP_WORKFLOW_SEARCH_TEMPLATE_WITH_NER",
+          "convergenceTargetId": "1768144836674",
+          "id": "1768144790816",
+          "inputs": [
+            {
+              "id": "1768307165486_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            },
+            {
+              "id": "1768307165487_2",
+              "name": "useCaseKey",
+              "type": "string",
+              "value": "PaymentExecutionAgent-PPR-Template"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Unhandled cases"
+          },
+          "outcomes": {
+            "success": "1768144731954"
+          },
+          "code": "FIN_AP_LLM_UNHANDLED_CASES",
+          "id": "1769704630143",
+          "inputs": [
+            {
+              "id": "1769704630145_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "# Input\nUser Input: {{$context.$system.$inputMessage}} \nChat history: {{$context.$triggers.REST.$input.chatHistory }}\n\n# Goal\nTo provide a response to the user for performing an unsupported functionality\n\n# Instructions\n- Redirect the user to {relativeLink:{url:faces/FndOverview?fndTaskItemNodeId=PaymentLandingMainArea&pageParams=fndGlobalItemNodeId=itemNode_payables_payables_payments&fromApPaymentsOverview=true,text:Payables Payments,family:FSCM}}\n- The only supported functionalities are:\n    - Searching for a PPR Template by name\n    - Listing templates that can select dynamic discounting exclusive / inclusive templates\n\n# Example\nInput: Show me all available templates in the system\nOutput: The system doesn't support listing all templates. Please search by a template name or use the filter Select early payment invoices with these options: Yes, No or Discounted Only. You can also go to {relativeLink:{url:faces/FndOverview?fndTaskItemNodeId=PaymentLandingMainArea&pageParams=fndGlobalItemNodeId=itemNode_payables_payables_payments&fromApPaymentsOverview=true,text:Payables Payments,family:FSCM}} to search for templates\n\n#Guard rail\n- Be precise and concise with the response and always provide the redirect link\n- The response must be in a natural language format. Avoid any unnecessary dashes & semicolons"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Extract Business Unit and Currency"
+          },
+          "outcomes": {
+            "success": "1780570397834"
+          },
+          "code": "FIN_AP_EXTRACT_BUSINESS_UNIT_AND_CURRENCY",
+          "id": "1780570364269",
+          "inputs": [
+            {
+              "id": "1780570364270_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Use your intelligence to extract business unit(s) and currency/currencies from {{$context.$system.$inputMessage}} \nChat history: {{$context.$triggers.REST.$input.chatHistory }}\n\nReturn only a valid JSON object in this exact form:\n{\n  \"businessUnit\": \"string\",\n  \"currency\": \"string\"\n}\n\nRules:\n- Extract the business unit list from the user query.\n- Extract the currency list from the user query.\n- If there is only one business unit or one currency, return a single string.\n- If there are multiple business units or multiple currencies, return them as comma-separated values in the same order they appear.\n- Do not add any extra fields.\n- Do not add any explanation.\n- Do not return markdown.\n- If no business unit is found, return an empty string for businessUnit.\n- If no currency is found, return an empty string for currency.\n\nExamples:\nInput: Show payment process request templates for Virtual credit card program in Vision Operations for USD\nOutput:\n{\n  \"businessUnit\": \"Vision Operations\",\n  \"currency\": \"USD\"\n}\n\nInput: Show payment process request templates for Virtual credit card program in Vision Operations, Argentina BU for USD,EUR\nOutput:\n{\n  \"businessUnit\": \"Vision Operations,Argentina BU\",\n  \"currency\": \"USD,EUR\"\n}"
+            }
+          ],
+          "type": "LLM",
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"businessUnit\": {\n      \"type\": \"string\",\n      \"description\": \"Comma-separated list of business units or single business unit; empty string if none found\"\n    },\n    \"currency\": {\n      \"type\": \"string\",\n      \"description\": \"Comma-separated list of currencies or single currency; empty string if none found\"\n    }\n  },\n  \"required\": [\n    \"businessUnit\",\n    \"currency\"\n  ],\n  \"additionalProperties\": false\n}"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_PAYABLES_PAYABLESPAYMENTPROCESSREQUESTTEMPLATE",
+            "functionName": "getPprTemplates",
+            "name": "Get PPR templates by acceleration Flag"
+          },
+          "outcomes": {
+            "success": "1768144657295"
+          },
+          "code": "FIN_AP_BO_FUNCTION_GET_PPR_TEMPLATES_BY_ACCELERATION_FLAG",
+          "id": "1768144751459",
+          "inputs": [
+            {
+              "id": "1768375265059_1",
+              "name": "$filter",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_LLM_IDENTIFY_FILTER_FOR_PPR_TEMPLATES.$output}}"
+            },
+            {
+              "id": "1768375265060_2",
+              "name": "$fields",
+              "type": "string",
+              "value": "templateName"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Search output parser",
+            "returnType": "object",
+            "sourceCode": "const response = $context.$nodes.FIN_AP_WORKFLOW_SEARCH_TEMPLATE_WITH_NER.$output;\nlet result = null;\n\nif (response && typeof response.output === 'string') {\n  const outputStr = response.output.trim();\n  try {\n    const parsed = JSON.parse(outputStr);\n    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.result)) {\n      result = parsed.result;\n    } else {\n      result = parsed;\n    }\n  } catch (e) {\n    result = outputStr;\n  }\n}\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1768144657295"
+          },
+          "code": "FIN_AP_CODE_SEARCH_OUTPUT_PARSER",
+          "convergenceTargetId": "1768144790816",
+          "id": "1768144836674",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Other Error"
+          },
+          "outcomes": {},
+          "code": "FIN_AP_RETURN_OTHER_ERROR",
+          "convergenceTargetId": "1768144657295",
+          "id": "1768144731954",
+          "inputs": [
+            {
+              "id": "1768144731955_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_LLM_UNHANDLED_CASES.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Program Identifer In PPR"
+          },
+          "outcomes": {
+            "success": "1780570481276"
+          },
+          "code": "FIN_AP_PROGRAM_IDENTIFER_IN_PPR",
+          "id": "1780570397834",
+          "inputs": [
+            {
+              "id": "1780570397835_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Use your intelligence to identify the program type from {{$context.$system.$inputMessage}} \nChat history: {{$context.$triggers.REST.$input.chatHistory}}\n\nIdentify the program type only when the user is asking about payment process request templates.\n\nPriority order:\n1. If the user asks about Dynamic discounting, DD, or early payment, output: DynamicDiscountPPR\n2. If the user asks about Virtual card, Virtual credit card, or VCC, output: virtualCardPPR\n3. If the user asks about Supply chain financing or SCF, output: scfPPR\n4. Otherwise, output: standardPPR\n\nRules:\n- If the user asks for payment process request templates filtered only by business unit and currency, output: standardPPR\n- If the user asks for supported Payment Programs, output: standardPPR\n- If multiple program types are mentioned, choose the most specific match using the priority order above\n- If the request is not about payment process request templates, output: standardPPR\n\nGuard rail:\n- Output only one of these four keywords:\n  DynamicDiscountPPR\n  virtualCardPPR\n  scfPPR\n  standardPPR\n- Do not add any other text"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Check PPR Query Based on Program Type"
+          },
+          "outcomes": {
+            "true": "1780570522826",
+            "false": "1780570590083"
+          },
+          "code": "FIN_AP_CHECK_PPR_QUERY_BASED_ON_PROGRAM_TYPE",
+          "convergenceTargetId": "end",
+          "id": "1780570481276",
+          "inputs": [
+            {
+              "id": "1780570481277_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_PROGRAM_IDENTIFER_IN_PPR.$output === 'scfPPR'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "If PPR schedule mode"
+          },
+          "outcomes": {
+            "true": "1768144337836",
+            "false": "1768144591153"
+          },
+          "code": "FIN_AP_CONDITION_DECIDE_OUTPUT_MODE",
+          "convergenceTargetId": "1768144272777",
+          "id": "1768144248256",
+          "inputs": [
+            {
+              "id": "1768144248257_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.isInPprScheduleMode}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "SCF Template Filter Handler"
+          },
+          "outcomes": {
+            "success": "1780570551607"
+          },
+          "code": "FIN_AP_SCF_TEMPLATE_FILTER_HANDLER",
+          "id": "1780570522826",
+          "inputs": [
+            {
+              "id": "1780570522827_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "# Input\nUser Input: {{$context.$system.$inputMessage}} \nChat history: {{$context.$triggers.REST.$input.chatHistory }}\n\n# Goal\nTo provide a response to the user for supported and unsupported payment process request template functionality.\n\n# Instructions\n- The supported functionalities are:\n  - Searching for a PPR Template by name\n  - Filtering payment process request templates by business unit and currency\n  - Filtering payment process request templates based on Virtual Card program\n  - Filtering payment process request templates based on Dynamic Discounting program\n  - Listing templates that can select dynamic discounting exclusive / inclusive templates\n- If the user asks for filtering based on Supply Chain Financing or SCF, respond that this functionality is not supported.\n- If the user asks for any other unsupported filter or functionality, respond that it is not supported.\n- Redirect the user to {relativeLink:{url:faces/FndOverview?fndTaskItemNodeId=PaymentLandingMainArea&pageParams=fndGlobalItemNodeId=item_node_payables_payables_payments&fromApPaymentsOverview=true,text:Payables Payments,family:FSCM}}\n\n\n# Guard rail\n- Be precise and concise with the response and always provide the redirect link\n- The response must be in a natural language format\n- Avoid any unnecessary dashes or semicolons"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Check for filtration based on DD"
+          },
+          "outcomes": {
+            "true": "1780570618219",
+            "false": "1780570997528"
+          },
+          "code": "FIN_AP_CHECK_FOR_FILTRATION_BASED_ON_DD",
+          "convergenceTargetId": "1780570997528",
+          "id": "1780570590083",
+          "inputs": [
+            {
+              "id": "1780570590084_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_PROGRAM_IDENTIFER_IN_PPR.$output  == \"DynamicDiscountPPR\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Was unique match found"
+          },
+          "outcomes": {
+            "true": "1768144363905",
+            "false": "1768144386753"
+          },
+          "code": "FIN_AP_CONDITION_WAS_UNIQUE_MATCH_FOUND",
+          "convergenceTargetId": "end",
+          "id": "1768144337836",
+          "inputs": [
+            {
+              "id": "1768144337838_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_SEARCH_OUTPUT_PARSER.$output.result.length == 1}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Response for listing templates"
+          },
+          "outcomes": {
+            "success": "1768144272777"
+          },
+          "code": "FIN_AP_LLM_RESPONSE_FOR_LISTING_TEMPLATES",
+          "id": "1768144591153",
+          "inputs": [
+            {
+              "id": "1768144591154_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "# Declarations\n- Input message: {{$context.$system.$inputMessage}}\n- Chat history: {{$context.$triggers.REST.$input.chatHistory}}\n- Directly fetched Entities: union of outputs from relevant nodes, including:\n  - {{$context.$nodes.FIN_AP_BO_FUNCTION_GET_PPR_TEMPLATES_BY_ACCELERATION_FLAG.$output}}\n  - {{$context.$nodes.FIN_AP_GET_PPR_DETAILS_FILTERED_ON_BU_AND_CURRENCY?.$output?.items || []}} \n- Filter used for directly fetching entities: union of outputs from relevant nodes, including:\n   - {{$context.$nodes.FIN_AP_LLM_IDENTIFY_FILTER_FOR_PPR_TEMPLATES.$output}}\n   - {{$context.$nodes.FIN_AP_EXTRACT_BUSINESS_UNIT_AND_CURRENCY.$output}} \n- Matched Entities: {{$context.$nodes.FIN_AP_CODE_SEARCH_OUTPUT_PARSER.$output.result}}\n- Identified Query Type: {{$context.$nodes.FIN_AP_LLM_IDENTIFY_QUERY_TYPE.$output}}\n\n# Primary Goal\nAssume the role of a Payment Process Request (PPR) Template Retriever Agent. Your primary purpose is to aid the user in finding templates based on the provided data.\n\n# Query Types (Intent Context)\nDo not expose query type names, filter values, codes, internal flags, or backend criteria to the user. Use the \"Identified Query Type\" to understand the context of the user's search:\n- `getPprTemplateByName`: The user is looking for a fuzzy match of PPR templates based on a specific name they provided.\n- `getPprTemplateForDD`: The user is looking for PPR templates related to Dynamic Discount (DD) or early payment criteria (includes mentions of Dynamic Discount, DD, early payment, termination date, positive matches, exclusions, or complex conditions).\n- `getPprTemplateByBUandCurrency`:The user is looking for PPR templates filtered based on business unit and currency\n- `others`: The user mentioned statuses or criteria that cannot be categorized as one of the above.\n\n# Instructions\n1. If `Directly fetched Entities` or `Matched Entities` has results:\n   - Generate a polite, concise response summarizing the input message and acknowledging what was found as a single, combined thought.\n- Candidate comparison response rule:\t   - Criteria Handling Rule: IF AND ONLY IF the user explicitly asks for the selection criteria, rules, or conditions, seamlessly blend the rule into your introduction. Depending on their request, state that the criteria used is that the templates must [include / not include / exclusively include / not exclusively include] selection for early payment offer invoices.\n        If the user asks \"which\", \"which one\", \"among\", or \"between\" specific PPR template names, the response must directly answer the comparison.\t   - Ensure that the template keyword or criteria used for the search is explicitly mentioned in your summary (leverage the Input Message, Chat History, and Identified Query Type).\n   - Assume the actual results will be displayed by the system immediately after your response. \n       In this case, mention:\t   - Do NOT include the actual template results in your text response.\n        - the template names the user provided\t\n       - which returned template(s) satisfy the requested condition\t\n       - the plain-business criterion used for the check\t\n        It is allowed to mention the returned template names in the text response for candidate-comparison questions because the user explicitly asked which template matched.\t\n        Example:\t\n        Input: Which payment process request template (PPR_IncludeDDOnly or PPR_TestOne) only allows early payment invoices?\t\n        Output: Among the two templates returned — PPR_IncludeDDOnly and PPR_TestOne — only PPR_IncludeDDOnly exclusively allows early payment invoices. For this check I used the criterion that templates must exclusively allow early payment invoices.\n   - Criteria Handling Rule: IF AND ONLY IF the user explicitly asks for the selection criteria, rules, or conditions, seamlessly blend the rule into your introduction. Depending on their request, state that the criteria used is that the templates must [include / not include / exclusively include / not exclusively include] selection for early payment offer invoices.\n   - Ensure that the template keyword or criteria used for the search is explicitly mentioned in your summary (leverage the Input Message, Chat History, and Identified Query Type).\n   - Assume the actual results will be displayed by the system immediately after your response. \n   - Do NOT include the actual template results in your text response.\n2. If there are NO results in either entity field:\n   - Criteria Handling Rule applies here too: IF AND ONLY IF the user explicitly asks for the selection criteria, briefly state the rule first, then immediately append the generic no-match response. (e.g., \"To be eligible, templates must [include / not include / exclusively include / not exclusively include] selection for early payment offer invoices. However, no matching PPR template found...\")\n   - If the user does NOT ask for the criteria, strictly output the exact generic response provided in the \"Examples\" section.\n   - Do not attempt to dynamically summarize the user's specific criteria or generate a custom apology.\n\n3. Exact template name response rule:\t\nIf the user asks whether a template is named, called, or has the exact name <templateName>, treat it as an exact template-name lookup.\t\nWhen an exact match is found, respond:\t\nTemplates matching \"<templateName>\":\t\nDo not say that unrelated templates were found, and do not imply fuzzy or broad matching.\n\n# User-Facing Language Rules\n- Always translate internal Dynamic Discount or early payment logic into plain business language.\n- If the user asks about Dynamic Discount, use `Dynamic Discount` unless the user specifically used another term such as `early payment`.\n- Preserve the user’s terminology where possible, but clean up technical phrasing.\n\n# Guardrails\n- When results are present: Do NOT share the results in your response. Respond as if the results follow automatically after your text.\n- **Simply generate the introductory response. Do NOT let the user know explicitly that the results will follow (e.g., do not say \"The results will be displayed below\"). **\n- Do NOT hallucinate and ask the user about any further actions.\n- Only respond to the questions asked; do NOT provide further recommendations or suggested actions.\n- Do NOT include technical information, including but not limited to:\n  - internal codes such as `ORA_DD_NO`,`ORA_DD_YES`, `ORA_DD_ONLY` etc.. \n  - null checks such as `IS NULL`\n  - SQL-like expressions\n  - backend filter conditions\n  - field names such as `acceleratedInvoicesCode`\n  - query type names\n  - internal IDs\n  - node names\n- Strictly follow the generic response format provided in the examples when there are no matches.\n\n-Plain text output guard:\t\n    Return only the user-facing introductory text as a plain string.\t\n    Do not output JSON, schema_version, agent name, agent_response, display_type, display_sequence, timestamp, table rows, or any serialized response object.\t\n    For DD / Dynamic Discount template searches with results, use:\t\n     Templates matching \"DD\" (Dynamic Discount):\t\n    For general name searches with results, use:\t\n     Templates matching \"<search text>\":\t\n# Name Lookup Precision Rule\t\nWhen `Identified Query Type` is `getPprTemplateByName`, determine whether the user is asking for one specific template name or asking for broad fuzzy matches.\t\nTreat the request as a specific-template lookup when the input contains phrases such as:\t\n- template with name\t\n- template named\t\n- details for\t\n- fetch details for\t\n- show details of\t\n- exact name\t\n- named '<value>'\t\nFor a specific-template lookup:\t\n- Do not treat all `Matched Entities` as equally valid.\t\n- Prefer a single best match when one matched entity is clearly stronger than the others.\t\n- If a matched entity name exactly matches the requested name after case-insensitive normalization, use that as the only valid match.\t\n- If there is no exact normalized match but the top score is very high and clearly above the next score, treat only the top-scoring entity as valid.\t\n- Do not describe lower-scoring fuzzy matches as matching the user’s requested template name.\t\n- If multiple matches remain genuinely ambiguous, say that multiple possible templates matched the provided name and ask the user to clarify.\t\nFor broad fuzzy searches, such as “templates matching BCH”, “similar name to X”, or “has X in it”, multiple matches are acceptable.\t\nImportant:\t\nThe response text must align with the valid match interpretation. Do not say “Templates matching <name>” in a way that implies lower-confidence fuzzy matches are valid for a specific-template lookup.\n\n# Examples\n\n- Case when there are matches  \n  Input: Are there any templates matching BCH?  \n  Output: Templates matching \"BCH\":\n\n- Case when there are no matches  \n  Input: What's the template that has undefined in its name?  \n  Output: No matching PPR template found: I couldn't find a PPR template that matches your request. Please check the template name or criteria used and try again or go to {relativeLink:{url:faces/FndOverview?fndTaskItemNodeId=PaymentLandingMainArea&pageParams=fndGlobalItemNodeId=itemNode_payables_payables_payments&fromApPaymentsOverview=true,text:Payables Payments,family:FSCM}} to search for templates"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Return SCF Filter Error"
+          },
+          "outcomes": {},
+          "code": "FIN_AP_RETURN_SCF_FILTER_ERROR",
+          "convergenceTargetId": "1768144657295",
+          "id": "1780570551607",
+          "inputs": [
+            {
+              "id": "1780570551609_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_SCF_TEMPLATE_FILTER_HANDLER.$output}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_PAYABLES_PAYABLESPAYMENTPROCESSREQUESTTEMPLATE",
+            "functionName": "getPprTemplates",
+            "processJson": true,
+            "name": "Get DD Template Name"
+          },
+          "outcomes": {
+            "success": "1780570694917"
+          },
+          "code": "FIN_AP_GET_DD_TEMPLATE_NAME",
+          "id": "1780570618219",
+          "inputs": [
+            {
+              "id": "1780570654652_1",
+              "name": "$filter",
+              "type": "string",
+              "value": "acceleratedInvoicesCode in ('ORA_DD_ONLY','ORA_DD_YES')"
+            },
+            {
+              "id": "1780570654652_2",
+              "name": "$fields",
+              "type": "string",
+              "value": "templateName"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Return PPR template"
+          },
+          "outcomes": {},
+          "code": "FIN_AP_RETURN_PPR_TEMPLATE",
+          "convergenceTargetId": "1768144272777",
+          "id": "1768144363905",
+          "inputs": [
+            {
+              "id": "1768144363906_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_SEARCH_OUTPUT_PARSER.$output.result.length[0]}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Response for resolving template"
+          },
+          "outcomes": {
+            "success": "1768144272777"
+          },
+          "code": "FIN_AP_LLM_RESPONSE_FOR_RESOLVING_TEMPLATE",
+          "id": "1768144386753",
+          "inputs": [
+            {
+              "id": "1768144386755_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "# Declarations\n\n- Input message: {{$context.$system.$inputMessage}}\n- Chat history: {{$context.$triggers.REST.$input.chatHistory }}\n- Directly fetched Entities: {{$context.$nodes.FIN_AP_BO_FUNCTION_GET_PPR_TEMPLATES_BY_ACCELERATION_FLAG.$output}}\n- Matched Entities: {{$context.$nodes.FIN_AP_CODE_SEARCH_OUTPUT_PARSER.$output.result}}\n\n# Primary goal\nAssume the role of a Payment Process Request Template Retriever Agent, whose primary purpose is to aid the user in resolving to a particular PPR template for PPR scheduling\n\n# Instructions\nEnsure that the template keyword used for search is also mentioned in the summary.\nIf Directly fetched entities has data\n   - List the template names asking the user about which one to select and use\nElse\n   - If Matched entities has results\n           - List the template names asking the user about which one to select and use\n     - Else\n        - Use details from the input message and chat history to inform the user that no valid match was found. Clearly reference what was attempted or asked, and politely request more specific information to proceed.\n\nYou must be polite, concise, and only perform the actions described above. Do not take any actions outside of this prompt. Always leverage both the input message and chat history to construct informative and contextually relevant replies"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Extract DD Template Names",
+            "returnType": "string",
+            "sourceCode": "let data = $context.$nodes.FIN_AP_GET_DD_TEMPLATE_NAME?.$output?.items;\n\nlet templateNames = data\n  .map(item => item.templateName)\n  .filter(Boolean)\n  .join(\", \");\n\nreturn templateNames;"
+          },
+          "outcomes": {
+            "success": "1780570997528"
+          },
+          "code": "FIN_AP_EXTRACT_DD_TEMPLATE_NAMES",
+          "id": "1780570694917",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Select output and return",
+            "returnType": "object",
+            "sourceCode": "let userResponse;\nlet templatesToList = $context.$nodes.FIN_AP_CODE_SET_TEMPLATES_TO_LIST.$output.result || [];\n\nif( $context.$nodes.FIN_AP_LLM_RESPONSE_FOR_RESOLVING_TEMPLATE.$output ){\n    userResponse = $context.$nodes.FIN_AP_LLM_RESPONSE_FOR_RESOLVING_TEMPLATE.$output;\n}else{\n    userResponse = $context.$nodes.FIN_AP_LLM_RESPONSE_FOR_LISTING_TEMPLATES.$output;\n}\n\nif( $context.$nodes.FIN_AP_LLM_RESPONSE_FOR_RESOLVING_TEMPLATE.$output ){\n    let response =  [\n    {\n        \"type\": \"text\",\n        \"content\": userResponse,\n        \"sequence\": 1\n    }\n];\n\nif(templatesToList.length > 0){\n    response.push(\n        {\n            \"type\": \"table\",\n            \"heading\": \"Payment Process Request Templates\",\n            \"content\": templatesToList,\n            \"sequence\": 2\n        }\n    )\n}\n\nreturn response;\n\n}else{\n    let response = [];\n\nif(templatesToList.length > 0){\n    response .push(\n    {\n        \"type\": \"text\",\n        \"content\": userResponse,\n        \"sequence\": 1\n    });\n    response.push(\n        {\n            \"type\": \"table\",\n            \"heading\": \"Payment Process Request Templates\",\n            \"content\": templatesToList,\n            \"sequence\": 2\n        }\n    );\n\n} else{\n    \n    response.push(\n            {\n        \"type\": \"text\",\n        \"content\": \"No matching payment process request templates were found for the above mentioned criteria\",\n        \"sequence\": 1\n    }\n    );\n}\n\nreturn response;\n}\n\n\n\n"
+          },
+          "outcomes": {
+            "success": "1768180317773"
+          },
+          "code": "FIN_AP_CODE_SELECT_OUTPUT_AND_RETURN",
+          "id": "1768144272777",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set templates to list",
+            "returnType": "array",
+            "sourceCode": "let result;\nlet queryType = $context.$nodes.FIN_AP_LLM_IDENTIFY_QUERY_TYPE.$output;\n\nlet byAccCode = $context.$nodes.FIN_AP_BO_FUNCTION_GET_PPR_TEMPLATES_BY_ACCELERATION_FLAG?.$output;\nlet bySearch = $context.$nodes.FIN_AP_CODE_SEARCH_OUTPUT_PARSER?.$output?.result;\n\n// Use Standard PPR output if present, otherwise Virtual Card output\nlet pprDetails = $context.$nodes.FIN_AP_GET_PPR_DETAILS_FILTERED_ON_BU_AND_CURRENCY?.$output?.items || [];\nif (queryType == \"getPprTemplateForDD\") {\n\n    result = byAccCode.items.map(i => ({\n        templateName: i.templateName\n    }));\n\n} else if (queryType == \"getPprTemplateByBUandCurrency\") {\n\n    let programType = $context.$nodes.FIN_AP_PROGRAM_IDENTIFER_IN_PPR.$output;\n    const templateResult =\n        $context.$nodes.FIN_AP_EXTRACT_DD_TEMPLATE_NAMES?.$output?.result;\n\n    if (programType == \"DynamicDiscountPPR\" && templateResult!=[]) {\n        result = pprDetails.map(i => {\n\n            let paymentProgramType = \"Standard Payment Process Template\";\n\n            if (i.paymentModeCode === \"VIRTUAL_CARD\") {\n                paymentProgramType = \"Virtual Card\";\n            } else if (\n                !i.paymentModeCode &&\n                [\"ORA_DD_ONLY\", \"ORA_DD_YES\"].includes(i.acceleratedInvoicesCode)\n            ) {\n                paymentProgramType = \"Dynamic Discounting Program\";\n            }\n\n            let status = \"Active\";\n\n            if (\n                i.inactiveDate &&\n                new Date(i.inactiveDate) <= new Date()\n            ) {\n                status = \"Inactive\";\n            }\n\n            return {\n                \"Template Name\": i.templateName,\n                \"Payment Program Type\": paymentProgramType,\n                \"Status\": status,\n                \"Description\": i.description,\n                \"Business Units\": i.businessUnitNames,\n                \"Legal Entities\": i.legalEntityNames,\n                \"Payment Currencies\": i.currencyCodes,\n                \"Pay Groups\": i.supplierPayGroups,\n                \"Invoice Sources\": i.invoiceSources,\n                \"Disbursement Bank Account\": i.bankAccountName\n            };\n        });\n    }else{\n\n        return [] ;\n    }\n\n\n\n} else {\n\n    result = bySearch.map(i => ({\n        templateName: i.name\n    }));\n\n}\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1768144248256"
+          },
+          "code": "FIN_AP_CODE_SET_TEMPLATES_TO_LIST",
+          "id": "1768144657295",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "If Output"
+          },
+          "outcomes": {
+            "true": "1768180356352",
+            "false": "end"
+          },
+          "code": "FIN_AP_CONDITION_IF_OUTPUT",
+          "convergenceTargetId": "end",
+          "id": "1768180317773",
+          "inputs": [
+            {
+              "id": "1768180317774_1",
+              "name": "condition",
+              "type": "string",
+              "value": "true"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Return Output"
+          },
+          "outcomes": {},
+          "code": "FIN_AP_RETURN_OUTPUT",
+          "convergenceTargetId": "end",
+          "id": "1768180356352",
+          "inputs": [
+            {
+              "id": "1768180356354_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_SELECT_OUTPUT_AND_RETURN.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Construct Filter for PPR Data Fetch",
+            "returnType": "string",
+            "sourceCode": "let queryType = $context.$nodes.FIN_AP_PROGRAM_IDENTIFER_IN_PPR.$output;\n\nconst currencyList =\n  $context.$nodes.FIN_AP_EXTRACT_BUSINESS_UNIT_AND_CURRENCY?.$output?.currency;\n\nconst businessUnitList =\n  $context.$nodes.FIN_AP_EXTRACT_BUSINESS_UNIT_AND_CURRENCY?.$output?.businessUnit;\n\nconst conditions = [];\n\nif (currencyList) {\n  conditions.push(`currencyCodes LIKE '%${currencyList}%'`);\n}\n\nif (businessUnitList) {\n  conditions.push(`businessUnitNames LIKE '%${businessUnitList}%'`);\n}\n\nif (queryType === \"DynamicDiscountPPR\") {\n  const templateResult =\n    $context.$nodes.FIN_AP_EXTRACT_DD_TEMPLATE_NAMES?.$output?.result;\n\n  if (templateResult) {\n    const templateList = templateResult\n      .split(\",\")\n      .map(name => `'${name.trim()}'`)\n      .join(\", \");\n\n    conditions.push(`templateName IN (${templateList})`);\n  }\n}\n\nif(queryType === \"virtualCardPPR\"){\n  \n  conditions.push(`paymentModeCode='VIRTUAL_CARD'`);\n}\n\nlet filter = \"$limit=20\";\n\nif (conditions.length > 0) {\n  filter += `&$filter=${conditions.join(\" AND \")}`;\n}\n\nreturn filter;"
+          },
+          "outcomes": {
+            "success": "1780571067682"
+          },
+          "code": "FIN_AP_CONSTRUCT_FILTER_FOR_PPR_DATA_FETCHFIN_AP_CONSTRUCT_FILTER_FOR_PPR_DATA_FETCH",
+          "id": "1780570997528",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_PAYABLES_PAYMENTRUNTEMPLATES",
+            "functionName": "getPPRTemplatesBasedOnFilter",
+            "name": "Get PPR Details filtered on BU and Currency"
+          },
+          "outcomes": {
+            "success": "1768144657295"
+          },
+          "code": "FIN_AP_GET_PPR_DETAILS_FILTERED_ON_BU_AND_CURRENCY",
+          "id": "1780571067682",
+          "inputs": [
+            {
+              "id": "1780571067682_filterCondition",
+              "name": "filterCondition",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CONSTRUCT_FILTER_FOR_PPR_DATA_FETCHFIN_AP_CONSTRUCT_FILTER_FOR_PPR_DATA_FETCH.$output.result}}"
+            }
+          ],
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_false_1768180317773",
+          "inputs": [],
+          "type": "ADD"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1768145171369",
+          "name": "templatesToList",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1768145159094",
+          "name": "matchedTemplate",
+          "scope": "JOB",
+          "type": "object"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.25
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "modelName": "GPT OSS 120B (Basic)",
+      "provider": "CERT_BASIC"
+    },
+    "dtRunProfiles": {
+      "activeProfileId": "1e7a9f10-fc4e-44db-8ad2-86c8e84e7fe3",
+      "profiles": [
+        {
+          "id": "1e7a9f10-fc4e-44db-8ad2-86c8e84e7fe3",
+          "name": "New run profile 1",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"isInPPRScheduleMode\": false,\n  \"message\": \"Show payment process request template with name 'BCH_Electronic'\",\n  \"chatHistory\": []\n}",
+          "inputMessage": "Show payment process request template with name 'BCH_Electronic"
+        }
+      ]
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1768179215364",
+            "name": "isInPPRScheduleMode",
+            "type": "boolean"
+          },
+          {
+            "id": "1768179201260",
+            "name": "chatHistory",
+            "type": "object"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "FIN",
+  "product": "PAYABLES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"7\""
+  }
+}

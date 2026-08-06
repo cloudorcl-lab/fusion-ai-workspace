@@ -1,0 +1,564 @@
+{
+  "workflowId": "300000331067522",
+  "workflowCode": "ORA_FETCH_EARLIEST_SUPPLY_DETAILS",
+  "name": "Fetch Earliest Supply Details",
+  "description": "This agent returns the earliest incoming supply line details including on-hand for a certain item in an organization.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1773183785648"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1773793243423"
+                  },
+                  "id": "start_1773183785648",
+                  "code": "START_1773183785648",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1773183785648",
+                  "code": "END_1773183785648",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "name": "Add Demands to Item Map",
+                    "returnType": "object",
+                    "sourceCode": "const demandHeader = $context.$nodes.BULK_ITEM_PROCESSOR.$currentItem.DemandSourceHeaderNumber;\nconst demandLine = $context.$nodes.BULK_ITEM_PROCESSOR.$currentItem.DemandSourceLineNumber ?? \"\";\nconst operationSequence = $context.$nodes.BULK_ITEM_PROCESSOR.$currentItem.OperationSequenceNumber ?? \"\";\nconst demandType = $context.$nodes.BULK_ITEM_PROCESSOR.$currentItem.DemandSourceTypeId ?? \"\";\nconst requestedQuantity = $context.$nodes.BULK_ITEM_PROCESSOR.$currentItem.RequestedQuantity ?? \"\";\nconst reservationId = $context.$nodes.BULK_ITEM_PROCESSOR.$currentItem.ReservationId ?? \"\";\n\nconst demand = {\n  demandHeader,\n  demandLine,\n  demandType,\n  operationSequence,\n  requestedQuantity,\n  reservationId\n};\n\nconst itemMap = $context.$variables.ItemMap;\nconst item = $context.$nodes.BULK_ITEM_PROCESSOR.$currentItem.ItemNumber;\nif (Object.hasOwn(itemMap, item)) {\n  itemMap[item].demands = itemMap[item].demands ?? [];\n  itemMap[item].demands.push(demand);\n}\n\nreturn itemMap;\n"
+                  },
+                  "outcomes": {
+                    "success": "1773793206859"
+                  },
+                  "code": "ADD_DEMANDS_TO_ITEM_MAP",
+                  "id": "1773792954079",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "name": "Set Item Map"
+                  },
+                  "outcomes": {
+                    "success": "end_1773183785648"
+                  },
+                  "code": "SET_ITEM_MAP",
+                  "id": "1773793206859",
+                  "inputs": [
+                    {
+                      "id": "1773793212007",
+                      "scope": "JOB",
+                      "value": "{{$context.$nodes.BULK_ITEM_PROCESSOR.ADD_DEMANDS_TO_ITEM_MAP.$output.result}}",
+                      "name": "ItemMap",
+                      "type": "object"
+                    }
+                  ],
+                  "type": "SET_FIELDS"
+                },
+                {
+                  "metadata": {
+                    "name": "Is Item Processed"
+                  },
+                  "outcomes": {
+                    "true": "1773093205709",
+                    "false": "add_false_1773793243423"
+                  },
+                  "code": "IS_ITEM_PROCESSED",
+                  "convergenceTargetId": "1773792954079",
+                  "id": "1773793243423",
+                  "inputs": [
+                    {
+                      "id": "1773793243424_1",
+                      "name": "condition",
+                      "type": "string",
+                      "value": "{{!($context.$variables.ItemMap != null && Object.hasOwn($context.$variables.ItemMap, $context.$nodes.BULK_ITEM_PROCESSOR.$currentItem.ItemNumber))}}"
+                    }
+                  ],
+                  "type": "CONDITION"
+                },
+                {
+                  "metadata": {
+                    "name": "Add (False Branch)",
+                    "description": "Add node for false branch"
+                  },
+                  "outcomes": {
+                    "success": "1773792954079"
+                  },
+                  "id": "add_false_1773793243423",
+                  "type": "ADD"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_INVENTORYM_INVENTORYSUPPLY",
+                    "functionName": "getall_availableToReserveByDocumentTypes",
+                    "processJson": true,
+                    "name": "Fetch Supply Documents"
+                  },
+                  "outcomes": {
+                    "success": "1773100128776"
+                  },
+                  "code": "FETCH_SUPPLY_LINES",
+                  "convergenceTargetId": "1773793602564",
+                  "id": "1773093205709",
+                  "inputs": [
+                    {
+                      "id": "1773093230747_1",
+                      "name": "pInventoryItemId",
+                      "type": "integer",
+                      "value": "{{$context.$nodes.BULK_ITEM_PROCESSOR.$currentItem.ItemId}}"
+                    },
+                    {
+                      "id": "1773093230748_2",
+                      "name": "pOrganizationId",
+                      "type": "string",
+                      "value": "{{$context.$triggers.REST.$input.OrganizationId}}"
+                    },
+                    {
+                      "id": "1773093230749_3",
+                      "name": "pOrderedUOM",
+                      "type": "string",
+                      "value": "\"ORDERED\""
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "name": "Supply Line Param Builder",
+                    "returnType": "object",
+                    "sourceCode": "const orgId = $context.$triggers.REST.$input.OrganizationId;\nconst orgFilter = \"OrganizationId=\" + orgId;\nconst itemFilter = \"InventoryItemId=\" + $context.$nodes.BULK_ITEM_PROCESSOR.$currentItem.ItemId;\nconst today = $context.$system.$currentDate;\nconst expFilter = \"ExpectedDeliveryDate > \" + \"'\" + today + \"'\";\nconst orderBy = \"&orderBy=ExpectedDeliveryDate:asc\"\nconst supplyFilter = \"SupplySourceTypeId!=1\";\nconst qtyFilter = \"TotalAtr >= \" + $context.$nodes.BULK_ITEM_PROCESSOR.$currentItem.RequestedQuantity;\nconst filters = [orgFilter, expFilter, supplyFilter, qtyFilter, itemFilter];\nconst query = \"q=\" + filters.join(\" and \") + orderBy;\nreturn query;"
+                  },
+                  "outcomes": {
+                    "success": "1773093369161"
+                  },
+                  "code": "SUPPLY_LINE_PARAM_BUILDER",
+                  "convergenceTargetId": "1773793602564",
+                  "id": "1773100128776",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_INVENTORYM_GETSUPPLYDOCUMENTLINESBYTYPES",
+                    "functionName": "getall_supplyLineDetailsByTypes",
+                    "processJson": true,
+                    "name": "Fetch Supply Lines Details"
+                  },
+                  "outcomes": {
+                    "success": "1773184528064"
+                  },
+                  "code": "FETCH_SUPPLY_LINES_DETAILS",
+                  "convergenceTargetId": "1773793602564",
+                  "id": "1773093369161",
+                  "inputs": [
+                    {
+                      "id": "1773100066549_1",
+                      "name": "pLimit",
+                      "type": "integer",
+                      "value": "3"
+                    },
+                    {
+                      "id": "1773100066550_2",
+                      "name": "pOffset",
+                      "type": "integer",
+                      "value": "0"
+                    },
+                    {
+                      "id": "1773100066551_3",
+                      "name": "pFinder",
+                      "type": "string"
+                    },
+                    {
+                      "id": "1773100066552_4",
+                      "name": "pQuery",
+                      "type": "string",
+                      "value": "{{$context.$nodes.BULK_ITEM_PROCESSOR.SUPPLY_LINE_PARAM_BUILDER.$output.result}}"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "name": "Consolidate Data",
+                    "returnType": "object",
+                    "sourceCode": "const lines = $context.$nodes.BULK_ITEM_PROCESSOR.FETCH_SUPPLY_LINES_DETAILS.$output;\nconst supplyLines = lines.items.map(line => {\n  return {\n    \"SupplySourceHeaderNumber\": line.SupplySourceHeaderNumber,\n    \"SupplySourceLineNumber\": line.SupplySourceLineNumber ?? null,\n    \"TotalAtr\": line.TotalAtr,\n    \"ItemNumber\": line.ItemNumber,\n    \"InventoryItemId\": line.InventoryItemId,\n    \"SupplySourceTypeId\": line.SupplySourceTypeId,\n    \"ExpectedDeliveryDate\": line.ExpectedDeliveryDate,\n  };\n});\nconst item = {\n  ItemNumber: $context.$nodes.BULK_ITEM_PROCESSOR.$currentItem.ItemNumber,\n  UOM: $context.$nodes.BULK_ITEM_PROCESSOR.$currentItem.UOM ?? \"\"\n};\nconst availability = $context.$nodes.BULK_ITEM_PROCESSOR.FETCH_SUPPLY_LINES.$output;\nconst onhand = availability.items.find(avail => avail.Meaning == \"On hand\")?.AvailableToReserve ?? 0;\n\nconst response = {\n  supplyLines,\n  onhand,\n  item\n}\n\nlet itemMap = $context.$variables.ItemMap;\n\nif (typeof itemMap === \"string\") {\n  try { itemMap = JSON.parse(itemMap); } catch (e) { itemMap = {}; }\n}\n\nif (!itemMap || typeof itemMap !== \"object\" || Array.isArray(itemMap)) {\n  itemMap = {};\n}\n\nconst key = String(item.ItemNumber);\nitemMap[key] = response;\n\nreturn itemMap;"
+                  },
+                  "outcomes": {
+                    "success": "1773793565046"
+                  },
+                  "code": "CONSOLIDATE_DATA",
+                  "convergenceTargetId": "1773793602564",
+                  "id": "1773184528064",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "name": "Instantiate Item in Map"
+                  },
+                  "outcomes": {
+                    "success": "1773792954079"
+                  },
+                  "code": "INSTANTIATE_ITEM_IN_MAP",
+                  "id": "1773793565046",
+                  "inputs": [
+                    {
+                      "id": "1773793577988",
+                      "scope": "JOB",
+                      "value": "{{$context.$nodes.BULK_ITEM_PROCESSOR.CONSOLIDATE_DATA.$output.result}}",
+                      "name": "ItemMap",
+                      "type": "object"
+                    }
+                  ],
+                  "type": "SET_FIELDS",
+                  "convergenceTargetId": "1773793602564"
+                }
+              ],
+              "rootNode": "start_1773183785648"
+            },
+            "loopType": "SEQUENTIAL",
+            "name": "Bulk Item Processor"
+          },
+          "outcomes": {
+            "success": "1773359528448"
+          },
+          "code": "BULK_ITEM_PROCESSOR",
+          "id": "1773183785648",
+          "inputs": [
+            {
+              "id": "1773183785649_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.ItemQty}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "name": "Change Supply Suggestions"
+          },
+          "outcomes": {
+            "true": "1773797105700",
+            "false": "1773795839061"
+          },
+          "code": "CHANGE_SUPPLY_SUGGESTIONS",
+          "convergenceTargetId": "end",
+          "id": "1773359528448",
+          "inputs": [
+            {
+              "id": "1773359528449_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.SuggestionMode.toLowerCase() == \"supply\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1773359846851"
+                  },
+                  "id": "start_1773795839061",
+                  "code": "START_1773795839061",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1773795839061",
+                  "code": "END_1773795839061",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "name": "Reservation Suggestions Builder"
+                  },
+                  "outcomes": {
+                    "success": "end_1773795839061"
+                  },
+                  "code": "RESERVATION_SUGGESTIONS_BUILDER",
+                  "convergenceTargetId": "end_1773795839061",
+                  "id": "1773359846851",
+                  "inputs": [
+                    {
+                      "id": "1773359846851_1",
+                      "name": "prompt",
+                      "type": "string",
+                      "value": "SuggestionMode: {{$context.$triggers.REST.$input.SuggestionMode}}\nData: {{$context.$nodes.CREATE_RESERVATION_SUGGESTIONS_LOOP.$currentItem}} \nExtract SupplySourceType and DemandSourceType from tables below :\n | DOCUMENT TYPE | DEMAND SOURCE TYPE    | DEMAND SOURCE TYPE ID |  \n            | ------------- | --------------------- | --------------------- |  \n            | Demand        | Sales order           | 2                     |  \n            | Demand        | Transfer order        | 8                     |  \n            | Demand        | Transfer order return | 18                    |  \n            | Demand        | Work order            | 5                     |  \n            | Demand        | Purchase order        | 1                     |  \n            | Demand        | Account               | 3                     |  \n            | Demand        | Account alias         | 6                     |  \n            | Demand        | Cycle count           | 9                     |  \n            | Demand        | User defined          | 13                    |\n\n| DOCUMENT TYPE | SUPPLY SOURCE TYPE         | SUPPLY SOURCE TYPE ID |  \n            | ------------- | -------------------------- | --------------------- |  \n            | Supply        | On hand                    | 13                    |  \n            | Supply        | Purchase order             | 1                     |  \n            | Supply        | Purchase order requisition | 17                    |  \n            | Supply        | Transfer order             | 8                     |  \n            | Supply        | Transfer order return      | 18                    |  \n            | Supply        | Work order                 | 5                     |\n\nCreate a list of suggestions.\nYour job is to match the earliest available supply for the item. First priority is for onhand, this can be used by multiple unique demands until it's depleted, in case there is not enough of onhand to satisfy the requested quantity, you should consider the earliest supply lines that are not onhand. You only recommend one suggestion per item. In the case that an item is mentioned more than once then we ensure to match them to different supplies. If number of unique supplies is not enough for all the item-demand combinations then we explicitly mention that only a subset satisfy the criteria and suggest accordingly.\nYou can only have one suggestion per demand\nSuggestion templates:\n- Reserve against onhand supply as that's the earliest available supply for the demand <DemandSourceType> <DemandSourceHeaderNumber> and line <DemandSourceLineNumber> for item <ItemNumber> of quantity <requestedQuantity> <UOM if present>(for DemandSourceType Work order we need to use `operation sequence number <operationSequence> instead of line <DemandSourceLineNumber>).\n- Reserving against supply <SupplySourceType> <SupplySourceHeaderNumber> as this is the earliest available supply at <ExpectedDeliveryDate> for the demand <DemandSourceType> <DemandSourceHeaderNumber> and line <DemandSourceLineNumber>(for DemandSourceType Work order we need to use `operation sequence number <operationSequence> instead of line <DemandSourceLineNumber>) for item <ItemNumber> quantity <requestedQuantity> <UOM if present>. (if supplysourcetype is transfer order then you need to add `line <SupplySourceLineNumber>` as well near the supply information).\n\n\nAfter selecting the suggestion for a demand line create a json with the following fields:\n{\n  \"DemandSourceHeaderNumber\": <DemandSourceHeaderNumber>,\n  \"DemandSourceLineNumber\": <DemandSourceLineNumber>,\n  \"OperationSequenceNumber\": <OperationSequenceNumber>,\n  \"DemandSourceTypeId\": <DemandSourceTypeId>,\n  \"SupplySourceTypeId\": <SupplySourceTypeId this will be 13 for onhand>,\n  \"SupplySourceHeaderNumber\": <SupplySourceHeaderNumber this will be null for onhand>,\n  \"SupplySourceLineNumber\": <SupplySourceLineNumber this will be null for onhand>,\n  \"RequestedQuantity\": <RequestedQuantity>(this should be minimum of RequestedQuantity/availability of onhand or other supply),\n  \"ExpectedDeliveryDate\": <ExpectedDeliveryDate>,\n  \"UOM\": <UOM>,\n  \"InventoryItemId\": <InventoryItemId>,\n  \"Suggestion\": <Suggestion for the line, if there is no eligible supply then you set it as `No eligible supply` and leave the supply fields blank>\n}\n\nNote: DO NOT show anything other than suggestions JSON.\nDO NOT match a supply and demand with different inventory item id.\nFinal output is an array of suggestion JSONs."
+                    }
+                  ],
+                  "type": "LLM"
+                }
+              ],
+              "rootNode": "start_1773795839061"
+            },
+            "loopType": "PARALLEL",
+            "name": "Create Reservation Suggestions Loop"
+          },
+          "outcomes": {
+            "success": "1773796902504"
+          },
+          "code": "CREATE_RESERVATION_SUGGESTIONS_LOOP",
+          "id": "1773795839061",
+          "inputs": [
+            {
+              "id": "1773795839062_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{Object.entries($context.$variables.ItemMap)}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "name": "Output Adapter"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "OUTPUT_ADAPTER",
+          "id": "1773796902504",
+          "inputs": [
+            {
+              "id": "1773796902505_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Flatten the array in case there is any nested array of objects: {{$context.$nodes.CREATE_RESERVATION_SUGGESTIONS_LOOP.$output}}\nNOTE: Only output the array of objects if nothing is present output an empty array.\nFinal output is an array of JSONs. \nDo not use any markdown highlighting for the Array"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1773359608596"
+                  },
+                  "id": "start_1773797105700",
+                  "code": "START_1773797105700",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1773797105700",
+                  "code": "END_1773797105700",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "name": "Supply Suggestion Builder"
+                  },
+                  "outcomes": {
+                    "success": "end_1773797105700"
+                  },
+                  "code": "SUPPLY_SUGGESTION_BUILDER",
+                  "convergenceTargetId": "end_1773797105700",
+                  "id": "1773359608596",
+                  "inputs": [
+                    {
+                      "id": "1773359608596_1",
+                      "name": "prompt",
+                      "type": "string",
+                      "value": "Data: {{$context.$nodes.CREATE_A_SUPPLY_SUGGESTION_LOOP.$currentItem}} \nExtract SupplySourceType from here:\n| DOCUMENT TYPE | SUPPLY SOURCE TYPE         | SUPPLY SOURCE TYPE ID |  \n            | ------------- | -------------------------- | --------------------- |  \n            | Supply        | On hand                    | 13                    |  \n            | Supply        | Purchase order             | 1                     |  \n            | Supply        | Purchase order requisition | 17                    |  \n            | Supply        | Transfer order             | 8                     |  \n            | Supply        | Transfer order return      | 18                    |  \n            | Supply        | Work order                 | 5                     |\n\nCreate a list of suggestions.\nYour job is to match the earliest available supply for the item. First priority is for onhand, this can be used by multiple unique reservations until it's depleted, in case there is not enough of it, you should consider the earliest supply lines. You only recommend one suggestion per item. In the case that an item is mentioned more than once then we ensure to match them to different supplies. If number of unique supplies is not enough for all the item-demand combinations then we explicitly mention that only a subset satisfy the criteria and suggest accordingly.\nYou can only have one suggestion per demand\nSuggestion templates:\n- Changing Supply to onhand as that's the earliest available supply, for the reservation <ReservationId> for item <ItemNumber> of quantity <requestedQuantity> <UOM if present>.\n- Changing supply to <SupplySourceType extract from the table> <SupplySourceHeaderNumber> as that's the earliest available supply at <ExpectedDeliveryDate>, for the reservation <ReservationId> for item <ItemNumber> quantity <requestedQuantity> <UOM if present>. (if supplysourcetype is transfer order then you need to add `line <SupplySourceLineNumber>` as well near the supply information).\n\nAfter selecting the suggestion for a reservation create a json with the following fields:\n{\n  \"ReservationId\": <ReservationId>,\n  \"SupplySourceTypeId\": <SupplySourceTypeId this will be 13 for onhand>,\n  \"SupplySourceHeaderNumber\": <SupplySourceHeaderNumber this will be null for onhand>,\n  \"SupplySourceLineNumber\": <SupplySourceLineNumber this will be null for onhand>,\n  \"RequestedQuantity\": <RequestedQuantity>,\n  \"UOM\": <UOM>,\n  \"DemandSourceHeaderNumber\": <DemandSourceHeaderNumber>,\n  \"DemandSourceLineNumber\": <DemandSourceLineNumber>,\n  \"OperationSequenceNumber\": <OperationSequenceNumber>,\n  \"DemandSourceTypeId\": <DemandType>,\n  \"ExpectedDeliveryDate\": <ExpectedDeliveryDate>,\n  \"ItemNumber\": <ItemNumber>,\n  \"InventoryItemId\": <InventoryItemId>,\n  \"Suggestion\": <Suggestion for the line, if there is no eligible supply then you set it as `No eligible supply` and leave the supply fields blank>\n}\n\nNote: DO NOT show anything other than suggestions JSON.\nFinal output is an array of suggestion JSONs."
+                    }
+                  ],
+                  "outputSpecification": "",
+                  "type": "LLM"
+                }
+              ],
+              "rootNode": "start_1773797105700"
+            },
+            "loopType": "PARALLEL",
+            "name": "Create a Supply Suggestion Loop"
+          },
+          "outcomes": {
+            "success": "1773797239078"
+          },
+          "code": "CREATE_A_SUPPLY_SUGGESTION_LOOP",
+          "id": "1773797105700",
+          "inputs": [
+            {
+              "id": "1773797105700_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{Object.entries($context.$variables.ItemMap)}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "name": "Supply Output Adapter"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SUPPLY_OUTPUT_ADAPTER",
+          "id": "1773797239078",
+          "inputs": [
+            {
+              "id": "1773797239078_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Flatten the array in case there is any nested array of objects: {{$context.$nodes.CREATE_A_SUPPLY_SUGGESTION_LOOP.$output}} \nNOTE: Only output the array of objects if nothing is present output an empty array.\nFinal output is an array of JSONs. \nDo not use any markdown highlighting for the Array"
+            }
+          ],
+          "type": "LLM"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1773792511989",
+          "name": "ItemMap",
+          "scope": "JOB",
+          "type": "object"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1773255003803",
+            "name": "SuggestionMode",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1773183815579",
+            "name": "ItemQty",
+            "scope": "JOB",
+            "type": "array"
+          },
+          {
+            "id": "1773093270872",
+            "name": "OrganizationId",
+            "scope": "JOB",
+            "type": "integer"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "SCM",
+  "product": "INVENTORY_MANAGEMENT",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions follow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output. Here is the JSON Schema format the output should adhere to: [{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

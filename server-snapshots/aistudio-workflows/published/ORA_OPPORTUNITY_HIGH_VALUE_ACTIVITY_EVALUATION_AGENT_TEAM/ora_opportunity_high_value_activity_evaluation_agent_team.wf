@@ -1,0 +1,592 @@
+{
+  "workflowId": "100002355227131",
+  "workflowCode": "ORA_OPPORTUNITY_HIGH_VALUE_ACTIVITY_EVALUATION_AGENT_TEAM",
+  "name": "Opportunity High Value Activity Evaluation Agent Team",
+  "description": "Agent evaluates High Value Activity progress based on recent engagements.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1766210823311"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START",
+          "diagram": {
+            "x": 5584,
+            "y": 5000
+          }
+        },
+        {
+          "metadata": {
+            "name": "isSourceObjectProvided"
+          },
+          "outcomes": {
+            "true": "1766210856411",
+            "false": ""
+          },
+          "code": "ISSOURCEOBJECTPROVIDED",
+          "convergenceTargetId": "end",
+          "id": "1766210823311",
+          "inputs": [
+            {
+              "id": "1766210823313_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.id != null && $context.$triggers.REST.$input.puid != null}}"
+            }
+          ],
+          "type": "CONDITION",
+          "diagram": {
+            "x": 5462,
+            "y": 5206
+          }
+        },
+        {
+          "metadata": {
+            "name": "IsAutomatic"
+          },
+          "outcomes": {
+            "true": "1766212564992",
+            "false": "1776230201415"
+          },
+          "code": "ISAUTOMATIC",
+          "convergenceTargetId": "1766212564992",
+          "id": "1766210856411",
+          "inputs": [
+            {
+              "id": "1766210856412_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{ $context.$triggers.REST.$input.context != null  }}"
+            }
+          ],
+          "type": "CONDITION",
+          "diagram": {
+            "x": 5462,
+            "y": 5428
+          }
+        },
+        {
+          "metadata": {
+            "name": "Consolidate Context"
+          },
+          "outcomes": {
+            "0": "1776230223771",
+            "1": "1776230303304",
+            "2": "1776230346565",
+            "3": "1776232143513"
+          },
+          "code": "CONSOLIDATE_CONTEXT",
+          "convergenceTargetId": "1776230719266",
+          "id": "1776230201415",
+          "inputs": [],
+          "type": "PARALLEL",
+          "diagram": {
+            "x": 5912,
+            "y": 5650,
+            "width": 1690,
+            "height": 570
+          }
+        },
+        {
+          "metadata": {
+            "name": "Construct Full Context",
+            "returnType": "object",
+            "sourceCode": "var output = {};\n    output.opty_data = $context.$nodes.GET_ELASTIC_CONTEXT.$output.items;\n    output.engagements = $context.$nodes.GET_ENGAGEMENTS.$output.items;\n let parsedPayload;\n\nlet AIOutcomeResp=$context.$nodes.FETCH_FROM_AI_OUTCOME.$output;\nlet payload = AIOutcomeResp?.items[0]?.payload ?? {};\ntry {\n  parsedPayload = JSON.parse(payload);\n} catch (e) {\n  parsedPayload = {};\n}\nlet summary = parsedPayload?.what?.summary??\"\";\noutput.insight_data = summary?summary:$context.$nodes.GET_OPPORTUNITY_SUMMARY.$output.items??\"\";\n\n// list of properties to remove\nvar propsToRemove = [\"count\", \"hasMore\", \"limit\", \"offset\", \"links\", \"@context\",\"$context\"];\n\n// recursive cleanup\nvar stack = [output];\nwhile(stack.length > 0){\n    var current = stack.pop();\n    if(current && typeof current === \"object\"){\n        for(var key in current){\n            if(propsToRemove.indexOf(key) !== -1){\n                delete current[key];\n            } else if(typeof current[key] === \"object\"){\n                stack.push(current[key]);\n            }\n        }\n    }\n}\n\n// Clean HTML only from output.engagements[*].engagementRawText\nif (output.engagements && output.engagements.length) {\n    for (var i = 0; i < output.engagements.length; i++) {\n        var item = output.engagements[i];\n\n        if (\n            item &&\n            typeof item === \"object\" &&\n            typeof item.engagementRawText === \"string\" &&\n            /<\\/?[a-z][\\s\\S]*?>/i.test(item.engagementRawText)\n        ) {\n            var text = item.engagementRawText;\n\n            // Convert escaped REST newlines to real newlines\n            text = text.replace(/\\\\n/g, \"\\n\");\n\n            // Remove HTML comments\n            text = text.replace(/<!--[\\s\\S]*?-->/g, \"\");\n\n            // Remove non-visible HTML/CSS/JS sections\n            text = text.replace(/<style\\b[^>]*>[\\s\\S]*?<\\/style\\s*>/gi, \"\");\n            text = text.replace(/<script\\b[^>]*>[\\s\\S]*?<\\/script\\s*>/gi, \"\");\n            text = text.replace(/<head\\b[^>]*>[\\s\\S]*?<\\/head\\s*>/gi, \"\");\n\n            // Remove standalone technical tags\n            text = text.replace(/<meta\\b[^>]*\\/?>/gi, \"\");\n            text = text.replace(/<link\\b[^>]*\\/?>/gi, \"\");\n\n            // Preserve readable structure before removing tags\n            text = text.replace(/<br\\b[^>]*\\/?>/gi, \"\\n\");\n            text = text.replace(/<\\/p\\s*>/gi, \"\\n\");\n            text = text.replace(/<\\/div\\s*>/gi, \"\\n\");\n            text = text.replace(/<\\/li\\s*>/gi, \"\\n\");\n            text = text.replace(/<\\/tr\\s*>/gi, \"\\n\");\n            text = text.replace(/<\\/h[1-6]\\s*>/gi, \"\\n\");\n\n            // Add spacing for table cells\n            text = text.replace(/<\\/td\\s*>/gi, \" \");\n            text = text.replace(/<\\/th\\s*>/gi, \" \");\n\n            // Remove remaining HTML tags only when they look like real tags.\n            // This avoids damaging normal text such as \"amount < 100 > 50\".\n            text = text.replace(/<\\/?[a-z][a-z0-9:-]*(?:\\s[^<>]*)?>/gi, \"\");\n\n            // Decode common HTML entities\n            text = text.replace(/&nbsp;/gi, \" \");\n            text = text.replace(/&amp;/gi, \"&\");\n            text = text.replace(/&lt;/gi, \"<\");\n            text = text.replace(/&gt;/gi, \">\");\n            text = text.replace(/&quot;/gi, \"\\\"\");\n            text = text.replace(/&#39;/gi, \"'\");\n            text = text.replace(/&apos;/gi, \"'\");\n\n            // Decode numeric entities\ntext = text.replace(/&#(\\d+);/g, (match, code) =>\n    String.fromCharCode(Number(code))\n);\n\n       text = text.replace(/&#x([0-9a-f]+);/gi, (match, code) =>\n    String.fromCharCode(parseInt(code, 16))\n);\n\n            // Normalize whitespace but preserve the email content\n            text = text.replace(/\\r/g, \"\");\n            text = text.replace(/\\u00a0/g, \" \");\n            text = text.replace(/[ \\t]+/g, \" \");\n            text = text.replace(/[ \\t]+\\n/g, \"\\n\");\n            text = text.replace(/\\n[ \\t]+/g, \"\\n\");\n            text = text.replace(/\\n\\s*\\n\\s*\\n+/g, \"\\n\\n\");\n            text = text.trim();\n\n            item.engagementRawText = text;\n        }\n    }\n}\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1766212564992"
+          },
+          "code": "CONSTRUCT_FULL_CONTEXT",
+          "id": "1776230719266",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 6607,
+            "y": 6370
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_OBJECTIVES",
+            "functionName": "get_all_objectives_for_an_opportunity",
+            "name": "Get Objectives"
+          },
+          "outcomes": {
+            "success": "1766212706185"
+          },
+          "code": "GET_OBJECTIVES",
+          "id": "1766212564992",
+          "inputs": [
+            {
+              "id": "1766212573510_1",
+              "name": "id",
+              "type": "string",
+              "value": "{{ $context.$triggers.REST.$input.id }}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 5462,
+            "y": 6592
+          }
+        },
+        {
+          "metadata": {
+            "name": "Construct Context",
+            "returnType": "object",
+            "sourceCode": "let optyData;\nlet optySummary;\nlet engagementsData;\n\nlet incomingContext = $context.$triggers.REST.$input.context;\nlet contextBuilderData = null;\n\nif (incomingContext && incomingContext !== \"\") {\n    if (typeof incomingContext === \"string\") {\n        try {\n            contextBuilderData = JSON.parse(incomingContext);\n        } catch (e) {\n            contextBuilderData = null;\n        }\n    } else {\n        contextBuilderData = incomingContext;\n    }\n}\n\nif (contextBuilderData && contextBuilderData.result) {\n    optyData = contextBuilderData.result?.OPPORTUNITY ?? [];\n    optySummary = contextBuilderData.result?.ENGAGEMENT?.insight_data ?? \"\";\n    engagementsData = contextBuilderData.result?.ENGAGEMENT?.engagements ?? [];\n} else {\n    const fullContextResult = $context.$nodes.CONSTRUCT_FULL_CONTEXT.$output.result ?? {};\n\n    optyData = fullContextResult?.opty_data ?? [];\n    optySummary = fullContextResult?.insight_data ?? \"\";\n    engagementsData = fullContextResult?.engagements ?? [];\n}\n\nlet rawObjectivesData = $context.$nodes.GET_OBJECTIVES.$output ?? {};\nlet rawObjectiveItems = Array.isArray(rawObjectivesData.items) ? rawObjectivesData.items : [];\nlet filteredObjectiveItems = [];\n\nfor (let objectiveIndex = 0; objectiveIndex < rawObjectiveItems.length; objectiveIndex += 1) {\n    const sourceObjective = rawObjectiveItems[objectiveIndex];\n\n    if (!sourceObjective) {\n        continue;\n    }\n\n    // Child HVA status is the source of truth, not objectiveStatus.\n    let runtimeHvas = [];\n\n    if (\n        sourceObjective.highValueActivities &&\n        Array.isArray(sourceObjective.highValueActivities.items)\n    ) {\n        runtimeHvas = sourceObjective.highValueActivities.items;\n    }\n\n    if (runtimeHvas.length === 0) {\n        continue;\n    }\n\n    let completeCount = 0;\n    let notStartedCount = 0;\n\n    for (let statusIndex = 0; statusIndex < runtimeHvas.length; statusIndex += 1) {\n        const statusHva = runtimeHvas[statusIndex];\n        let childHvaStatus = \"NOT_STARTED\";\n\n        if (statusHva && statusHva.highValueActivityStatus) {\n            childHvaStatus = String(statusHva.highValueActivityStatus).toUpperCase();\n        }\n\n        if (childHvaStatus === \"COMPLETE\" || childHvaStatus === \"COMPLETED\") {\n            completeCount += 1;\n        }\n\n        if (childHvaStatus === \"NOT_STARTED\") {\n            notStartedCount += 1;\n        }\n    }\n\n    // Recalculate objective status from child HVAs.\n    let derivedObjectiveStatus = \"IN_PROGRESS\";\n\n    if (completeCount === runtimeHvas.length) {\n        derivedObjectiveStatus = \"COMPLETE\";\n    } else if (notStartedCount === runtimeHvas.length) {\n        derivedObjectiveStatus = \"NOT_STARTED\";\n    }\n\n    // Only send objectives that still have open HVAs.\n    if (derivedObjectiveStatus === \"COMPLETE\") {\n        continue;\n    }\n\n    let designTimeHvas = [];\n\n    if (\n        sourceObjective.objectiveDesignTime &&\n        sourceObjective.objectiveDesignTime.salesMotionObjectiveHvas &&\n        Array.isArray(sourceObjective.objectiveDesignTime.salesMotionObjectiveHvas.items)\n    ) {\n        designTimeHvas = sourceObjective.objectiveDesignTime.salesMotionObjectiveHvas.items;\n    }\n\n    let filteredHvas = [];\n\n    for (let hvaIndex = 0; hvaIndex < runtimeHvas.length; hvaIndex += 1) {\n        const runtimeHva = runtimeHvas[hvaIndex];\n\n        if (!runtimeHva) {\n            continue;\n        }\n\n        const hvaStatus = String(runtimeHva.highValueActivityStatus || \"NOT_STARTED\").toUpperCase();\n\n        // Completed HVAs should not be sent back to the AI for re-evaluation.\n        if (hvaStatus === \"COMPLETE\" || hvaStatus === \"COMPLETED\") {\n            continue;\n        }\n\n        let designHva = runtimeHva.highValueActivityDesignTime;\n\n        if (!designHva) {\n            designHva = designTimeHvas[hvaIndex];\n        }\n\n        if (!designHva) {\n            designHva = {};\n        }\n\n        filteredHvas.push({\n            id: runtimeHva.id,\n            highValueActivityStatus: runtimeHva.highValueActivityStatus || \"NOT_STARTED\",\n            justification: hvaStatus === \"IN_PROGRESS\" ? \"\" : runtimeHva.justification || \"\",\n            name: designHva.name != null ? designHva.name : null,\n            description: designHva.description != null ? designHva.description : null,\n            evaluationText: designHva.evaluationText != null ? designHva.evaluationText : null,\n            displaySequence: designHva.displaySequence != null ? designHva.displaySequence : null\n        });\n    }\n\n    if (filteredHvas.length === 0) {\n        continue;\n    }\n\n    const objectiveDesign = sourceObjective.objectiveDesignTime || {};\n\n    filteredObjectiveItems.push({\n        id: sourceObjective.id,\n        objectiveStatus: derivedObjectiveStatus,\n        name: objectiveDesign.name != null ? objectiveDesign.name : null,\n        description: objectiveDesign.description != null ? objectiveDesign.description : null,\n        displaySequence: objectiveDesign.displaySequence != null ? objectiveDesign.displaySequence : null,\n        highValueActivities: {\n            items: filteredHvas\n        }\n    });\n}\n\nconst objectivesData = {\n    items: filteredObjectiveItems,\n    hasMore: false\n};\n\nconst fullContext = {\n    opportunity_data: optyData,\n    opportunity_summary: optySummary,\n    engagements_data: engagementsData,\n    objectives_data: objectivesData\n};\n\nreturn fullContext;"
+          },
+          "outcomes": {
+            "success": "1766212742914"
+          },
+          "code": "CONSTRUCT_CONTEXT",
+          "id": "1766212706185",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 5462,
+            "y": 6814
+          }
+        },
+        {
+          "metadata": {
+            "name": "Evaluate High Value Activities",
+            "modelConfiguration": {
+              "code": "ORA_MODEL_GPT_5_4_MINI",
+              "modelName": "GPT-5.4 Mini (Premium)",
+              "provider": "CERT_PREMIUM",
+              "model": "OCI_GPT_5_4_MINI",
+              "modelProperties": {
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "medium"
+              }
+            }
+          },
+          "outcomes": {
+            "success": "1766212775684"
+          },
+          "code": "EVALUATE_HIGH_VALUE_ACTIVITIES",
+          "id": "1766212742914",
+          "inputs": [
+            {
+              "id": "1766212742915_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Based on the provided opportunity, objective, HVA, and engagement context, evaluate the status of each High Value Activity (HVA) for every sales objective.\n\n## Persona and Evaluation Mindset\n\nYou are acting as a Senior Sales Representative working on critical CRM opportunities. Evaluate the data with the judgment of an experienced opportunity owner who understands sales motions, objectives, High Value Activities, customer engagements, stakeholders, buying committees, value propositions, business cases, joint execution plans, Value Centers, decision timelines, ordering documents, and CRM hygiene.\n\nThink like a sales rep who needs to know exactly what has actually happened with the customer, what is only partially done, and what still needs action to progress the opportunity. Be commercially practical, but evidence disciplined. Do not mark an HVA complete just because the topic was discussed or the language sounds aligned. \n\nYour goal is to determine whether each HVA has not started, is in progress, or is complete by comparing the customer/rep evidence against the HVA name, description, and evaluation text.\n\nImportant: Many HVAs contain multiple required actions inside the description or evaluation text. Do not evaluate an HVA as one broad activity. First understand the required actions, then compare each required action against the evidence. Mark an HVA COMPLETE only when the evidence clearly supports completion of all required actions.\n\nReturn your findings strictly as a valid raw JSON object.\n\n## Input Data\n\nYou are provided with the following JSON data from the previous context-construction step:\n\n- Opportunity Data:\n  {{$context.$nodes.CONSTRUCT_CONTEXT.$output.result.opportunity_data}}\n\n- Opportunity Summary:\n  {{$context.$nodes.CONSTRUCT_CONTEXT.$output.result.opportunity_summary}}\n\n- Engagements Data:\n  {{$context.$nodes.CONSTRUCT_CONTEXT.$output.result.engagements_data}}\n\n- Objectives Data:\n  {{$context.$nodes.CONSTRUCT_CONTEXT.$output.result.objectives_data}}\n\n## Important Input Structure\n\nThe input has this structure:\n\n- `opportunity_data`\n  - Opportunity/account/deal context.\n  - Use only for understanding the sales situation.\n  - Do not use this by itself as proof that an HVA was performed.\n\n- `opportunity_summary`\n  - Summary context for the opportunity.\n  - Use this as supporting evidence when it clearly describes a completed customer interaction, customer response, meeting outcome, call outcome, validated priority, agreement, acknowledgement, next step, or other customer-facing sales evidence.\n  - If `engagements_data` is empty, missing, or does not contain the latest customer interaction, the opportunity summary may be used as evidence when it clearly states what happened.\n\n- `engagements_data`\n  - This contains customer/rep engagement evidence, such as calls, emails, meeting notes, summaries, transcripts, or related engagement records.\n  - This is the preferred source of proof for whether an HVA has started or completed.\n\n- `objectives_data.items`\n  - The list of runtime objectives to evaluate.\n  - Each objective may also contain design-time sales motion metadata.\n\n- `objectives_data.items[*].highValueActivities.items`\n  - The list of runtime HVAs to evaluate.\n  - Runtime HVAs are used only to identify which HVA status should be updated and to preserve the current status/justification.\n  - Each runtime HVA contains fields such as:\n    - `id`\n    - current `highValueActivityStatus`\n    - current `justification`\n    - `$id`\n\n- `objectives_data.items[*].objectiveDesignTime.salesMotionObjectiveHvas.items`\n  - The design-time HVA definitions for the same objective.\n  - This is the source for HVA meaning, including name, description, evaluation text, and display order.\n  - These definitions contain fields such as:\n    - `name`\n    - `description`\n    - `evaluationText`\n    - `displaySequence`\n\n## Runtime and Design-Time Source Rules\n\nRuntime HVA data and design-time HVA data have different purposes.\n\nUse the runtime HVA only for:\n\n- The runtime HVA `id` to return in the output.\n- The current status and justification used by the status update rules.\n\nThe current runtime justification is not evidence and is not a completion requirement. It may be stale from an earlier evaluation before the latest engagement evidence was available.\n\nFor `IN_PROGRESS` HVAs, the current runtime justification may be intentionally blank in the input to avoid stale reasoning. Use the current status and current evidence to evaluate the HVA.\n\nFor any HVA that is not already `COMPLETE`, re-evaluate the required actions from the current evidence. Do not preserve or repeat a current justification's \"Still needed\" claims when current engagement evidence or opportunity summary evidence now satisfies those claims.\n\nUse the design-time HVA definition only for:\n\n- `name`\n- `description`\n- `evaluationText`\n\nDo not use runtime HVA fields as the source for `name`, `description`, or `evaluationText`.\n\nDo not invent or repair runtime-to-design-time mappings in this prompt. Use only the HVA definition that the context-construction step has already associated with the runtime HVA within the same objective.\n\nThe display sequence is not a global identifier. Treat it only as presentation order within the current objective. Do not sort, rematch, or compare HVAs across objectives using display sequence.\n\nIf the matching design-time HVA definition is missing or ambiguous for a runtime HVA, do not guess. Keep the current runtime HVA status and justification according to the no-downgrade rules. For a `NOT_STARTED` HVA with no clear definition, return `NOT_STARTED` with an empty justification.\n\nThe HVA `name`, `description`, and `evaluationText` explain what to evaluate. They are not evidence that the work happened.\n\n## Evidence Source Rules\n\nUse `engagements_data` as the preferred evidence source.\n\nEvidence may come from calls, emails, meeting notes, engagement summaries, transcripts, or other records inside `engagements_data`.\n\nUse `opportunity_summary` as evidence only when it clearly describes a customer interaction or customer outcome that happened.\n\nDo not use `opportunity_data`, objective names, HVA names, descriptions, or evaluation text as evidence that work happened.\n\nThese fields can help you understand what to look for, but they do not prove execution.\n\nIf `engagements_data` is empty or missing, do not automatically assume no progress. Check whether `opportunity_summary` clearly describes customer-facing evidence.\n\nIf `opportunity_summary` says a discovery call validated customer priorities and stakeholder alignment, treat that as evidence for the matching HVA action.\n\nDo not use broad or vague summary text as evidence. The summary must clearly say what customer-facing action or outcome happened.\n\n## Status Values\n\nUse only these status values:\n\n- `NOT_STARTED`\n- `IN_PROGRESS`\n- `COMPLETE`\n\n## Required Action Extraction\n\nBefore choosing a status for each HVA, understand the required actions from the HVA `name`, `description`, and especially `evaluationText`.\n\nCreate an internal checklist of required actions. Do not return this checklist as a separate JSON field. Use it only to decide the status and to write the justification.\n\nWhen extracting required actions:\n\n- Treat explicit action lists as required actions, especially text introduced by phrases such as \"Completion requires\", \"Actions\", \"Key Actions\", \"Key Steps\", \"Key Objectives\", \"Deliverables\", \"The goal is to\", or numbered/bulleted requirements.\n- Split compound requirements into separate checks. For example, \"identify stakeholders, align on timeline, and document next steps\" is three required actions.\n- Treat required outcomes as required actions when the evaluation text says the customer must acknowledge, agree, validate, approve, commit, confirm, or align.\n- Do not require explicit customer acknowledgment, validation, agreement, or next-step alignment unless the HVA name, description, or evaluation text explicitly requires it using those concepts. If the HVA only requires articulation, presentation, communication, or delivery of a value proposition, evidence that the rep delivered that message to the customer may be sufficient for completion.\n- Do not treat background explanation, product value statements, or generic sales context as completed work.\n- Do not require every example in a phrase such as \"for example\", \"such as\", or \"e.g.\" unless the HVA text clearly makes those examples mandatory.\n- Merge duplicate or overlapping required actions so the internal checklist is concise.\n- If the HVA text contains only one clear activity, use one required action.\n\nFor each required action, internally classify evidence as:\n\n- `completed`: evidence clearly shows the required action was done.\n- `partial`: evidence shows the required action started or was discussed, but the required outcome is not fully proven.\n- `not_evidenced`: no explicit evidence proves the required action started or completed.\n\n## Status Meaning\n\nSet status to `NOT_STARTED` when:\n- There is no explicit evidence in `engagements_data` or `opportunity_summary` that any required action has begun.\n- The HVA may be relevant, but no call, email, meeting note, summary, or engagement record shows that the activity was performed.\n\nSet status to `IN_PROGRESS` when:\n- There is explicit evidence in `engagements_data` or `opportunity_summary` that at least one required action has started or completed.\n- At least one required action is still only partial or not evidenced.\n- The evidence shows partial progress, discussion, planning, discovery, follow-up, or initial action.\n- The evidence does not clearly show that the full completion criteria in the HVA evaluation text have been satisfied.\n\nSet status to `COMPLETE` when:\n- There is explicit evidence in `engagements_data` or `opportunity_summary` that every required action has been fully performed.\n- The evidence aligns with the completion expectations in the HVA `evaluationText`.\n- Required customer-facing outcomes, such as customer acknowledgment, agreement, approval, commitment, validation, or next-step alignment, are evidenced when the HVA requires them.\n- The evidence is strong enough that a Sales Representative can understand why the full activity is complete.\n\nDo not set status to `COMPLETE` when:\n- Only one or two required actions are evidenced but other required actions are missing.\n- The engagement generally discussed the topic but does not prove the required action or outcome.\n- The rep presented information, but the HVA evaluation text explicitly requires customer agreement, acknowledgment, validation, approval, commitment, documented next steps, stakeholder alignment, or follow-up evidence that is missing.\n- The only evidence is opportunity context, HVA wording, or current status.\n\n## Status Update Rules\n\nFor each HVA, consider its current `highValueActivityStatus`.\n\nAllowed status changes:\n- `NOT_STARTED` to `IN_PROGRESS`\n- `NOT_STARTED` to `COMPLETE`\n- `IN_PROGRESS` to `COMPLETE`\n- Keep the current status when there is no stronger evidence\n\nDo not downgrade status:\n- Do not change `IN_PROGRESS` to `NOT_STARTED`\n- Do not change `COMPLETE` to `IN_PROGRESS`\n- Do not change `COMPLETE` to `NOT_STARTED`\n\nIf the current status is already `COMPLETE`, keep it as `COMPLETE`.\n\nNever update the justification for an HVA that is already `COMPLETE`. Preserve the existing completed HVA status and justification exactly as-is, even if the current evidence is missing, weaker, stronger, or different.\n\nIf there is no new or stronger evidence in `engagements_data` or `opportunity_summary`, keep the current status.\n\nIf there is new or stronger evidence, do not keep an `IN_PROGRESS` HVA in progress only because the current justification says something is still missing. Re-evaluate that missing item against the current evidence.\n\nIf the current status is missing, blank, or invalid, treat it as `NOT_STARTED`.\n\nImportant: The no-downgrade rule preserves existing status only. It must not be used as evidence to upgrade another HVA. For an HVA that is not already complete, do not upgrade it to `COMPLETE` unless every required action is supported by evidence.\n\n## Evaluation Instructions\n\nFor each objective in `objectives_data.items`:\n\n1. Read each runtime HVA in `highValueActivities.items`.\n2. Use the design-time HVA definition already associated with that runtime HVA in the constructed context.\n3. Use the HVA `name`, `description`, and especially `evaluationText` to understand what completion requires.\n4. Extract the required actions into an internal checklist.\n5. Search inside `engagements_data` and `opportunity_summary` for explicit evidence related to each required action.\n6. Classify each required action internally as completed, partial, or not evidenced.\n7. Choose the correct HVA status using the required-action evidence and status rules above.\n8. Write a justification only when the final status is `IN_PROGRESS` or `COMPLETE`.\n9. Return one output object for every evaluated runtime HVA.\n\n## Evaluation and Acknowledgement\n\nDo not require explicit customer acknowledgement, validation, agreement, approval, commitment, confirmation, or next-step alignment unless the HVA `name`, `description`, or `evaluationText` explicitly requires that customer response.\n\nIf the HVA only requires the rep to articulate, present, communicate, share, provide, position, deliver, or tailor information for the customer, evaluate whether that rep action is supported by evidence. Do not keep the HVA `IN_PROGRESS` solely because explicit customer acknowledgement is not evidenced.\n\nIf the HVA explicitly requires customer acknowledgement, validation, agreement, approval, commitment, confirmation, or alignment, then that customer response must be supported by evidence before the HVA can be marked `COMPLETE`.\n\nEvaluate acknowledgement and validation using the wording of the HVA. Do not add stricter requirements that are not stated in the HVA, such as formal sign-off, approval from all stakeholders, named stakeholder-by-stakeholder confirmation, final scope confirmation, final timing confirmation, or final next-step agreement unless the HVA explicitly asks for those things.\n\nPhrases that describe intended customer perception, understanding, confidence, trust, awareness, or sales impact describe the expected effect of the rep's action. Do not treat those phrases as a requirement for explicit customer acknowledgement, validation, agreement, approval, commitment, or confirmation unless the HVA explicitly asks for that customer response.\n\nIf the HVA describes an action the rep must perform, evidence that the rep performed that action with the customer can be sufficient for that required action. Do not require a separate customer response unless the HVA explicitly makes customer response part of the completion criteria.\n\nWhen the HVA requires documented customer acknowledgement, validation, agreement, approval, commitment, confirmation, alignment, or another customer response, a customer email, call note, meeting note, transcript, or opportunity summary can satisfy that requirement if it clearly states the required customer response happened.\n\nDo not keep an HVA `IN_PROGRESS` because related but separate sales activities remain open, unless those activities are explicitly required by that HVA's `name`, `description`, or `evaluationText`.\n\nIf the final status is `NOT_STARTED`, the justification must be an empty string.\n\nIf the final status is `IN_PROGRESS`, the justification must:\n- Explain that the HVA has started but is not fully complete.\n- State which required actions are supported by evidence.\n- State exactly which required actions from the HVA are still missing, partial, or not evidenced.\n- For each missing or partial action, describe the exact evidence gap the rep must close.\n- Explain why those specific missing or partial actions prevent completion.\n- Mention specific evidence when available, such as engagement type, date, topic, customer response, rep action, meeting discussion, email follow-up, or opportunity summary evidence.\nUse exactly this three-section plain-text format for every `IN_PROGRESS` justification. Keep the labels, label order, capitalization, colons, and blank lines exactly:\n\"Still needed:\\n<specific missing or partial required actions>\\n\\nEvidence gap:\\n<exact evidence gap and why those specific required actions are not yet proven>\\n\\nCompleted:\\n<required actions with evidence>.\"\n\nDo not reorder, merge, rename, omit, or add to these three labels for an `IN_PROGRESS` justification. These labels are required plain-text labels, not markdown headings.\n\nIf the final status is `COMPLETE`, the justification must:\n- Explain that all required actions are supported by evidence.\n- Briefly name the completed required actions.\n- Mention specific evidence when available, such as engagement type, date, topic, customer response, rep action, meeting discussion, email follow-up, or opportunity summary evidence.\n- Make it clear why the HVA is complete, not merely started.\nUse this style for `COMPLETE`:\n\"Completed: <all required actions proven by evidence>. This is complete because each required action is supported by customer-facing evidence, using practical equivalent evidence where appropriate.\"\n\n\nThe justification must:\n- Be based only on explicit evidence from `engagements_data` or clear customer-facing evidence in `opportunity_summary`.\n- Be clear and useful for a Sales Representative.\n- Be useful for recommendation create, keep, and close decisions.\n- Paraphrase evidence instead of copying long text.\n- Avoid technical field names.\n- Stay concise, while including enough detail that the rep knows what is done and what is still needed.\n- Be internally consistent: do not list the same required action as completed and still needed.\n- Use only required actions extracted from the HVA as \"Still needed\" items.\n- If evidence shows only planned or future activity, say the specific completed customer-facing action that is still missing, not a vague request for more evidence.\n- If you cannot name a specific missing or partial required action from the HVA, do not keep the HVA `IN_PROGRESS`; mark it `COMPLETE` when all extracted required actions are proven under the easier proof standard.\n- Do not list refinement, iteration, customer feedback, follow-up discussion, finalization, ongoing engagement, or next-step confirmation as \"Still needed\" unless the HVA explicitly requires that item.\n- Before returning the JSON, check every `IN_PROGRESS` justification. It must start with `Still needed:\\n`, include `\\n\\nEvidence gap:\\n`, include `\\n\\nCompleted:\\n`, and contain no other section labels.\nDo not include:\n- Technical field names such as `engagements_data`, `evaluationText`, `highValueActivityStatus`, or `objectives_data`\n- Internal reasoning\n- Unsupported assumptions\n- Fabricated evidence\n- Vague phrases such as \"additional evidence\", \"full completion\", \"customer engagement\", \"confirm completeness\", or \"further validation\" unless the phrase is tied to a specific required action from the HVA.\n- Implied follow-up requirements such as \"refine the business case\", \"finalize the assessment\", \"seek customer feedback\", \"continue engagement\", \"ongoing engagement\", or \"further discussion\" unless the HVA explicitly requires that action.\n- Markdown\n- Headings\n- Comments\n\n## Handling Weak or Ambiguous Evidence\n\nIf an engagement or summary only generally mentions the opportunity or customer but does not clearly connect to a required action, do not count it as evidence.\n\nIf evidence supports one or more required actions but leaves other required actions incomplete or unproven, use `IN_PROGRESS`.\n\nIf evidence is ambiguous, prefer the more conservative status.\n\nIf no explicit evidence exists and the current status is `NOT_STARTED`, return `NOT_STARTED` with an empty justification.\n\nIf no explicit evidence exists but the current status is already `IN_PROGRESS`, keep `IN_PROGRESS` and retain or rewrite the justification only if the existing justification is supported by engagement evidence or clear opportunity summary evidence. If it is not supported by current evidence, use a brief justification saying that prior progress is being preserved but no additional evidence was found.\n\nIf the current status is already `COMPLETE`, keep `COMPLETE` and do not change the justification. The justification for an already completed HVA must never be rewritten, cleared, expanded, summarized, or replaced.\n\n## Recommendation Support Requirement\n\nThe recommendation workflow will use HVA status and justification to decide whether to create, keep, or close recommendations.\n\nTherefore, when an HVA is `IN_PROGRESS`, the justification must clearly say:\n- which part is already done,\n- which part is still needed.\n\nExample formats:\n\nFor `IN_PROGRESS`:\n\"Still needed:\\n<specific missing or partial required actions>\\n\\nEvidence gap:\\n<exact evidence gap and why those specific required actions are not yet proven>\\n\\nCompleted:\\n<required actions supported by evidence>.\"\n\nFor `COMPLETE`:\n\"Completed: <required actions supported by evidence>. This is complete because <why the evidence satisfies the HVA completion criteria>.\"\n\nFor a new opportunity or an HVA with no evidence, keep status `NOT_STARTED` and justification empty. Do not invent a next step in the justification.\n\n## Output Rules\n\nReturn only a valid raw JSON object.\nDo not include markdown formatting.\nDo not include explanations outside the JSON.\nDo not wrap the JSON in code fences.\nDo not add fields that are not shown in the structure below.\n\nThe output must use this exact structure:\n\n{\n  \"objectives\": [\n    {\n      \"id\": \"<runtime objective id>\",\n      \"highValueActivities\": [\n        {\n          \"id\": \"<runtime HVA id>\",\n          \"status\": \"<NOT_STARTED | IN_PROGRESS | COMPLETE>\",\n          \"justification\": \"<simple, clear justification based only on evidence, or empty string if NOT_STARTED>\"\n        }\n      ]\n    }\n  ]\n}"
+            }
+          ],
+          "type": "LLM",
+          "diagram": {
+            "x": 5447,
+            "y": 7036
+          },
+          "outputSpecification": ""
+        },
+        {
+          "metadata": {
+            "name": "Construct Update Payload",
+            "returnType": "array",
+            "sourceCode": "var objectivesData = $context.$nodes.GET_OBJECTIVES.$output;\nif (!objectivesData) {\n  objectivesData = new Object();\n}\n\nvar evaluationData = $context.$nodes.EVALUATE_HIGH_VALUE_ACTIVITIES.$output;\nif (!evaluationData) {\n  evaluationData = new Object();\n}\n\nvar objectiveItems = new Array();\nif (Array.isArray(objectivesData.items)) {\n  objectiveItems = objectivesData.items;\n}\n\nvar evaluatedObjectives = new Array();\nif (Array.isArray(evaluationData.objectives)) {\n  evaluatedObjectives = evaluationData.objectives;\n}\n\nvar updatePayloadItems = new Array();\n\nfor (var objectiveIndex = 0; objectiveIndex < objectiveItems.length; objectiveIndex += 1) {\n  var runtimeObjective = objectiveItems[objectiveIndex];\n\n  if (runtimeObjective && runtimeObjective.$id) {\n    var currentObjectiveStatus = String(runtimeObjective.objectiveStatus || \"NOT_STARTED\").toUpperCase();\n\n    if (currentObjectiveStatus === \"COMPLETED\") {\n      currentObjectiveStatus = \"COMPLETE\";\n    }\n\n    var runtimeHvas = new Array();\n\n    if (\n      runtimeObjective.highValueActivities &&\n      Array.isArray(runtimeObjective.highValueActivities.items)\n    ) {\n      runtimeHvas = runtimeObjective.highValueActivities.items;\n    }\n\n    var evaluatedObjective = null;\n\n    for (var evalObjectiveIndex = 0; evalObjectiveIndex < evaluatedObjectives.length; evalObjectiveIndex += 1) {\n      var candidateObjective = evaluatedObjectives[evalObjectiveIndex];\n\n      if (\n        candidateObjective &&\n        (\n          String(candidateObjective.id || \"\") === String(runtimeObjective.id || \"\") ||\n          String(candidateObjective.id || \"\") === String(runtimeObjective.$id || \"\")\n        )\n      ) {\n        evaluatedObjective = candidateObjective;\n        break;\n      }\n    }\n\n    var mergedHvaStatuses = new Array();\n\n    for (var runtimeHvaIndex = 0; runtimeHvaIndex < runtimeHvas.length; runtimeHvaIndex += 1) {\n      var statusHva = runtimeHvas[runtimeHvaIndex];\n      var runtimeStatus = \"NOT_STARTED\";\n\n      if (statusHva && statusHva.highValueActivityStatus) {\n        runtimeStatus = String(statusHva.highValueActivityStatus).toUpperCase();\n      }\n\n      if (runtimeStatus === \"COMPLETED\") {\n        runtimeStatus = \"COMPLETE\";\n      }\n\n      mergedHvaStatuses.push(runtimeStatus);\n    }\n\n    var hvaUpdates = new Array();\n    var evaluatedHvas = new Array();\n\n    if (evaluatedObjective && Array.isArray(evaluatedObjective.highValueActivities)) {\n      evaluatedHvas = evaluatedObjective.highValueActivities;\n    }\n\n    for (var evaluatedHvaIndex = 0; evaluatedHvaIndex < evaluatedHvas.length; evaluatedHvaIndex += 1) {\n      var evaluatedHva = evaluatedHvas[evaluatedHvaIndex];\n\n      if (evaluatedHva) {\n        var runtimeHva = null;\n        var matchedRuntimeHvaIndex = -1;\n\n        for (var runtimeSearchIndex = 0; runtimeSearchIndex < runtimeHvas.length; runtimeSearchIndex += 1) {\n          var candidateHva = runtimeHvas[runtimeSearchIndex];\n\n          if (\n            candidateHva &&\n            (\n              String(candidateHva.id || \"\") === String(evaluatedHva.id || \"\") ||\n              String(candidateHva.$id || \"\") === String(evaluatedHva.id || \"\")\n            )\n          ) {\n            runtimeHva = candidateHva;\n            matchedRuntimeHvaIndex = runtimeSearchIndex;\n            break;\n          }\n        }\n\n        if (runtimeHva && runtimeHva.$id) {\n          var currentHvaStatus = String(runtimeHva.highValueActivityStatus || \"NOT_STARTED\").toUpperCase();\n\n          if (currentHvaStatus === \"COMPLETED\") {\n            currentHvaStatus = \"COMPLETE\";\n          }\n\n          var proposedHvaStatus = String(evaluatedHva.status || currentHvaStatus).toUpperCase();\n\n          if (proposedHvaStatus === \"COMPLETED\") {\n            proposedHvaStatus = \"COMPLETE\";\n          }\n\n          var proposedJustification = String(evaluatedHva.justification || \"\").trim();\n          var currentJustification = String(runtimeHva.justification || \"\").trim();\n\n          var isAllowedStatus =\n            proposedHvaStatus === \"NOT_STARTED\" ||\n            proposedHvaStatus === \"IN_PROGRESS\" ||\n            proposedHvaStatus === \"COMPLETE\";\n\n          var isCurrentComplete = currentHvaStatus === \"COMPLETE\";\n          var isBackwardMove = currentHvaStatus === \"IN_PROGRESS\" && proposedHvaStatus === \"NOT_STARTED\";\n          var hasRequiredJustification = proposedHvaStatus === \"NOT_STARTED\" || proposedJustification !== \"\";\n\n          if (isAllowedStatus && !isCurrentComplete && !isBackwardMove && hasRequiredJustification) {\n            var shouldUpdateHva = false;\n            var hvaPayload = new Object();\n\n            hvaPayload.$operation = \"MERGE\";\n            hvaPayload.$id = runtimeHva.$id;\n\n            if (proposedHvaStatus !== currentHvaStatus) {\n              hvaPayload.highValueActivityStatus = proposedHvaStatus;\n              shouldUpdateHva = true;\n            }\n\n            if (\n              proposedHvaStatus !== \"NOT_STARTED\" &&\n              proposedJustification !== \"\" &&\n              proposedJustification !== currentJustification\n            ) {\n              hvaPayload.justification = proposedJustification;\n              shouldUpdateHva = true;\n            }\n\n            if (shouldUpdateHva) {\n              hvaUpdates.push(hvaPayload);\n\n              if (matchedRuntimeHvaIndex >= 0) {\n                mergedHvaStatuses[matchedRuntimeHvaIndex] = proposedHvaStatus;\n              }\n            }\n          }\n        }\n      }\n    }\n\n    var proposedObjectiveStatus = currentObjectiveStatus;\n\n    if (mergedHvaStatuses.length > 0) {\n      var completeCount = 0;\n      var notStartedCount = 0;\n\n      for (var statusIndex = 0; statusIndex < mergedHvaStatuses.length; statusIndex += 1) {\n        var hvaStatus = mergedHvaStatuses[statusIndex];\n\n        if (hvaStatus === \"COMPLETE\" || hvaStatus === \"COMPLETED\") {\n          completeCount += 1;\n        }\n\n        if (hvaStatus === \"NOT_STARTED\") {\n          notStartedCount += 1;\n        }\n      }\n\n      if (completeCount === mergedHvaStatuses.length) {\n        proposedObjectiveStatus = \"COMPLETE\";\n      } else if (notStartedCount === mergedHvaStatuses.length) {\n        proposedObjectiveStatus = \"NOT_STARTED\";\n      } else {\n        proposedObjectiveStatus = \"IN_PROGRESS\";\n      }\n    }\n\n    var objectivePayload = new Object();\n    objectivePayload.$operation = \"MERGE\";\n    objectivePayload.$id = runtimeObjective.$id;\n    objectivePayload.objectiveStatus = proposedObjectiveStatus;\n\n    if (hvaUpdates.length > 0) {\n      var highValueActivitiesPayload = new Object();\n      highValueActivitiesPayload.items = hvaUpdates;\n      objectivePayload.highValueActivities = highValueActivitiesPayload;\n    }\n\n    if (proposedObjectiveStatus !== currentObjectiveStatus || hvaUpdates.length > 0) {\n      updatePayloadItems.push(objectivePayload);\n    }\n  }\n}\n\nreturn updatePayloadItems;"
+          },
+          "outcomes": {
+            "success": "1782212934205"
+          },
+          "code": "CONSTRUCT_UPDATE_PAYLOAD",
+          "id": "1766212775684",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 5462,
+            "y": 7258
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_OBJECTIVES",
+            "functionName": "BulkWrite_objectives",
+            "name": "Update High Value Activities"
+          },
+          "outcomes": {
+            "success": "1766212941193"
+          },
+          "code": "UPDATE_HIGH_VALUE_ACTIVITIES",
+          "id": "1766212854216",
+          "inputs": [
+            {
+              "id": "1766212873218_1",
+              "name": "items",
+              "type": "string",
+              "value": "{{$context.$nodes.CONSTRUCT_UPDATE_PAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 5000,
+            "y": 7702
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_OBJECTIVES",
+            "functionName": "get_all_objectives_for_an_opportunity",
+            "name": "Get Updated Objectives"
+          },
+          "outcomes": {
+            "success": "1776173557168"
+          },
+          "code": "GET_UPDATED_OBJECTIVES",
+          "id": "1766212941193",
+          "inputs": [
+            {
+              "id": "1766212961697_1",
+              "name": "id",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.id}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 5462,
+            "y": 7924
+          }
+        },
+        {
+          "metadata": {
+            "name": "Construct Output",
+            "returnType": "array",
+            "sourceCode": "const responseItems = Array.isArray($context.$nodes.GET_UPDATED_OBJECTIVES.$output?.items)\n  ? $context.$nodes.GET_UPDATED_OBJECTIVES.$output.items\n  : [];\n\nconst objectiveRows = [];\n\nfor (const objectiveRecord of responseItems) {\n  const objectiveStatus = String(objectiveRecord.objectiveStatus || \"NOT_STARTED\").toUpperCase();\n\n  // Hide completed objectives from the response.\n  if (objectiveStatus === \"COMPLETE\" || objectiveStatus === \"COMPLETED\") {\n    continue;\n  }\n\n  objectiveRows.push(objectiveRecord);\n}\n\n// Sort objectives by objective design-time display sequence.\nfor (let i = 0; i < objectiveRows.length; i += 1) {\n  for (let j = i + 1; j < objectiveRows.length; j += 1) {\n    const leftSequence = Number(objectiveRows[i].objectiveDesignTime?.displaySequence || 0);\n    const rightSequence = Number(objectiveRows[j].objectiveDesignTime?.displaySequence || 0);\n\n    if (rightSequence < leftSequence) {\n      const tempObjective = objectiveRows[i];\n      objectiveRows[i] = objectiveRows[j];\n      objectiveRows[j] = tempObjective;\n    }\n  }\n}\n\nconst mappedObjectives = [];\n\nfor (const objectiveRecord of objectiveRows) {\n  const runtimeHvas = Array.isArray(objectiveRecord.highValueActivities?.items)\n    ? objectiveRecord.highValueActivities.items\n    : [];\n\n  const designTimeHvas = Array.isArray(objectiveRecord.objectiveDesignTime?.salesMotionObjectiveHvas?.items)\n    ? objectiveRecord.objectiveDesignTime.salesMotionObjectiveHvas.items\n    : [];\n\n  const sortedHvas = [];\n  let runtimeIndex = 0;\n\n  for (const runtimeHva of runtimeHvas) {\n    const hvaStatus = String(runtimeHva.highValueActivityStatus || \"NOT_STARTED\").toUpperCase();\n\n    // Prefer the HVA design-time data attached to the runtime HVA.\n    // Fall back to the objective-level design-time HVA list when needed.\n    let designHva = runtimeHva.highValueActivityDesignTime;\n\n    if (!designHva) {\n      designHva = designTimeHvas[runtimeIndex];\n    }\n\n    if (!designHva) {\n      designHva = {};\n    }\n\n    runtimeIndex += 1;\n\n    // Hide completed HVAs from the response.\n    if (hvaStatus === \"COMPLETE\" || hvaStatus === \"COMPLETED\") {\n      continue;\n    }\n\n    sortedHvas.push({\n      highValueActivityId: runtimeHva.id,\n      highValueActivityStatus: runtimeHva.highValueActivityStatus,\n      justification: runtimeHva.justification,\n      name: designHva.name ?? null,\n      description: designHva.description ?? null,\n      evaluationText: designHva.evaluationText ?? null,\n      displaySequence: designHva.displaySequence ?? null\n    });\n  }\n\n  if (sortedHvas.length === 0) {\n    continue;\n  }\n\n  // Sort HVAs by design-time display sequence.\n  for (let i = 0; i < sortedHvas.length; i += 1) {\n    for (let j = i + 1; j < sortedHvas.length; j += 1) {\n      const leftSequence = Number(sortedHvas[i].displaySequence || 0);\n      const rightSequence = Number(sortedHvas[j].displaySequence || 0);\n\n      if (rightSequence < leftSequence) {\n        const tempHva = sortedHvas[i];\n        sortedHvas[i] = sortedHvas[j];\n        sortedHvas[j] = tempHva;\n      }\n    }\n  }\n\n  const hvaItems = [];\n\n  for (const sortedHva of sortedHvas) {\n    hvaItems.push({\n      highValueActivityId: sortedHva.highValueActivityId,\n      highValueActivityStatus: sortedHva.highValueActivityStatus,\n      justification: sortedHva.justification,\n      name: sortedHva.name,\n      description: sortedHva.description,\n      evaluationText: sortedHva.evaluationText\n    });\n  }\n\n  mappedObjectives.push({\n    objectiveId: objectiveRecord.id,\n    objectiveStatus: objectiveRecord.objectiveStatus,\n    name: objectiveRecord.objectiveDesignTime?.name ?? null,\n    highValueActivities: {\n      items: hvaItems\n    }\n  });\n}\n\nreturn mappedObjectives;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "CONSTRUCT_OUTPUT",
+          "id": "1776173557168",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 5462,
+            "y": 8146
+          }
+        },
+        {
+          "id": "1782212934205",
+          "code": "HAS_UPDATE_PAYLOAD",
+          "type": "CONDITION",
+          "convergenceTargetId": "1766212941193",
+          "metadata": {
+            "name": "Has Update Payload"
+          },
+          "diagram": {
+            "x": 5462,
+            "y": 7480
+          },
+          "outcomes": {
+            "true": "1766212854216",
+            "false": "1766212941193"
+          },
+          "inputs": [
+            {
+              "id": "1782212934205_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CONSTRUCT_UPDATE_PAYLOAD.$output.result != null && $context.$nodes.CONSTRUCT_UPDATE_PAYLOAD.$output.result.length > 0}}"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_ENGAGEMENTS",
+            "functionName": "get_all_engagements_for_an_opportunity",
+            "name": "Get Engagements"
+          },
+          "outcomes": {
+            "success": "1776230719248"
+          },
+          "code": "GET_ENGAGEMENTS",
+          "id": "1776230223771",
+          "inputs": [
+            {
+              "id": "1776230223771_id",
+              "name": "id",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.id}}"
+            }
+          ],
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 6382,
+            "y": 5891
+          }
+        },
+        {
+          "metadata": {
+            "name": "Construct Elastic Payload",
+            "returnType": "object",
+            "sourceCode": "const payload = {\n    \"limit\": 1,\n    \"offset\": 0,\n    \"sort\": [],\n    \"entity\": \"Opportunity\",\n    \"q\": {\n        \"op\": \"$and\",\n        \"criteria\": [\n            {\n                \"op\": \"$eq\",\n                \"attribute\": \"OptyId\",\n                \"value\": $context.$triggers.REST.$input.id\n            }\n        ]\n    },\n    \"fields\": [\n        \"PrCmptPartyId\",\n        \"PrimaryCampaignId.CampaignName\",\n        \"PrimaryCampaignId.CampaignId\",\n        \"PrimaryCampaignId.CampaignNumber\",\n        \"PrimaryRevenue.RevnAmountCurcyCode\",\n        \"ReasonWonLostCode\",\n        \"OptyId\",\n        \"OptyNumber\",\n        \"Owner.PartyId\",\n        \"SalesMethodId\",\n        \"SalesStage.StgOrderEnum\",\n        \"StatusCode\",\n        \"PrConPartyId.PartyId\",\n        \"PrConPartyId.PartyName\",\n        \"CustomerAccount.PartyId\",\n        \"CustomerAccount.PartyUniqueName\",\n        \"EffectiveDate\",\n        \"PrimaryRevenue.RevnAmount\",\n        \"PrimaryRevenue.WinProb\",\n        \"LastUpdatedBy\",\n        \"CreatedBy\",\n        \"CreationDate\",\n        \"LastUpdateDate\",\n        \"Name\",\n        \"CustomerAccount.PartyNumber\",\n        \"ListOfLeads.LeadId.LeadId\",\n        \"ListOfResourcesForTheTeam.OptyResourceId\",\n        \"ListOfResourcesForTheTeam.ResourceId.PartyId\",\n        \"ListOfResourcesForTheTeam.ResourceId.PartyName\",\n        \"ListOfResourcesForTheTeam.ResourceId.PrimaryEmail.EmailAddress\",\n        \"ListOfResourcesForTheTeam.ResourceId.PrimaryPhone.FormattedPhone\",\n        \"ListOfRevenues.Quantity\",\n        \"ListOfRevenues.RevnAmount\",\n        \"ListOfRevenues.RevnAmountCurcyCode\",\n        \"ListOfRevenues.Primary\",\n        \"ListOfRevenues.RevnNumber\",\n        \"ListOfRevenues.ProdGroupId.ProductGroupId\",\n        \"ListOfRevenues.ProdGroupId.Name\",\n        \"ListOfRevenues.CrmCurcyCode\",\n        \"ListOfRevenues.RevnId\",\n        \"ListOfRevenues.UnitPrice\",\n        \"ListOfRevenues.InventoryItemId.InventoryItemId\",\n        \"ListOfRevenues.InventoryItemId.Name\",\n        \"ListOfContacts.OptyConId\",\n        \"ListOfContacts.PerPartyId.PartyId\",\n        \"ListOfContacts.PerPartyId.PartyName\",\n        \"ListOfContacts.PerPartyId.JobTitle\",\n        \"ListOfContacts.PerPartyId.PrimaryEmail.EmailAddress\",\n        \"ListOfContacts.PerPartyId.PrimaryPhone.FormattedPhone\",\n        \"ListOfContacts.PerPartyId.PrimaryAddress.FormattedAddress\",\n        \"ListOfContacts.PerPartyId.DoNotContactFlag\",\n        \"ListOfContacts.RoleCd\"\n    ]\n};\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "1776230395132"
+          },
+          "code": "CONSTRUCT_ELASTIC_PAYLOAD",
+          "id": "1776230303304",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 5932,
+            "y": 5891
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_ENGAGEMENT_INSIGHTS",
+            "functionName": "engagement_Insights_for_given_sourceObjectrec",
+            "name": "Get Opportunity Summary"
+          },
+          "outcomes": {
+            "success": "1776230719248"
+          },
+          "code": "GET_OPPORTUNITY_SUMMARY",
+          "id": "1776230346565",
+          "inputs": [
+            {
+              "id": "1776230346565_sourceObjectId",
+              "name": "sourceObjectId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.id}}"
+            }
+          ],
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 6832,
+            "y": 5891
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "Get Elastic Context"
+          },
+          "outcomes": {
+            "success": "1776230719248"
+          },
+          "code": "GET_ELASTIC_CONTEXT",
+          "id": "1776230395132",
+          "inputs": [
+            {
+              "id": "1776230395132_object",
+              "name": "object",
+              "type": "string",
+              "value": "{{$context.$nodes.CONSTRUCT_ELASTIC_PAYLOAD.$output.result.entity}}"
+            },
+            {
+              "id": "1776230395132_q",
+              "name": "q",
+              "type": "string",
+              "value": "{{JSON.stringify($context.$nodes.CONSTRUCT_ELASTIC_PAYLOAD.$output.result.q).replace(/\"/g, \"'\")}}"
+            },
+            {
+              "id": "1776230395132_sort",
+              "name": "sort",
+              "type": "string",
+              "value": "{{JSON.stringify($context.$nodes.CONSTRUCT_ELASTIC_PAYLOAD.$output.result.sort).replace(/\"/g, \"'\")}}"
+            },
+            {
+              "id": "1776230395132_limit",
+              "name": "limit",
+              "type": "integer",
+              "value": "{{$context.$nodes.CONSTRUCT_ELASTIC_PAYLOAD.$output.result.limit}}"
+            },
+            {
+              "id": "1776230395132_fields",
+              "name": "fields",
+              "type": "string",
+              "value": "{{JSON.stringify($context.$nodes.CONSTRUCT_ELASTIC_PAYLOAD.$output.result.fields).replace(/\"/g, \"'\")}}"
+            }
+          ],
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 5932,
+            "y": 6113
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_AIOUTCOMESTORE",
+            "functionName": "getOutcomeBy_AltKey_Category",
+            "name": "fetch from Ai outcome"
+          },
+          "outcomes": {
+            "success": "1776230719266"
+          },
+          "code": "FETCH_FROM_AI_OUTCOME",
+          "id": "1776232143513",
+          "inputs": [
+            {
+              "id": "1776232143513_ObjectType",
+              "name": "ObjectType",
+              "type": "string",
+              "value": "OPPORTUNITY"
+            },
+            {
+              "id": "1776232143513_ObjectAltKey",
+              "name": "ObjectAltKey",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.puid}}"
+            },
+            {
+              "id": "1776232143513_OutcomeType",
+              "name": "OutcomeType",
+              "type": "string",
+              "value": "SUMMARY"
+            },
+            {
+              "id": "1776232143513_OutcomeSubType",
+              "name": "OutcomeSubType",
+              "type": "string",
+              "value": "STATE_SUMMARY"
+            },
+            {
+              "id": "1776232143513_Category",
+              "name": "Category",
+              "type": "string",
+              "value": "ENGAGEMENT"
+            }
+          ],
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 7282,
+            "y": 5891
+          }
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1766210801052",
+            "name": "id",
+            "type": "string"
+          },
+          {
+            "id": "1766210790659",
+            "name": "puid",
+            "type": "string"
+          },
+          {
+            "id": "1766210782999",
+            "name": "context",
+            "type": "object"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": [],
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    },
+    "dtRunProfiles": {
+      "activeProfileId": "51e0334e-0569-4d8f-bc3c-509b99ebde41",
+      "profiles": [
+        {
+          "id": "51e0334e-0569-4d8f-bc3c-509b99ebde41",
+          "name": "HVA - CDRM_162559",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n    \"puid\": \"CDRM_162559\",\n    \"id\": \"300100653034141\",\n    \"triggerType\": \"REST\"\n}"
+        }
+      ]
+    }
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "SALES_FORCE_AUTOMATION",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "FULL",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"4\""
+  }
+}

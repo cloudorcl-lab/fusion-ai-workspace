@@ -1,0 +1,347 @@
+{
+  "workflowId": "100002355227049",
+  "workflowCode": "ORA_RMC_TRANSACTION_INCIDENTS_ASSISTANT",
+  "name": "RMC Transaction Incidents Assistant",
+  "description": "Fetches transaction incidents for a selected control, derives risk logic, and aggregates incidents with access-violation context.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [
+      {
+        "id": "input_control_id",
+        "name": "controlId",
+        "type": "string",
+        "description": "The Control ID to process"
+      },
+      {
+        "id": "input_control_name",
+        "name": "controlName",
+        "type": "string",
+        "description": "The Control Name for reference"
+      },
+      {
+        "id": "input_control_desc",
+        "name": "controlDesc",
+        "type": "string",
+        "description": "The Control Desc for reference"
+      }
+    ],
+    "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"controlId\": { \"type\": \"string\" },\n    \"controlName\": { \"type\": \"string\" },\n    \"users\": { \"type\": \"object\" }\n  }\n}",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "GET_INCIDENTS"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_GRC_OTHER_GETTRANSACTIONINCIDENTS",
+            "functionName": "getall_advancedControls-incidents",
+            "processJson": true,
+            "name": "Get Incidents"
+          },
+          "outcomes": {
+            "success": "EXTRACT_INCIDENTS"
+          },
+          "code": "GET_INCIDENTS",
+          "id": "GET_INCIDENTS",
+          "inputs": [
+            {
+              "id": "GET_INCIDENTS_1",
+              "name": "advancedControls_Id",
+              "type": "string",
+              "value": "{{$context.$input.controlId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Extract Incidents",
+            "returnType": "array",
+            "sourceCode": "var items = $context.$nodes.GET_INCIDENTS.$output.items || [];\nvar controlId = $context.$input.controlId;\nvar controlName = $context.$input.controlName;\nvar controlDesc = $context.$input.controlDesc;\n\nvar filteredItems = items.map(function(item) {\n  return {\n    ControlId: controlId,\n    ControlName: controlName,\n    ControlDesc: controlDesc,\n    IncidentId: item.Id,\n    State: item.State\n  };\n});\n\nvar result = { incidents: filteredItems, _debug: { controlId: controlId, controlName: controlName, controlDesc: controlDesc, incidentCount: items.length } };\nreturn result;"
+          },
+          "outcomes": {
+            "success": "IF_HAS_INCIDENTS"
+          },
+          "code": "EXTRACT_INCIDENTS",
+          "id": "EXTRACT_INCIDENTS",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"array\"\n    }\n  }\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of incident loop"
+                  },
+                  "outcomes": {
+                    "success": "CALL_PROCESS_INCIDENT"
+                  },
+                  "id": "start_incident_loop",
+                  "code": "START_INCIDENT_LOOP",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of incident loop"
+                  },
+                  "id": "end_incident_loop",
+                  "code": "END_INCIDENT_LOOP",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "name": "Call Process Incident",
+                    "workflowCode": "ORA_RMC_TRANSACTION_INCIDENT_ASSISTANT"
+                  },
+                  "outcomes": {
+                    "success": "end_incident_loop"
+                  },
+                  "code": "CALL_PROCESS_INCIDENT",
+                  "id": "CALL_PROCESS_INCIDENT",
+                  "inputs": [
+                    {
+                      "id": "CALL_PROCESS_INCIDENT_1",
+                      "name": "controlId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.FOR_EACH_INCIDENT.$currentItem.ControlId}}"
+                    },
+                    {
+                      "id": "CALL_PROCESS_INCIDENT_2",
+                      "name": "controlName",
+                      "type": "string",
+                      "value": "{{$context.$nodes.FOR_EACH_INCIDENT.$currentItem.ControlName}}"
+                    },
+                    {
+                      "id": "CALL_PROCESS_INCIDENT_3",
+                      "name": "controlDesc",
+                      "type": "string",
+                      "value": "{{$context.$nodes.FOR_EACH_INCIDENT.$currentItem.ControlDesc}}"
+                    },
+                    {
+                      "id": "CALL_PROCESS_INCIDENT_4",
+                      "name": "incidentLogic",
+                      "type": "string",
+                      "value": "{{$context.$nodes.CONVERT_LOGIC_TO_STRING.$output.result}}"
+                    },
+                    {
+                      "id": "CALL_PROCESS_INCIDENT_5",
+                      "name": "incidentId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.FOR_EACH_INCIDENT.$currentItem.IncidentId}}"
+                    }
+                  ],
+                  "type": "WORKFLOW"
+                }
+              ],
+              "rootNode": "start_incident_loop"
+            },
+            "loopType": "PARALLEL",
+            "name": "For Each Incident"
+          },
+          "outcomes": {
+            "success": "MERGE_INCIDENT_DATA"
+          },
+          "code": "FOR_EACH_INCIDENT",
+          "id": "FOR_EACH_INCIDENT",
+          "inputs": [
+            {
+              "id": "FOR_EACH_INCIDENT_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_INCIDENTS.$output.result.incidents}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "name": "Merge Incident Data",
+            "returnType": "object",
+            "sourceCode": "var loopOutput = $context.$nodes.FOR_EACH_INCIDENT.$output || {};\nvar controlUsers = {};\nvar keys = Object.keys(loopOutput);\nvar completedCount = 0;\nvar failedCount = 0;\n\nfor (var i = 0; i < keys.length; i++) {\n  var item = loopOutput[keys[i]];\n  if (!item) { failedCount++; continue; }\n  \n  var parsed = null;\n  try {\n    if (typeof item === 'string') { parsed = JSON.parse(item); }\n    else { parsed = item; }\n  } catch(e) { failedCount++; continue; }\n  \n  if (!parsed || parsed.status !== 'COMPLETE') { failedCount++; continue; }\n  completedCount++;\n  \n  var outputStr = parsed.output;\n  if (!outputStr) continue;\n  \n  var outputObj = null;\n  try {\n    if (typeof outputStr === 'string') { outputObj = JSON.parse(outputStr); }\n    else { outputObj = outputStr; }\n  } catch(e) { continue; }\n  \n  if (!outputObj || !outputObj.result || !outputObj.result.users) continue;\n  \n  var incidentUsers = outputObj.result.users;\n  for (var username in incidentUsers) {\n    var userData = incidentUsers[username];\n    if (!controlUsers[username]) {\n      controlUsers[username] = { controls: [], totalAmount: 0, TransactionIncidentCount: 0 };\n    }\n    \n    controlUsers[username].controls = controlUsers[username].controls.concat(userData.controls || []);\n    controlUsers[username].totalAmount += userData.totalAmount || 0;\n    controlUsers[username].TransactionIncidentCount += userData.TransactionIncidentCount || 0;\n  }\n}\n\nvar result = {\n  users: controlUsers,\n  _debug: { totalIncidents: keys.length, completed: completedCount, failed: failedCount, usersFound: Object.keys(controlUsers).length }\n};\nreturn result;"
+          },
+          "outcomes": {
+            "success": "BUILD_OUTPUT"
+          },
+          "code": "MERGE_INCIDENT_DATA",
+          "id": "MERGE_INCIDENT_DATA",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    }\n  }\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Build Output",
+            "returnType": "object",
+            "sourceCode": "var mergeResult = $context.$nodes.MERGE_INCIDENT_DATA.$output.result || {};\nvar controlUsers = mergeResult.users || {};\nvar controlId = $context.$input.controlId;\nvar controlName = $context.$input.controlName;\nvar userCount = Object.keys(controlUsers).length;\nvar extractDebug = $context.$nodes.EXTRACT_INCIDENTS.$output.result._debug || {};\nvar mergeDebug = mergeResult._debug || {};\n\nvar result = {\n  controlId: controlId,\n  controlName: controlName,\n  users: controlUsers,\n  _debug: { incidentCount: extractDebug.incidentCount || 0, parallelCompleted: mergeDebug.completed || 0, parallelFailed: mergeDebug.failed || 0, usersExtracted: userCount }\n};\nreturn result;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "BUILD_OUTPUT",
+          "id": "BUILD_OUTPUT",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    }\n  }\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "If Has Incidents"
+          },
+          "outcomes": {
+            "true": "1769473812570",
+            "false": "add_false_IF_HAS_INCIDENTS"
+          },
+          "code": "IF_HAS_INCIDENTS",
+          "convergenceTargetId": "FOR_EACH_INCIDENT",
+          "id": "IF_HAS_INCIDENTS",
+          "inputs": [
+            {
+              "id": "1769473571800_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_INCIDENTS.$output.result.incidents.length > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "FOR_EACH_INCIDENT"
+          },
+          "id": "add_false_IF_HAS_INCIDENTS",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_GRC_OTHER_GETTRANSACTIONDYNAMICATTRIBUTES",
+            "functionName": "getall_advancedControls-incidents-dynamicAttributes",
+            "processJson": true,
+            "name": "Get first dynamic attributes"
+          },
+          "outcomes": {
+            "success": "1769473864440"
+          },
+          "code": "GET_FIRST_DYNAMIC_ATTRIBUTES",
+          "id": "1769473812570",
+          "inputs": [
+            {
+              "id": "1769473827615_1",
+              "name": "advancedControls_Id",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_INCIDENTS.$output.result.incidents[0].ControlId}}"
+            },
+            {
+              "id": "1769473827616_2",
+              "name": "advancedControls_incidents_Id",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_INCIDENTS.$output.result.incidents[0].IncidentId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Determine Incident Logic"
+          },
+          "outcomes": {
+            "success": "1769474074985"
+          },
+          "code": "DETERMINE_INCIDENT_LOGIC",
+          "id": "1769473864440",
+          "inputs": [
+            {
+              "id": "1769473864441_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "<TRANSACTION_CONTROL_NAME>\n {{$context.$nodes.EXTRACT_INCIDENTS.$output.result[0].ControlName}}\n</TRANSACTION_CONTROL_NAME>\n\n<TRANSACTION_CONTROL_DESCRIPTION>\n {{$context.$nodes.EXTRACT_INCIDENTS.$output.result[0].ControlDesc}}\n</TRANSACTION_CONTROL_DESCRIPTION>\n\n<TRANSACTION_CONTROL_INCIDENT_ATTRIBUTES>\n {{$context.$nodes.GET_FIRST_DYNAMIC_ATTRIBUTES.$output}} \n</TRANSACTION_CONTROL_INCIDENT_ATTRIBUTES>\nThe above shows:\n- the name of a transaction control,\n- its description,\n- and the attribute field names and values of an incident.\n\nTASK OVERVIEW:\n\n1. Explain the nature of the transaction control and the risk it is intended to identify.\n2. Identify the logical tuple structure that would identify a true issue, using ONLY the fields strictly necessary to establish the risk described by the control.\n\nIMPORTANT INTERPRETATION RULES (CRITICAL):\n\n1. Derive LOGICAL ACTOR ROLES from the CONTROL NAME AND DESCRIPTION.\n   - Each role represents a distinct business responsibility implied by the control (e.g., object maintenance, cleaning, ordering, processing).\n   - Do NOT derive roles from the number of objects or tables present in the incident payload.\n\n2. Group fields by LOGICAL ACTOR ROLE, not by object, table, or record type.\n   - If multiple fields represent the same user acting in the same role, they MUST be placed in the SAME `anyOf` group.\n   - This includes fields from different entities that reflect the same role (e.g., Purchase Order header vs line vs distribution).\n\n3. Create ONE `anyOf` group per DISTINCT role required by the control.\n   - The total number of groups is determined solely by the control's risk logic.\n   - Do NOT create extra groups for implementation detail or data model structure.\n\n4. Use the MINIMUM number of groups required to prove the control failure.\n   - If the same user appearing in N roles constitutes the risk, then exactly N groups must be produced.\n\n5. Ignore fields that are present only for context, enrichment, or explanation.\n   - Include only identity-bearing fields that are required to prove that the same user acted in multiple roles.\n\nTUPLE LOGIC SEMANTICS:\n\nThe tuple logic is expressed as:\n\n[Role1_FieldA | Role1_FieldB] \n& [Role2_FieldC | Role2_FieldD] \n& [Role3_FieldE | Role3_FieldF]\n\nThis means a true issue exists if the SAME user appears in:\n- ANY field within Role 1\nAND\n- ANY field within Role 2\nAND\n- ANY field within Role 3\n\nOUTPUT FORMAT (STRICT):\n\nReturn ONLY the tuple logic in the following JSON structure.\nDo NOT include explanations, commentary, or markdown.\n\n{\n  \"TrueIncidentLogic\": {\n    \"allOf\": [\n      { \"anyOf\": [\"FieldA\", \"FieldB\"] },\n      { \"anyOf\": [\"FieldC\", \"FieldD\"] }\n    ]\n  }\n}\n\nADDITIONAL CONSTRAINTS:\n\n- Do NOT hardcode role names into the output.\n- Do NOT infer roles that are not explicitly implied by the control description.\n- The output must be valid JSON.\n- Return ONLY the JSON."
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"TrueIncidentLogic\": {\n            \"type\": \"object\",\n            \"properties\": {}\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Convert Logic To String",
+            "returnType": "string",
+            "sourceCode": "let trueIncidentLogic = $context.$nodes.DETERMINE_INCIDENT_LOGIC.$output.TrueIncidentLogic;\nlet str = JSON.stringify(trueIncidentLogic);\nreturn str;"
+          },
+          "outcomes": {
+            "success": "FOR_EACH_INCIDENT"
+          },
+          "code": "CONVERT_LOGIC_TO_STRING",
+          "id": "1769474074985",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": []
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "GRC",
+  "product": "OTHER",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"2\""
+  }
+}

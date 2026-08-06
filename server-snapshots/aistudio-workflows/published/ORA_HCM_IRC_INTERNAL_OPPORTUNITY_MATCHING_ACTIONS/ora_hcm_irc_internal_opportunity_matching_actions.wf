@@ -1,0 +1,618 @@
+{
+  "workflowId": "300000326918738",
+  "workflowCode": "ORA_HCM_IRC_INTERNAL_OPPORTUNITY_MATCHING_ACTIONS",
+  "name": "Internal Opportunity Matching Actions",
+  "description": "Performs actions on matched internal opportunities.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1765446569622"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Check Init or Invoke"
+          },
+          "outcomes": {
+            "true": "1765446649663",
+            "false": "1765474949847"
+          },
+          "code": "CHECK_INIT_OR_INVOKE",
+          "convergenceTargetId": "end",
+          "id": "1765446569622",
+          "inputs": [
+            {
+              "id": "1765446569623_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.Mode === \"InitActions\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Switch On Action Type"
+          },
+          "outcomes": {
+            "VIEWDETAILS": "1765450135187",
+            "APPLY": "1765523818102",
+            "VIEWGAPS": "1765873187356",
+            "MARKFAV": "1765964060236",
+            "default": "1770067603123"
+          },
+          "code": "SWITCH_ON_ACTION_TYPE",
+          "convergenceTargetId": "end",
+          "id": "1765446610757",
+          "inputs": [
+            {
+              "id": "1765446610759_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$variables.actionType}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "List Available Actions"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "LIST_AVAILABLE_ACTIONS",
+          "id": "1765446649663",
+          "inputs": [
+            {
+              "id": "1765446649665_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are the InitActions action generator for the Internal Opportunity Matching widget in the Career Advancement Command Center.\n\nMatched opportunities:\n{{$context.$triggers.REST.$input.matchedOpportunities}}\n\nReturn only a JSON array of command-center action insight candidate objects. Do not return markdown, prose, XML, code fences, a wrapper object, or the old { \"actionPayload\": ..., \"action\": ... } shape.\n\nEach item must have exactly:\n- title\n- shortDescription\n- actionText\n- followUpCommand\n- priority\n\nAllowed app action codes:\n- APPLY\n- MARKFAV\n- VIEWGAPS\n\nPrimary goal:\n- Generate a small set of high-signal widget-level actions.\n- Prefer actions the user can take immediately: Apply for a Gig and Mark Favorite for an unbookmarked Job or Gig.\n- Avoid flooding the action area with many similar actions.\n\nSelection rules:\n- Rank opportunities by Relevance Score first. If missing, use number of matching skills. If both are missing, keep input order.\n- Return at most 3 actions total.\n- Prefer one APPLY action for the strongest eligible Gig.\n- Prefer one MARKFAV action for the strongest eligible unbookmarked Job or Gig.\n- Return VIEWGAPS only if there are fewer than 2 APPLY/MARKFAV actions and there is a strong Job opportunity.\n- Drop duplicate actions for the same opportunity.\n\nAction eligibility:\n- APPLY is only for OpportunityType \"Gig\" with a present GigId.\n- MARKFAV is only when BookmarkFlag is false or missing.\n- MARKFAV for Jobs requires JobId.\n- MARKFAV for Gigs requires GigId.\n- VIEWGAPS is only for OpportunityType \"Job\" with a present JobNumber.\n- Do not invent IDs. If the required ID is missing, do not create that action.\n\nPriority rules:\n- Do not promote any InitActions action to priority.\n- Every item must include \"priority\": false.\n- Never output \"priority\": true.\n\nFollow-up command formats:\n- Gig apply:\n  ora.Invoke(\"APPLY\", {\"actionCode\":\"APPLY\",\"GigId\":\"<GigId>\",\"OpportunityType\":\"Gig\",\"Title\":\"<Title>\"})\n- Gig favorite:\n  ora.Invoke(\"MARKFAV\", {\"actionCode\":\"MARKFAV\",\"GigId\":\"<GigId>\",\"OpportunityType\":\"Gig\",\"Title\":\"<Title>\"})\n- Job favorite:\n  ora.Invoke(\"MARKFAV\", {\"actionCode\":\"MARKFAV\",\"JobId\":\"<JobId>\",\"OpportunityType\":\"Job\",\"Title\":\"<Title>\"})\n- Job view gaps:\n  ora.Invoke(\"VIEWGAPS\", {\"actionCode\":\"VIEWGAPS\",\"JobNumber\":\"<JobNumber>\",\"OpportunityType\":\"Job\",\"Title\":\"<Title>\"})\n\nText rules:\n- actionText must be exactly \"Apply\", \"Mark Favorite\", or \"View Gaps\".\n- title must be concise and user-facing.\n- shortDescription must be one concise sentence.\n\nIf there are no eligible actions, return []."
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"title\": {\n        \"type\": \"string\"\n      },\n      \"shortDescription\": {\n        \"type\": \"string\"\n      },\n      \"actionText\": {\n        \"type\": \"string\"\n      },\n      \"followUpCommand\": {\n        \"type\": \"string\"\n      },\n      \"priority\": {\n        \"type\": \"boolean\"\n      }\n    },\n    \"required\": [\n      \"title\",\n      \"shortDescription\",\n      \"actionText\",\n      \"followUpCommand\",\n      \"priority\"\n    ],\n    \"additionalProperties\": false\n  }\n}\n",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Switch on OppType"
+          },
+          "outcomes": {
+            "Gig": "1765450212736",
+            "Job": "1765450249847"
+          },
+          "code": "SWITCH_ON_OPPTYPE",
+          "convergenceTargetId": "end",
+          "id": "1765450135187",
+          "inputs": [
+            {
+              "id": "1765450135189_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$variables.opportunityType}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_RECRUITING_ICCGETGIGDETAILS",
+            "errorNodeId": "1770067603123",
+            "functionName": "get_recruitingOppMktGigDetails",
+            "name": "Get Gig Details"
+          },
+          "outcomes": {
+            "success": "1765893082010"
+          },
+          "code": "GET_GIG_DETAILS",
+          "id": "1765450212736",
+          "inputs": [
+            {
+              "id": "1765450236466_1",
+              "name": "recruitingOppMktGigDetails_Id",
+              "type": "string",
+              "value": "{{$context.$variables.opportunityId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_RECRUITING_GETOMJOBDETAILS",
+            "errorNodeId": "1770067603123",
+            "functionName": "getJobDetails",
+            "name": "Get Job Details"
+          },
+          "outcomes": {
+            "success": "1765893181207"
+          },
+          "code": "GET_JOB_DETAILS",
+          "id": "1765450249847",
+          "inputs": [
+            {
+              "id": "1765450268876_1",
+              "name": "rRequisitionNumber",
+              "type": "string",
+              "value": "{{$context.$variables.opportunityId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770067603123",
+            "name": "Extract Action Details",
+            "returnType": "array",
+            "sourceCode": "const str = $context.$triggers.REST.$input.OraAction;\nconst payload = JSON.parse(str);\nconst action = payload.actionCode;\nlet array =[];\narray.push(action);\narray.push(payload);\nreturn array;"
+          },
+          "outcomes": {
+            "success": "1765475252238"
+          },
+          "code": "EXTRACT_ACTION_DETAILS",
+          "id": "1765474949847",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set Action Details"
+          },
+          "outcomes": {
+            "success": "1765446610757"
+          },
+          "code": "SET_ACTION_DETAILS",
+          "id": "1765475252238",
+          "inputs": [
+            {
+              "id": "1770909582138",
+              "name": "opportunityTitle",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_ACTION_DETAILS.$output.result[1].Title}}"
+            },
+            {
+              "id": "1765475301779",
+              "name": "opportunityType",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_ACTION_DETAILS.$output.result[1].OpportunityType}}"
+            },
+            {
+              "id": "1765475286858",
+              "name": "actionType",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_ACTION_DETAILS.$output.result[0]}}"
+            },
+            {
+              "id": "1765475269300",
+              "name": "opportunityId",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACT_ACTION_DETAILS.$output.result[1].JobNumber || $context.$nodes.EXTRACT_ACTION_DETAILS.$output.result[1].GigId || $context.$nodes.EXTRACT_ACTION_DETAILS.$output.result[1].JobId  }}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Switch on Opportunity Type"
+          },
+          "outcomes": {
+            "Job": "add_Job_1765523818102",
+            "Gig": "1765524057531"
+          },
+          "code": "SWITCH_ON_OPPORTUNITY_TYPE",
+          "convergenceTargetId": "end",
+          "id": "1765523818102",
+          "inputs": [
+            {
+              "id": "1765523818103_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$variables.opportunityType}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_RECRUITING_OMGIGACTIONS",
+            "errorNodeId": "1770067603123",
+            "functionName": "ApplyGig",
+            "name": "Apply for Gig"
+          },
+          "outcomes": {
+            "success": "1765893039698"
+          },
+          "code": "APPLY_FOR_GIG",
+          "id": "1765524057531",
+          "inputs": [
+            {
+              "id": "1765524073747_1",
+              "name": "GigId",
+              "type": "string",
+              "value": "{{$context.$variables.opportunityId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"description\": \"\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"ActionType\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"ContextId\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"PersonId\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"ContextType\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"@context\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"key\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"links\": {\n          \"type\": \"array\",\n          \"uniqueItems\": true,\n          \"minItems\": 1,\n          \"items\": {\n            \"required\": [\n              \"rel\",\n              \"href\",\n              \"name\",\n              \"kind\"\n            ],\n            \"properties\": {\n              \"rel\": {\n                \"type\": \"string\",\n                \"minLength\": 1\n              },\n              \"href\": {\n                \"type\": \"string\",\n                \"minLength\": 1\n              },\n              \"name\": {\n                \"type\": \"string\",\n                \"minLength\": 1\n              },\n              \"kind\": {\n                \"type\": \"string\",\n                \"minLength\": 1\n              }\n            }\n          }\n        }\n      },\n      \"required\": [\n        \"key\",\n        \"links\"\n      ]\n    }\n  },\n  \"required\": [\n    \"ActionType\",\n    \"ContextId\",\n    \"PersonId\",\n    \"ContextType\",\n    \"@context\"\n  ]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770067603123",
+            "name": "Skills Gap Advisor",
+            "workflowCode": "ORA_HCM_IRC_SKILLS_GAP_ADVISOR"
+          },
+          "outcomes": {
+            "success": "1765894650928"
+          },
+          "code": "SKILLS_GAP_ADVISOR",
+          "id": "1765873187356",
+          "inputs": [
+            {
+              "id": "1765873235881_1",
+              "name": "message",
+              "type": "string",
+              "value": "Retrieve skill gaps for the selected opportunity using the provided requisition number."
+            },
+            {
+              "id": "1765873235882_2",
+              "name": "reqNumber",
+              "type": "string",
+              "value": "{{$context.$variables.opportunityId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770067603123",
+            "name": "Return Message 1",
+            "returnType": "object",
+            "sourceCode": "var message = \"\";\nconst title = $context.$variables.opportunityTitle ;\n\nif (title){\n    message= \"You have successfully applied for the gig \" + title;\n}else{\n    message= \"You have successfully applied for the gig \" ;\n}\n\nreturn {\"PerformedAction\": \"APPLYGIG\", \"Message\": message};"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURN_MESSAGE_1",
+          "id": "1765893039698",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770067603123",
+            "name": "Return Gig Details",
+            "returnType": "object",
+            "sourceCode": "const gigDetails= $context.$nodes.GET_GIG_DETAILS.$output;\n\nconst {GigId, GigNumber, StartDate, EndDate, PublishDate, TimeCommitment, RemoteOpportunityFlag, StatusCode, OrganizationId, Title, DescriptionStr, Location, CreatorName, CreatorEmail, CreatorPhoneNumber, CreatorPosition, BookmarkFlag, HasAppliedFlag, GigValidFlag, ProfileId, FilledCount, OpeningsCount} = gigDetails;\n\nconst newObj = {GigId, GigNumber, StartDate, EndDate, PublishDate, TimeCommitment, RemoteOpportunityFlag, StatusCode, OrganizationId, Title, DescriptionStr, Location, CreatorName, CreatorEmail, CreatorPhoneNumber, CreatorPosition, BookmarkFlag, HasAppliedFlag, GigValidFlag, ProfileId, FilledCount, OpeningsCount};\n\nconst final = {\"PerformedAction\" : \"GIGDETAILS\", \"GigDetails\": newObj};\n\nreturn final;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURN_GIG_DETAILS",
+          "id": "1765893082010",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770067603123",
+            "name": "Return Job Details",
+            "returnType": "object",
+            "sourceCode": "const jobDetails= $context.$nodes.GET_JOB_DETAILS.$output.items[0];\nconst final = {\"PerformedAction\" : \"JOBDETAILS\", \"JobDetails\": jobDetails};\n\nreturn final;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURN_JOB_DETAILS",
+          "id": "1765893181207",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770067603123",
+            "name": "Return Gaps",
+            "returnType": "object",
+            "sourceCode": "const gapDetails = $context.$nodes.SKILLS_GAP_ADVISOR.$output.output ;\nconst final = {\"PerformedAction\" : \"VIEWGAPS\", \"GapDetails\": gapDetails};\n\nreturn final;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURN_GAPS",
+          "id": "1765894650928",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Switch on OpportunityType"
+          },
+          "outcomes": {
+            "Job": "1765964099883",
+            "Gig": "1765964120166"
+          },
+          "code": "SWITCH_ON_OPPORTUNITYTYPE",
+          "convergenceTargetId": "end",
+          "id": "1765964060236",
+          "inputs": [
+            {
+              "id": "1765964060237_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$variables.opportunityType}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_RECRUITING_OMJOBACTIONS",
+            "errorNodeId": "1770067603123",
+            "functionName": "MarkFavourite",
+            "name": "Mark Job As Fav"
+          },
+          "outcomes": {
+            "success": "1765964286924"
+          },
+          "code": "MARK_JOB_AS_FAV",
+          "id": "1765964099883",
+          "inputs": [
+            {
+              "id": "1765964112123_1",
+              "name": "RequisitionId",
+              "type": "string",
+              "value": "{{$context.$variables.opportunityId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_RECRUITING_OMGIGACTIONS",
+            "errorNodeId": "1770067603123",
+            "functionName": "MarkFavourite",
+            "name": "Mark Gig As Fav"
+          },
+          "outcomes": {
+            "success": "1765964176713"
+          },
+          "code": "MARK_GIG_AS_FAV",
+          "id": "1765964120166",
+          "inputs": [
+            {
+              "id": "1765964132259_1",
+              "name": "GigId",
+              "type": "string",
+              "value": "{{$context.$variables.opportunityId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770067603123",
+            "name": "Return fav gig message",
+            "returnType": "object",
+            "sourceCode": "var message = \"\";\nconst title = $context.$variables.opportunityTitle ;\n\nif (title){\n    message= \"The gig \" + title + \" has been added to favourites. \" ;\n}else{\n    message= \"The gig has been added to favourites. \" ;\n}\n\nreturn {\"PerformedAction\": \"FAVGIG\", \"Message\": message};"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURN_FAV_GIG_MESSAGE",
+          "id": "1765964176713",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770067603123",
+            "name": "Return fav job message",
+            "returnType": "object",
+            "sourceCode": "var message = \"\";\n\nconst title = $context.$variables.opportunityTitle ;\n\nif (title){\n    message= \"The Job \" + title + \" has been added to favourites. \";\n}else{\n    message= \"The Job has been added to favourites. \";\n}\nreturn {\"PerformedAction\": \"FAVJOB\", \"Message\": message};"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURN_FAV_JOB_MESSAGE",
+          "id": "1765964286924",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Internal Opportunity Action Error Handler",
+            "returnType": "string",
+            "sourceCode": "//This node acts as an error handler and will be executed when an error occurs, if it is configured as the error handler for any node in this agent.\nreturn \"Error occurred on this action\";"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "INTERNAL_OPPORTUNITY_ACTION_ERROR_HANDLER",
+          "id": "1770067603123",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "description": "Add node for Job case branch",
+            "name": "Add (Job Case)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_Job_1765523818102",
+          "inputs": [],
+          "type": "ADD"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1770909559219",
+          "name": "opportunityTitle",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1765474871440",
+          "name": "opportunityId",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1765450165494",
+          "name": "opportunityType",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1765446586275",
+          "name": "actionType",
+          "scope": "JOB",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.75
+      },
+      "code": "ORA_LLM_PREMIUM",
+      "model": "OPEN_AI_GPT_4_1_MINI",
+      "modelName": "GPT-4.1 mini",
+      "provider": "CERT_PREMIUM"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1765474845716",
+            "name": "Mode",
+            "type": "string"
+          },
+          {
+            "id": "1765448271169",
+            "name": "candidateProfile",
+            "type": "object"
+          },
+          {
+            "id": "1765448258229",
+            "name": "matchedOpportunities",
+            "type": "object"
+          },
+          {
+            "id": "1765448245357",
+            "name": "OraAction",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": [
+      "589873"
+    ]
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "RECRUITING",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "seededRoles": [
+    {
+      "role": "ORA_HCM_IRC_EMP_WF_AGENT_ACCESS",
+      "id": "300000326918739"
+    }
+  ],
+  "header": {
+    "ETag": "\"2\""
+  }
+}

@@ -1,0 +1,1405 @@
+{
+  "workflowId": "300000331058263",
+  "workflowCode": "ORA_AGENTIC_RULE_ORCHESTRATOR",
+  "name": "Agentic Rule Orchestrator",
+  "description": "Agentic Rule Orchestrator",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1775007200676"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START",
+          "diagram": {
+            "x": 6736.5,
+            "y": 5000
+          }
+        },
+        {
+          "metadata": {
+            "name": "Get Level",
+            "returnType": "string",
+            "sourceCode": "// Retrieve the values coming from the REST trigger\nvar pf = $context.$triggers.REST.$input.productFamily || '';\nvar pl = $context.$triggers.REST.$input.productLine  || '';\nvar m  = $context.$triggers.REST.$input.model        || '';\n\n// Determine the correct level\nvar level;\nif (m.trim() !== '') {\n  level = 'model';\n} else if (pl.trim() !== '') {\n  level = 'productLine';\n} else if (pf.trim() !== '') {\n  level = 'productFamily';\n} else {\n  level = 'allProductFamilies';\n}\n\nreturn level;"
+          },
+          "outcomes": {
+            "success": "1775239023603"
+          },
+          "code": "GET_LEVEL",
+          "id": "1775007200676",
+          "inputs": [],
+          "type": "CODE",
+          "diagram": {
+            "x": 6634.5,
+            "y": 5246
+          }
+        },
+        {
+          "metadata": {
+            "name": "Run Parallel"
+          },
+          "outcomes": {
+            "0": "1775007229212",
+            "1": "1775239437851"
+          },
+          "code": "RUN_PARALLEL",
+          "convergenceTargetId": "1772560230951",
+          "id": "1775239023603",
+          "inputs": [],
+          "type": "PARALLEL",
+          "diagram": {
+            "x": 5000,
+            "y": 5468,
+            "width": 3569,
+            "height": 1221
+          }
+        },
+        {
+          "metadata": {
+            "name": "Intent Classifier"
+          },
+          "outcomes": {
+            "success": "1772560572194"
+          },
+          "code": "INTENT_CLASSIFIER",
+          "id": "1772560230951",
+          "inputs": [
+            {
+              "id": "1772560230952_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an intent classifier. Classify the user message as exactly one intent.\n\nUser message: {{$context.$system.$inputMessage}}\n\n- **create**: The user wants to create/add/implement/define/write/set up a rule now, and the request is either generic or a supported rule type.\n- **similarity**: The user wants to check whether a similar/existing rule already exists, compare against existing rules, or run a similarity/duplication check.\n- **generic**: The user is asking for instructions/explanations/capabilities, or is requesting creation of an unsupported rule type.\n\n### Supported create rule types\n- Constrain\n- Recommendation\n- Hiding\n- Message (optional)\n\n### Key distinction\n- If the user asks **to do the action now** -> classify as **create** or **similarity**.\n- If the user asks **how to do it / what it means / guidance** -> classify as **generic**, even if words like “create” or “similarity” appear.\n\n### Unsupported type handling (critical)\nIf the user asks to create/add/define/implement/set up a **specific rule type** that is not in the supported list above, classify as **generic**.\n\nTreat these as unsupported (including close variants):\n- BOM rule\n- BOM mapping rule\n- Pricing rule\n- Validation rule\n- Recommended item rule (different from Recommendation rule)\n\nExamples that must be **generic**:\n- “Create a BOM rule.”\n- “Create a BOM Mapping Rule.”\n- “Add a BOM mapping rule for part numbers.”\n- “Create a Pricing Rule.”\n- “Create a Validation Rule.”\n- “Create a Recommended Item Rule.”\n\n### Decision rules (priority order)\n1) **Generic instructional/capabilities queries override keywords**  \nIf the message is about instructions or learning, classify as **generic**.  \nExamples:\n- “how do I…”, “how to…”, “can you explain…”, “what is…”, “what can you do…”, “help me…”, “examples of…”, “documentation…”, “tutorial…”, “when should I…”\n\n2) **Unsupported specific rule type requests**  \nIf creation is requested for a specific unsupported type, classify as **generic**.\n\n3) **Similarity intent**  \nClassify as **similarity** if the user asks to check existence/similarity.  \nExamples:\n- “is there already a rule…”\n- “do we have a rule for…”\n- “does something similar exist…”\n- “find similar rules…”\n- “compare against existing rules…”\n- “run a similarity check…”\n\n4) **Create intent**  \nClassify as **create** if the user requests rule creation now and does not specify an unsupported type.  \nExamples:\n- “create/add/write/define/implement/set up a rule that…”\n- “make a rule to…”\n- “new rule: …”\n- rule-spec format: “when/if [condition] then [action]”\n\n5) **Fallback**  \nAnything else -> **generic**.\n\n### Output format\nReturn ONLY valid JSON in exactly one of these forms:\n{\"intent\":\"create\"}\n{\"intent\":\"similarity\"}\n{\"intent\":\"generic\"}\n\n---\n\n## Quick examples\n\n**generic**\n- “How to create a rule?”\n- “How do I perform a similarity check?”\n- “What can you do?”\n- “What kinds of rules can be created?”\n- “Can you explain what a similarity check means?”\n- “Create a BOM rule.”\n- “Create a BOM Mapping Rule.”\n- “Create a Pricing Rule.”\n- “Create a Validation Rule.”\n- “Create a Recommended Item Rule.”\n\n**create**\n- “Create a rule that blocks submissions after 5pm.”\n- “Add a rule: if country=DE then require VAT ID.”\n- “Set up a constraint: when amount > 10k, require approval.”\n- “When vcolor is black, interior must be white.”\n\n**similarity**\n- “Do we already have a rule for VAT validation?”\n- “Find a similar rule to: if amount > 10k require approval.”\n- “Compare this rule to existing ones and tell me if it duplicates anything.”"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"intent\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM",
+          "diagram": {
+            "x": 6634.5,
+            "y": 6839
+          }
+        },
+        {
+          "metadata": {
+            "name": "Intent Router"
+          },
+          "outcomes": {
+            "generic": "1773335311615",
+            "create": "1775249512862",
+            "similarity": "1775856225148"
+          },
+          "code": "INTENT_ROUTER",
+          "convergenceTargetId": "end",
+          "id": "1772560572194",
+          "inputs": [
+            {
+              "id": "1772560572195_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.INTENT_CLASSIFIER.$output.intent}}"
+            }
+          ],
+          "type": "SWITCH",
+          "diagram": {
+            "x": 6634.5,
+            "y": 7061
+          }
+        },
+        {
+          "metadata": {
+            "name": "Generic Agent"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "GENERIC_AGENT",
+          "id": "1773335311615",
+          "inputs": [
+            {
+              "id": "1773335311615_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are the **Rules Generic Help Agent**. Your job is to answer **general help/capabilities questions** about the Rules system and how to use this agent.\n\nUser Message:\n{{$context.$system.$inputMessage}}\n\n### In-scope (answer normally)\nTreat the following as **always in-scope** and answer them directly:\n1) **How to create a rule** (including “how do I create/add/write/define a rule”, “how does rule creation work”, “what do I need to provide”).\n2) **How to run/perform a similarity check** (including “how do I check if a similar rule exists”, “how to find existing rules that mention an attribute”, “does a similar rule exist” when asked as a how-to).\n3) **What kinds of rules can be created** / supported rule types.\n4) Any other question clearly about **Config Rules**, rule creation workflow, or similarity-check workflow.\n5) Requests to create unsupported rule types (handle as Rules-related capability/error guidance, not off-topic).\n\n### Supported rule types (capability constraint)\nYou can only support **Config Rules** of type:\n- **Constraint**\n- **Recommendation**\n- **Hiding**\n- **Message** (if enabled in this environment)\n\nIf asked to create unsupported types (e.g., **Pricing**, **BOM Mapping**, **Validation**, **Recommended Item Rule**, etc.), treat it as in-scope and clearly say it is **not supported here**.\n\n### Unsupported type response behavior (important)\nIf the user asks to create an unsupported rule type:\n- Clearly state that the requested type is not supported by this agent.\n- List supported types: Constraint, Recommendation, Hiding (and Message if enabled).\n- Ask them to rephrase the request using a supported rule type.\n- If possible, suggest the closest supported type (briefly).\n- Keep the tone helpful; do not mark as off-topic.\n\n### How to answer (use these exact guidance points)\nWhen responding:\n\n**If asked “How to create a rule?”**\n- Say: “Provide a plain-language description of the rule and the agent will create it.”\n- Ask for (briefly): conditions/attributes, desired outcome/action, and rule type (Constraint/Recommendation/Hiding/Message if enabled).\n- Provide 1 example.\n\n**If asked “How to run/perform a similarity check?”**\n- Say: “Ask whether there are any existing rules that reference a specific attribute/condition/action.”\n- Provide 1–2 example phrasings (copyable).\n\n**If asked “What kinds of rules can be created?”**\n- Say: “Only Config Rules: Constraint, Recommendation, Hiding (and Message if enabled).”\n- Explicitly mention unsupported examples: Pricing, BOM Mapping, Validation, Recommended Item Rule, etc.\n\n### Off-topic handling (only when truly unrelated)\nOnly use off-topic handling if the message is not reasonably about Rules (e.g., random trivia, personal requests, unrelated technical topics).\nIn that case respond:\n- “I can only help with questions about Config Rules (creating rules, similarity checks, and supported types: Constraint/Recommendation/Hiding, plus Message if enabled).”\n- Ask them to rephrase as a Rules question.\n\n### Style\n- Be concise and practical (usually 3–8 lines).\n- Use bullets and include short examples when helpful.\n- Do not over-refuse: if a question can be interpreted as Rules-related, answer it."
+            }
+          ],
+          "type": "LLM",
+          "diagram": {
+            "x": 5939.5,
+            "y": 7283
+          }
+        },
+        {
+          "metadata": {
+            "name": "Create Rule",
+            "workflowCode": "ORA_AGENTIC_RULE_CREATOR"
+          },
+          "outcomes": {
+            "success": "1775254490820"
+          },
+          "code": "CREATE_RULE",
+          "id": "1775249512862",
+          "inputs": [
+            {
+              "id": "1775249512862_message",
+              "name": "message",
+              "type": "string",
+              "value": "{{$context.$system.$inputMessage}}"
+            },
+            {
+              "id": "1775249512862_currentRuleInstance",
+              "name": "currentRuleInstance",
+              "type": "object",
+              "value": "{{$context.$variables.currentRuleInstance}}"
+            },
+            {
+              "id": "1775249512862_ruleVariableNameList",
+              "name": "ruleVariableNameList",
+              "type": "array",
+              "value": "{{$context.$variables.ruleVariableNameList}}"
+            },
+            {
+              "id": "1775249512862_attributes",
+              "name": "attributes",
+              "type": "object",
+              "value": "{{$context.$variables.attributes}}"
+            },
+            {
+              "id": "1775249512862_productFamily",
+              "name": "productFamily",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.productFamily}}"
+            },
+            {
+              "id": "1775249512862_productLine",
+              "name": "productLine",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.productLine}}"
+            },
+            {
+              "id": "1775249512862_model",
+              "name": "model",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.model}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW",
+          "diagram": {
+            "x": 6389.5,
+            "y": 7283
+          }
+        },
+        {
+          "id": "1775856225148",
+          "code": "RUN_PARALLEL_1",
+          "type": "PARALLEL",
+          "metadata": {
+            "name": "Run Parallel"
+          },
+          "diagram": {
+            "x": 6839.5,
+            "y": 7283,
+            "width": 790,
+            "height": 999
+          },
+          "outcomes": {
+            "0": "1775855768839",
+            "1": "1775011915866"
+          },
+          "inputs": [],
+          "convergenceTargetId": "1775012774135"
+        },
+        {
+          "metadata": {
+            "name": "Extract Rule Payload",
+            "returnType": "object",
+            "sourceCode": "var fallback = $context.$variables.currentRuleInstance;\nvar raw = $context.$nodes.CREATE_RULE && $context.$nodes.CREATE_RULE.$output\n  ? $context.$nodes.CREATE_RULE.$output.output\n  : null;\n\nif (!raw) {\n  return fallback;\n}\n\nvar payload;\nif (typeof raw === 'string') {\n  try { payload = JSON.parse(raw); } catch (e) { payload = null; }\n} else {\n  payload = raw;\n}\n\nif (\n  payload &&\n  payload.messages &&\n  Array.isArray(payload.messages) &&\n  payload.messages.length > 0\n) {\n  var first = payload.messages[0];\n  if (\n    first &&\n    first.payload &&\n    first.payload.rawData &&\n    first.payload.rawData.rulePayload\n  ) {\n    return first.payload.rawData.rulePayload;\n  }\n}\n\nreturn fallback;"
+          },
+          "outcomes": {
+            "success": "1775254913720"
+          },
+          "code": "EXTRACT_RULE_PAYLOAD",
+          "id": "1775254490820",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 6397.75,
+            "y": 8432
+          }
+        },
+        {
+          "metadata": {
+            "name": "Check Conditions Actions  Empty"
+          },
+          "outcomes": {
+            "true": "1775012837583",
+            "false": "1772560999744"
+          },
+          "code": "CHECK_CONDITIONS_ACTIONS_EMPTY",
+          "convergenceTargetId": "1775012837583",
+          "id": "1775012774135",
+          "inputs": [
+            {
+              "id": "1775012774135_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{(!$context.$variables.conditions || $context.$variables.conditions.length === 0) && (!$context.$variables.actions || $context.$variables.actions.length === 0)}}"
+            }
+          ],
+          "type": "CONDITION",
+          "diagram": {
+            "x": 6847.75,
+            "y": 8432
+          }
+        },
+        {
+          "metadata": {
+            "name": "Save Rule Instance"
+          },
+          "outcomes": {
+            "success": "1773337830928"
+          },
+          "code": "SAVE_RULE_INSTANCE",
+          "id": "1775254913720",
+          "inputs": [
+            {
+              "id": "1775254913720_currentRuleInstance",
+              "name": "currentRuleInstance",
+              "value": "{{$context.$nodes.EXTRACT_RULE_PAYLOAD.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 6409.5,
+            "y": 8654
+          }
+        },
+        {
+          "metadata": {
+            "name": "Rule Similarity Check",
+            "workflowCode": "ORA_RULE_SIMILARITY_ANALYZER"
+          },
+          "outcomes": {
+            "success": "1775582157608"
+          },
+          "code": "RULE_SIMILARITY_CHECK",
+          "id": "1772560999744",
+          "inputs": [
+            {
+              "id": "1775014492162_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{}}"
+            },
+            {
+              "id": "1775014492163_2",
+              "name": "conditions",
+              "type": "array",
+              "value": "{{$context.$variables.conditions}}"
+            },
+            {
+              "id": "1775014492164_3",
+              "name": "ruleType",
+              "type": "object",
+              "value": ""
+            },
+            {
+              "id": "1775014492164_4",
+              "name": "productFamily",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.productFamily}}"
+            },
+            {
+              "id": "1775014492165_5",
+              "name": "productLine",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.productLine}}"
+            },
+            {
+              "id": "1775014492166_6",
+              "name": "model",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.model}}"
+            },
+            {
+              "id": "1772560999744_actions",
+              "name": "actions",
+              "type": "object",
+              "value": "{{$context.$variables.actions}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW",
+          "diagram": {
+            "x": 6859.5,
+            "y": 8654
+          }
+        },
+        {
+          "metadata": {
+            "name": "Return Create Rule Output"
+          },
+          "outcomes": {},
+          "code": "RETURN_CREATE_RULE_OUTPUT",
+          "id": "1773337830928",
+          "inputs": [
+            {
+              "id": "1773337830928_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_RULE.$output.output}}"
+            }
+          ],
+          "type": "RETURN",
+          "diagram": {
+            "x": 6409.5,
+            "y": 8876
+          }
+        },
+        {
+          "metadata": {
+            "name": "Create Similarity Output",
+            "returnType": "object",
+            "sourceCode": "var simNodeOut = (($context.$nodes.RULE_SIMILARITY_CHECK || {}).$output || {});\nvar raw = (simNodeOut.result !== undefined) ? simNodeOut.result : simNodeOut.output;\n\n// parse if string\nif (raw && typeof raw === \"string\") {\n  try { raw = JSON.parse(raw); } catch (e) { raw = {}; }\n}\n\n// normalize to tiers object\nvar tiersObj = (raw && raw.result) ? raw.result : (raw || {});\nvar tier1 = Array.isArray(tiersObj.tier1) ? tiersObj.tier1 : [];\nvar tier2 = Array.isArray(tiersObj.tier2) ? tiersObj.tier2 : [];\nvar tier3 = Array.isArray(tiersObj.tier3) ? tiersObj.tier3 : [];\n\nvar updateRule = null;\nif (tier1.length > 0) {\n  updateRule = tier1[0];\n} else if (tier2.length > 0) {\n  updateRule = tier2[0];\n} else if (tier3.length > 0) {\n  updateRule = tier3[0];\n}\n\nvar hasUpdateOption = !!updateRule;\n\n// If no similar rules found, return empty object as requested.\nif (!hasUpdateOption) {\n  return {};\n}\n\nfunction asText(value) {\n  if (Array.isArray(value)) return value.join(\", \");\n  if (value && typeof value === \"object\") {\n    if (Array.isArray(value.values)) return value.values.join(\", \");\n    if (value.label) return String(value.label);\n    if (value.value !== undefined && value.value !== null) return asText(value.value);\n    if (value.sentence) return String(value.sentence);\n  }\n  return value == null ? \"\" : String(value);\n}\n\nfunction buildUpdatePanelPayload(updateRule, tiersObj) {\n  var updateName = asText(updateRule && updateRule.name);\n  var updateDesc = asText(updateRule && (updateRule.description || updateRule.ruleDescription));\n\n  var items = {\n    updateRule: updateRule,\n    title: \"Review existing rule\",\n    existingRule: updateName,\n    action: \"\",\n    condition: \"\"\n  };\n\n  return {\n    primary: {\n      style: \"\",\n      sections: [{\n        style: \"section\",\n        title: \"Review and Update\",\n        primaryText: updateName,\n        secondaryText: updateDesc,\n        items: items,\n        actions: [{\n          id: \"edit_rule\",\n          icon: \"oj-ux-ico-edit\",\n          label: \"Edit\"\n        }]\n      }]\n    },\n    secondary: {\n      style: \"\",\n      sections: []\n    },\n    rawData: {\n      updateRule: updateRule,\n      similarRules: tiersObj\n    }\n  };\n}\n\nreturn {\n  messages: [{\n    type: \"chip\",\n    id: \"update_rule\",\n    primaryText: \"Review and Update\",\n    secondaryText: updateRule && updateRule.name ? updateRule.name : \"\",\n    icon: \"oj-ux-ico-edit\",\n    headerText: \"You can review and update an existing similar rule\",\n    payload: buildUpdatePanelPayload(updateRule, tiersObj)\n  }]\n};"
+          },
+          "outcomes": {
+            "success": "1775583690163"
+          },
+          "code": "CREATE_SIMILARITY_OUTPUT",
+          "id": "1775582157608",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 6859.5,
+            "y": 8876
+          }
+        },
+        {
+          "metadata": {
+            "name": "Check Similarity Empty"
+          },
+          "outcomes": {
+            "true": "1775012837583",
+            "false": "1773340090338"
+          },
+          "code": "CHECK_SIMILARITY_EMPTY",
+          "convergenceTargetId": "end",
+          "id": "1775583690163",
+          "inputs": [
+            {
+              "id": "1775583690163_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{Object.keys($context.$nodes.CREATE_SIMILARITY_OUTPUT.$output.result || {}).length === 0}}"
+            }
+          ],
+          "type": "CONDITION",
+          "diagram": {
+            "x": 6634.5,
+            "y": 9098
+          }
+        },
+        {
+          "metadata": {
+            "name": "Return No Similar Rules Message"
+          },
+          "outcomes": {},
+          "code": "RETURN_NO_SIMILAR_RULES_MESSAGE",
+          "id": "1775012837583",
+          "inputs": [
+            {
+              "id": "1775012837583_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "There are no similar rules for the input you provided."
+            }
+          ],
+          "type": "RETURN",
+          "diagram": {
+            "x": 6390.25,
+            "y": 9320
+          }
+        },
+        {
+          "metadata": {
+            "name": "Return Similarity Check Output"
+          },
+          "outcomes": {},
+          "code": "RETURN_SIMILARITY_CHECK_OUTPUT",
+          "id": "1773340090338",
+          "inputs": [
+            {
+              "id": "1773340090338_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_SIMILARITY_OUTPUT.$output.result}}"
+            }
+          ],
+          "type": "RETURN",
+          "diagram": {
+            "x": 6863.75,
+            "y": 9320
+          }
+        },
+        {
+          "metadata": {
+            "name": "Get Attributes Switch"
+          },
+          "outcomes": {
+            "allProductFamilies": "1775007416050",
+            "productFamily": "1775007410038",
+            "productLine": "1775007398274",
+            "model": "1775007338371"
+          },
+          "code": "GET_ATTRIBUTES_SWITCH",
+          "convergenceTargetId": "1775010632311",
+          "id": "1775007229212",
+          "inputs": [
+            {
+              "id": "1775007229212_caseExpression",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_LEVEL.$output.result}}"
+            }
+          ],
+          "type": "SWITCH",
+          "diagram": {
+            "x": 6409.5,
+            "y": 5699
+          }
+        },
+        {
+          "metadata": {
+            "name": "Get Rules Switch"
+          },
+          "outcomes": {
+            "allProductFamilies": "1775239492242",
+            "productFamily": "1775239520909",
+            "productLine": "1775239548006",
+            "model": "1775239582233"
+          },
+          "code": "GET_RULES_SWITCH",
+          "convergenceTargetId": "1775239848182",
+          "id": "1775239437851",
+          "inputs": [
+            {
+              "id": "1775239437851_caseExpression",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_LEVEL.$output.result}}"
+            }
+          ],
+          "type": "SWITCH",
+          "diagram": {
+            "x": 6859.5,
+            "y": 5699
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CPQCOMMERC_GETATTRIBUTES",
+            "functionName": "getAllProductFamiliesAttributes",
+            "name": "Get All Product Families Attributes"
+          },
+          "outcomes": {
+            "success": "1775010537459"
+          },
+          "code": "GET_ALL_PRODUCT_FAMILIES_ATTRIBUTES",
+          "id": "1775007416050",
+          "inputs": [],
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 5020,
+            "y": 5921
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CPQCOMMERC_GETATTRIBUTES",
+            "functionName": "getProductFamilyAttributes",
+            "name": "Get Product Family Attributes"
+          },
+          "outcomes": {
+            "success": "1775010537274"
+          },
+          "code": "GET_PRODUCT_FAMILY_ATTRIBUTES",
+          "id": "1775007410038",
+          "inputs": [
+            {
+              "id": "1775007410038_prodFamVarName",
+              "name": "prodFamVarName",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.productFamily}}"
+            }
+          ],
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 5527.5,
+            "y": 5921
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CPQCOMMERC_GETATTRIBUTES",
+            "functionName": "getProductLineAttributes",
+            "name": "Get Product Line Attributes"
+          },
+          "outcomes": {
+            "success": "1775010537047"
+          },
+          "code": "GET_PRODUCT_LINE_ATTRIBUTES",
+          "id": "1775007398274",
+          "inputs": [
+            {
+              "id": "1775007398274_prodFamVarName",
+              "name": "prodFamVarName",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.productFamily}}"
+            },
+            {
+              "id": "1775007398274_prodLineVarName",
+              "name": "prodLineVarName",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.productLine}}"
+            }
+          ],
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 5984,
+            "y": 5921
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CPQCOMMERC_GETATTRIBUTES",
+            "functionName": "getModelAttributes",
+            "name": "Get Model Attributes"
+          },
+          "outcomes": {
+            "success": "1775010453973"
+          },
+          "code": "GET_MODEL_ATTRIBUTES",
+          "id": "1775007338371",
+          "inputs": [
+            {
+              "id": "1775007338371_prodFamVarName",
+              "name": "prodFamVarName",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.productFamily}}"
+            },
+            {
+              "id": "1775007338371_prodLineVarName",
+              "name": "prodLineVarName",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.productLine}}"
+            },
+            {
+              "id": "1775007338371_modelVarName",
+              "name": "modelVarName",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.model}}"
+            }
+          ],
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 6434,
+            "y": 5921
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CPQCOMMERC_GETRULELIST",
+            "functionName": "getAllProductFamiliesRules",
+            "name": "Get All Product Families Rules"
+          },
+          "outcomes": {
+            "success": "1775239674455"
+          },
+          "code": "GET_ALL_PRODUCT_FAMILIES_RULES",
+          "id": "1775239492242",
+          "inputs": [],
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 6884,
+            "y": 5921
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CPQCOMMERC_GETRULELIST",
+            "functionName": "getProductFamilyRules",
+            "name": "Get Product Family Rules"
+          },
+          "outcomes": {
+            "success": "1775239779786"
+          },
+          "code": "GET_PRODUCT_FAMILY_RULES",
+          "id": "1775239520909",
+          "inputs": [
+            {
+              "id": "1775239520909_prdFamilyVarName",
+              "name": "prdFamilyVarName",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.productFamily}}"
+            }
+          ],
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 7349,
+            "y": 5921
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CPQCOMMERC_GETRULELIST",
+            "functionName": "getProductLineRules",
+            "name": "Get Product Line Rules"
+          },
+          "outcomes": {
+            "success": "1775239807358"
+          },
+          "code": "GET_PRODUCT_LINE_RULES",
+          "id": "1775239548006",
+          "inputs": [
+            {
+              "id": "1775239548006_prdFamilyVarName",
+              "name": "prdFamilyVarName",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.productFamily}}"
+            },
+            {
+              "id": "1775239548006_prdLineVarName",
+              "name": "prdLineVarName",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.productLine}}"
+            }
+          ],
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 7799,
+            "y": 5921
+          }
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CPQCOMMERC_GETRULELIST",
+            "functionName": "getModelRules",
+            "name": "Get Model Rules"
+          },
+          "outcomes": {
+            "success": "1775239827116"
+          },
+          "code": "GET_MODEL_RULES",
+          "id": "1775239582233",
+          "inputs": [
+            {
+              "id": "1775239582233_prdFamilyVarName",
+              "name": "prdFamilyVarName",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.productFamily}}"
+            },
+            {
+              "id": "1775239582233_prdLineVarName",
+              "name": "prdLineVarName",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.productLine}}"
+            },
+            {
+              "id": "1775239582233_modelVarName",
+              "name": "modelVarName",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.model}}"
+            }
+          ],
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 8249,
+            "y": 5921
+          }
+        },
+        {
+          "metadata": {
+            "name": "Set allPF Attributes"
+          },
+          "outcomes": {
+            "success": "1775010632311"
+          },
+          "code": "SET_ALLPF_ATTRIBUTES",
+          "id": "1775010537459",
+          "inputs": [
+            {
+              "id": "1775010453973_attributes",
+              "name": "attributes",
+              "value": "{{$context.$nodes.GET_ALL_PRODUCT_FAMILIES_ATTRIBUTES.$output.items}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 5059.5,
+            "y": 6143
+          }
+        },
+        {
+          "metadata": {
+            "name": "Set PF Attributes"
+          },
+          "outcomes": {
+            "success": "1775010632311"
+          },
+          "code": "SET_PF_ATTRIBUTES",
+          "id": "1775010537274",
+          "inputs": [
+            {
+              "id": "1775010453973_attributes",
+              "name": "attributes",
+              "value": "{{$context.$nodes.GET_PRODUCT_FAMILY_ATTRIBUTES.$output.items}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 5509.5,
+            "y": 6143
+          }
+        },
+        {
+          "metadata": {
+            "name": "Set PL Attributes"
+          },
+          "outcomes": {
+            "success": "1775010632311"
+          },
+          "code": "SET_PL_ATTRIBUTES",
+          "id": "1775010537047",
+          "inputs": [
+            {
+              "id": "1775010453973_attributes",
+              "name": "attributes",
+              "value": "{{$context.$nodes.GET_PRODUCT_LINE_ATTRIBUTES.$output.items}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 5959.5,
+            "y": 6143
+          }
+        },
+        {
+          "metadata": {
+            "name": "Set Model Attributes"
+          },
+          "outcomes": {
+            "success": "1775010632311"
+          },
+          "code": "SET_MODEL_ATTRIBUTES",
+          "id": "1775010453973",
+          "inputs": [
+            {
+              "id": "1775010453973_attributes",
+              "name": "attributes",
+              "value": "{{$context.$nodes.GET_MODEL_ATTRIBUTES.$output.items}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 6409.5,
+            "y": 6143
+          }
+        },
+        {
+          "metadata": {
+            "name": "Set allPF Rules"
+          },
+          "outcomes": {
+            "success": "1775239848182"
+          },
+          "code": "SET_ALLPF_RULES",
+          "id": "1775239674455",
+          "inputs": [
+            {
+              "id": "1775239674455_ruleList",
+              "name": "ruleList",
+              "value": "{{$context.$nodes.GET_ALL_PRODUCT_FAMILIES_RULES.$output.items}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 6859.5,
+            "y": 6143
+          }
+        },
+        {
+          "metadata": {
+            "name": "Set PF Rules"
+          },
+          "outcomes": {
+            "success": "1775239848182"
+          },
+          "code": "SET_PF_RULES",
+          "id": "1775239779786",
+          "inputs": [
+            {
+              "id": "1775239779786_ruleList",
+              "name": "ruleList",
+              "value": "{{$context.$nodes.GET_PRODUCT_FAMILY_RULES.$output.items}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 7309.5,
+            "y": 6143
+          }
+        },
+        {
+          "metadata": {
+            "name": "Set PL Rules"
+          },
+          "outcomes": {
+            "success": "1775239848182"
+          },
+          "code": "SET_PL_RULES",
+          "id": "1775239807358",
+          "inputs": [
+            {
+              "id": "1775239807358_ruleList",
+              "name": "ruleList",
+              "value": "{{$context.$nodes.GET_PRODUCT_LINE_RULES.$output.items}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 7759.5,
+            "y": 6143
+          }
+        },
+        {
+          "metadata": {
+            "name": "Set Model Rules"
+          },
+          "outcomes": {
+            "success": "1775239848182"
+          },
+          "code": "SET_MODEL_RULES",
+          "id": "1775239827116",
+          "inputs": [
+            {
+              "id": "1775239827116_ruleList",
+              "name": "ruleList",
+              "value": "{{$context.$nodes.GET_MODEL_RULES.$output.items}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 8209.5,
+            "y": 6143
+          }
+        },
+        {
+          "metadata": {
+            "name": "Extract Attributes",
+            "returnType": "array",
+            "sourceCode": "var attrs = $context.$variables.attributes || [];\n\nvar result = {\n  configurable : { allProductFamiliesAttr: [], productFamilyAttr: [], productLineAttr: [], modelAttr: [] },\n  nonConfigurable : { allProductFamiliesAttr: [], productFamilyAttr: [], productLineAttr: [], modelAttr: [] },\n  system : { allProductFamiliesAttr: [], productFamilyAttr: [], productLineAttr: [], modelAttr: [] },\n  account : { allProductFamiliesAttr: [], productFamilyAttr: [], productLineAttr: [], modelAttr: [] },\n  user : { allProductFamiliesAttr: [], productFamilyAttr: [], productLineAttr: [], modelAttr: [] }\n};\n\nfor (var i = 0; i < attrs.length; i++) {\n  var attr = attrs[i];\n  if (!attr) { continue; }\n\n  var categoryKey = null;\n  if (attr.category && attr.category.displayValue === \"Configurable\")      categoryKey = \"configurable\";\n  else if (attr.category && attr.category.displayValue === \"Regular\")      categoryKey = \"nonConfigurable\";\n  else if (attr.category && attr.category.displayValue === \"System\")       categoryKey = \"system\";\n  else if (attr.category && attr.category.displayValue === \"Account\")      categoryKey = \"account\";\n  else if (attr.category && attr.category.displayValue === \"User\")         categoryKey = \"user\";\n  if (!categoryKey) { continue; }\n\n  var refKey = null;\n  var refDisp = attr.refType && attr.refType.displayValue;\n  if      (refDisp === \"All Product Families\") refKey = \"allProductFamiliesAttr\";\n  else if (refDisp === \"Product Family\")       refKey = \"productFamilyAttr\";\n  else if (refDisp === \"Product Line\")         refKey = \"productLineAttr\";\n  else if (refDisp === \"Model\")                refKey = \"modelAttr\";\n  else { continue; }\n\n  var payload = {\n    variableName  : attr.variableName,\n    label         : attr.label,\n    inputTypeCode : attr.inputTypeCode\n  };\n\n  if (attr.inputTypeCode === \"TextField\" && attr.dataType && attr.dataType.displayValue) {\n    payload.dataType = attr.dataType.displayValue;\n  }\n\n  if (attr.inputTypeCode === \"SingleSelectMenu\" || attr.inputTypeCode === \"MultiSelectMenu\") {\n    var menuArr = [];\n    if (attr.menuItems && Array.isArray(attr.menuItems.items)) {\n      for (var j = 0; j < attr.menuItems.items.length; j++) {\n        var m = attr.menuItems.items[j];\n        if (m) {\n          menuArr.push({\n            id        : m.id,\n            itemText  : m.itemText,\n            itemValue : m.itemValue\n          });\n        }\n      }\n    }\n    payload.menuItems = menuArr;\n  }\n\n  result[categoryKey][refKey].push(payload);\n}\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1775010663635"
+          },
+          "code": "EXTRACT_ATTRIBUTES",
+          "id": "1775010632311",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 6409.5,
+            "y": 6365
+          }
+        },
+        {
+          "metadata": {
+            "name": "Extract Rule Variable Names",
+            "returnType": "array",
+            "sourceCode": "var names = [];\n\nif (Array.isArray($context.$variables.ruleList)) {\n  for (var i = 0; i < $context.$variables.ruleList.length; i++) {\n    var rule = $context.$variables.ruleList[i];\n    if (rule && rule.variableName) {\n      names.push(String(rule.variableName));\n    }\n  }\n}\n\nreturn names;"
+          },
+          "outcomes": {
+            "success": "1775239879981"
+          },
+          "code": "EXTRACT_RULE_VARIABLE_NAMES",
+          "id": "1775239848182",
+          "inputs": [],
+          "type": "CODE",
+          "diagram": {
+            "x": 6859.5,
+            "y": 6365
+          }
+        },
+        {
+          "metadata": {
+            "name": "Store Attributes"
+          },
+          "outcomes": {
+            "success": "1772560230951"
+          },
+          "code": "STORE_ATTRIBUTES",
+          "id": "1775010663635",
+          "inputs": [
+            {
+              "id": "1775010663635_attributes",
+              "name": "attributes",
+              "value": "{{$context.$nodes.EXTRACT_ATTRIBUTES.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 6409.5,
+            "y": 6587
+          }
+        },
+        {
+          "metadata": {
+            "name": "Store Rule Variable Names"
+          },
+          "outcomes": {
+            "success": "1772560230951"
+          },
+          "code": "STORE_RULE_VARIABLE_NAMES",
+          "id": "1775239879981",
+          "inputs": [
+            {
+              "id": "1775239879981_ruleVariableNameList",
+              "name": "ruleVariableNameList",
+              "value": "{{$context.$nodes.EXTRACT_RULE_VARIABLE_NAMES.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 6859.5,
+            "y": 6587
+          }
+        },
+        {
+          "id": "1775855768839",
+          "code": "ACTION_BUILDER_LLM",
+          "type": "LLM",
+          "metadata": {
+            "name": "Action Builder LLM"
+          },
+          "diagram": {
+            "x": 6859.5,
+            "y": 7514
+          },
+          "outcomes": {
+            "success": "1775856335723"
+          },
+          "inputs": [
+            {
+              "id": "1775855768839_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a product-configuration action builder.\n\nINPUTS\n1) User Rule Description (string):\n{{$context.$system.$inputMessage}}\n\n2) Model Attributes & MenuItems (JSON):\n{{$context.$variables.attributes}}\n\nGOAL\nExtract only the action logic and return a normalized actions array:\n\n[\n  {\n    \"attribute\": <string|null>,\n    \"values\": [<string>, ...]\n  }\n]\n\nDo not return any wrapper object. Do not return conditions. JSON array only.\n\nACTION VS CONDITION SPLIT (STRICT)\n- Ignore condition clauses introduced by words like: if, when, where, unless, given.\n- Keep only outcome/action clauses.\n- Treat a clause as action if it contains intent words such as:\n  should, must, set, force, constrain, allow, disallow, recommend, hide, show, display, message\n\nExample:\nInput: \"Check for similar rules where the color is black, the interior should be white\"\nOutput action should be interior=white only.\n\nEXTRACTION RULES\n1) Attribute\n- \"attribute\" must be one of the provided attribute variable names.\n- Do not invent attribute names.\n- If no valid attribute can be identified for an action clause, skip that clause.\n\n2) Values\n- \"values\" must always be an array.\n- For hide/show-style actions with no explicit value, use [].\n- For set/recommend/constrain-style actions, extract explicit values from text.\n- For menu attributes, map to the closest valid menu item from metadata.\n- Preserve exact metadata casing for selected values.\n- If value cannot be confidently resolved, keep the action with values [].\n\n3) Message-like action\n- If action is only a user-facing message and no attribute target exists:\n  {\n    \"attribute\": null,\n    \"values\": [\"<message text>\"]\n  }\n- Never invent message text.\n\n4) Dedup\n- Deduplicate identical {attribute, values} entries.\n\n5) Empty result\n- If no action can be extracted, return [].\n\nOUTPUT FORMAT\nReturn valid JSON only (no markdown, no commentary), for example:\n[\n  {\n    \"attribute\": \"vInterior\",\n    \"values\": [\n      \"black\"\n    ]\n  }\n]"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "name": "Condition Builder LLM"
+          },
+          "outcomes": {
+            "success": "1775012540050"
+          },
+          "code": "CONDITION_BUILDER_LLM",
+          "id": "1775011915866",
+          "inputs": [
+            {
+              "id": "1775011915866_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "1775011915866_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a product-configuration condition builder.\n\nINPUTS\n1. User Rule Description (string):\n{{$context.$system.$inputMessage}}\n2. Model Attributes & MenuItems (JSON):\n{{$context.$variables.attributes}}\n\nTASK\nExtract only predicate logic (the \"if/when\" part). Ignore all outcomes/actions.\n\nSTRICT SPLIT RULE\nTreat text as ACTION (not condition) if it contains intent words such as:\n- should, must, set, make, force, constrain, allow, recommend, hide, show, display, message\nExample:\n\"If color is black, interior should be white\"\n- Condition: color = black\n- Action: interior = white (do NOT include this in conditions)\n\nIf no predicates exist, return exactly this sentinel:\n[\n  {\n    \"criteria\": {\n      \"criteriaType\": \"Attribute\",\n      \"attribute\": \"_alwaysTrue\"\n    },\n    \"operator\": \"EqualTo\",\n    \"value\": {\n      \"valueType\": \"Static\",\n      \"values\": [\n        \"true\"\n      ]\n    }\n  }\n]\n\nOUTPUT\nReturn only a JSON array of condition objects (no wrapper, no markdown, no commentary).\n\nREQUIRED SHAPE\n[\n  {\n    \"criteria\": {\n      \"criteriaType\": \"Attribute\",\n      \"attribute\": <string>\n    },\n    \"operator\": <string>,\n    \"value\": {\n      \"valueType\": \"Static\",\n      \"values\": [\n        <string>,\n        ...\n      ],\n      \"rangeOperator\": <string, optional>,\n      \"rangeValue\": [\n        <string>,\n        ...\n      ]\n    }\n  }\n]\n\nDETAILED RULES\nA. Condition Items\n- criteria.criteriaType is always \"Attribute\".\n- criteria.attribute must be one of provided attribute variable names; do not invent names.\n- operator must be valid for the attribute inputTypeCode:\n  - SingleSelectMenu: EqualTo, NotEqualTo\n  - MultiSelectMenu: EqualTo, NotEqualTo, Contains, NotContains\n  - TextField + dataType \"Text\": EqualTo, NotEqualTo, Contains, NotContains, StartsWith, NotStartsWith, EndsWith, NotEndsWith\n  - TextField + dataType \"Integer\"/\"Float\": LessThan, LessThanEqualTo, EqualTo, NotEqualTo, GreaterThan, GreaterThanEqualTo, Between\n  - Date: EqualTo, NotEqualTo, Before, OnOrBefore, After, OnOrAfter, Between\n  - Currency: LessThan, LessThanEqualTo, EqualTo, NotEqualTo, GreaterThan, GreaterThanEqualTo, Between\n  - Boolean: EqualTo\n- For Between: lower bound in value.values, upper bound in value.rangeValue, and set value.rangeOperator.\n- For non-Between: omit rangeOperator and rangeValue.\n\nB. Values\n- Use exact casing from metadata.\n- SingleSelectMenu and MultiSelectMenu may contain multiple values.\n- All other input types must contain exactly one value.\n- Do not fabricate values not in metadata.\n- If any required predicate value cannot be resolved, return the sentinel.\n\nC. General\n- Do not add conditionExpression, conditionType, index, level, or wrapper objects.\n- Do not emit actions/recommendations/messages.\n- Preserve original string casing; no extra whitespace padding.\n\nEXAMPLES\nInput: \"If color is black, interior should be white\"\nOutput:\n[\n  {\n    \"criteria\": {\n      \"criteriaType\": \"Attribute\",\n      \"attribute\": \"vColor\"\n    },\n    \"operator\": \"EqualTo\",\n    \"value\": {\n      \"valueType\": \"Static\",\n      \"values\": [\n        \"black\"\n      ]\n    }\n  }\n]\n\nInput: \"Interior should be white\"\nOutput:\n[\n  {\n    \"criteria\": {\n      \"criteriaType\": \"Attribute\",\n      \"attribute\": \"_alwaysTrue\"\n    },\n    \"operator\": \"EqualTo\",\n    \"value\": {\n      \"valueType\": \"Static\",\n      \"values\": [\n        \"true\"\n      ]\n    }\n  }\n]"
+            }
+          ],
+          "type": "LLM",
+          "diagram": {
+            "x": 7309.5,
+            "y": 7514
+          }
+        },
+        {
+          "id": "1775856335723",
+          "code": "CREATE_ACTIONS",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Create Actions"
+          },
+          "diagram": {
+            "x": 6859.5,
+            "y": 7736
+          },
+          "outcomes": {
+            "success": "1775856346582"
+          },
+          "inputs": [
+            {
+              "id": "1775856335723_actions",
+              "name": "actions",
+              "value": "{{$context.$nodes.ACTION_BUILDER_LLM.$output}}"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "name": "Create Conditions"
+          },
+          "outcomes": {
+            "success": "1775012569975"
+          },
+          "code": "CREATE_CONDITIONS",
+          "id": "1775012540050",
+          "inputs": [
+            {
+              "id": "1775012540050_conditions",
+              "name": "conditions",
+              "value": "{{$context.$nodes.CONDITION_BUILDER_LLM.$output}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 7309.5,
+            "y": 7736
+          }
+        },
+        {
+          "id": "1775856346582",
+          "code": "VALIDATE_ACTIONS",
+          "type": "CODE",
+          "metadata": {
+            "name": "Validate Actions",
+            "sourceCode": "var rawActions = Array.isArray($context.$variables.actions)\n  ? $context.$variables.actions\n  : [];\n\nvar attrsRoot = $context.$variables.attributes || {};\nvar attrs = attrsRoot.attributes ? attrsRoot.attributes : attrsRoot;\nvar catalog = attrs;\n\nvar ruleTypeObj =\n  ($context.$variables.currentRuleInstance && $context.$variables.currentRuleInstance.ruleType) ||\n  ($context.$triggers.REST.$input && $context.$triggers.REST.$input.ruleType) ||\n  {};\n\nvar ruleTypeCode =\n  ruleTypeObj && ruleTypeObj.lookupCode != null\n    ? String(ruleTypeObj.lookupCode)\n    : null;\n\nvar LEVEL_KEY_MAP = {\n  allProductFamiliesAttr: \"allProductFamilies\",\n  productFamilyAttr: \"productFamily\",\n  productLineAttr: \"productLine\",\n  modelAttr: \"model\"\n};\n\nvar attrLevelLookup = {};\n[\"configurable\", \"nonConfigurable\", \"system\", \"account\", \"user\"].forEach(function (bucket) {\n  var section = catalog[bucket];\n  if (!section) return;\n\n  Object.keys(LEVEL_KEY_MAP).forEach(function (levelKey) {\n    var levelName = LEVEL_KEY_MAP[levelKey];\n    var list = section[levelKey];\n    if (!Array.isArray(list)) return;\n\n    list.forEach(function (attr) {\n      if (!attr || !attr.variableName) return;\n      var key = String(attr.variableName).trim().toLowerCase();\n      if (!key) return;\n      attrLevelLookup[key] = levelName;\n    });\n  });\n});\n\nvar attrMeta = {};\n[\"configurable\", \"nonConfigurable\", \"system\", \"account\", \"user\"].forEach(function (bucket) {\n  var section = attrs[bucket];\n  if (!section) return;\n\n  Object.keys(section).forEach(function (levelKey) {\n    var list = section[levelKey];\n    if (!Array.isArray(list)) return;\n\n    list.forEach(function (attr) {\n      if (!attr || !attr.variableName) return;\n\n      var key = String(attr.variableName).trim().toLowerCase();\n      if (!key) return;\n\n      var menu = [];\n      var menuItems = attr.menuItems;\n      if (Array.isArray(menuItems)) {\n        menu = menuItems.map(function (m) { return String(m.itemValue); });\n      } else if (menuItems && Array.isArray(menuItems.items)) {\n        menu = menuItems.items.map(function (m) { return String(m.itemValue); });\n      }\n\n      attrMeta[key] = {\n        attrVar: attr.variableName,\n        inputType: attr.inputTypeCode || \"\",\n        dataType: attr.dataType || \"\",\n        menuValues: menu.filter(function (v) { return v !== undefined && v !== null; })\n      };\n    });\n  });\n});\n\nfunction getMeta(attrVar) {\n  if (attrVar === undefined || attrVar === null) return null;\n  return attrMeta[String(attrVar).trim().toLowerCase()] || null;\n}\n\nfunction toStringArray(values) {\n  if (!Array.isArray(values)) return [];\n  return values\n    .filter(function (v) { return v !== undefined && v !== null; })\n    .map(function (v) { return String(v); });\n}\n\nfunction cleanSelectableValues(meta, values) {\n  var list = toStringArray(values);\n  if (!meta || !meta.menuValues.length) return list;\n\n  var menuSet = {};\n  meta.menuValues.forEach(function (v) { menuSet[String(v).toLowerCase()] = v; });\n\n  var filtered = [];\n  list.forEach(function (val) {\n    var hit = menuSet[String(val).toLowerCase()];\n    if (hit !== undefined) filtered.push(hit);\n  });\n\n  if (filtered.length === 0 && meta.menuValues.length > 0) {\n    filtered = [meta.menuValues[0]];\n  }\n\n  return filtered;\n}\n\nfunction inferredLevel(attrVar) {\n  if (attrVar === undefined || attrVar === null) return null;\n  var key = String(attrVar).trim().toLowerCase();\n  return attrLevelLookup[key] || null;\n}\n\nfunction dedupeKey(attribute, values) {\n  return JSON.stringify({\n    a: attribute === null ? null : String(attribute).toLowerCase(),\n    v: toStringArray(values).map(function (v) { return v.toLowerCase(); }).sort()\n  });\n}\n\nvar cleanedActions = [];\nvar seen = {};\n\nrawActions.forEach(function (act) {\n  if (!act || typeof act !== \"object\") return;\n\n  // MessageOnly: no attribute validation\n  if (ruleTypeCode === \"24\") {\n    var msgAttr = act.attribute === undefined ? null : act.attribute;\n    var msgVals = toStringArray(act.values);\n\n    if (msgAttr === null && msgVals.length === 0) return;\n\n    var msgClean = {\n      attribute: msgAttr === null ? null : String(msgAttr),\n      values: msgVals\n    };\n\n    if (msgClean.attribute !== null) {\n      msgClean.level = act.level !== undefined ? act.level : inferredLevel(msgClean.attribute);\n    } else if (act.level !== undefined) {\n      msgClean.level = act.level;\n    }\n\n    var msgKey = dedupeKey(msgClean.attribute, msgClean.values);\n    if (!seen[msgKey]) {\n      seen[msgKey] = true;\n      cleanedActions.push(msgClean);\n    }\n    return;\n  }\n\n  // For non-message rules, attribute must exist and be valid\n  if (act.attribute === undefined || act.attribute === null || String(act.attribute).trim() === \"\") return;\n\n  var meta = getMeta(act.attribute);\n  if (!meta) return;\n\n  var values = toStringArray(act.values);\n\n  if (ruleTypeCode === \"11\") {\n    // Hiding: ignore values\n    values = [];\n  } else {\n    // Constraint / Recommendation / fallback: validate values using metadata when possible\n    if (meta.inputType === \"SingleSelectMenu\" || meta.inputType === \"MultiSelectMenu\") {\n      values = cleanSelectableValues(meta, values);\n    } else if (values.length > 1) {\n      values = [values[0]];\n    }\n  }\n\n  var cleaned = {\n    attribute: meta.attrVar,\n    values: values\n  };\n\n  var level = act.level !== undefined ? act.level : inferredLevel(meta.attrVar);\n  if (level !== null && level !== undefined) {\n    cleaned.level = level;\n  }\n\n  var key = dedupeKey(cleaned.attribute, cleaned.values);\n  if (!seen[key]) {\n    seen[key] = true;\n    cleanedActions.push(cleaned);\n  }\n});\n\nreturn cleanedActions;",
+            "returnType": "array"
+          },
+          "diagram": {
+            "x": 6859.5,
+            "y": 7958
+          },
+          "outcomes": {
+            "success": "1775856418791"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "metadata": {
+            "name": "Validate Conditions",
+            "returnType": "array",
+            "sourceCode": "var rawConditions = Array.isArray($context.$variables.conditions)\n  ? $context.$variables.conditions\n  : [];\n\nvar attrsRoot = $context.$variables.attributes || {};\nvar attrs = attrsRoot.attributes ? attrsRoot.attributes : attrsRoot;\n\nvar catalog = attrs;\n\nvar LEVEL_KEY_MAP = {\n  allProductFamiliesAttr: 'allProductFamilies',\n  productFamilyAttr: 'productFamily',\n  productLineAttr: 'productLine',\n  modelAttr: 'model'\n};\n\nvar attrLevelLookup = {};\n\n['configurable', 'nonConfigurable', 'system', 'account', 'user'].forEach(function (bucket) {\n  var section = catalog[bucket];\n  if (!section) { return; }\n\n  Object.keys(LEVEL_KEY_MAP).forEach(function (levelKey) {\n    var levelName = LEVEL_KEY_MAP[levelKey];\n    var list = section[levelKey];\n    if (!Array.isArray(list)) { return; }\n\n    list.forEach(function (attr) {\n      if (!attr || !attr.variableName) { return; }\n      var key = String(attr.variableName).trim().toLowerCase();\n      if (!key) { return; }\n      attrLevelLookup[key] = levelName;\n    });\n  });\n});\n\nvar attrMeta = {};\n['configurable', 'nonConfigurable', 'system', 'account', 'user'].forEach(function (bucket) {\n  var section = attrs[bucket];\n  if (!section) { return; }\n\n  Object.keys(section).forEach(function (levelKey) {\n    var list = section[levelKey];\n    if (!Array.isArray(list)) { return; }\n\n    list.forEach(function (attr) {\n      if (!attr || !attr.variableName) { return; }\n\n      var key = String(attr.variableName).trim().toLowerCase();\n      if (!key) { return; }\n\n      var menu = [];\n      var menuItems = attr.menuItems;\n      if (Array.isArray(menuItems)) {\n        menu = menuItems.map(function (m) { return String(m.itemValue); });\n      } else if (menuItems && Array.isArray(menuItems.items)) {\n        menu = menuItems.items.map(function (m) { return String(m.itemValue); });\n      }\n\n      attrMeta[key] = {\n        attrVar: attr.variableName,\n        inputType: attr.inputTypeCode || '',\n        dataType: attr.dataType || '',\n        menuValues: menu.filter(function (v) { return v !== undefined && v !== null; })\n      };\n    });\n  });\n});\n\nfunction getMeta(attrVar) {\n  if (!attrVar) { return null; }\n  return attrMeta[String(attrVar).trim().toLowerCase()] || null;\n}\n\nvar operatorMap = {\n  SingleSelectMenu: ['EqualTo', 'NotEqualTo'],\n  MultiSelectMenu: ['EqualTo', 'NotEqualTo', 'Contains', 'NotContains'],\n  Boolean: ['EqualTo'],\n  Currency: ['LessThan', 'LessThanEqualTo', 'EqualTo', 'NotEqualTo', 'GreaterThan', 'GreaterThanEqualTo', 'Between'],\n  Date: ['EqualTo', 'NotEqualTo', 'Before', 'OnOrBefore', 'After', 'OnOrAfter', 'Between'],\n  TextField_text: ['EqualTo', 'NotEqualTo', 'Contains', 'NotContains', 'StartsWith', 'NotStartsWith', 'EndsWith', 'NotEndsWith'],\n  TextField_integer: ['LessThan', 'LessThanEqualTo', 'EqualTo', 'NotEqualTo', 'GreaterThan', 'GreaterThanEqualTo', 'Between'],\n  TextField_float: ['LessThan', 'LessThanEqualTo', 'EqualTo', 'NotEqualTo', 'GreaterThan', 'GreaterThanEqualTo', 'Between']\n};\n\nfunction allowedOperators(meta) {\n  if (!meta) { return []; }\n  if (meta.inputType === 'TextField') {\n    var dt = (meta.dataType || '').toLowerCase();\n    if (dt === 'integer') { return operatorMap.TextField_integer; }\n    if (dt === 'float') { return operatorMap.TextField_float; }\n    return operatorMap.TextField_text;\n  }\n  return operatorMap[meta.inputType] || [];\n}\n\nfunction cleanSelectableValues(meta, values) {\n  var list = Array.isArray(values) ? values.map(String) : [];\n  if (!meta || !meta.menuValues.length) { return list; }\n\n  var menuSet = {};\n  meta.menuValues.forEach(function (v) { menuSet[v.toLowerCase()] = v; });\n\n  var filtered = [];\n  list.forEach(function (val) {\n    var hit = menuSet[val.toLowerCase()];\n    if (hit !== undefined) { filtered.push(hit); }\n  });\n\n  if (filtered.length === 0 && meta.menuValues.length > 0) {\n    filtered = [meta.menuValues[0]];\n  }\n  return filtered;\n}\n\nfunction buildSentinel() {\n  return [\n    {\n      criteria: {\n        criteriaType: 'Attribute',\n        attribute: '_alwaysTrue'\n      },\n      operator: 'EqualTo',\n      value: {\n        valueType: 'Static',\n        values: ['true']\n      },\n      index: 1\n    }\n  ];\n}\n\nvar cleanedConditions = [];\nrawConditions.forEach(function (cond) {\n  if (!cond || !cond.criteria || cond.criteria.criteriaType !== 'Attribute') { return; }\n\n  var meta = getMeta(cond.criteria.attribute);\n  if (!meta) { return; }\n\n  var op = cond.operator ? String(cond.operator) : '';\n  var allowed = allowedOperators(meta);\n  if (allowed.length > 0 && allowed.indexOf(op) === -1) { return; }\n\n  var valueObj = cond.value || { valueType: 'Static', values: [] };\n  var newValue = {\n    valueType: valueObj.valueType || 'Static',\n    values: Array.isArray(valueObj.values) ? valueObj.values.map(String) : []\n  };\n\n  if (meta.inputType === 'SingleSelectMenu' || meta.inputType === 'MultiSelectMenu') {\n    newValue.values = cleanSelectableValues(meta, newValue.values);\n  } else if (meta.inputType !== 'MultiSelectMenu' && meta.inputType !== 'SingleSelectMenu') {\n    if (newValue.values.length === 0 && valueObj.values && valueObj.values.length > 0) {\n      newValue.values = [String(valueObj.values[0])];\n    } else if (newValue.values.length > 1) {\n      newValue.values = [newValue.values[0]];\n    }\n  }\n\n  if (op === 'Between') {\n    var rangeOp = valueObj.rangeOperator ? String(valueObj.rangeOperator) : null;\n    var rangeVal = Array.isArray(valueObj.rangeValue) ? valueObj.rangeValue.map(String) : [];\n    if (!rangeOp || rangeVal.length === 0) { return; }\n    newValue.rangeOperator = rangeOp;\n    newValue.rangeValue = [rangeVal[0]];\n  }\n\n  var cleaned = {\n    criteria: {\n      criteriaType: 'Attribute',\n      attribute: meta.attrVar\n    },\n    operator: op,\n    value: newValue\n  };\n\n  var lookupKey = String(meta.attrVar).trim().toLowerCase();\n  var inferredLevel = attrLevelLookup[lookupKey];\n\n  if (cond.level !== undefined) {\n    cleaned.level = cond.level;\n  } else if (inferredLevel) {\n    cleaned.level = inferredLevel;\n  }\n\n  cleaned.index = cleanedConditions.length + 1;\n  cleanedConditions.push(cleaned);\n});\n\nif (cleanedConditions.length === 0) {\n  return buildSentinel();\n}\n\nreturn cleanedConditions;"
+          },
+          "outcomes": {
+            "success": "1775012751053"
+          },
+          "code": "VALIDATE_CONDITIONS",
+          "id": "1775012569975",
+          "inputs": [],
+          "type": "CODE",
+          "diagram": {
+            "x": 7309.5,
+            "y": 7958
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1775856418791",
+          "code": "CLEANED_ACTIONS",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Cleaned Actions"
+          },
+          "diagram": {
+            "x": 6859.5,
+            "y": 8180
+          },
+          "outcomes": {
+            "success": "1775012774135"
+          },
+          "inputs": [
+            {
+              "id": "1775856418791_actions",
+              "name": "actions",
+              "value": "{{$context.$nodes.VALIDATE_ACTIONS.$output.result}}"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "name": "Cleaned Conditions"
+          },
+          "outcomes": {
+            "success": "1775012774135"
+          },
+          "code": "CLEANED_CONDITIONS",
+          "id": "1775012751053",
+          "inputs": [
+            {
+              "id": "1775012540050_conditions",
+              "name": "conditions",
+              "value": "{{$context.$nodes.VALIDATE_CONDITIONS.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS",
+          "diagram": {
+            "x": 7309.5,
+            "y": 8180
+          }
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "9684de20-e420-4168-8cdd-d1001530bef6",
+          "name": "actions",
+          "type": "array",
+          "scope": "CONVERSATION"
+        },
+        {
+          "id": "b9b0eba9-5fdf-4bd3-902a-e22abda50e83",
+          "name": "conditions",
+          "type": "array",
+          "scope": "CONVERSATION"
+        },
+        {
+          "id": "131dfadf-3eab-45b0-9c24-238ebf5a7a02",
+          "name": "currentRuleInstance",
+          "scope": "CONVERSATION",
+          "type": "object"
+        },
+        {
+          "id": "c5a7fd27-fb6e-44c8-8d80-71591298d93c",
+          "name": "ruleVariableNameList",
+          "scope": "CONVERSATION",
+          "type": "array"
+        },
+        {
+          "id": "fb0acf26-15d4-45d9-b6d8-adbefdbeddc8",
+          "name": "ruleList",
+          "scope": "CONVERSATION",
+          "type": "array"
+        },
+        {
+          "id": "920b4085-907b-4c8b-9d30-f7d034b6911f",
+          "name": "attributes",
+          "scope": "CONVERSATION",
+          "type": "object"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1772560703518",
+            "name": "productFamily",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1772560697263",
+            "name": "productLine",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1772560692483",
+            "name": "model",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "deletedTriggerTypes": [],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "dtRunProfiles": {
+      "activeProfileId": "2c2e1f3b-e6c0-4a56-8c88-5eba489db85d",
+      "profiles": [
+        {
+          "id": "d47e4d9a-dedc-4a39-b15c-23862d455add",
+          "name": "Color White _ Interior Black",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n    \"productFamily\": \"visionVehicles\",\n    \"productLine\": \"consumerVehicles\",\n    \"model\": \"sUV\"\n}",
+          "inputMessage": "Create a constraint rule, for when Color is white, Interior must be black"
+        },
+        {
+          "id": "b2239c5a-9470-47c8-9797-05863d060e66",
+          "name": "Color White _ Interior All",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n    \"productFamily\": \"visionVehicles\",\n    \"productLine\": \"consumerVehicles\",\n    \"model\": \"sUV\"\n}",
+          "inputMessage": "Create a constraint rule, for when Color is white, Interior all values must be constrained"
+        },
+        {
+          "id": "5697680c-9582-471f-bd0a-cbfa09a3cf9b",
+          "name": "Constraint with Message",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n    \"productFamily\": \"visionVehicles\",\n    \"productLine\": \"consumerVehicles\",\n    \"model\": \"sUV\"\n}",
+          "inputMessage": "Create a constraint rule, for when Color is white, Interior must be black. Write the message, \"Interior must be black\""
+        },
+        {
+          "id": "b1240e87-b8e1-47f0-89b6-84d7fd61fbe7",
+          "name": "Recommend Green Server",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n    \"model\": \"\",\n    \"productLine\": \"servers\",\n    \"productFamily\": \"vision\"\n}",
+          "inputMessage": "If mid or high end and storing more than 10 TB, then go with 3500 Green Server"
+        },
+        {
+          "id": "2b0a4786-a6ca-4a3f-8728-0bc117a8d5a7",
+          "name": "Hide Generator",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n    \"model\": \"sUPREMOPOWERGENERATIONPACKAGE\",\n    \"productLine\": \"sUPREMOPOWERGENERATION\",\n    \"productFamily\":\"sUPREMO\"\n}",
+          "inputMessage": "Hide generator qty, if adding the generator package and basic control panel"
+        },
+        {
+          "id": "1ef8400d-b3fe-4fd8-bca5-24782e4dfbae",
+          "name": "Hide Number of Vehicles",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n    \"productFamily\": \"visionVehicles\",\n    \"productLine\": \"consumerVehicles\",\n    \"model\": \"sUV\"\n}",
+          "inputMessage": "Always hide Number of Vehicles"
+        },
+        {
+          "id": "601d6db3-b72e-4ccf-bdb0-0176bcf02568",
+          "name": "Message Rule",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n    \"productFamily\": \"visionVehicles\",\n    \"productLine\": \"consumerVehicles\",\n    \"model\": \"sUV\"\n}",
+          "inputMessage": "When vColor is black, say a message that \"Its Black\""
+        },
+        {
+          "id": "d3390883-2283-4c61-b9ac-9ab310865e3d",
+          "name": "Between",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n    \"productFamily\": \"visionVehicles\",\n    \"productLine\": \"consumerVehicles\",\n    \"model\": \"sUV\"\n}",
+          "inputMessage": "Create a constraint rule, for when total number of items is 4, Number of vehicles should be between 3 & 8"
+        },
+        {
+          "id": "117f49a4-4dd9-4245-b2df-70718372dd1d",
+          "name": "Between Complex",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "inputMessage": "If Expense limit is between 4000 and 5000, the Number of Vehicles should be between 4 and 5",
+          "restConfigJson": "{\n    \"productFamily\": \"visionVehicles\",\n    \"productLine\": \"consumerVehicles\",\n    \"model\": \"sUV\"\n}"
+        },
+        {
+          "id": "2c2e1f3b-e6c0-4a56-8c88-5eba489db85d",
+          "name": "Check Similar",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n    \"productFamily\": \"visionVehicles\",\n    \"productLine\": \"consumerVehicles\",\n    \"model\": \"sUV\"\n}",
+          "inputMessage": "Check for similar rules where the color is black, the interior should be white"
+        },
+        {
+          "id": "9d76c730-a3ba-4b19-b27e-bc14dedd8fae",
+          "name": "Check No Similar",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n    \"productFamily\": \"visionVehicles\",\n    \"productLine\": \"consumerVehicles\",\n    \"model\": \"sUV\"\n}",
+          "inputMessage": "Check for similar rules where the Total number of items is greater than 3"
+        },
+        {
+          "id": "35f24bd8-f881-4a54-8b99-6f011ed91596",
+          "name": "Improper Input",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n    \"productFamily\": \"visionVehicles\",\n    \"productLine\": \"consumerVehicles\",\n    \"model\": \"sUV\"\n}",
+          "inputMessage": "When breakfast is ready, you should come down"
+        }
+      ]
+    },
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    }
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "CPQ_COMMERCE",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": true,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"1\""
+  }
+}

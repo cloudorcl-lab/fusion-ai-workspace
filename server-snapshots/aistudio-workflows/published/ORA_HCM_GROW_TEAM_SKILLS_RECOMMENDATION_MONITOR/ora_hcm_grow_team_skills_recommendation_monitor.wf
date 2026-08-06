@@ -1,0 +1,614 @@
+{
+  "workflowId": "300000326940076",
+  "workflowCode": "ORA_HCM_GROW_TEAM_SKILLS_RECOMMENDATION_MONITOR",
+  "name": "Team Skills Recommendation Monitor",
+  "description": "Lists out the top 5 skills prioritized by the count of direct reports who got the recommendation.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1770741887817"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_LEARNING_LEARNINGRECOMMENDATIONS",
+            "functionName": "recommendationAggregationsByObjectCategories",
+            "name": "Get Recommended Skills"
+          },
+          "outcomes": {
+            "success": "1770743307065"
+          },
+          "code": "GET_RECOMMENDED_SKILLS",
+          "id": "1770339601954",
+          "inputs": [
+            {
+              "id": "1770915397857_1",
+              "name": "securityFilterType",
+              "type": "string",
+              "value": "MANAGER"
+            },
+            {
+              "id": "1770915397858_2",
+              "name": "facets",
+              "type": "string",
+              "value": "{{$context.$variables.facetsForSkillsQuery}}"
+            },
+            {
+              "id": "1770915397859_3",
+              "name": "objectCategories",
+              "type": "string",
+              "value": "{{$context.$variables.objectCategories}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Set Hint",
+            "returnType": "string",
+            "sourceCode": "let hint = $context && $context.$app ? $context.$app.$OraMessageHint : null;\nconst message = $context && $context.$system && $context.$system.$inputMessage != null ? String($context.$system.$inputMessage).trim() : '';\nif (hint === \"InitDisplay\" || (hint == null && !message)) {\n  hint = \"Init\";\n} else if (hint == null && message) {\n  hint = \"Query\";\n}\nlet result = hint;\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1770681373250"
+          },
+          "code": "SET_HINT",
+          "id": "1770681334179",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"string\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Hint"
+          },
+          "outcomes": {
+            "Init": "1770675946593",
+            "AdditionalContent": "1770681709175",
+            "Summary": "1770681419907",
+            "Query": "1778226000001"
+          },
+          "code": "HINT",
+          "convergenceTargetId": "end",
+          "id": "1770681373250",
+          "inputs": [
+            {
+              "id": "1770681373252_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.SET_HINT.$output.result}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "Render Summary"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RENDER_SUMMARY",
+          "id": "1770681419907",
+          "inputs": [
+            {
+              "id": "1770681419909_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Use the direct-report prepared display model only.\n\nInputs\n- prepared_display:\n  <prepared_display>{{$context.$nodes.PREPARE_DIRECT_SKILLS_DISPLAY.$output.result}}</prepared_display>\n\nInstructions\n- If prepared_display.rows is missing, not an array, or empty, output exactly: No recommended skills for direct reports at this time\n- Otherwise output one concise sentence in this format:\n  Top recommended skills for direct reports: <Skill1> (<Count1>), <Skill2> (<Count2>), ... • Updated <YYYY-MM-DD>\n- Preserve row order exactly as provided.\n- Use prepared_display.asOfDate for the date.\n- No extra prose."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MESSAGES_LIST"
+              ],
+              "enableActions": false,
+              "enableCommunications": false,
+              "customNotes": "Ask Oracle query responses must be plain natural-language text only. Do not render cards, widgets, oraInfoDisplay, XML, JSON, markdown tables, or action controls."
+            }
+          },
+          "metadata": {
+            "name": "Render Query Response"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RENDER_QUERY_RESPONSE",
+          "id": "1778226000001",
+          "inputs": [
+            {
+              "id": "1778226000001_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are answering an Ask Oracle question for a manager about recommended skills for their direct reports.\n\nReturn plain text only. Do not output cards, oraInfoDisplay, XML, JSON, markdown fences, markdown tables, or action markup.\n\nUser question:\n{{$context.$system.$inputMessage}}\n\nPrepared direct-report skills data, authoritative:\n{{$context.$nodes.PREPARE_DIRECT_SKILLS_DISPLAY.$output.result}}\n\nRules:\n- Answer only from the prepared direct-report skills data above.\n- The prepared rows are already filtered to direct reports, sorted by direct-report recommendation count from highest to lowest, and limited for display.\n- Do not recompute ranking, filtering, counts, employee lists, or row order.\n- Preserve skill titles, counts, employee names, and dates exactly as provided.\n- Do not include internal ids, JSON keys, implementation details, or URLs unless explicitly asked.\n- If the user asks for the most recommended skill, use the first row and include its count.\n- If the user asks for top skills, list the prepared rows in order with counts.\n- If the user asks who received recommendations for a skill, answer using that row's employees list only.\n- If prepared rows are missing or empty, respond exactly: No recommended skills for direct reports at this time.\n- If the data does not contain enough information to answer the question, say what related recommended-skill information is available from the prepared rows."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MULTIRECORD"
+              ],
+              "enableActions": false,
+              "enableCommunications": false,
+              "customNotes": "Role\nYou are rendering a deterministic MultiRecordWidget for the Most Recommended Skills panel.\n\nAuthoritative input\n- prepared_display = {{$context.$nodes.PREPARE_DIRECT_SKILLS_DISPLAY.$output.result}}\n- prepared_display.rows is already filtered to direct reports, limited, and ordered by direct-recipient count.\n- Do not re-query, re-sort, or recompute counts.\n\nOutput requirements\n- Output only valid widget markup for one multiRecordWidget.\n- No prose outside the widget.\n- No actions, badges, timestamps, or extra columns.\n\nTable\n- Use cols: [\"Skill\", \"Count\"]\n- For each row in prepared_display.rows, emit:\n  - Skill: row.skillTitle\n  - Count: String(row.count)\n- If prepared_display.rows is empty, emit the same columns with zero rows."
+            }
+          },
+          "metadata": {
+            "name": "Render Recommended Skills"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RENDER_RECOMMENDED_SKILLS",
+          "id": "1770675946593",
+          "inputs": [
+            {
+              "id": "1770675946595_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Render a deterministic multiRecordWidget for the Most Recommended Skills panel using the direct-report prepared display model only.\n\n<prepared_display>{{$context.$nodes.PREPARE_DIRECT_SKILLS_DISPLAY.$output.result}}</prepared_display>"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MULTIRECORD"
+              ],
+              "enableActions": false,
+              "enableCommunications": false,
+              "customNotes": "Role\nYou are rendering a deterministic MultiRecordWidget for the expand view \"Which direct reports got the recommendation\".\n\nAuthoritative input\n- data = {{$context.$nodes.PREPARE_DIRECT_SKILLS_DISPLAY.$output.result.rows}}\n- Each element already contains the skill title and alphabetically sorted direct-report recipient names for that skill.\n- Do not re-query, re-sort, truncate, or summarize with +N more.\n\nOutput requirements\n- Output only valid widget markup for one multiRecordWidget.\n- No prose outside the widget.\n- No actions, badges, or extra columns.\n\nTable\n- Use cols: [\"Skill\", \"Direct Reports\"]\n- For each element e in the input array, emit:\n  - Skill: e.skillTitle\n  - Direct Reports: e.employees.join(\", \")\n- If there are no employees for a skill, use an empty string for Direct Reports.\n- If the input array is missing, not an array, or empty, emit the same columns with zero rows."
+            }
+          },
+          "metadata": {
+            "name": "Render Skills with Employee Details"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RENDER_SKILLS_WITH_EMPLOYEE_DETAILS",
+          "id": "1770681709175",
+          "inputs": [
+            {
+              "id": "1770681709176_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Render a deterministic multiRecordWidget for the expand view using the direct-report skill-recipient data only.\n\n<data>{{$context.$nodes.PREPARE_DIRECT_SKILLS_DISPLAY.$output.result.rows}}</data>"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Set Run Context"
+          },
+          "outcomes": {
+            "success": "1773000000001"
+          },
+          "code": "SET_RUN_CONTEXT",
+          "id": "1770741887817",
+          "inputs": [
+            {
+              "id": "1770926316348",
+              "name": "facetsForRecommendationsQuery",
+              "scope": "JOB",
+              "type": "array",
+              "value": "[\"DisplayName\"]"
+            },
+            {
+              "id": "1770926299453",
+              "name": "facetsForSkillsQuery",
+              "scope": "JOB",
+              "type": "array",
+              "value": "[\"objectTitle\"]"
+            },
+            {
+              "id": "1770747866659",
+              "name": "employeesRecommendedSkills",
+              "scope": "JOB",
+              "type": "array",
+              "value": "[]"
+            },
+            {
+              "id": "1770746822842",
+              "name": "maxRecommendationsPerSkill",
+              "scope": "JOB",
+              "type": "integer",
+              "value": "50"
+            },
+            {
+              "id": "1770743376963",
+              "name": "maxSkills",
+              "scope": "JOB",
+              "type": "integer",
+              "value": "5"
+            },
+            {
+              "id": "1770741900549",
+              "name": "objectCategories",
+              "scope": "JOB",
+              "type": "array",
+              "value": "[\"SKILLS\"]"
+            },
+            {
+              "id": "1773000000004",
+              "name": "maxCandidateSkills",
+              "scope": "JOB",
+              "type": "integer",
+              "value": "25"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Top Recommended Skills",
+            "returnType": "object",
+            "sourceCode": "const facets = $context.$nodes.GET_RECOMMENDED_SKILLS.$output.facets;\nlet facetValues = [];\nif (Array.isArray(facets)) {\n  for (let facetIndex = 0; facetIndex < facets.length; facetIndex += 1) {\n    const facet = facets[facetIndex];\n    if (facet && facet.name === \"objectTitle\" && Array.isArray(facet.values)) {\n      facetValues = facet.values;\n      break;\n    }\n  }\n}\nif (!Array.isArray(facetValues) && Array.isArray($context.$nodes.GET_RECOMMENDED_SKILLS.$output.facets) && $context.$nodes.GET_RECOMMENDED_SKILLS.$output.facets[0] && Array.isArray($context.$nodes.GET_RECOMMENDED_SKILLS.$output.facets[0].values)) {\n  facetValues = $context.$nodes.GET_RECOMMENDED_SKILLS.$output.facets[0].values;\n}\nlet parsedLimit = Number($context.$variables.maxCandidateSkills);\nif (!Number.isInteger(parsedLimit) || parsedLimit <= 0) {\n  parsedLimit = 25;\n}\nconst rows = [];\nfor (let index = 0; index < facetValues.length && rows.length < parsedLimit; index += 1) {\n  const entry = facetValues[index] || {};\n  const skillId = entry.value == null ? \"\" : String(entry.value).trim();\n  const skillTitle = typeof entry.displayValue === \"string\" ? entry.displayValue.trim() : \"\";\n  const countValue = Number(entry.count);\n  const orgRecommendationCount = Number.isFinite(countValue) && countValue >= 0 ? countValue : 0;\n  if (!skillId || !skillTitle) continue;\n  rows.push({ skillId: skillId, skillTitle: skillTitle, count: 0, orgRecommendationCount: orgRecommendationCount });\n}\nconst result = { rows: rows, totalSkills: rows.length, asOfDate: $context.$system.$currentDate };\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1770745559368"
+          },
+          "code": "PARSE_TOP_SKILLS",
+          "id": "1770743307065",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"rows\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"skillId\": {\n                \"type\": \"string\"\n              },\n              \"skillTitle\": {\n                \"type\": \"string\"\n              },\n              \"count\": {\n                \"type\": \"number\"\n              }\n            },\n            \"required\": [\n              \"skillId\",\n              \"skillTitle\",\n              \"count\"\n            ]\n          }\n        },\n        \"totalSkills\": {\n          \"type\": \"integer\"\n        },\n        \"asOfDate\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"rows\",\n        \"totalSkills\",\n        \"asOfDate\"\n      ]\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1770746660313"
+                  },
+                  "id": "start_1770745559368",
+                  "code": "START_1770745559368",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1770745559368",
+                  "code": "END_1770745559368",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_HCM_LEARNING_LEARNINGRECOMMENDATIONS",
+                    "functionName": "recommendationSearchesByObjectId",
+                    "processJson": true,
+                    "name": "Get Employees Recommendations"
+                  },
+                  "outcomes": {
+                    "success": "1770769681096"
+                  },
+                  "code": "GET_EMPLOYEES_RECOMMENDATIONS",
+                  "id": "1770746660313",
+                  "inputs": [
+                    {
+                      "id": "1770917482743_1",
+                      "name": "limit",
+                      "type": "integer",
+                      "value": "{{$context.$variables.maxRecommendationsPerSkill}}"
+                    },
+                    {
+                      "id": "1770917482744_2",
+                      "name": "offset",
+                      "type": "integer",
+                      "value": "0"
+                    },
+                    {
+                      "id": "1770917482745_3",
+                      "name": "securityFilterType",
+                      "type": "string",
+                      "value": "MANAGER"
+                    },
+                    {
+                      "id": "1770917482746_4",
+                      "name": "facets",
+                      "type": "string",
+                      "value": "{{$context.$variables.facetsForRecommendationsQuery}}"
+                    },
+                    {
+                      "id": "1770917482747_5",
+                      "name": "objectId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.FOR_EACH_TOP_SKILL.$currentItem.skillId}}"
+                    },
+                    {
+                      "id": "1770917482748_6",
+                      "name": "sortAttributeName",
+                      "type": "string",
+                      "value": "recommendedOnDate"
+                    },
+                    {
+                      "id": "1770917482749_7",
+                      "name": "sortDirection",
+                      "type": "string",
+                      "value": "desc"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "name": "Add Employees To Skill",
+                    "returnType": "object",
+                    "sourceCode": "var acc = $context.$variables.employeesRecommendedSkills;\nif (!Array.isArray(acc)) acc = [];\n\nvar currentSkill = $context.$nodes.FOR_EACH_TOP_SKILL.$currentItem;\nvar currentEmployeeResult = $context.$nodes.FOR_EACH_TOP_SKILL.PARSE_EMPLOYEE_NAMES.$output.result;\nvar currentEmployeeItems = currentEmployeeResult && Array.isArray(currentEmployeeResult.recipientNames) ? currentEmployeeResult.recipientNames : [];\nvar skillId = currentSkill && currentSkill.skillId != null ? String(currentSkill.skillId) : '';\nvar skillTitle = currentSkill && typeof currentSkill.skillTitle === 'string' ? currentSkill.skillTitle : '';\nvar orgRecommendationCount = currentSkill && isFinite(currentSkill.orgRecommendationCount) ? Number(currentSkill.orgRecommendationCount) : 0;\nvar directCount = currentEmployeeItems.length;\n\nif (skillId && skillTitle) {\n  var idx = -1;\n  for (var i = 0; i < acc.length; i++) {\n    if (acc[i] && acc[i].skillId === skillId) { idx = i; break; }\n  }\n  var nextRow = { skillId: skillId, skillTitle: skillTitle, count: directCount, orgRecommendationCount: orgRecommendationCount, employees: currentEmployeeItems.slice() };\n  if (idx === -1) acc.push(nextRow); else acc[idx] = nextRow;\n}\nreturn acc;"
+                  },
+                  "outcomes": {
+                    "success": "1770747543569"
+                  },
+                  "code": "ADD_EMPLOYEES_TO_SKILL",
+                  "id": "1770747384145",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"skillId\": {\n            \"type\": \"string\"\n          },\n          \"skillTitle\": {\n            \"type\": \"string\"\n          },\n          \"count\": {\n            \"type\": \"number\"\n          },\n          \"employees\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"string\"\n            }\n          }\n        },\n        \"required\": [\n          \"skillId\",\n          \"skillTitle\",\n          \"count\",\n          \"employees\"\n        ]\n      }\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "name": "Accrue Result"
+                  },
+                  "outcomes": {
+                    "success": "1770747572622"
+                  },
+                  "code": "ACCRUE_RESULT",
+                  "id": "1770747543569",
+                  "inputs": [
+                    {
+                      "id": "1770749500773",
+                      "name": "employeesRecommendedSkills",
+                      "scope": "JOB",
+                      "type": "array",
+                      "value": "{{$context.$nodes.FOR_EACH_TOP_SKILL.ADD_EMPLOYEES_TO_SKILL.$output.result}}"
+                    }
+                  ],
+                  "type": "SET_FIELDS"
+                },
+                {
+                  "metadata": {
+                    "name": "Return Result",
+                    "returnType": "object",
+                    "sourceCode": "var result = $context.$variables.employeesRecommendedSkills;\nif (!Array.isArray(result)) result = [];\nreturn result;"
+                  },
+                  "outcomes": {
+                    "success": "end_1770745559368"
+                  },
+                  "code": "RETURN_RESULT",
+                  "id": "1770747572622",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"skillId\": {\n            \"type\": \"string\"\n          },\n          \"skillTitle\": {\n            \"type\": \"string\"\n          },\n          \"count\": {\n            \"type\": \"number\"\n          },\n          \"employees\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"string\"\n            }\n          }\n        },\n        \"required\": [\n          \"skillId\",\n          \"skillTitle\",\n          \"count\",\n          \"employees\"\n        ]\n      }\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "name": "Prepare Recipient Names",
+                    "returnType": "object",
+                    "sourceCode": "const items = $context.$nodes.FOR_EACH_TOP_SKILL.GET_EMPLOYEES_RECOMMENDATIONS.$output.items;\nconst directContext = $context.$nodes.PREPARE_DIRECT_REPORT_FILTER.$output.result || {};\nconst directNameKeys = Array.isArray(directContext.directNameKeys) ? directContext.directNameKeys : [];\nconst directPersonIds = Array.isArray(directContext.directPersonIds) ? directContext.directPersonIds.map((id) => String(id)) : [];\nconst directNameLookup = {};\nconst directPersonLookup = {};\n\nfor (let index = 0; index < directNameKeys.length; index += 1) directNameLookup[String(directNameKeys[index])] = true;\nfor (let index = 0; index < directPersonIds.length; index += 1) directPersonLookup[String(directPersonIds[index])] = true;\n\nfunction clean(value) { return value == null ? '' : String(value).trim(); }\nfunction normalize(value) { return clean(value).toLocaleLowerCase().replace(/\\s+/g, ' '); }\nfunction firstValue(item, keys) {\n  for (let index = 0; index < keys.length; index += 1) {\n    const value = item && item[keys[index]];\n    if (value !== undefined && value !== null && String(value).trim() !== '') return String(value).trim();\n  }\n  return '';\n}\n\nconst byKey = {};\nif (Array.isArray(items)) {\n  for (let index = 0; index < items.length; index += 1) {\n    const item = items[index] || {};\n    const rawName = firstValue(item, ['DisplayName', 'displayName', 'PersonName', 'personName']);\n    const personId = firstValue(item, ['PersonId', 'personId', 'WorkerId', 'workerId', 'SourceId', 'sourceId']);\n    const nameKey = normalize(rawName);\n    const isDirect = (personId && directPersonLookup[personId]) || (nameKey && directNameLookup[nameKey]);\n    if (!rawName || !isDirect) continue;\n    if (byKey[nameKey] == null) byKey[nameKey] = rawName;\n  }\n}\nconst recipientNames = Object.keys(byKey).map((key) => byKey[key]);\nrecipientNames.sort((left, right) => left.localeCompare(right));\nconst result = { recipientNames: recipientNames };\nreturn result;"
+                  },
+                  "outcomes": {
+                    "success": "1770747384145"
+                  },
+                  "code": "PARSE_EMPLOYEE_NAMES",
+                  "id": "1770769681096",
+                  "inputs": [],
+                  "type": "CODE",
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"recipientNames\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          }\n        }\n      },\n      \"required\": [\n        \"recipientNames\"\n      ]\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                }
+              ],
+              "rootNode": "start_1770745559368"
+            },
+            "loopType": "SEQUENTIAL",
+            "name": "For Each Top Skill"
+          },
+          "outcomes": {
+            "success": "1773000000003"
+          },
+          "code": "FOR_EACH_TOP_SKILL",
+          "id": "1770745559368",
+          "inputs": [
+            {
+              "id": "1770745559369_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$nodes.PARSE_TOP_SKILLS.$output.result.rows}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_MYTEAM",
+            "functionName": "search_for_directs",
+            "name": "Fetch My Team Directs"
+          },
+          "outcomes": {
+            "success": "1773000000002"
+          },
+          "code": "FETCH_MY_TEAM_DIRECTS",
+          "id": "1773000000001",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Direct Report Filter",
+            "returnType": "object",
+            "sourceCode": "const response = $context.$nodes.FETCH_MY_TEAM_DIRECTS.$output;\n\nfunction extractItems(value) {\n  if (Array.isArray(value && value.items)) return value.items;\n  if (Array.isArray(value)) return value;\n  if (Array.isArray(value && value.result)) return value.result;\n  return [];\n}\n\nfunction clean(value) {\n  return value == null ? '' : String(value).trim();\n}\n\nfunction normalize(value) {\n  return clean(value).toLocaleLowerCase().replace(/\\s+/g, ' ');\n}\n\nconst directItems = extractItems(response);\nconst directReports = [];\nconst directNameKeys = [];\nconst directPersonIds = [];\nconst seenNameKeys = {};\nconst seenPersonIds = {};\n\nfor (let index = 0; index < directItems.length; index += 1) {\n  const item = directItems[index] || {};\n  const displayName = clean(item.DisplayName || item.displayName || item.PersonName || item.personName || item.FullName || item.fullName);\n  const personId = clean(item.PersonId || item.personId || item.WorkerId || item.workerId);\n  const nameKey = normalize(displayName);\n\n  if (nameKey && seenNameKeys[nameKey] == null) {\n    seenNameKeys[nameKey] = true;\n    directNameKeys.push(nameKey);\n  }\n  if (personId && seenPersonIds[personId] == null) {\n    seenPersonIds[personId] = true;\n    directPersonIds.push(personId);\n  }\n  if (nameKey || personId) {\n    directReports.push({ personId: personId, displayName: displayName, nameKey: nameKey });\n  }\n}\n\nconst result = {\n  directReports: directReports,\n  directNameKeys: directNameKeys,\n  directPersonIds: directPersonIds,\n  totalDirectReports: directReports.length\n};\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1770339601954"
+          },
+          "code": "PREPARE_DIRECT_REPORT_FILTER",
+          "id": "1773000000002",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Direct Skills Display",
+            "returnType": "object",
+            "sourceCode": "let rows = $context.$variables.employeesRecommendedSkills;\nif (!Array.isArray(rows)) {\n  rows = [];\n}\n\nlet maxSkills = Number($context.$variables.maxSkills);\nif (!Number.isInteger(maxSkills) || maxSkills <= 0) {\n  maxSkills = 5;\n}\n\nconst candidates = [];\nfor (let index = 0; index < rows.length; index += 1) {\n  const row = rows[index] || {};\n  const skillId = row.skillId == null ? '' : String(row.skillId).trim();\n  const skillTitle = typeof row.skillTitle === 'string' ? row.skillTitle.trim() : '';\n  const employees = Array.isArray(row.employees) ? row.employees.slice() : [];\n  const count = employees.length;\n  if (!skillId || !skillTitle || count <= 0) {\n    continue;\n  }\n  candidates.push({ skillId: skillId, skillTitle: skillTitle, count: count, orgRecommendationCount: Number(row.orgRecommendationCount || 0), employees: employees });\n}\n\ncandidates.sort((left, right) => {\n  if (right.count !== left.count) return right.count - left.count;\n  return left.skillTitle.localeCompare(right.skillTitle);\n});\n\nconst finalRows = candidates.slice(0, maxSkills);\nfor (let rowIndex = 0; rowIndex < finalRows.length; rowIndex += 1) {\n  finalRows[rowIndex].displayOrder = rowIndex + 1;\n}\n\nconst directContext = $context.$nodes.PREPARE_DIRECT_REPORT_FILTER.$output.result || {};\nconst result = {\n  rows: finalRows,\n  totalSkills: finalRows.length,\n  totalDirectReports: Number(directContext.totalDirectReports || 0),\n  asOfDate: $context.$system.$currentDate\n};\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1770681334179"
+          },
+          "code": "PREPARE_DIRECT_SKILLS_DISPLAY",
+          "id": "1773000000003",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1770926285435",
+          "name": "facetsForRecommendationsQuery",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1770925891239",
+          "name": "facetsForSkillsQuery",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1770747834893",
+          "name": "employeesRecommendedSkills",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1770746751600",
+          "name": "maxRecommendationsPerSkill",
+          "scope": "JOB",
+          "type": "integer"
+        },
+        {
+          "id": "1770743351815",
+          "name": "maxSkills",
+          "scope": "JOB",
+          "type": "integer"
+        },
+        {
+          "id": "1770741821811",
+          "name": "objectCategories",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1773000000004",
+          "name": "maxCandidateSkills",
+          "scope": "JOB",
+          "type": "integer"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "deletedTriggerTypes": [],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI"
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "LEARNING",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": true,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"2\""
+  }
+}

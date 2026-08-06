@@ -1,0 +1,1590 @@
+{
+  "workflowId": "100002355227156",
+  "workflowCode": "ORA_NCR_VALIDATION_AND_CART_MODIFICATION_ASSISTANT",
+  "name": "NCR Validation and Cart Modification Assistant",
+  "description": "Validates field values for noncatalog requests and assists users in modifying shopping cart details.",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1767703844190"
+          },
+          "diagram": {
+            "x": 6300,
+            "y": 5000
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "name": "parse json input",
+            "returnType": "object",
+            "sourceCode": "const jsonObject = JSON.parse($context.$system.$inputMessage);\nreturn jsonObject;"
+          },
+          "outcomes": {
+            "success": "1767704020506"
+          },
+          "diagram": {
+            "x": 6198,
+            "y": 5246
+          },
+          "code": "PARSE_JSON_INPUT",
+          "id": "1767703844190",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Topic Router"
+          },
+          "outcomes": {
+            "1": "1767704167299",
+            "2": "1767719739196"
+          },
+          "diagram": {
+            "x": 6198,
+            "y": 5468
+          },
+          "code": "TOPIC_ROUTER",
+          "convergenceTargetId": "1767703994651",
+          "id": "1767704020506",
+          "inputs": [
+            {
+              "id": "1767704020507_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.PARSE_JSON_INPUT.$output.result.Topic}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "Route to NCR validation Stage"
+          },
+          "outcomes": {
+            "1": "1767716187429",
+            "2": "1767717532636",
+            "3": "1767718684812"
+          },
+          "diagram": {
+            "x": 5961,
+            "y": 5690
+          },
+          "code": "ROUTE_TO_STAGE",
+          "convergenceTargetId": "1767703994651",
+          "id": "1767704167299",
+          "inputs": [
+            {
+              "id": "1767704167300_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.PARSE_JSON_INPUT.$output.result.Stage}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "name": "Edit Cart Feedback Analyzer"
+          },
+          "outcomes": {
+            "success": "1773650190575"
+          },
+          "diagram": {
+            "x": 6432,
+            "y": 5690
+          },
+          "code": "EDIT_CART_FEEDBACK_ANALYZER",
+          "id": "1767719739196",
+          "inputs": [
+            {
+              "id": "1767719739197_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Agent Persona and Role:\nAs a Edit Cart Feedback Analyzer, your role is to identify if user want to perform edit on the cart like updating delivery location, update line quantities, update requester and remove lines etc from user provied feedback content {{$context.$nodes.PARSE_JSON_INPUT.$output.result.editCartFeedback}}.\n\nINSTRUCTIONS:\n\n1. Take the user provided content from {{$context.$nodes.PARSE_JSON_INPUT.$output.result.editCartFeedback}} and set it to variable INPUT. Also set the value of {{$context.$nodes.PARSE_JSON_INPUT.$output.result.TotalLines}} to variable LINESCOUNT.\n\n2. Check if the INPUT contains the location information mentioned with cue words like \"location\" ,\"address\" , \"deliver to location\" , \"internal location\" , \"location\" etc. if yes, set the found location information to the variable LOCATION. If no location information is provided set the default value of null to the variable LOCATION. For example if the INPUT is \"update location to V1 - New York\", you should be able to extract \"V1 - New york\" and set it to variable LOCATION. Please follow this rule Strictly. Be a keep observer for cue words to identify location information. Please do not hallucinate.\n\n3. Examine the INPUT to determine whether the user intends to update the Requester of the cart.\n\n* Detect requester information using cue words such as \"requester\", \"requested by\", \"change requester to\", \"update requester to\", \"set requester as\", \"assign requester to\".\n* If requester information is present, extract the requester name exactly as mentioned by the user and set it to the variable REQUESTER.\n* Example: If the INPUT is \"change requester to John Smith\", extract \"John Smith\" and set it to variable REQUESTER.\n* Example: If the INPUT is \"set requester as David Miller\", extract \"David Miller\" and set it to variable REQUESTER.\n* If requester information is not provided set the default value of null to the variable REQUESTER.\n* Do NOT hallucinate requester names. Extract requester information only if explicitly mentioned in INPUT.\n\n4. DELETE LINES EXTRACTION:\n\n- Detect lines removal intent using:\n  (\"remove\", \"delete\", \"cancel\", \"drop\", \"exclude\")\n\n- A number or range MUST be associated with a line reference word:\n  (\"line\", \"lines\")\n\n- VALID PATTERNS:\n  • \"delete line 2\"\n  • \"delete lines 2 and 5\"\n  • \"delete lines 1, 3 and 5\"\n  • \"delete lines 1 to 3\"\n  • \"delete lines from 1 to 3\"\n\n- RANGE HANDLING (STRICT):\n  If pattern matches:\n    \"lines X to Y\" OR \"lines from X to Y\"\n  THEN:\n    → Expand into full range [X, X+1, ..., Y]\n\n- IMPORTANT:\n  If \"to\" is present but NO clear \"line/lines\" reference → IGNORE\n\n- MULTIPLE VALUES:\n  • \"and\", \",\" → treat as list\n\n- WORD NUMBERS:\n  Convert:\n  one→1, two→2, three→3, four→4, five→5, etc.\n\n- STRICT FILTERING:\n  Extract numbers ONLY when tied to line references.\n  IGNORE all other numbers.\n\n- EDGE CASE:\n  If user says:\n  \"delete 1 to 3\"\n  (without \"line/lines\")\n  → still ACCEPT as range IF delete intent exists\n\n- OUTPUT:\n  Always return array of integers\n\n- If no valid extraction → DELETELINES = null\n\n5. Examine the INPUT to Determine whether the user is explicitly requesting an update to line item quantities. If the intent is NOT to update quantities, set the default value of null to variable QUANTITYUPDATES. If the intent is to update quantities, follow the below rules strictly:\n\n   * Identify all line numbers mentioned.\n\n   * Identify the quantity associated with each line.\n\n   * Support:\n     • Single line updates\n     • Multiple line updates\n     • Line ranges (e.g., \"lines 2 to 4\")\n\n   * Return the result as an array of JSON objects and set it to variable QUANTITYUPDATES.\n\n   * Each object must contain exactly ONE key-value pair:\n\n     * key   → line number (string)\n     * value → quantity (number)\n\n   * Output ONLY valid JSON.\n\n   * Do NOT include explanations, comments, or additional text.\n\n   * Do NOT infer missing data.\n\n   * Do NOT guess quantities.\n\n   * Do NOT merge multiple lines into one object.\n\n   * Do NOT return undefined, empty strings, or empty arrays.\n\n   * If line count ≠ quantity count (after expanding ranges), return null and set it to variable QUANTITYUPDATES.\n\n   * Quantities in INPUT may use locale-specific number formats.\n\n   * Take GroupingSeparator from {{$context.$nodes.PARSE_JSON_INPUT.$output.result.GroupingSeparator}} to identify grouped digits.\n\n   * Take DecimalSeparator from {{$context.$nodes.PARSE_JSON_INPUT.$output.result.DecimalSeparator}} to identify the decimal fraction.\n\n   * While parsing Remove all GroupingSeparator characters and Replace the input DecimalSeparator with . for internal numeric interpretation.\n\n   * Do NOT change the numeric value.\n\n   * If the user specifies a line range AND a single quantity,\n     apply that quantity to ALL lines in the range.\n\n     * Example: \"change lines 2 to 4 to quantity 5\"\n       → [{ \"2\":5 }, { \"3\":5 }, { \"4\":5 }]\n\n   * If the user specifies a line range AND multiple quantities, map them sequentially.\n\n     * Example: \"change lines 1 to 3 to 5, 6, 7\"\n       → [{ \"1\":5 }, { \"2\":6 }, { \"3\":7 }]\n\n   * If the user doesn't specify the line numbers or line range, but provided a single quantity. Then apply that quantity to all lines in the range of 1 to LINESCOUNT. Follow this rule strictly.\n\n     * Example : INPUT is \"Change the line( or lines) quantity to 12\". LINESCOUNT is 3.\n       → [{ \"1\":12 }, { \"2\":12 }, { \"3\":12 }]\n\n   * If user Input is \"Change Line 1 quantity to 123.000,55\" (GroupingSeparator=\".\" DecimalSeparator=\",\")\n     → Output:[{ \"1\":123000.55 }]\n\n   * If user Input is \"Change Line 1 quantity to 123 000.555\" (GroupingSeparator=\" \" DecimalSeparator=\".\")\n     → Output:[{ \"1\":123000.555 }]\n\n   * If user Input is \"Change Line 1 quantity to 4.567\" (GroupingSeparator=\".\" DecimalSeparator=\",\")\n     → Output:[{ \"1\":4567 }]\n\n   * If any ambiguity, mismatch, or missing value exists, return null and set it to variable QUANTITYUPDATES.\n\n6. Use the above information and prepare the json payload using the OUTPUT JSON FORMAT mentioned later strictly.\n\nDO  NOT MENTION STRATEGY USED TO GATHER INFORMATION.\n\nResponsibilities:\n\n1. You should not use any keyword or phrase that is beyond the user provided string.\n2. You should always use the latest {{$context.$nodes.PARSE_JSON_INPUT.$output.result.editCartFeedback}} to analyse the input.\n\nFor example, for the INPUT \"Internal location is Vision operations and remove lines 1 and 3\" the output should be:\n\n{\n\"InternalLocation\" : \"Vision Operations\",\n\"Requester\" : null,\n\"DeleteLines\" : [1,3],\n\"QuantityUpdates\" : null\n}\n\nFor example, for the INPUT \"address is new york and delete lines from 3 to 5\" the output should be:\n\n{\n\"InternalLocation\" : \"new york\",\n\"Requester\" : null,\n\"DeleteLines\" : [3,4,5],\n\"QuantityUpdates\" : null\n}\n\nFor example, for the INPUT \"Location is Vision operations and delete line two\" the output should be:\n\n{\n\"InternalLocation\" : \"Vision Operations\",\n\"Requester\" : null,\n\"DeleteLines\" : [2],\n\"QuantityUpdates\" : null\n}\n\nFor example, for the INPUT \"Location is Vision operations\" the output should be:\n\n{\n\"InternalLocation\" : \"Vision Operations\",\n\"Requester\" : null,\n\"DeleteLines\" : null,\n\"QuantityUpdates\" : null\n}\n\nFor example, for the INPUT \"change requester to John Smith\" the output should be:\n\n{\n\"InternalLocation\" : null,\n\"Requester\" : \"John Smith\",\n\"DeleteLines\" : null,\n\"QuantityUpdates\" : null\n}\n\nFor example, for the INPUT \"change requester to David Miller and remove line 2\" the output should be:\n\n{\n\"InternalLocation\" : null,\n\"Requester\" : \"David Miller\",\n\"DeleteLines\" : [2],\n\"QuantityUpdates\" : null\n}\n\nFor example, for the INPUT \"change the quantities of lines 1, 3 and 5 to 10, 1 and 2\" the output should be:\n\n{\n\"InternalLocation\" : null,\n\"Requester\" : null,\n\"DeleteLines\" : null,\n\"QuantityUpdates\" : [{ \"1\": 10 },{ \"3\": 1 },{ \"5\": 2 }]\n}\n\nFor example, for the INPUT \"update line 2 quantity to 7\" the output should be:\n\n{\n\"InternalLocation\" : null,\n\"Requester\" : null,\n\"DeleteLines\" : null,\n\"QuantityUpdates\" : [{ \"2\": 7 }]\n}\n\nFor example, for the INPUT \"change quantity of lines 2 to 4 to 5\" the output should be:\n\n{\n\"InternalLocation\" : null,\n\"Requester\" : null,\n\"DeleteLines\" : null,\n\"QuantityUpdates\" : [{ \"2\": 5 },{ \"3\": 5 },{ \"4\": 5 }]\n}\n\nFor example, for the INPUT \"change quantity of lines 1 to 3 to 5 and 6\" the output should be:\n\n{\n\"InternalLocation\" : null,\n\"Requester\" : null,\n\"DeleteLines\" : null,\n\"QuantityUpdates\" : null\n}\n\nOUTPUT JSON FORMAT:\n\n{\n\"InternalLocation\" : LOCATION,\n\"Requester\" : REQUESTER,\n\"DeleteLines\" : DELETELINES,\n\"QuantityUpdates\" : QUANTITYUPDATES\n}\n\nOnly return the JSON payload."
+            }
+          ],
+          "type": "LLM",
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"InternalLocation\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"Requester\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"DeleteLines\": {\n      \"type\": [\"array\", \"null\"],\n      \"items\": {\n        \"type\": \"number\"\n      }\n    },\n    \"QuantityUpdates\": {\n      \"type\": [\"array\", \"null\"],\n      \"items\": {\n        \"type\": \"object\",\n        \"additionalProperties\": {\n          \"type\": \"number\"\n        }\n      }\n    }\n  },\n  \"required\": [\"InternalLocation\", \"Requester\", \"DeleteLines\", \"QuantityUpdates\"],\n  \"additionalProperties\": false\n}"
+        },
+        {
+          "metadata": {
+            "name": "set derived UOM stage 1"
+          },
+          "outcomes": {
+            "success": "1767716301796"
+          },
+          "diagram": {
+            "x": 4576.489262587942,
+            "y": 5794.29918291249
+          },
+          "code": "SET_DERIVED_UOM_STAGE_1",
+          "id": "1767716187429",
+          "inputs": [
+            {
+              "id": "1767716201641",
+              "name": "derivedUOM",
+              "type": "string",
+              "value": "{{$context.$nodes.PARSE_JSON_INPUT.$output.result.derivedUOM}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Ncr Feedback analyser 1"
+          },
+          "outcomes": {
+            "success": "1767717637113"
+          },
+          "diagram": {
+            "x": 5811.161376504674,
+            "y": 5867.862193592184
+          },
+          "code": "NCR_FEEDBACK_ANALYSER_1",
+          "id": "1767717532636",
+          "inputs": [
+            {
+              "id": "1767717532637_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Agent Persona and Role:\n\nAs a Feedback analyser, your role is to extract values of the fields:\n\nDescription, Category, Quantity, UOM, Currency, Price and LineTypeId\n\nfrom the user provided input\n{{$context.$nodes.PARSE_JSON_INPUT.$output.result.NcrFeedback}}.\n\nINSTRUCTIONS\n1. Input Initialization:\n\nTake the user provided content from\n{{$context.$nodes.PARSE_JSON_INPUT.$output.result.NcrFeedback}}\nand set it to variable INPUT.\n\nAll extraction must analyse the complete INPUT string.\n\n2. Description Extraction:\n\nIdentify the description of product/service explicitly mentioned with cues like:\n\n\"description\"\n\n\"item description\"\n\n\"change description to\"\n\nIf found:\n\nExtract the exact value provided by user.\n\nDo NOT modify, rephrase, or enhance it.\n\nAssign it to DESCRIPTION.\n\nIf not found:\n\nDESCRIPTION = null\n\nDo not hallucinate.\n\n3. Category Extraction:\n\nIdentify item category names explicitly mentioned with cues like:\n\n\"category\"\n\n\"Category\"\n\n\"change category to\"\n\n\"set category as\"\n\nExamples:\nLaptop Accessory, laser printer, network switch, Software, Medical/Surgical Equipment.\n\nIf found:\n\nExtract exact value.\n\nDo NOT modify.\n\nAssign to CATEGORY.\n\nIf not found:\n\nCATEGORY = null\n\nDo not hallucinate.\n\n4. Quantity Extraction (Intent-Independent & Mandatory):\n\nCheck if INPUT contains Quantity information.\n\nQuantity extraction must be performed regardless of the primary intent of the sentence.\n\nEven if INPUT is:\n\nA line type change instruction\n\nAn item type change instruction\n\nA description update\n\nA category update\n\nA mixed instruction\n\nIf a valid numeric value representing quantity exists anywhere in INPUT, it MUST be extracted.\n\nThe presence of phrases like:\n\n\"change line type\"\n\n\"change item type\"\n\n\"update description\"\n\n\"set category\"\n\nmust NOT suppress Quantity detection.\n\n4.1 Identification Rules\n\nDo NOT confuse Quantity with Price.\n\nBoth are numeric values.\n\nOnly extract numeric values that represent count, measurable units, effort, duration, or physical quantity.\n\nExamples:\n\n\"I want 5 laptop bags\" → Quantity = \"5\"\n\"Cleaning of 5 floors\" → Quantity = \"5\"\n\nConvert the numeric value to string before assigning to QUANTITY.\n\nIf no quantity exists → QUANTITY = null\n\n4.2 Locale-Specific Number Handling\n\na. Quantities may use locale-specific number formats.\nb. Take GroupingSeparator from:\n{{$context.$nodes.PARSE_JSON_INPUT.$output.result.GroupingSeparator}}\nc. Take DecimalSeparator from:\n{{$context.$nodes.PARSE_JSON_INPUT.$output.result.DecimalSeparator}}\nd. While parsing:\n\nRemove all GroupingSeparator characters.\n\nReplace DecimalSeparator with \".\" for internal numeric interpretation.\ne. Do NOT change numeric value meaning.\n\nExamples:\n\nInput: 123.000,55\n(GroupingSeparator=\".\" DecimalSeparator=\",\")\n→ Quantity: 123000.55\n\nInput: 123 000.555\n(GroupingSeparator=\" \" DecimalSeparator=\".\")\n→ Quantity: 123000.555\n\nInput: 5.324\n(GroupingSeparator=\".\" DecimalSeparator=\",\")\n→ Quantity: 5324\n\n5. UOM Extraction:\n\nCheck if INPUT contains Unit of Measure.\n\nDetect even if user does not explicitly mention \"UOM\".\n\nExamples:\n\nEach, dozen, box, case, boxes, dozens, cases, floors, hours, days, kg, liters etc.\n\nRules:\n\nConvert plural forms to singular:\n\nboxes → box\n\ndozens → dozen\n\ncases → case\n\nExample:\n\"$150 Each\" → UOM = \"Each\"\n\nIf not found → UOM = null\n\nDo not hallucinate.\n\n----------------------------------\n\n5.1 — STRICT UOM VALIDATION (CRITICAL)\n\nUOM must ONLY be assigned if the detected term represents a valid unit of measure.\n\nValid UOM categories include:\n\n• Standard units:\n  each, unit, piece, item\n\n• Packaging units:\n  box, case, carton, pack, dozen\n\n• Time units:\n  hour, hr, day, week, month, year\n\n• Weight/volume units:\n  kg, gram, ton, liter, ml, gallon\n\n• Area/length units:\n  meter, km, sqft, sq meter\n\n• Service units:\n  session, visit, ticket, trip\n\n----------------------------------\n\nINVALID UOM DETECTION:\n\nIf the word represents a product, object, or noun (e.g., alarm, laptop, chair, printer, bag, etc.),\n\nThen:\n\n→ It MUST NOT be treated as UOM\n\n→ UOM = null (unless a valid unit is explicitly present)\n\n----------------------------------\n\nExamples:\n\n\"120 alarms\" → UOM = null\n\"10 chairs\" → UOM = null\n\"5 laptop bags\" → UOM = null\n\n\"10 boxes\" → UOM = box\n\"5 hours\" → UOM = hour\n\n----------------------------------\n\n6. Currency Extraction:\n\nCheck if INPUT contains Currency information.\n\nDetect:\n\nCurrency codes:\nUSD, INR, GBP, EUR etc.\n\nCurrency symbols:\n$ → USD\n₹ → INR\n£ → GBP\n€ → EUR\n\nExtract only currency code.\n\nIf not found → Currency = null\n\nDo not hallucinate.\n\n7.Price Extraction (Strict Disambiguation Rules):\n\nCheck if INPUT contains Price information.\n\n7.1 Price Identification Rules\n\nA numeric value must be treated as PRICE if ANY of the following is true:\n\nAssociated with a currency symbol ($, ₹, €, £ etc.)\n\nAssociated with a currency code (USD, INR, GBP etc.)\n\nPreceded or followed by monetary indicators such as:\n\nprice\n\nvalue\n\ncost\n\namount\n\ntotal\n\nper unit\n\neach (when used in monetary context)\n\nAppears immediately after a currency reference\n\nPrice does not strictly require cue words like price or value.\nIt may appear in formats such as:\n\n$150\n\nUSD 150\n\n150\n\n7.2 Quantity vs Price Conflict Resolution\n\nIf multiple numeric values exist in INPUT:\n\nNumbers associated with measurable units\n→ MUST be treated as Quantity\n\nNumbers associated with currency\n→ MUST be treated as Price\n\nExample:\n\nINPUT: I need 10 chairs at USD 150 each\n\nResult:\n\nQuantity = \"10\"\nPrice = \"150\"\n7.3 Standalone Number Rule\n\nIf only one numeric value exists:\n\nIf associated with measurable unit → Quantity\n\nIf associated with currency → Price\n\nIf no clear context → treat as Price only if strong monetary context exists\n\nOtherwise do not guess.\n\n7.4 Locale-Aware Number Parsing\n\nPrice values in INPUT may use locale-specific number formats.\n\nTo correctly interpret numbers:\n\nTake GroupingSeparator from\n{{$context.$nodes.PARSE_JSON_INPUT.$output.result.GroupingSeparator}}\n\nTake DecimalSeparator from\n{{$context.$nodes.PARSE_JSON_INPUT.$output.result.DecimalSeparator}}\n\nWhile parsing the price value:\n\nRemove all GroupingSeparator characters\n\nReplace the input DecimalSeparator with . for internal interpretation\n\nDo NOT change the numeric value\n\nExample:\n\nInput\tGrouping\tDecimal\tInterpreted\n1,200.50\t,\t.\t1200.50\n1.200,50\t.\t,\t1200.50\n7.5 Strict Separation Rule\n\nA number assigned as QUANTITY must NOT be reassigned as PRICE.\n\nA number assigned as PRICE must NOT be reassigned as QUANTITY.\n\nEach numeric value can serve only one role.\n\n7.6 Output Rules\n\nExtract only the numeric portion of the price.\n\nConvert the value to string.\n\nAssign it to variable PRICE.\n\nIf no price exists:\n\nPRICE = null\n\nDo not hallucinate or assume values.\n\n8. LineTypeId Extraction:\n\nLineTypeId represents the billing type of the line.\n\n----------------------------------\nVALID LINE TYPES AND IDS\n\n1  → Goods billed by quantity\n7  → Services billed by quantity\n6  → Services billed by amount\n\n----------------------------------\nDEFINITIONS\n\nGoods billed by quantity:\n- Refers to tangible physical products.\n- Counted or measured in units such as pieces, units, kg, grams, liters, ml, boxes, cartons, etc.\n\nServices billed by quantity:\n- Refers to intangible services.\n- Charged based on measurable service units such as duration, effort, count, or frequency.\n\nServices billed by amount:\n- Refers to intangible services.\n- Charged as a fixed fee, lump sum, contract value, or total charge.\n- No measurable quantity units involved.\n\n----------------------------------\n8.1 — Detect Line Type Change Attempt\n\nFirst determine whether the user is attempting to define or change the line type.\n\nLook for phrases such as:\n\nchange line type\nchange linetype\nchange item type\nupdate line type\nset line type\nset item type\nmake this a service\nmake this a product\nthis is a service\nthis is a product\n\nIf no such attempt exists:\n\nLineTypeId = null\n\n----------------------------------\n8.2 — GENERAL MEASURABLE UNIT RULE\n\nIf a numeric value in INPUT is directly associated with ANY measurable unit that represents:\n\n• Count (items, pieces, units, tickets, sessions, visits, etc.)\n• Duration (hours, hrs, days, weeks, months, years, nights, etc.)\n• Frequency (times, occurrences, repetitions, etc.)\n• Effort (man-days, man-hours, etc.)\n• Weight (kg, grams, tons, etc.)\n• Volume (liters, ml, gallons, etc.)\n• Length or area (meters, km, sqft, etc.)\n• Any other logically measurable unit\n\nThen:\n\n→ It MUST be treated as QUANTITY.\n\n----------------------------------\n8.3 — CLASSIFICATION RULES\n\nRule 1 — Physical Product Detection\n\nIf INPUT clearly refers to a tangible physical item such as:\n\nproducts, goods, materials, equipment, devices, hardware, supplies,\nor any clearly identifiable physical object,\n\nThen:\n\nLineTypeId = 1\n(Goods billed by quantity)\n\nQuantity is NOT mandatory for goods classification.\n\n\nRule 2 — Service with Measurable Quantity\n\nIf INPUT describes a service AND contains a measurable unit tied to a numeric value,\n\nThen:\n\nLineTypeId = 7\n(Services billed by quantity)\n\n\n\nRule 3 — Service without Measurable Quantity\n\nIf INPUT describes a service but does NOT contain measurable units\nand implies fixed pricing, lump sum, or contract amount,\n\nThen:\n\nLineTypeId = 6\nUOM = null\n(Services billed by amount)\n\n----------------------------------\n8.4 — Unclassifiable Attempt\n\nIf the user attempted to change line type but the input cannot be mapped\nto any valid classification above,\n\nThen:\n\nLineTypeId = -1\n\n----------------------------------\n8.5 — STRICT OUTPUT CONSTRAINT (CRITICAL)\n\nLineTypeId is a strictly controlled numeric field.\n\nAllowed values are ONLY:\n\n1\n6\n7\n-1\nnull\n\nThe model MUST NEVER return any other value.\n\nUser-provided text MUST NEVER be copied into LineTypeId.\n\nExamples:\n\nINPUT: set line type to harish\n→ LineTypeId = -1\n\nINPUT: change line type to abc123\n→ LineTypeId = -1\n\n----------------------------------\n8.6 — FINAL VALIDATION\n\nBefore returning the final JSON:\n\nVerify that LineTypeId is one of the allowed values:\n\n1, 6, 7, -1, null\n\nIf LineTypeId contains any other value, override it and set:\nLineTypeId = -1\n\nResponsibilities:\n\nDo not use phrases beyond user provided string.\n\nDo not hallucinate.\n\nDo not generate random numbers.\n\nAlways use latest {{$context.$nodes.PARSE_JSON_INPUT.$output.result.NcrFeedback}}.\n\nReturn only JSON.\n\nOUTPUT JSON FORMAT:\n\n{\n\"Description\": DESCRIPTION,\n\"Category\": CATEGORY,\n\"Quantity\": QUANTITY,\n\"UOM\": UOM,\n\"Currency\": CURRENCY,\n\"Price\": PRICE,\n\"LineTypeId\": LINETYPEID\n}\n\nReturn exactly one valid JSON object and nothing else."
+            }
+          ],
+          "type": "LLM",
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"Description\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"Category\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"Quantity\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"UOM\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"Currency\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"Price\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"LineTypeId\": {\n      \"type\": [\"number\", \"null\"],\n      \"enum\": [1, 6, 7, -1, null]\n    }\n  },\n  \"required\": [\"Description\", \"Category\", \"Quantity\", \"UOM\", \"Currency\", \"Price\", \"LineTypeId\"],\n  \"additionalProperties\": false\n}"
+        },
+        {
+          "metadata": {
+            "name": "Set derived UOM in Stage 3"
+          },
+          "outcomes": {
+            "success": "1767718739944"
+          },
+          "diagram": {
+            "x": 6008.920506033067,
+            "y": 6179.933790213899
+          },
+          "code": "SET_DERIVED_UOM_IN_STAGE_3",
+          "id": "1767718684812",
+          "inputs": [
+            {
+              "id": "1767718687775",
+              "name": "derivedUOM",
+              "type": "string",
+              "value": "{{$context.$nodes.PARSE_JSON_INPUT.$output.result.derivedUOM}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Check if Requester derived"
+          },
+          "outcomes": {
+            "true": "1773652082189",
+            "false": "1767719861614"
+          },
+          "diagram": {
+            "x": 6946.076699419,
+            "y": 5912
+          },
+          "code": "CHECK_IF_REQUESTER_DERIVED",
+          "convergenceTargetId": "1767719861614",
+          "id": "1773650190575",
+          "inputs": [
+            {
+              "id": "1773650190576_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EDIT_CART_FEEDBACK_ANALYZER.$output.Requester != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "check if derived UOM exists in stage 1"
+          },
+          "outcomes": {
+            "true": "1767716363963",
+            "false": "1767716242421"
+          },
+          "diagram": {
+            "x": 3972.454955079026,
+            "y": 5981.969777928633
+          },
+          "code": "CHECK_IF_DERIVED_UOM_EXISTS_IN_STAGE_1",
+          "convergenceTargetId": "1767716242421",
+          "id": "1767716301796",
+          "inputs": [
+            {
+              "id": "1767716301797_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.derivedUOM != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "check if NCR in feedback analyser 1"
+          },
+          "outcomes": {
+            "true": "1767717684907",
+            "false": "1767717939187"
+          },
+          "diagram": {
+            "x": 5284.60606543586,
+            "y": 5957.448774368735
+          },
+          "code": "CHECK_IF_NCR_IN_FEEDBACK_ANALYSER_1",
+          "convergenceTargetId": "1767717939187",
+          "id": "1767717637113",
+          "inputs": [
+            {
+              "id": "1767717637114_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.NCR_FEEDBACK_ANALYSER_1.$output.Category != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Price and UOM Extractor"
+          },
+          "outcomes": {
+            "success": "1767718823825"
+          },
+          "diagram": {
+            "x": 5798.731734251356,
+            "y": 6456.738429121287
+          },
+          "code": "PRICE_AND_UOM_EXTRACTOR",
+          "id": "1767718739944",
+          "inputs": [
+            {
+              "id": "1767718739945_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Agent Persona and Role:\nYou are a Price and Unit of Measure (UOM) extraction agent.\nYour only responsibility is to extract Price and UOM values from the user input:\n{{$context.$nodes.PARSE_JSON_INPUT.$output.result.UomAndPriceFeedback}}\n\nPROCESSING INSTRUCTIONS (STRICT ORDER — DO NOT SKIP ANY STEP)\nStep 1: Initialize Input\n   -Assign the value of {{$context.$nodes.PARSE_JSON_INPUT.$output.result.UomAndPriceFeedback}} to a variable named INPUT.\n   -Do not modify INPUT.\n\nStep 2: Extract UOM\n   -Examine INPUT and determine whether it explicitly or implicitly contains a Unit of Measure.\n   -UOM does NOT require cue words such as uom, unit of measure.\n   -UOM can appear anywhere in INPUT.\n   -Valid UOM examples include (but are not limited to):\n        -each, box, dozen, case\n        -composite values like box of 5\n   -If a plural form is found, convert it to its singular form:\n        -boxes → box\n        -dozens → dozen\n        -cases → case\n   -If a UOM is found, assign it to variable UOM.\n   -If no UOM is found, set UOM = null.\n   -DO NOT hallucinate or infer UOMs not present in INPUT.\n\nStep 3: Extract Price\n  -Examine INPUT and determine whether it contains a numeric price value.\n  -Price does not require cue words like price or value.\n  -Price may appear as:\n     -$150\n     -USD 150\n     -150\n  -Extract only the numeric portion.\n  -Convert the extracted price to a string and assign it to variable PRICE.\n  -If no numeric value is found, set PRICE = null.\n  -DO NOT generate or assume prices.\n  -Price in INPUT may use locale-specific number formats.\n  -Take GroupingSeparator from {{$context.$nodes.PARSE_JSON_INPUT.$output.result.GroupingSeparator}} to identify grouped digits.\n  -Take DecimalSeparator from {{$context.$nodes.PARSE_JSON_INPUT.$output.result.DecimalSeparator}} to identify the decimal fraction.\n  -While parsing Remove all GroupingSeparator characters and Replace the input DecimalSeparator with . for internal numeric interpretation.\n  -Do NOT change the numeric value.\n\n Examples:\n Input: 123.000,55 (GroupingSeparator=\".\" DecimalSeparator=\",\")\n→ Output Price: 123000.55\n\nInput: 123 000.555 (GroupingSeparator=\" \" DecimalSeparator=\".\")\n→ Output Price: 123000.555\n\nInput: 5.345 (GroupingSeparator=\".\" DecimalSeparator=\",\")\n→ Output Price: 5345\n\nStep 4: Standalone Value Enforcement (MANDATORY)\n  -After completing Step 2 and Step 3, evaluate the following condition:\n      IF UOM IS null AND PRICE IS null\n      THEN\n                SET UOM = INPUT\n  -This rule is mandatory and applies to standalone values such as:\n       -each\n       -box\n       -dozen\n  -DO NOT ignore this rule under any circumstances.\n\nStep 5: Output Construction\n  -Return the extracted values using the exact JSON format below.\n  -Return ONLY the JSON.\n  -Do NOT include explanations, comments, or additional text.\n\nOUTPUT JSON FORMAT (STRICT):\n{\n  \"UOM\": UOM,\n  \"Price\": PRICE\n}\n\nVALID OUTPUT EXAMPLES:\n\nINPUT: 10,Each\n\n{\n  \"UOM\": \"Each\",\n  \"Price\": \"10\"\n}\n\n\nINPUT: Uom is each and price is 150\n\n{\n  \"UOM\": \"each\",\n  \"Price\": \"150\"\n}\n\n\nINPUT: each\n\n{\n  \"UOM\": \"each\",\n  \"Price\": null\n}\n\n\nINPUT: 100\n\n{\n  \"UOM\": null,\n  \"Price\": \"100\"\n}\n\nABSOLUTE RULES\n  -Use only values present in INPUT.\n  -Never hallucinate.\n  -Never skip Step 4.\n  -Return only the JSON payload."
+            }
+          ],
+          "type": "LLM",
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"UOM\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"Price\": {\n      \"type\": [\"string\", \"null\"]\n    }\n  },\n  \"required\": [\"UOM\", \"Price\"],\n  \"additionalProperties\": false\n}"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_FSCMRESTENDPOINT",
+            "functionName": "get_requester_details",
+            "name": "fetch Requester"
+          },
+          "outcomes": {
+            "success": "1773652250386"
+          },
+          "diagram": {
+            "x": 7698.625883040817,
+            "y": 6152.268212969129
+          },
+          "code": "FETCH_REQUESTER",
+          "id": "1773652082189",
+          "inputs": [
+            {
+              "id": "1773652104019_1",
+              "name": "queryParamString",
+              "type": "string",
+              "value": "{{$context.$nodes.EDIT_CART_FEEDBACK_ANALYZER.$output.Requester}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "prepare UOM starts with and contains query param criteria in stage 1",
+            "returnType": "object",
+            "sourceCode": "let derivedUOM = $context.$variables.derivedUOM;\nconst currentDate = $context.$system.$currentDate;\nlet response = {};\nresponse['uomStartsWithCriteria'] = null;\nresponse['uomContainsCriteria'] = null;\n\nif(derivedUOM != null){\n  derivedUOM = derivedUOM.toUpperCase();\n\n  let uomStartswithCriteria = `StandardConversion > 0 AND (UOMCode is not null and (DisableDate is null or DisableDate >= '${currentDate}')) AND (StandardConversionEndDate IS NULL OR StandardConversionEndDate > '${currentDate}' ) AND ((UPPER(UOM) like ('${derivedUOM}%')) OR (UPPER(UOMCode) like ('${derivedUOM}%')))`;\n\nlet uomContainsCriteria = `StandardConversion > 0 AND (UOMCode is not null and (DisableDate is null or DisableDate >= '${currentDate}')) AND (StandardConversionEndDate IS NULL OR StandardConversionEndDate > '${currentDate}' ) AND ((UPPER(UOM) like ('%${derivedUOM}%')) OR (UPPER(UOMCode) like ('%${derivedUOM}%')))`;\n\nresponse['uomStartsWithCriteria'] = uomStartswithCriteria;\nresponse['uomContainsCriteria'] = uomContainsCriteria;\n}\n\nreturn response;"
+          },
+          "outcomes": {
+            "success": "1767716687992"
+          },
+          "diagram": {
+            "x": 3368.3238006457186,
+            "y": 6174.544573656756
+          },
+          "code": "PREPARE_UOM_STARTS_WITH_AND_CONTAINS_QUERY_PARAM_CRITERIA_IN_STAGE_1",
+          "id": "1767716363963",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "prepare Category match search criteria 1",
+            "returnType": "object",
+            "sourceCode": "let categoryName = $context.$nodes.NCR_FEEDBACK_ANALYSER_1.$output.Category;\nconst currentDate = $context.$system.$currentDate;\nlet categorySearchCriteria = null;\n\nif(categoryName != null){\ncategoryName = categoryName.toUpperCase();\ncategorySearchCriteria = `(StartDate is null or StartDate <= '${currentDate}') and (EndDate is null or EndDate >= '${currentDate}') AND ((UPPER(CategoryName) like ('${categoryName}%')))`;\n}\n\nreturn categorySearchCriteria;"
+          },
+          "outcomes": {
+            "success": "1767717748059"
+          },
+          "diagram": {
+            "x": 4626.90524834835,
+            "y": 6184.352975080715
+          },
+          "code": "PREPARE_CATEGORY_MATCH_SEARCH_CRITERIA_1",
+          "id": "1767717684907",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "check if user provided UOM in stage 2"
+          },
+          "outcomes": {
+            "true": "1767718884278",
+            "false": "1767703994651"
+          },
+          "diagram": {
+            "x": 5837.195308313097,
+            "y": 6697.006642090416
+          },
+          "code": "CHECK_IF_USER_PROVIDED_UOM_IN_STAGE_2",
+          "convergenceTargetId": "1767703994651",
+          "id": "1767718823825",
+          "inputs": [
+            {
+              "id": "1767718823826_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PRICE_AND_UOM_EXTRACTOR.$output.UOM != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "If Matching Requester Exists"
+          },
+          "outcomes": {
+            "true": "1773652399902",
+            "false": "1767719861614"
+          },
+          "diagram": {
+            "x": 8043.397417055155,
+            "y": 6404.715234584345
+          },
+          "code": "IF_MATCHING_REQUESTER_EXISTS",
+          "convergenceTargetId": "1767719861614",
+          "id": "1773652250386",
+          "inputs": [
+            {
+              "id": "1773652250387_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCH_REQUESTER.$output.items.length > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1767716714607",
+            "1": "1767716791026"
+          },
+          "diagram": {
+            "x": 2514.620417021249,
+            "y": 6578,
+            "width": 1075,
+            "height": 348
+          },
+          "code": "PARALLEL_1767716687995",
+          "convergenceTargetId": "1767716242421",
+          "id": "1767716687992",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1767717776324",
+            "1": "1767717844322"
+          },
+          "diagram": {
+            "x": 4354.74256056152,
+            "y": 6530.143196491267,
+            "width": 829,
+            "height": 348
+          },
+          "code": "PARALLEL_1767717748060",
+          "convergenceTargetId": "1767717939187",
+          "id": "1767717748059",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "name": "prepare uom starts and contains query in Stage 3",
+            "returnType": "object",
+            "sourceCode": "let derivedUOM = $context.$nodes.PRICE_AND_UOM_EXTRACTOR.$output.UOM;\nconst currentDate = $context.$system.$currentDate;\nlet response = {};\nresponse['uomStartsWithCriteria'] = null;\nresponse['uomContainsCriteria'] = null;\n\nif(derivedUOM != null){\n  derivedUOM = derivedUOM.toUpperCase();\n\n  let uomStartswithCriteria = `StandardConversion > 0 AND (UOMCode is not null and (DisableDate is null or DisableDate >= '${currentDate}')) AND (StandardConversionEndDate IS NULL OR StandardConversionEndDate > '${currentDate}' ) AND ((UPPER(UOM) like ('${derivedUOM}%')) OR (UPPER(UOMCode) like ('${derivedUOM}%')))`;\n\nlet uomContainsCriteria = `StandardConversion > 0 AND (UOMCode is not null and (DisableDate is null or DisableDate >= '${currentDate}')) AND (StandardConversionEndDate IS NULL OR StandardConversionEndDate > '${currentDate}' ) AND ((UPPER(UOM) like ('%${derivedUOM}%')) OR (UPPER(UOMCode) like ('%${derivedUOM}%')))`;\n\nresponse['uomStartsWithCriteria'] = uomStartswithCriteria;\nresponse['uomContainsCriteria'] = uomContainsCriteria;\n}\n\nreturn response;"
+          },
+          "outcomes": {
+            "success": "1767718941498"
+          },
+          "diagram": {
+            "x": 6208.814549263498,
+            "y": 7010.347706936063
+          },
+          "code": "PREPARE_UOM_STARTS_AND_CONTAINS_QUERY_IN_STAGE_3",
+          "id": "1767718884278",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "prepare Requester Update Payload",
+            "returnType": "object",
+            "sourceCode": "const derivedRequesterId = $context.$nodes.FETCH_REQUESTER.$output.items[0]?.PersonId;\nconst defaultLocationId = $context.$nodes.FETCH_REQUESTER.$output.items[0]?.LocationId;\nconst requisitionHeaderId = $context.$nodes.PARSE_JSON_INPUT.$output.result.requisitionHeaderId;\n\nlet batchOpArray = [];\nlet updateattributes = {\"RequesterId\": derivedRequesterId};\nif(defaultLocationId){\n  updateattributes['DeliverToLocationId'] = defaultLocationId;\n}\nlet requesterObject = {};\n\n\nrequesterObject['id'] = \"part1\";\nrequesterObject['operation'] = \"invoke\";\nrequesterObject['payload'] = {\"updateAttributes\": updateattributes};\nrequesterObject['path'] = `/purchaseRequisitions/${requisitionHeaderId}/action/updateAllLines`;\nbatchOpArray.push(requesterObject);\n\nlet result = {\"parts\": batchOpArray};\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1773652651008"
+          },
+          "diagram": {
+            "x": 7348,
+            "y": 6578
+          },
+          "code": "PREPARE_REQUESTER_UPDATE_PAYLOAD",
+          "id": "1773652399902",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "prepare uom response in stage 1",
+            "returnType": "string",
+            "sourceCode": "const uomStartsWithRecords = $context.$nodes.FETCH_UOM_FROM_STARTS_WITH_SEARCH_IN_STAGE_1.$output;\nconst uomContainsRecords = $context.$nodes.FETCH_UOM_FROM_CONTAINS_SEARCH_IN_STAGE_1.$output;\nlet isValidUOM = false;\nlet derivedUOM = $context.$variables.derivedUOM;\n\nif(derivedUOM != null){\n   if(uomStartsWithRecords.items.length > 0){\n      derivedUOM = uomStartsWithRecords.items[0].UOM;\n      isValidUOM = true;\n   }else if(uomContainsRecords.items.length > 0){\n     derivedUOM = uomStartsWithRecords.items[0].UOM;\n     isValidUOM = true;\n  }\n}\n\nderivedUOM = isValidUOM ? derivedUOM : null;\n\nreturn derivedUOM;"
+          },
+          "outcomes": {
+            "success": "1767716911200"
+          },
+          "diagram": {
+            "x": 3344.2987116482723,
+            "y": 7723.354493981304
+          },
+          "code": "PREPARE_UOM_RESPONSE_IN_STAGE_1",
+          "id": "1767716242421",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "check if UOM in NCR feedback1"
+          },
+          "outcomes": {
+            "true": "1767718005072",
+            "false": "1767703994651"
+          },
+          "diagram": {
+            "x": 5283.632419572204,
+            "y": 7149.072851876518
+          },
+          "code": "CHECK_IF_UOM_IN_NCR_FEEDBACK1",
+          "convergenceTargetId": "1767703994651",
+          "id": "1767717939187",
+          "inputs": [
+            {
+              "id": "1767717939188_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.NCR_FEEDBACK_ANALYSER_1.$output.UOM != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1767718968715",
+            "1": "1767719048198"
+          },
+          "diagram": {
+            "x": 5914.9989235404355,
+            "y": 7354.7225092442095,
+            "width": 1075,
+            "height": 348
+          },
+          "code": "PARALLEL_1767718941498",
+          "convergenceTargetId": "1767703994651",
+          "id": "1767718941498",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_FSCMRESTENDPOINT",
+            "functionName": "batch_creation_of_requisition_lines",
+            "name": "update Requester"
+          },
+          "outcomes": {
+            "success": "1773652783351"
+          },
+          "diagram": {
+            "x": 7065.5,
+            "y": 7076
+          },
+          "code": "UPDATE_REQUESTER",
+          "id": "1773652651008",
+          "inputs": [
+            {
+              "id": "1773652669999_1",
+              "name": "batch_payload",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_REQUESTER_UPDATE_PAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "set output UOM in stage 1"
+          },
+          "outcomes": {
+            "success": "1767703994651"
+          },
+          "diagram": {
+            "x": 3782.4483031045174,
+            "y": 8853.996385826667
+          },
+          "code": "SET_OUTPUT_UOM_IN_STAGE_1",
+          "id": "1767716911200",
+          "inputs": [
+            {
+              "id": "1767716930303",
+              "name": "derivedUOM",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_UOM_RESPONSE_IN_STAGE_1.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "prepare UOM starts with and contains query param criteria 1",
+            "returnType": "object",
+            "sourceCode": "let derivedUOM = $context.$nodes.NCR_FEEDBACK_ANALYSER_1.$output.UOM;\nconst currentDate = $context.$system.$currentDate;\nlet response = {};\nresponse['uomStartsWithCriteria'] = null;\nresponse['uomContainsCriteria'] = null;\n\nif(derivedUOM != null){\n  derivedUOM = derivedUOM.toUpperCase();\n\n  let uomStartswithCriteria = `StandardConversion > 0 AND (UOMCode is not null and (DisableDate is null or DisableDate >= '${currentDate}')) AND (StandardConversionEndDate IS NULL OR StandardConversionEndDate > '${currentDate}' ) AND ((UPPER(UOM) like ('${derivedUOM}%')) OR (UPPER(UOMCode) like ('${derivedUOM}%')))`;\n\nlet uomContainsCriteria = `StandardConversion > 0 AND (UOMCode is not null and (DisableDate is null or DisableDate >= '${currentDate}')) AND (StandardConversionEndDate IS NULL OR StandardConversionEndDate > '${currentDate}' ) AND ((UPPER(UOM) like ('%${derivedUOM}%')) OR (UPPER(UOMCode) like ('%${derivedUOM}%')))`;\n\nresponse['uomStartsWithCriteria'] = uomStartswithCriteria;\nresponse['uomContainsCriteria'] = uomContainsCriteria;\n}\n\nreturn response;"
+          },
+          "outcomes": {
+            "success": "1767718042439"
+          },
+          "diagram": {
+            "x": 4596.851485832404,
+            "y": 7423.154981539697
+          },
+          "code": "PREPARE_UOM_STARTS_WITH_AND_CONTAINS_QUERY_PARAM_CRITERIA_1",
+          "id": "1767718005072",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "update Requester Change Status"
+          },
+          "outcomes": {
+            "success": "1767719861614"
+          },
+          "diagram": {
+            "x": 7799.0066948699305,
+            "y": 7598.357617292173
+          },
+          "code": "UPDATE_REQUESTER_CHANGE_STATUS",
+          "id": "1773652783351",
+          "inputs": [
+            {
+              "id": "1774269578312",
+              "name": "locationDefaulted",
+              "scope": "JOB",
+              "type": "boolean",
+              "value": "{{$context.$nodes.FETCH_REQUESTER.$output.items[0]?.LocationId != null}}"
+            },
+            {
+              "id": "1773652795849",
+              "name": "requesterUpdateStatus",
+              "scope": "JOB",
+              "type": "string",
+              "value": "SUCCESS"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1767718104765",
+            "1": "1767718238824"
+          },
+          "diagram": {
+            "x": 4244.225144940455,
+            "y": 7704.658935154352,
+            "width": 913,
+            "height": 348
+          },
+          "code": "PARALLEL_1767718042440",
+          "convergenceTargetId": "1767703994651",
+          "id": "1767718042439",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "name": "check if location derived"
+          },
+          "outcomes": {
+            "true": "1775053265343",
+            "false": "1767720590270"
+          },
+          "diagram": {
+            "x": 6948.7185556295535,
+            "y": 7741.19536109261
+          },
+          "code": "CHECK_IF_LOCATION_DERIVED",
+          "convergenceTargetId": "1767720590270",
+          "id": "1767719861614",
+          "inputs": [
+            {
+              "id": "1767719861615_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EDIT_CART_FEEDBACK_ANALYZER.$output.InternalLocation != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_FSCMRESTENDPOINT",
+            "functionName": "get_deliver_to_site_feature",
+            "processJson": true,
+            "name": "Fetch Deliver to site Feature"
+          },
+          "outcomes": {
+            "success": "1767719934620"
+          },
+          "diagram": {
+            "x": 8051.186533391155,
+            "y": 8077.189342289752
+          },
+          "code": "FETCH_DELIVER_TO_SITE_FEATURE",
+          "id": "1775053265343",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Location finder criteria",
+            "returnType": "object",
+            "sourceCode": "const DeliverToSiteOptinFlag = $context.$nodes.FETCH_DELIVER_TO_SITE_FEATURE.$output.EnabledFlag;\nconst userSearchLocation = $context.$nodes.EDIT_CART_FEEDBACK_ANALYZER.$output.InternalLocation;\nconst organizationId = $context.$nodes.PARSE_JSON_INPUT.$output.result.destinationOrganizationId; \n\nlet finderCriteria = `findByWord;FetchBlankInvOrgLocations=true,InventoryOrganizationId=${organizationId},SetId=${organizationId},SearchTerms=${userSearchLocation},FilterAttributes=LocationCode LocationName SingleLineAddress`;\n\nlet queryParam = DeliverToSiteOptinFlag === 'Y' ? `ActiveStatus = 'A' AND DeliverToSiteFlag='Y'` : `ActiveStatus = 'A'`;\n\nlet result = {\"finderCriteria\" : finderCriteria, \"queryParam\" : queryParam};\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1767719985963"
+          },
+          "diagram": {
+            "x": 8116.138219047823,
+            "y": 8395.084368662086
+          },
+          "code": "PREPARE_LOCATION_FINDER_CRITERIA",
+          "id": "1767719934620",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_HCMRESTENDPOINT",
+            "functionName": "get_internal_deliver_to_locations",
+            "processJson": true,
+            "name": "fetch internal location"
+          },
+          "outcomes": {
+            "success": "1767720138887"
+          },
+          "diagram": {
+            "x": 7714.569636390339,
+            "y": 8524.87084869349
+          },
+          "code": "FETCH_INTERNAL_LOCATION",
+          "id": "1767719985963",
+          "inputs": [
+            {
+              "id": "1775055202577_1",
+              "name": "FinderCriteria",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_LOCATION_FINDER_CRITERIA.$output.result.finderCriteria}}"
+            },
+            {
+              "id": "1775055202578_2",
+              "name": "queryParam",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_LOCATION_FINDER_CRITERIA.$output.result.queryParam}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "If Matching Location exists"
+          },
+          "outcomes": {
+            "true": "1767720188894",
+            "false": "1767720590270"
+          },
+          "diagram": {
+            "x": 7358.3841856538365,
+            "y": 8953.910595676956
+          },
+          "code": "IF_MATCHING_LOCATION_EXISTS",
+          "convergenceTargetId": "1767720590270",
+          "id": "1767720138887",
+          "inputs": [
+            {
+              "id": "1767720138888_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCH_INTERNAL_LOCATION.$output.items.length > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "prepare location update payload",
+            "returnType": "object",
+            "sourceCode": "const derivedLocationId = $context.$nodes.FETCH_INTERNAL_LOCATION.$output.items[0]?.LocationId;\nconst requisitionHeaderId = $context.$nodes.PARSE_JSON_INPUT.$output.result.requisitionHeaderId;\n\nlet batchOpArray = [];\nlet updateattributes = {\"DeliverToLocationId\": derivedLocationId};\nlet locationObject = {};\n\n\nlocationObject['id'] = \"part1\";\nlocationObject['operation'] = \"invoke\";\nlocationObject['payload'] = {\"updateAttributes\": updateattributes};\nlocationObject['path'] = `/purchaseRequisitions/${requisitionHeaderId}/action/updateAllLines`;\nbatchOpArray.push(locationObject);\n\nlet result = {\"parts\": batchOpArray};\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1767720237692"
+          },
+          "diagram": {
+            "x": 7937.414022281194,
+            "y": 9242.89404323043
+          },
+          "code": "PREPARE_LOCATION_UPDATE_PAYLOAD",
+          "id": "1767720188894",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_FSCMRESTENDPOINT",
+            "functionName": "batch_creation_of_requisition_lines",
+            "name": "update internal location"
+          },
+          "outcomes": {
+            "success": "1767720401154"
+          },
+          "diagram": {
+            "x": 8153.006747649445,
+            "y": 9611.039746983466
+          },
+          "code": "UPDATE_INTERNAL_LOCATION",
+          "id": "1767720237692",
+          "inputs": [
+            {
+              "id": "1767720259077_1",
+              "name": "batch_payload",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_LOCATION_UPDATE_PAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "update Location change Status"
+          },
+          "outcomes": {
+            "success": "1767720590270"
+          },
+          "diagram": {
+            "x": 7961.503426604238,
+            "y": 9954.82783344433
+          },
+          "code": "UPDATE_LOCATION_CHANGE_STATUS",
+          "id": "1767720401154",
+          "inputs": [
+            {
+              "id": "1767796353311",
+              "name": "LocationName",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCH_INTERNAL_LOCATION.$output.items[0].LocationName}}"
+            },
+            {
+              "id": "1767796310428",
+              "name": "locationCode",
+              "type": "string",
+              "value": "{{$context.$nodes.FETCH_INTERNAL_LOCATION.$output.items[0].SingleLineAddress}}"
+            },
+            {
+              "id": "1767720404988",
+              "name": "locationUpdateStatus",
+              "type": "string",
+              "value": "SUCCESS"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "check if quantities derived"
+          },
+          "outcomes": {
+            "true": "1767784940830",
+            "false": "1767720881254"
+          },
+          "diagram": {
+            "x": 7359.576225701241,
+            "y": 9896.715234584346
+          },
+          "code": "CHECK_IF_QUANTITIES_DERIVED",
+          "convergenceTargetId": "1767720881254",
+          "id": "1767720590270",
+          "inputs": [
+            {
+              "id": "1767720590273_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EDIT_CART_FEEDBACK_ANALYZER.$output.QuantityUpdates != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_PURCHASEREQUISI",
+            "functionName": "get_purchase_requisition_lines",
+            "name": "fetch Lines Data 1"
+          },
+          "outcomes": {
+            "success": "1767785022075"
+          },
+          "diagram": {
+            "x": 7952.056404989022,
+            "y": 10459.721876674761
+          },
+          "code": "FETCH_LINES_DATA_1",
+          "id": "1767784940830",
+          "inputs": [
+            {
+              "id": "1767784967302_1",
+              "name": "requisitionHeaderId",
+              "type": "string",
+              "value": "{{$context.$nodes.PARSE_JSON_INPUT.$output.result.requisitionHeaderId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "prepare line quantity updates batch payload",
+            "returnType": "object",
+            "sourceCode": "const requisitionHeaderId = $context.$nodes.PARSE_JSON_INPUT.$output.result.requisitionHeaderId;\nconst userRequestedQuantityUpdates = $context.$nodes.EDIT_CART_FEEDBACK_ANALYZER.$output.QuantityUpdates;\nconst currentCartLines = $context.$nodes.FETCH_LINES_DATA_1.$output.items;\nlet batchUpdateQuantitiesArray = [];\nlet invalidQuantities = []\nlet response = {};\n\nconst formatQuantity = (input) => {\n  if (input == null || isNaN(input)) return input;\n  const num = Number(input);\n  const str = String(input);\n\n  if (Number.isInteger(num)) {\n    return num; \n  }\n   var parts = str.split('.');\n   var decimalLength = parts[1].length;\n   \n  if (decimalLength > 12) {\n    return num.toFixed(12);\n  }\n\n  return num;\n};\n\nfor(let i=0 ; i < userRequestedQuantityUpdates.length ; i++){\n       let LineNumber = Number((Object.keys(userRequestedQuantityUpdates[i]))[0]);\n       let input = (Object.values(userRequestedQuantityUpdates[i]))[0];\n       let isValidQuantity = !isNaN(input) && !isNaN(parseFloat(input)) && (Number(input) > 0);\n       let lineUpdateIndex = LineNumber - 1;\n       let quantityBasedLine = currentCartLines[lineUpdateIndex].Quantity != null;\n       if(isValidQuantity && (lineUpdateIndex >= 0 && lineUpdateIndex < currentCartLines.length) && quantityBasedLine){\n            let quantity = formatQuantity((Object.values(userRequestedQuantityUpdates[i]))[0]);\n             let requisitionLineId = currentCartLines[lineUpdateIndex].RequisitionLineId;\n             let distributionId = currentCartLines[lineUpdateIndex].distributions.items[0].RequisitionDistributionId;\n             let distributionArray = [];\n             distributionArray.push({\"Quantity\":quantity,\"RequisitionDistributionId\":distributionId});\n             let linePayload = {};\n             linePayload['Quantity'] = quantity;\n             linePayload['distributions'] = distributionArray\n             let lineObject = {};\n             lineObject['id'] = \"Line\"+i;\n             lineObject['operation'] = \"update\";\n             lineObject['payload'] = linePayload;\n             lineObject['path'] = `/purchaseRequisitions/${requisitionHeaderId}/child/lines/${requisitionLineId}`;\n             batchUpdateQuantitiesArray.push(lineObject);\n       }else{\n          if(quantityBasedLine){\n             invalidQuantities.push(userRequestedQuantityUpdates[i]);\n           }\n       }\n   }\n\nresponse['payload'] = {\"parts\" : batchUpdateQuantitiesArray};\nresponse['errorLines'] = invalidQuantities;\nreturn response;"
+          },
+          "outcomes": {
+            "success": "1767786222092"
+          },
+          "diagram": {
+            "x": 7506.675593159907,
+            "y": 10736.52651558215
+          },
+          "code": "PREPARE_LINE_QUANTITY_UPDATES_BATCH_PAYLOAD",
+          "id": "1767785022075",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "If Batch quantity updates exist"
+          },
+          "outcomes": {
+            "true": "1767786336428",
+            "false": "1770831958377"
+          },
+          "diagram": {
+            "x": 7990.9853449815155,
+            "y": 10864.230680130539
+          },
+          "code": "IF_BATCH_QUANTITY_UPDATES_EXIST",
+          "convergenceTargetId": "1767720881254",
+          "id": "1767786222092",
+          "inputs": [
+            {
+              "id": "1767786222094_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_LINE_QUANTITY_UPDATES_BATCH_PAYLOAD.$output.result.payload.parts.length > 0 && $context.$nodes.PREPARE_LINE_QUANTITY_UPDATES_BATCH_PAYLOAD.$output.result.errorLines.length == 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_FSCMRESTENDPOINT",
+            "functionName": "batch_creation_of_requisition_lines",
+            "name": "batch update line quantities"
+          },
+          "outcomes": {
+            "success": "1767786467382"
+          },
+          "diagram": {
+            "x": 9220.821611590909,
+            "y": 10924.077807140626
+          },
+          "code": "BATCH_UPDATE_LINE_QUANTITIES",
+          "id": "1767786336428",
+          "inputs": [
+            {
+              "id": "1767786356932_1",
+              "name": "batch_payload",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_LINE_QUANTITY_UPDATES_BATCH_PAYLOAD.$output.result.payload}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "If No Error Lines"
+          },
+          "outcomes": {
+            "true": "1770832073593",
+            "false": "1767720881254"
+          },
+          "diagram": {
+            "x": 7968.796731816384,
+            "y": 11052.828887909362
+          },
+          "code": "IF_NO_ERROR_LINES",
+          "convergenceTargetId": "1767720881254",
+          "id": "1770831958377",
+          "inputs": [
+            {
+              "id": "1770831958378_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_LINE_QUANTITY_UPDATES_BATCH_PAYLOAD.$output.result.errorLines.length == 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "set quantities Update status"
+          },
+          "outcomes": {
+            "success": "1767720881254"
+          },
+          "diagram": {
+            "x": 9152.090984067778,
+            "y": 11195.486768598683
+          },
+          "code": "SET_QUANTITIES_UPDATE_STATUS",
+          "id": "1767786467382",
+          "inputs": [
+            {
+              "id": "1767786478729",
+              "name": "quantitiesUpdateStatus",
+              "type": "string",
+              "value": "SUCCESS"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "set quantities Update status 1"
+          },
+          "outcomes": {
+            "success": "1767720881254"
+          },
+          "diagram": {
+            "x": 7964.284870974684,
+            "y": 11560.85102798127
+          },
+          "code": "SET_QUANTITIES_UPDATE_STATUS_1",
+          "id": "1770832073593",
+          "inputs": [
+            {
+              "id": "1770832080357",
+              "name": "quantitiesUpdateStatus",
+              "scope": "JOB",
+              "type": "string",
+              "value": "SUCCESS"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "check if Lines to be deleted"
+          },
+          "outcomes": {
+            "true": "1767720930720",
+            "false": "1767703994651"
+          },
+          "diagram": {
+            "x": 7300.271586793852,
+            "y": 11618.437111259105
+          },
+          "code": "CHECK_IF_LINES_TO_BE_DELETED",
+          "convergenceTargetId": "1767703994651",
+          "id": "1767720881254",
+          "inputs": [
+            {
+              "id": "1767720881256_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.EDIT_CART_FEEDBACK_ANALYZER.$output.DeleteLines != null}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_PURCHASEREQUISI",
+            "functionName": "get_purchase_requisition_lines",
+            "name": "fetch Lines Data"
+          },
+          "outcomes": {
+            "success": "1767721014803"
+          },
+          "diagram": {
+            "x": 8719.321349692458,
+            "y": 11822.168898289976
+          },
+          "code": "FETCH_LINES_DATA",
+          "id": "1767720930720",
+          "inputs": [
+            {
+              "id": "1767720961635_1",
+              "name": "requisitionHeaderId",
+              "type": "string",
+              "value": "{{$context.$nodes.PARSE_JSON_INPUT.$output.result.requisitionHeaderId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "prepare delete lines batch payload",
+            "returnType": "object",
+            "sourceCode": "const requisitionHeaderId = $context.$nodes.PARSE_JSON_INPUT.$output.result.requisitionHeaderId;\nconst userRequestedDeleteLines = $context.$nodes.EDIT_CART_FEEDBACK_ANALYZER.$output.DeleteLines;\nconst currentCartLines = $context.$nodes.FETCH_LINES_DATA.$output.items;\nlet batchDeleteLinesArray = [];\n\nfor(let i=0 ; i < userRequestedDeleteLines.length ; i++){\n       let lineDeleteIndex = userRequestedDeleteLines[i] - 1;\n       if(lineDeleteIndex >= 0 && lineDeleteIndex < currentCartLines.length){\n             let lineObject = {};\n             let requisitionLineId = currentCartLines[lineDeleteIndex].RequisitionLineId;\n             lineObject['id'] = \"Line\"+i;\n             lineObject['operation'] = \"delete\";\n             lineObject['payload'] = null;\n             lineObject['path'] = `/purchaseRequisitions/${requisitionHeaderId}/child/lines/${requisitionLineId}`;\n             batchDeleteLinesArray.push(lineObject);\n       }\n   }\n\nlet result = {\"parts\" : batchDeleteLinesArray};\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1767721068373"
+          },
+          "diagram": {
+            "x": 8440.192198385947,
+            "y": 12172.046389073881
+          },
+          "code": "PREPARE_DELETE_LINES_BATCH_PAYLOAD",
+          "id": "1767721014803",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "if Batch delete lines exist"
+          },
+          "outcomes": {
+            "true": "1767721107060",
+            "false": "1767703994651"
+          },
+          "diagram": {
+            "x": 7784.642488266856,
+            "y": 12199.185450736502
+          },
+          "code": "IF_BATCH_DELETE_LINES_EXIST",
+          "convergenceTargetId": "1767703994651",
+          "id": "1767721068373",
+          "inputs": [
+            {
+              "id": "1767721068374_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_DELETE_LINES_BATCH_PAYLOAD.$output.result.parts.length > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_FSCMRESTENDPOINT",
+            "functionName": "batch_creation_of_requisition_lines",
+            "name": "Batch delete lines"
+          },
+          "outcomes": {
+            "success": "1767721188619"
+          },
+          "diagram": {
+            "x": 7976.414022281194,
+            "y": 12561.241750166493
+          },
+          "code": "BATCH_DELETE_LINES",
+          "id": "1767721107060",
+          "inputs": [
+            {
+              "id": "1767721125266_1",
+              "name": "batch_payload",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_DELETE_LINES_BATCH_PAYLOAD.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "update Lines delete status"
+          },
+          "outcomes": {
+            "success": "1767703994651"
+          },
+          "diagram": {
+            "x": 8134.738534680316,
+            "y": 12764.973537197366
+          },
+          "code": "UPDATE_LINES_DELETE_STATUS",
+          "id": "1767721188619",
+          "inputs": [
+            {
+              "id": "1767721192414",
+              "name": "linesDeleteStatus",
+              "type": "string",
+              "value": "SUCCESS"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Process Final Output",
+            "returnType": "object",
+            "sourceCode": "let response = {};\n\nif($context.$nodes.PARSE_JSON_INPUT.$output.result.Stage == 1){\n  response['derivedUOM'] =  $context.$variables.derivedUOM; \n}\n\nif($context.$nodes.PARSE_JSON_INPUT.$output.result.Stage == 2){\n   response['categoryMatchRecords'] = $context.$nodes.FETCH_CATEGORY_NAME_1.$output?.items;\n   response['CategoryVectorDbRecords'] = $context.$nodes.FETCH_CATEGORY_FROM_VECTOR_DB_1.$output;\n   response['uomMatchRecords'] = $context.$nodes.FETCH_UOM_FROM_STARTS_WITH_SEARCH_1.$output?.items \n   response['uomContainsRecords'] = $context.$nodes.FETCH_UOM_FROM_CONTAINS_SEARCH_1.$output?.items;\n   response['userProvidedData'] = $context.$nodes.NCR_FEEDBACK_ANALYSER_1.$output;\n}\n\nif($context.$nodes.PARSE_JSON_INPUT.$output.result.Stage == 3){\n   response['uomMatchRecords'] = $context.$nodes.FETCH_UOM_FROM_STARTS_WITH_SEARCH_IN_STAGE_3.$output?.items;\n   response['uomContainsRecords'] = $context.$nodes.FETCH_UOM_FROM_CONTAINS_SEARCH_IN_STAGE_3.$output?.items; \n   response['userProvidedData'] = $context.$nodes.PRICE_AND_UOM_EXTRACTOR.$output;\n}\n\nif($context.$nodes.PARSE_JSON_INPUT.$output.result.Topic == 2){\n   response['userProvidedData'] = $context.$nodes.EDIT_CART_FEEDBACK_ANALYZER.$output;\n\n if(response.userProvidedData.Requester != null){\n       response['RequesterChangeStatus'] = {};\n       if( $context.$nodes.FETCH_REQUESTER.$output.items.length > 0){\n            response['RequesterChangeStatus']['foundRequester'] = true;\n            response['RequesterChangeStatus']['updateRequesterStatus'] = $context.$variables.requesterUpdateStatus  == 'SUCCESS' ? $context.$variables.requesterUpdateStatus : 'FAILURE';\n            response['RequesterChangeStatus']['locationDefaulted'] = $context.$variables.locationDefaulted; \n            response['RequesterChangeStatus']['RequesterName'] = $context.$nodes.FETCH_REQUESTER.$output.items[0]?.DisplayName;\n       }else{\n           response['RequesterChangeStatus']['foundRequester'] = false;\n           response['RequesterChangeStatus']['updateRequesterStatus'] = 'FAILURE';\n           response['RequesterChangeStatus']['RequesterName'] = null;\n       }  \n   }\n\n   if(response.userProvidedData.InternalLocation != null){\n       response['LocationChangeStatus'] = {};\n       if( $context.$nodes.FETCH_INTERNAL_LOCATION.$output.items.length > 0){\n            response['LocationChangeStatus']['foundLocation'] = true;\n            response['LocationChangeStatus']['updateLocationStatus'] = $context.$variables.locationUpdateStatus == 'SUCCESS' ? $context.$variables.locationUpdateStatus : 'FAILURE';\n            response['LocationChangeStatus']['LocationCode'] = $context.$variables.locationCode;\n            response['LocationChangeStatus']['LocationName'] = $context.$variables.LocationName;\n       }else{\n           response['LocationChangeStatus']['foundLocation'] = false;\n           response['LocationChangeStatus']['updateLocationStatus'] = 'FAILURE';\n            response['LocationChangeStatus']['LocationCode'] = $context.$variables.locationCode;\n            response['LocationChangeStatus']['LocationName'] = $context.$variables.LocationName;\n       }  \n   }\n\n    if(response.userProvidedData.DeleteLines != null){\n       response['LinesDelete'] = {};\n       if($context.$nodes.PREPARE_DELETE_LINES_BATCH_PAYLOAD.$output.result.parts.length > 0){\n            response['LinesDelete']['DeleteLinesExist'] = true;\n            response['LinesDelete']['DeleteLinesStatus'] = $context.$variables.linesDeleteStatus == 'SUCCESS' ? $context.$variables.linesDeleteStatus : 'FAILURE';\n            response['LinesDelete']['TotalLines'] = $context.$nodes.PREPARE_DELETE_LINES_BATCH_PAYLOAD.$output.result.parts.length;\n       }else{\n           response['LinesDelete']['DeleteLinesExist'] = false;\n           response['LinesDelete']['DeleteLinesStatus'] = 'FAILURE';\n           response['LinesDelete']['TotalLines'] = 0;\n       }  \n   }\n\nif(response.userProvidedData.QuantityUpdates != null){\n       response['QuantityUpdates'] = {};\n       if($context.$variables.quantitiesUpdateStatus == 'SUCCESS'){\n            response['QuantityUpdates']['quantityUpdatesExist'] = true;\n            response['QuantityUpdates']['quantityUpdateStatus'] = 'SUCCESS' ;\n            response['QuantityUpdates']['TotalLines'] = $context.$nodes.PREPARE_LINE_QUANTITY_UPDATES_BATCH_PAYLOAD.$output.result.payload.parts.length;\n       }else{\n           response['QuantityUpdates']['quantityUpdatesExist'] = false;\n           response['QuantityUpdates']['quantityUpdateStatus'] = 'FAILURE';\n           response['QuantityUpdates']['TotalLines'] = $context.$nodes.PREPARE_LINE_QUANTITY_UPDATES_BATCH_PAYLOAD.$output.result.errorLines;\n       }  \n   }\n}\n\nreturn response;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "diagram": {
+            "x": 6303.088223991179,
+            "y": 13667.970463902975
+          },
+          "code": "SAMPLE_HARISH",
+          "id": "1767703994651",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_FSCMRESTENDPOINT",
+            "functionName": "get_uom_suggestions",
+            "name": "fetch UOM from starts with search in stage 1"
+          },
+          "outcomes": {
+            "success": "1767716242421"
+          },
+          "diagram": {
+            "x": 2534.620417021249,
+            "y": 6819
+          },
+          "code": "FETCH_UOM_FROM_STARTS_WITH_SEARCH_IN_STAGE_1",
+          "id": "1767716714607",
+          "inputs": [
+            {
+              "id": "1767716729697_1",
+              "name": "queryParamString",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_UOM_STARTS_WITH_AND_CONTAINS_QUERY_PARAM_CRITERIA_IN_STAGE_1.$output.result.uomStartsWithCriteria}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_FSCMRESTENDPOINT",
+            "functionName": "get_uom_suggestions",
+            "name": "fetch UOM from contains search in stage 1"
+          },
+          "outcomes": {
+            "success": "1767716242421"
+          },
+          "diagram": {
+            "x": 3140.620417021249,
+            "y": 6819
+          },
+          "code": "FETCH_UOM_FROM_CONTAINS_SEARCH_IN_STAGE_1",
+          "id": "1767716791026",
+          "inputs": [
+            {
+              "id": "1767716811490_1",
+              "name": "queryParamString",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_UOM_STARTS_WITH_AND_CONTAINS_QUERY_PARAM_CRITERIA_IN_STAGE_1.$output.result.uomContainsCriteria}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_FSCMRESTENDPOINT",
+            "functionName": "get_category_names_by_search_criteria",
+            "name": "fetch Category name 1"
+          },
+          "outcomes": {
+            "success": "1767717939187"
+          },
+          "diagram": {
+            "x": 4374.74256056152,
+            "y": 6771.143196491267
+          },
+          "code": "FETCH_CATEGORY_NAME_1",
+          "id": "1767717776324",
+          "inputs": [
+            {
+              "id": "1767717794879_1",
+              "name": "queryParamString",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_CATEGORY_MATCH_SEARCH_CRITERIA_1.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "fetch category from Vector DB 1"
+          },
+          "outcomes": {
+            "success": "1767717939187"
+          },
+          "diagram": {
+            "x": 4824.74256056152,
+            "y": 6771.143196491267
+          },
+          "code": "FETCH_CATEGORY_FROM_VECTOR_DB_1",
+          "id": "1767717844322",
+          "inputs": [
+            {
+              "id": "1767717844323_1",
+              "name": "indexName",
+              "type": "string",
+              "value": "FA-PRC-PURCHASING-CATEGORIES"
+            },
+            {
+              "id": "1767717844324_2",
+              "name": "query",
+              "type": "string",
+              "value": "{{$context.$nodes.NCR_FEEDBACK_ANALYSER_1.$output.Category}}"
+            },
+            {
+              "id": "1767717844324_3",
+              "name": "documentId",
+              "type": "string"
+            },
+            {
+              "id": "1767717844324_4",
+              "name": "fields",
+              "type": "array"
+            },
+            {
+              "id": "1767717844325_5",
+              "name": "filterCriteria",
+              "type": "object"
+            },
+            {
+              "id": "1767717844325_6",
+              "name": "maximumResults",
+              "type": "integer",
+              "value": "5"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"index\": {\n        \"type\": \"integer\"\n      },\n      \"text\": {\n        \"type\": \"string\"\n      }\n    },\n    \"required\": [\n      \"index\",\n      \"text\"\n    ]\n  }\n}",
+          "type": "VECTOR_DB_READER"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_FSCMRESTENDPOINT",
+            "functionName": "get_uom_suggestions",
+            "name": "fetch UOM from starts with search in Stage 3"
+          },
+          "outcomes": {
+            "success": "1767703994651"
+          },
+          "diagram": {
+            "x": 5934.9989235404355,
+            "y": 7595.7225092442095
+          },
+          "code": "FETCH_UOM_FROM_STARTS_WITH_SEARCH_IN_STAGE_3",
+          "id": "1767718968715",
+          "inputs": [
+            {
+              "id": "1767719000617_1",
+              "name": "queryParamString",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_UOM_STARTS_AND_CONTAINS_QUERY_IN_STAGE_3.$output.result.uomStartsWithCriteria}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_FSCMRESTENDPOINT",
+            "functionName": "get_uom_suggestions",
+            "name": "fetch UOM from contains search in Stage 3"
+          },
+          "outcomes": {
+            "success": "1767703994651"
+          },
+          "diagram": {
+            "x": 6540.9989235404355,
+            "y": 7595.7225092442095
+          },
+          "code": "FETCH_UOM_FROM_CONTAINS_SEARCH_IN_STAGE_3",
+          "id": "1767719048198",
+          "inputs": [
+            {
+              "id": "1767719071727_1",
+              "name": "queryParamString",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_UOM_STARTS_AND_CONTAINS_QUERY_IN_STAGE_3.$output.result.uomContainsCriteria}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_FSCMRESTENDPOINT",
+            "functionName": "get_uom_suggestions",
+            "name": "fetch UOM from starts with search 1"
+          },
+          "outcomes": {
+            "success": "1767703994651"
+          },
+          "diagram": {
+            "x": 4264.225144940455,
+            "y": 7945.658935154352
+          },
+          "code": "FETCH_UOM_FROM_STARTS_WITH_SEARCH_1",
+          "id": "1767718104765",
+          "inputs": [
+            {
+              "id": "1767718164000_1",
+              "name": "queryParamString",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_UOM_STARTS_WITH_AND_CONTAINS_QUERY_PARAM_CRITERIA_1.$output.result.uomStartsWithCriteria}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PRC_SSP_FSCMRESTENDPOINT",
+            "functionName": "get_uom_suggestions",
+            "name": "fetch UOM from contains search 1"
+          },
+          "outcomes": {
+            "success": "1767703994651"
+          },
+          "diagram": {
+            "x": 4789.225144940455,
+            "y": 7945.658935154352
+          },
+          "code": "FETCH_UOM_FROM_CONTAINS_SEARCH_1",
+          "id": "1767718238824",
+          "inputs": [
+            {
+              "id": "1767718252981_1",
+              "name": "queryParamString",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_UOM_STARTS_WITH_AND_CONTAINS_QUERY_PARAM_CRITERIA_1.$output.result.uomContainsCriteria}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1774269522874",
+          "name": "locationDefaulted",
+          "scope": "JOB",
+          "type": "boolean"
+        },
+        {
+          "id": "1773652734270",
+          "name": "requesterUpdateStatus",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1767796232393",
+          "name": "LocationName",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1767796219900",
+          "name": "locationCode",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1767786430035",
+          "name": "quantitiesUpdateStatus",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1767720345508",
+          "name": "linesDeleteStatus",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1767720322506",
+          "name": "locationUpdateStatus",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1767716050153",
+          "name": "derivedUOM",
+          "scope": "JOB",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": "",
+    "agentsValueMappings": [],
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": [],
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+    "deletedTriggerTypes": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "PRC",
+  "product": "SSP",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"3\""
+  }
+}

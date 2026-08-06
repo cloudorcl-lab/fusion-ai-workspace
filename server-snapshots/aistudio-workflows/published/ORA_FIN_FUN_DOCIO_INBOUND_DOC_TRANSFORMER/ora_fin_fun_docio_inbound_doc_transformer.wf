@@ -1,0 +1,245 @@
+{
+  "workflowId": "300000326919169",
+  "workflowCode": "ORA_FIN_FUN_DOCIO_INBOUND_DOC_TRANSFORMER",
+  "name": "Doc IO Inbound Document Transformer",
+  "description": "Applies transformation specifications to structured documents such as XML, JSON, or CSV, converting them into Oracle compliant schema format. It uses pregenerated transformation specifications such as XSLT or JOLT.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1767332335775"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Input Payload Validator",
+            "returnType": "object",
+            "sourceCode": "// ===============================\n// INPUT VALIDATION & PAYLOAD WRAPPER\n// ===============================\n\nconst raw = $context.$system.$inputMessage;\nlet input;\nlet result = null;\n\n// 1. Parse input safely (handle double stringification)\nif (typeof raw === \"string\") {\n    try {\n        const parsed = JSON.parse(raw);\n        if (typeof parsed === \"string\") {\n            input = JSON.parse(parsed);\n        } else {\n            input = parsed;\n        }\n    } catch (e) {\n        // Return error immediately on parse failure\n        return {\n            status: \"ERROR\",\n            error: {\n                stage: \"Input Validation\",\n                code: \"MALFORMED_INPUT\",\n                message: \"Input is not valid JSON.\"\n            }\n        };\n    }\n} else {\n    input = raw;\n}\n\n// 2. Validate input presence and type\nif (!input || typeof input !== \"object\") {\n    return {\n        status: \"ERROR\",\n        error: {\n            stage: \"Input Validation\",\n            code: \"INVALID_STRUCTURE\",\n            message: \"Input payload is missing or invalid.\"\n        }\n    };\n}\n\n// 3. Required field validation\nconst missingFields = [];\nif (typeof input.content !== \"string\" || input.content.trim() === \"\") {\n    missingFields.push(\"content\");\n}\nif (typeof input.documentFileName !== \"string\" || input.documentFileName.trim() === \"\") {\n    missingFields.push(\"documentFileName\");\n}\n\n// Check at least one document identifier is present and valid\nconst hasDocumentField =\n    (typeof input.documentInBase64 === \"string\" && input.documentInBase64.trim() !== \"\") ||\n    (typeof input.documentLink === \"string\" && input.documentLink.trim() !== \"\") ||\n    (typeof input.documentId === \"string\" && input.documentId.trim() !== \"\") ||\n    (typeof input.documentId === \"number\");\n\nif (!hasDocumentField) {\n    missingFields.push(\"one of: documentInBase64, documentLink, documentId\");\n}\n\nif (missingFields.length) {\n    return {\n        status: \"ERROR\",\n        error: {\n            stage: \"Input Validation\",\n            code: \"MISSING_REQUIRED_FIELDS\",\n            message: `Missing or invalid fields: ${missingFields.join(\", \")}`\n        }\n    };\n}\n\n// 4. Build payload (exclude 'status', add 'direction', add 'additionalDetails' only if present)\nconst payload = {};\nObject.keys(input).forEach(key => {\n    if (key !== \"status\" && (key !== \"additionalDetails\")) {\n        payload[key] = input[key];\n    }\n});\npayload.direction = payload.direction || \"ORA_INBOUND\";\nif (input.hasOwnProperty(\"additionalDetails\")) {\n    payload.additionalDetails = input.additionalDetails;\n}\n\nresult = { payload };\n\n// 5. Return result\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1767333979994"
+          },
+          "code": "FIN_FUN_CODE_INPUT_PAYLOAD_VALIDATOR",
+          "id": "1767332335775",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Is Input Valid"
+          },
+          "outcomes": {
+            "true": "1767334204578",
+            "false": "1767334300369"
+          },
+          "code": "FIN_FUN_IF_CONDITION_INPUT_VALID",
+          "convergenceTargetId": "end",
+          "id": "1767333979994",
+          "inputs": [
+            {
+              "id": "1767333979997_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_FUN_CODE_INPUT_PAYLOAD_VALIDATOR.$output.result.payload!=null && $context.$nodes.FIN_FUN_CODE_INPUT_PAYLOAD_VALIDATOR.$output.result.payload.content!=null && $context.$nodes.FIN_FUN_CODE_INPUT_PAYLOAD_VALIDATOR.$output.result.payload.content.trim()!=\"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_FINANCIALC_DOCIOINBOUNDTRANSFORMER",
+            "errorNodeId": "1767335021683",
+            "functionName": "applyTransformation",
+            "name": "Apply Transformation"
+          },
+          "outcomes": {
+            "success": "1767335021683"
+          },
+          "code": "FIN_FUN_BOF_APPLY_TRANSFORMATION",
+          "id": "1767334204578",
+          "inputs": [
+            {
+              "id": "1767334214635_1",
+              "name": "stagename",
+              "type": "string",
+              "value": "transform"
+            },
+            {
+              "id": "1767334214637_2",
+              "name": "stageContext",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_FUN_CODE_INPUT_PAYLOAD_VALIDATOR.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Return Validation Error",
+            "returnType": "object",
+            "sourceCode": "// Read validator output\nvar validationResult =\n    $context.$nodes.FIN_FUN_CODE_INPUT_PAYLOAD_VALIDATOR &&\n    $context.$nodes.FIN_FUN_CODE_INPUT_PAYLOAD_VALIDATOR.$output &&\n    $context.$nodes.FIN_FUN_CODE_INPUT_PAYLOAD_VALIDATOR.$output.result\n        ? $context.$nodes.FIN_FUN_CODE_INPUT_PAYLOAD_VALIDATOR.$output.result\n        : null;\n\n// Use standard error message\nvar agentErrorMessage = \"Doc IO Inbound Document Transformer Agent execution failed.\";\n// Fallback generic error if validator returned nothing\nif (!validationResult) {\n    validationResult = {\n        status: \"ERROR\",\n        error: {\n            stage: \"Agent Execution\",\n            code: \"AGENT_EXECUTION_FAILED\",\n            message: agentErrorMessage\n        }\n    };\n}\n\n// Return error response\nvalidationResult;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FIN_FUN_CODE_RETURN_VALIDATION_ERROR",
+          "id": "1767334300369",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Extract Transformed Data",
+            "returnType": "object",
+            "sourceCode": "// APPLY TRANSFORMATION OUTPUT CHECKER\nvar node = $context.$nodes.FIN_FUN_BOF_APPLY_TRANSFORMATION;\nvar nodeStatus = node && typeof node.$status === \"string\" ? node.$status.trim().toUpperCase() : null;\nvar nodeOutput = node ? node.$output : null;\nvar result = null;\n\n// 1. NODE EXECUTION FAILURE\nif (nodeStatus === \"FAILURE\") {\n    var errorInfo = node.$error;\n    var errorMessage = \"Apply Transformation execution failed.\";\n    var errorCode = \"EXECUTION_ERROR\";\n    if (errorInfo && typeof errorInfo === \"object\") {\n        if (typeof errorInfo.$info === \"string\" && errorInfo.$info.trim()) {\n            errorMessage = errorInfo.$info;\n        } else if (typeof errorInfo.message === \"string\" && errorInfo.message.trim()) {\n            errorMessage = errorInfo.message;\n        } else if (typeof errorInfo.error === \"string\" && errorInfo.error.trim()) {\n            errorMessage = errorInfo.error;\n        }\n        if (errorInfo.code) {\n            errorCode = errorInfo.code;\n        }\n    }\n    result = {\n        status: \"ERROR\",\n        error: {\n            stage: \"Apply Transformation\",\n            code: errorCode,\n            message: errorMessage\n        }\n    };\n}\n// 2. MALFORMED OR MISSING RESPONSE\nelse if (!nodeOutput || typeof nodeOutput !== \"object\") {\n    result = {\n        status: \"ERROR\",\n        error: {\n            stage: \"Apply Transformation\",\n            code: \"MALFORMED_TOOL_RESPONSE\",\n            message: \"Apply Transformation response is missing or invalid.\"\n        }\n    };\n}\n// 3. FAILURE STATUS FROM NODE OUTPUT\nelse if (nodeOutput.status && String(nodeOutput.status).trim().toUpperCase() !== \"SUCCESS\") {\n    result = {\n        status: \"ERROR\",\n        error: {\n            stage: \"Apply Transformation\",\n            code: \"EXECUTION_ERROR\",\n            message: \"Apply Transformation returned failure status.\"\n        }\n    };\n}\n// 4. SUCCESS PASS THROUGH AS-IS\nelse {\n    result = nodeOutput;\n}\n\nresult;"
+          },
+          "outcomes": {
+            "success": "1767344739562"
+          },
+          "code": "FIN_FUN_CODE_EXTRACT_TRANSFORMED_DATA",
+          "id": "1767335021683",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Is Transformation Valid"
+          },
+          "outcomes": {
+            "true": "1767344823411",
+            "false": "1767344885380"
+          },
+          "code": "FIN_FUN_IF_CONDITION_TRANSFORMATION_VALID",
+          "convergenceTargetId": "end",
+          "id": "1767344739562",
+          "inputs": [
+            {
+              "id": "1767344739566_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_FUN_CODE_EXTRACT_TRANSFORMED_DATA.$output.result.status == 'SUCCESS' && $context.$nodes.FIN_FUN_CODE_EXTRACT_TRANSFORMED_DATA.$output.result.content != null && $context.$nodes.FIN_FUN_CODE_EXTRACT_TRANSFORMED_DATA.$output.result.content != \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Return Success Response",
+            "returnType": "object",
+            "sourceCode": "var successResult = $context.$nodes.FIN_FUN_BOF_APPLY_TRANSFORMATION.$output;\nsuccessResult;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FIN_FUN_CODE_RETURN_SUCCESS",
+          "id": "1767344823411",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Return Error Response",
+            "returnType": "object",
+            "sourceCode": "var errorResult = $context.$nodes.FIN_FUN_CODE_EXTRACT_TRANSFORMED_DATA.$output.result;\nerrorResult;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FIN_FUN_CODE_RETURN_ERROR_RESPONSE",
+          "id": "1767344885380",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "FIN",
+  "product": "FINANCIAL_COMMON",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

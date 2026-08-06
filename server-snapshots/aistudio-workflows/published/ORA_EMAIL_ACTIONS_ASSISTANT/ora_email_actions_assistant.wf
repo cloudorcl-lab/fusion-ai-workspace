@@ -1,0 +1,343 @@
+{
+  "workflowId": "300000331058724",
+  "workflowCode": "ORA_EMAIL_ACTIONS_ASSISTANT",
+  "name": "Email Actions Assistant",
+  "description": "Helps sellers draft contextual replies, compose new outreach emails, summarize email conversations, and extract sales follow-up action items.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1769668403832"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Parse Email Data",
+            "returnType": "object",
+            "sourceCode": "const parsed = $context.$triggers.REST.$input.data;\n//let parsed = JSON.parse($context.$system.$inputMessage) ;\n\nif(!parsed.emailAction){\nreturn 'The emailAction is required'\n}\nif ((parsed.emailAction== 'revise'  || parsed.emailAction == 'summarize')&&  !parsed.emailText) {\n  return 'The emailText is required'\n} \nif(parsed.emailAction ==  'compose' && (!parsed.senderName || !parsed.recipientName )) {\nreturn 'Required sender and receiver info missing'\n}\nif(parsed.emailAction ==  'generateActionItems' && (!parsed.person_name || !parsed.person_designation || !parsed.person_email || !parsed.emailText )) {\nreturn 'Required person details missing'\n}\nif(parsed.emailAction ==  'reply' && (!parsed.PartyName  || !parsed.RecipientPartyName || !parsed.MessageContent )) {\nreturn 'Required person details missing'\n}\nreturn  parsed;"
+          },
+          "outcomes": {
+            "success": "1769668730509"
+          },
+          "code": "PARSE_EMAIL_DATA",
+          "id": "1769668403832",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "email action switch"
+          },
+          "outcomes": {
+            "summarize": "1769668934590",
+            "revise": "1769669352624",
+            "compose": "1769683671220",
+            "generateActionItems": "1770380613455",
+            "reply": "1770293936380"
+          },
+          "code": "EMAIL_ACTION_SWITCH",
+          "convergenceTargetId": "end",
+          "id": "1769668730509",
+          "inputs": [
+            {
+              "id": "1769668730510_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$nodes.PARSE_EMAIL_DATA.$output.result.emailAction}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 4000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "Gpt Oss",
+              "provider": "CERT_BASIC"
+            },
+            "name": "SummarizeEmail"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SUMMARIZEEMAIL",
+          "id": "1769668934590",
+          "inputs": [
+            {
+              "id": "1769668934592_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "##Context\nYou summarize email threads for a sales representative.\n\n##Instructions\nRead the email thread in reverse chronological order, with the newest email first. Write exactly one concise paragraph summarizing the current business state of the thread. Prioritize the most recent material business update, such as a decision, request, objection, status change, or stakeholder change. When a key decision, request, or stakeholder change is explicitly stated by a specific sender, attribute it to that person by name when relevant.\n\n##Acceptance Criteria\n1.    Write exactly one paragraph of no more than 150 words.\n2.    Return only the summary text.\n3.    Keep the summary clear, concise, neutral, and professional.\n4.    Reflect the thread accurately without retelling the full conversation.\n5.    Focus only on explicit business information relevant to the sales process, including customer decision, intent, rationale, scope, stakeholder changes, explicitly stated sales stage changes, and explicit requests.\n6.    Mention people by name only when relevant to the business outcome or stakeholder context.\n7.    Do not include inferred seller actions, recommendations, coaching language, implied next steps, or assumptions unless explicitly stated in the thread.\n8.    Exclude low-value details such as timestamps, phone numbers, dates, email addresses, forwarding history, and other thread metadata unless essential to the business context.\n9.    If ##References is empty or does not contain enough information to summarize the thread, respond exactly with: insufficient data to do summary.\n10. After summarizing the most recent business state, append one final sentence that provides a high-level, one-line summary of the overall email thread progression.\n11. Explicitly include any stated timelines, deadlines, or time-bound commitments (e.g., ?by Friday,? ?next week,? ?EOM?) mentioned in the most recent or relevant emails, when they impact the business context.\n\n##References\n{{$context.$nodes.PARSE_EMAIL_DATA.$output.result.emailText}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 4000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT-OSS-120B",
+              "provider": "CERT_BASIC"
+            },
+            "name": "ReviseEmail"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "REVISEEMAIL",
+          "id": "1769669352624",
+          "inputs": [
+            {
+              "id": "1769669352625_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "## Context\nYou are an AI assistant helping a sales representative revise an existing customer-facing email draft. The draft may be plain text or HTML-formatted.\n\n## Instructions\nUpdate the original email draft based on the user?s instruction. Make only the changes needed to satisfy the request and keep everything else unchanged as much as possible. Preserve the original email structure, including subject line format, greeting, body, sign-off, and signature, unless the user explicitly asks to change them. If the original draft contains HTML, preserve the existing HTML structure and styles. If the original draft is plain text, return plain text only.\n\n## Acceptance Criteria\n1.\tApply the user?s instruction directly to the original draft.\n2.\tPreserve the original subject line format, greeting, sign-off, and email signature unless the user explicitly asks to change them.\n3.\tIf the user asks to update sender details such as name, title, company, or signature, apply those changes in the email signature and anywhere else they are explicitly referenced in the draft, while keeping the rest of the email unchanged.\n4.\tIf the original draft contains HTML, preserve all existing HTML tags and inline styles unless the user explicitly asks to change formatting.\n5.\tIf the original draft does not contain HTML, do not add any HTML tags.\n6.\tUse clear, concise, and professional language suitable for customer-facing communication.\n7.\tDo not invent customer-specific facts, commitments, timelines, pricing, or meeting details unless explicitly provided in the original draft or user instruction.\n8.\tPreserve technical terms, product names, part numbers, and names unless the user explicitly asks to change them.\n9.\tIf the user asks to mention, position, or pitch a product, you may use general product knowledge to incorporate the product naturally into the email. Keep the language professional and avoid exaggerated marketing claims, unsupported specifics, or customer-specific assumptions.\n10.\tDo not introduce markdown, bold, italics, or other formatting unless it already exists in the original draft or the user explicitly asks for it.\n11.\tOutput only the revised email draft.\n\n### User Comments:\n{{$context.$nodes.PARSE_EMAIL_DATA.$output.result.userInput}}\n\n### Original Email Draft:\n{{$context.$nodes.PARSE_EMAIL_DATA.$output.result.emailText}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT-OSS-120B",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Compose Email"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "COMPOSE_EMAIL",
+          "id": "1769683671220",
+          "inputs": [
+            {
+              "id": "1769683671221_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "## Context\nYou are an AI assistant helping a Sales Professional write a first-touch outreach email to a sales contact.\n\n## Instructions\nWrite a short, professional outreach email that includes a subject line, a soft call to action, and an email signature. Use only the information provided below. If sender, recipient, company, role, product, or additional details are present, use them naturally. If any of those details are missing, omit them gracefully and write a general but credible email without placeholders. Keep the message concise, natural, and businesslike. Do not invent facts, use external knowledge, or make unsupported personalized claims.\n\n## Acceptance Criteria\n1.\tUse only the provided context.\n2.\tDo not assume, speculate, or add facts not present in the inputs.\n3.\tIf a field is missing, omit it naturally. Do not use placeholders.\n4.\tDo not include unsupported statements about the recipient?s business, priorities, initiatives, or needs unless provided in the inputs.\n5.\tWrite in a professional, conversational tone.\n6.\tKeep the email concise and practical for business outreach.\n7.\tWrite the body in 2 short paragraphs.\n8.\tInclude a subject line. The first line must be a plain text subject line formatted exactly as:\nSubject: Put subject line here\nDo not wrap the subject line in bold, italics, markdown, or any other formatting.\n9.\tInclude an email signature using only available sender details.\n10.\tOutput only the email text.\n11.\tAvoid exaggerated marketing language, generic compliments, or unnecessary detail.\n\n\n## Email Context\n\n### Sender:\n- Name: {{$context.$nodes.PARSE_EMAIL_DATA.$output.result.senderName}}\n- Job Title: {{$context.$nodes.PARSE_EMAIL_DATA.$output.result.senderTitle}}\n- Company: {{$context.$nodes.PARSE_EMAIL_DATA.$output.result.senderCompany}}\n\n### Recipient:\n- Name: {{$context.$nodes.PARSE_EMAIL_DATA.$output.result.recipientName}}\n- Company: {{$context.$nodes.PARSE_EMAIL_DATA.$output.result.recipientCompany}}\n- Job Title: {{$context.$nodes.PARSE_EMAIL_DATA.$output.result.recipientJobTitle}}\n\n### Relevant Product Context from CRM Opportunity or Lead:\n{{$context.$nodes.PARSE_EMAIL_DATA.$output.result.productInterestedIn}}\n\n### Additional Details:\n{{$context.$nodes.PARSE_EMAIL_DATA.$output.result.additionalDetails}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Reply"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "REPLY",
+          "id": "1770293936380",
+          "inputs": [
+            {
+              "id": "1770293936381_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are an AI assistant helping {{$context.$nodes.PARSE_EMAIL_DATA.$output.result.PartyName}}, {{$context.$nodes.PARSE_EMAIL_DATA.$output.result.JobTitle}} at {{$context.$nodes.PARSE_EMAIL_DATA.$output.result.ResourceOrganizationName}}, draft a reply to a customer email.\n\n##Task\nUsing the customer email below, generate a concise reply to {{$context.$nodes.PARSE_EMAIL_DATA.$output.result.RecipientPartyName}}.\n\nCustomer email:\n{{$context.$nodes.PARSE_EMAIL_DATA.$output.result.MessageContent}}\n\nWrite the reply in {{$context.$nodes.PARSE_EMAIL_DATA.$output.result.toneEmail}} tone. If no tone is provided, use a professional tone.\n\nAdditional guidance:\n{{$context.$nodes.PARSE_EMAIL_DATA.$output.result.addInfo}}\n\n##Acceptance Criteria\n1. Use simple, clear, and concise language.\n2. Acknowledge the customer's message, address any explicit request, and move the conversation forward only using information explicitly stated in the email or provided context.\n3. Keep the reply grounded only in the email and provided context.\n4. Do not add or assume facts, commitments, timelines, pricing, contracts, documents, technical details, or meeting details unless explicitly supported by the customer email or provided guidance. If calendar availability is not explicitly provided, do not propose specific dates, days, times, time zones, or calendar invites.\n5. Do not add or assume facts, commitments, timelines, pricing, contracts, documents, technical details, or meeting details unless explicitly supported by the email or provided guidance.\n6 Use only names included in the email or provided context.\n7. Do not include a subject line.\n8. Generate the reply strictly in plain text.\n9. End the email with:\nRegards,\n{{$context.$nodes.PARSE_EMAIL_DATA.$output.result.PartyName}}\n{{$context.$nodes.PARSE_EMAIL_DATA.$output.result.JobTitle}}\n{{$context.$nodes.PARSE_EMAIL_DATA.$output.result.ResourceOrganizationName}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Evaluate Query",
+            "returnType": "object",
+            "sourceCode": "//------------------------------------------------------------\n// 1??  Compute the date?time range (ISO?8601 strings)\n// ------------------------------------------------------------\nconst endDate   = new Date();                                 // now\nconst startDate = new Date(endDate.getTime() - 72 * 60 * 60 * 1000); // now ? 72?h\n\n// Convert to the format expected by the Elastic query (e.g. \"2026-02-06T14:23:45.000Z\" -> \"2026-02-06T14:23:45.000+0000\")\nconst EndDateTime   = endDate.toISOString().replace('Z', '+0000');\nconst StartDateTime = startDate.toISOString().replace('Z', '+0000');\n\n//------------------------------------------------------------\n// 2??  Get contextual values\n//------------------------------------------------------------\nconst LoggedInUser = $context.$user.$name;\n\nconst personAccountID = $context.$nodes.PARSE_EMAIL_DATA.$output.result.person_company_id ;\nconst AccountId = personAccountID && !isNaN(personAccountID) ? Number(personAccountID) : null;\n\n\n//------------------------------------------------------------\n// 3??  Build base criteria\n//------------------------------------------------------------\nconst criteria = [\n    {\n        attribute: \"CreationDate\",\n        op: \"$wi\",\n        value1: StartDateTime,\n        value2: EndDateTime\n    },\n    {\n        attribute: \"ActivityFunctionCode\",\n        op: \"$in\",\n        values: [\"APPOINTMENT\", \"TASK\"]\n    },\n    {\n        attribute: \"CreatedBy\",\n        op: \"$eq\",\n        value: LoggedInUser\n    }\n];\n\n\n//------------------------------------------------------------\n// 4??  Conditionally add Account filter\n//------------------------------------------------------------\nif (AccountId !== null) {\n    criteria.push({\n        op: \"$eq\",\n        attribute: \"AccountId\",\n        value: AccountId   // numeric, not string\n    });\n}\n\n\n//------------------------------------------------------------\n// 5??  Build final query object\n//------------------------------------------------------------\nconst query = {\n    fields: [\n        \"Subject\",\n        \"Owner.PartyName\",\n        \"Owner.PartyId\",\n        \"CreatedBy\",\n        \"CreationDate\"\n    ],\n    q: {\n        op: \"$and\",\n        criteria: criteria\n    },\n    sort: [\n        {\n            attribute: \"CreationDate\",\n            direction: \"descending\"\n        }\n    ]\n};\n\n\n//------------------------------------------------------------\n// 6??  Return query payload\n//------------------------------------------------------------\nreturn query;"
+          },
+          "outcomes": {
+            "success": "1770380645293"
+          },
+          "code": "EVALUATE_QUERY",
+          "id": "1770380613455",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "Query recent activities"
+          },
+          "outcomes": {
+            "success": "1770380929676"
+          },
+          "code": "QUERY_RECENT_ACTIVITIES",
+          "id": "1770380645293",
+          "inputs": [
+            {
+              "id": "1770380720346_1",
+              "name": "object",
+              "type": "string",
+              "value": "Activity"
+            },
+            {
+              "id": "1770380720348_2",
+              "name": "q",
+              "type": "string",
+              "value": "{{$context.$nodes.EVALUATE_QUERY.$output.result.q}}"
+            },
+            {
+              "id": "1770380720348_3",
+              "name": "sort",
+              "type": "string",
+              "value": "{{$context.$nodes.EVALUATE_QUERY.$output.result.sort}}"
+            },
+            {
+              "id": "1770380720350_4",
+              "name": "limit",
+              "type": "integer",
+              "value": "50"
+            },
+            {
+              "id": "1770380720351_5",
+              "name": "fields",
+              "type": "string",
+              "value": "{{$context.$nodes.EVALUATE_QUERY.$output.result.fields}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Generate ActionItems"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "GEN_ACTION_ITEMS",
+          "id": "1770380929676",
+          "inputs": [
+            {
+              "id": "1770380929677_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "##Context\nYou are an AI Assistant to {{$context.$nodes.PARSE_EMAIL_DATA.$output.result.person_name}}, {{$context.$nodes.PARSE_EMAIL_DATA.$output.result.person_designation}} at {{$context.$nodes.PARSE_EMAIL_DATA.$output.result.person_company}}.\n\nReturn only pure RFC 8259 compliant JSON using exactly the structure in ##Sample. Do not return any extra text, comments, or markup.\n\n##Instructions\n- Generate action items from ##References.\n- The email thread is in reverse chronological order, with the latest email first.\n- Use the latest email as the primary source for action items.\n- Use earlier emails only when the latest email clearly continues, repeats, or keeps an earlier action item open.\n- My email id is {{$context.$nodes.PARSE_EMAIL_DATA.$output.result.person_email}}.\n- Return at most 5 action items.\n- Each action item must represent exactly one independent action.\n- Exclude duplicates already logged in ##Past Activities within the last 72 hours when both the action type and primary business intent are the same.\n\n##Rules\n1. Create action items only from explicit requests, explicit commitments, or explicit meeting asks in the thread.\n2. Do not create action items from background context, general status updates, customer intent, or inferred follow-up.\n3. Valid action item types are only \"task\" and \"meeting\".\n4. Use \"task\" for explicit requests for information, documents, deliverables, confirmation, or another concrete follow-up.\n5. Use \"meeting\" for explicit requests to meet, call, schedule, discuss, review, or connect.\n6. If there are no action items, return exactly: {\"action_items\": []}\n7. Use null for any field that is not explicitly available or not clearly supported by the thread.\n8. Set \"owner\" to my email when the action is directed to me, requested from me, or I am the clear responsible party based on the thread. If another responsible person is clearly named and their email is explicitly present in the thread, use that email. Otherwise set \"owner\" to null.\n9. \"action_item\" must be concise, contain one clear action, and contain no date, time, timezone, or day name. If I am not the owner and another responsible person is clearly named, start \"action_item\" with that person?s name.\n10. Use due_date when the thread provides an exact date, a relative date that can be unambiguously resolved from the email timestamp or thread context, or a clearly implied deadline such as ?by EOD tomorrow,? ?early next week,? or ?within 3 business days.? Convert the resolved date to DD-MMM-YYYY. If the date cannot be determined with high confidence, use null.\n11. Use exactly these keys for every action item: \"action_item\", \"reasoning\", \"owner\", \"due_date\", \"type\", \"subject\", \"agenda\". Do not add any other keys.\n12. \"reasoning\" must be one concise sentence based only on explicit evidence from the thread.\n13. For \"task\", set \"subject\" to null and \"agenda\" to null. For \"meeting\", set \"subject\" to a clear meeting title and for \"agenda\", write a customer-facing appointment description in a natural email style. It must:\n\ta.\tbegin with a brief greeting and opening line,\n\tb.\tinclude the name or names of the meeting participants when they can be inferred from the email thread,\n\tc.\texplain the purpose of the meeting in one short sentence,\n\td.\tlist the main topics as bullet points,\n\te.\tend with a short closing line such as ?Looking forward to speaking with you? or similar,\n\tf.\tstay grounded only in the thread and never invent topics, names, or outcomes.\n        g.     you can refer to ##Agenda format example for reference.\n\n##Agenda format example:\n\nHi Thomas & Charlie, \n\nSetting up this time to connect and walk through the next steps for the Hybrid Generators order. During the call, we will cover:\n\n- Required procurement documentation\n- Order details for the 18 Hybrid Generators\n- Delivery timeline and scheduling\n- Any open questions or clarifications\n\nLooking forward to speaking with you.\n\n##Sample\n{\n  \"action_items\": [\n    {\n      \"action_item\": \"Send required procurement documentation to Thomas Crain\",\n      \"reasoning\": \"Thomas Crain asked for the documentation needed to move forward with procurement.\",\n      \"owner\": \"{{$context.$nodes.PARSE_EMAIL_DATA.$output.result.person_email}}\",\n      \"due_date\": \"11-APR-2026\",\n      \"type\": \"task\",\n      \"subject\": null,\n      \"agenda\": null\n    },\n    {\n      \"action_item\": \"Schedule procurement review meeting with Thomas Crain\",\n      \"reasoning\": \"Thomas Crain requested a discussion on procurement next steps.\",\n      \"owner\": \"{{$context.$nodes.PARSE_EMAIL_DATA.$output.result.person_email}}\",\n      \"due_date\": \"13-APR-2026\",\n      \"type\": \"meeting\",\n      \"subject\": \"Procurement Review for Server Expansion\",\n      \"agenda\": \"This meeting is intended to review the procurement steps required to move the Green Servers order forward, confirm the relevant documentation and order details, address any open questions, and align on the next steps and responsibilities for both teams.\"\n    }\n  ]\n}\n\n##References\n{{$context.$nodes.PARSE_EMAIL_DATA.$output.result.emailText}}\n\n##Past Activities\n{{$context.$nodes.QUERY_RECENT_ACTIVITIES.$output}}"
+            }
+          ],
+          "type": "LLM"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 4000,
+        "p": 0.75
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "modelName": "GPT-OSS-120B",
+      "provider": "CERT_BASIC"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1771219609407",
+            "name": "data",
+            "scope": "JOB",
+            "type": "object",
+            "typeSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {},\n  \"required\": []\n}"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "SALES_FORCE_AUTOMATION",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

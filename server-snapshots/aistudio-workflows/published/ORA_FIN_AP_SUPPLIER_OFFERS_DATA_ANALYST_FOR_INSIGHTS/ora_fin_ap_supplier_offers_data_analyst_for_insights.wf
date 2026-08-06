@@ -1,0 +1,418 @@
+{
+  "workflowId": "100002355226954",
+  "workflowCode": "ORA_FIN_AP_SUPPLIER_OFFERS_DATA_ANALYST_FOR_INSIGHTS",
+  "name": "Supplier Offers Data Analyst for Insights",
+  "description": "Extracts the latest supplier offers related data associated with insights. The analyst supports payment specialists by analyzing current status and execution details based on defined monitoring prompts. Used to supply accurate, up to date data for insight review and follow on actions.",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1780031696671"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Pre Process Extraction Data for Offers",
+            "returnType": "array",
+            "sourceCode": "const input = $context.$nodes.FIN_AP_BO_FUNCTION_EXTRACT_BQL_FOR_OFFERS.$output;\n\nconst output = Array.isArray(input)\n  ? input.map(item => {\n      // Create a shallow copy of the item\n      const newItem = {};\n      Object.keys(item).forEach(key => {\n        newItem[key] = item[key] === null ? \"\" : item[key];\n      });\n      return newItem;\n    })\n  : [];\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1780031333593"
+          },
+          "code": "FIN_AP_CODE_PRE_PROCESS_EXTRACTION_DATA_OFFERS",
+          "convergenceTargetId": "1776969603942",
+          "id": "1765978489189",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check for valid insight"
+          },
+          "outcomes": {
+            "true": "1776970196995",
+            "false": "add_false_1780031333593"
+          },
+          "code": "FIN_AP_CONDITION_CHECK_FOR_VALID_INSIGHT",
+          "convergenceTargetId": "end",
+          "id": "1780031333593",
+          "inputs": [
+            {
+              "id": "1780031333595_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.insightContext.insightsName == \"Supplier offers requiring action\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Process Summary Data for Offers Requiring Action",
+            "returnType": "object",
+            "sourceCode": "const grouped = {};\nlet data  = $context.$nodes.EXTRACT_SUMMARY_BQL_RESPONSE.$output || [];\nfor (const item of data) {\n  const condition = item[\"Business Condition\"];\n  const programType = item[\"Program Type\"];\n  const currency = item[\"Invoice Currency\"];\n\n  const conditionKey = `${condition}__${programType}`;\n\n  if (!grouped[conditionKey]) {\n    grouped[conditionKey] = {\n      businessCondition: condition,\n      programType: programType,\n      totalSupplierCount: 0,\n      totalOfferCount: 0,\n      totalInvoiceCount: 0,\n      currencies: {}\n    };\n  }\n\n  grouped[conditionKey].totalSupplierCount += item[\"Supplier Count\"];\n  grouped[conditionKey].totalOfferCount += item[\"Offer Count\"];\n  grouped[conditionKey].totalInvoiceCount += item[\"Invoice Count\"];\n\n  if (!grouped[conditionKey].currencies[currency]) {\n    grouped[conditionKey].currencies[currency] = {\n      currency,\n      supplierCount: 0,\n      offerCount: 0,\n      invoiceCount: 0,\n      totalOutstandingBalance: 0\n    };\n  }\n\n  grouped[conditionKey].currencies[currency].supplierCount += item[\"Supplier Count\"];\n  grouped[conditionKey].currencies[currency].offerCount += item[\"Offer Count\"];\n  grouped[conditionKey].currencies[currency].invoiceCount += item[\"Invoice Count\"];\n  grouped[conditionKey].currencies[currency].totalOutstandingBalance += item[\"Total Outstanding Balance\"];\n}\n\nconst result = Object.values(grouped).map(obs => ({\n  ...obs,\n  currencies: Object.values(obs.currencies).sort(\n    (a, b) => b.totalOutstandingBalance - a.totalOutstandingBalance\n  )\n}));\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1776970384848"
+          },
+          "code": "FIN_AP_CODE_PROCESS_SUMMARY_DATA_FOR_OFFERS_REQUIRING_ACTION",
+          "convergenceTargetId": "1780031424393",
+          "id": "1776970196995",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check token size",
+            "returnType": "number",
+            "sourceCode": "let data = $context.$nodes.FIN_AP_CODE_PROCESS_SUMMARY_DATA_FOR_OFFERS_REQUIRING_ACTION.$output.result \nconst str = typeof data === \"string\" ? data : JSON.stringify(data);\n\n// optional: normalize whitespace (slightly better estimate)\nconst cleaned = str.replace(/\\s+/g, \" \");\n\n// rough estimate: 1 token ≈ 4 characters\nconst tokenCount = Math.ceil(cleaned.length / 4);\nreturn tokenCount;"
+          },
+          "outcomes": {
+            "success": "1776970471473"
+          },
+          "code": "FIN_AP_CODE_CHECK_TOKEN_SIZE",
+          "convergenceTargetId": "1780031424393",
+          "id": "1776970384848",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check if token limit exceeded"
+          },
+          "outcomes": {
+            "true": "1776971013573",
+            "false": "1776970610699"
+          },
+          "code": "FIN_AP_CONDITION_CHECK_IF_TOKEN_LIMIT_EXCEEDED",
+          "convergenceTargetId": "1780031489849",
+          "id": "1776970471473",
+          "inputs": [
+            {
+              "id": "1776970471474_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_CHECK_TOKEN_SIZE.$output.result > 25000}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Set Default Summary Requiring Action"
+          },
+          "outcomes": {
+            "success": "1766035908676"
+          },
+          "code": "FIN_AP_VARIABLES_SET_DEFAULT_SUMMARY_REQUIRING_ACTION",
+          "id": "1776971013573",
+          "inputs": [
+            {
+              "id": "1776971040605",
+              "name": "summaryRequiringAction",
+              "scope": "JOB",
+              "type": "string",
+              "value": "Here are the supplier offers that are requiring action"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Process Offers Requiring Action",
+            "returnType": "array",
+            "sourceCode": "const data = $context.$nodes.FIN_AP_CODE_PRE_PROCESS_EXTRACTION_DATA_OFFERS.$output.result || [];\nconst summaryText =($context.$variables.summaryRequiringAction ?? \"\").toString().trim() || \"Here are the details:\";\nconst allObservations = [\n  \"New shortlisted offers ready for supplier communication\",\n  \"Supplier offers pending communication for more than 7 days\",\n  \"Supplier offers that will expire in next 5 days\",\n  \"Invoices in supplier offers not ready for payment\"\n].filter(obs => data.some(row => row.Observations === obs));\n\nconst observationColumnMap = {\n  \"New shortlisted offers ready for supplier communication\": [\n    \"Supplier\",\n    \"Installment Count\",\n    \"Outstanding Balance\",\n    \"Program Type\",\n    \"Email Address\",\n    \"Offer Status\"\n  ],\n  \"Supplier offers pending communication for more than 7 days\": [\n    \"Supplier\",\n    \"Installment Count\",\n    \"Outstanding Balance\",\n    \"Program Type\",\n    \"Email Address\",\n    \"Offer Status\"\n  ],\n  \"Supplier offers that will expire in next 5 days\": [\n    \"Supplier\",\n    \"Installment Count\",\n    \"Outstanding Balance\",\n    \"Program Type\",\n    \"Email Address\",\n    \"Offer Status\"\n  ],\n  \"Invoices in supplier offers not ready for payment\": [\n    \"Invoice Number\",\n    \"Installment Number\",\n    \"Outstanding Balance\",\n    \"Supplier\",\n    \"Supplier Site\",\n    \"Invoice Validation Status\",\n    \"Invoice Approval Status\",\n    \"Program Type\"\n  ]\n};\n\nconst formatValue = (val) => {\n  if (val === null || val === undefined || val === \"\") return \"\";\n  return val;\n};\n\nconst shouldShowLimitMessage = allObservations.some(\n  obs => data.filter(row => row.Observations === obs).length >= 5\n);\n\nlet sequence = 1;\nconst summarizeData = [];\n\nsummarizeData.push({\n  type: 'text',\n  content: [summaryText],\n  sequence: sequence++\n});\n\nif (shouldShowLimitMessage) {\n  summarizeData.push({\n    type: 'text',\n    content: [\"Showing up to 5 items below to keep this view focused.\"],\n    sequence: sequence++\n  });\n}\n\n// Tables\nallObservations.forEach((obs) => {\n  const columns = observationColumnMap[obs];\n  if (!columns) return;\n\n  const rowsForObs = data.filter(row => row.Observations === obs);\n\n  const formattedRows = rowsForObs.map(row => {\n    const entry = {};\n    columns.forEach(col => {\n      entry[col] = formatValue(row[col]);\n    });\n    return entry;\n  });\n\n  summarizeData.push({\n    type: \"table\",\n    heading: obs,\n    content: formattedRows,\n    sequence: sequence++,\n    columnOrder: columns\n  });\n});\n\nsummarizeData.push({\n  type: \"actions\",\n  content: [\n    \"Accept and send pending offers to suppliers.\" ,\n    \"Discard uncommunicated offers that are no longer relevant.\" ,\n    \"Follow up offline with suppliers on already communicated offers.\"\n  ],\n  sequence: sequence++\n});\n\nlet finalResult;\n\nif ( $context.$nodes.FIN_AP_BO_FUNCTION_EXTRACT_BQL_FOR_OFFERS.$status == 'failure')\nreturn null;\nelse if (!Array.isArray(data) || data.length === 0) {\n  finalResult = {\n    useSummarizationPrompt: true,\n    summarizeData: [\n      {\n        type: \"text\",\n        content: [\n          \"This insight has been resolved. There’s nothing to review at the moment.\",\n        ],\n        sequence: 1,\n      },\n    ],\n  };\n} else {\n  finalResult = {\n    useSummarizationPrompt: true,\n    summarizeData: summarizeData,\n  };\n}\n\nreturn finalResult.summarizeData;"
+          },
+          "outcomes": {
+            "success": "1780031489849"
+          },
+          "code": "FIN_AP_CODE_PROCESS_OFFERS_REQUIRING_ACTION",
+          "convergenceTargetId": "1780031424393",
+          "id": "1766035908676",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Return Offers Not Ready For Payment"
+          },
+          "outcomes": {},
+          "code": "FIN_AP_RETURN_OFFERS_NOT_READY_FOR_PAYMENT",
+          "convergenceTargetId": "end",
+          "id": "1780031489849",
+          "inputs": [
+            {
+              "id": "1780031489851_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_PROCESS_OFFERS_REQUIRING_ACTION.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Generate short summary"
+          },
+          "outcomes": {
+            "success": "1776970969415"
+          },
+          "code": "FIN_AP_LLM_GENERATE_SHORT_SUMMARY",
+          "id": "1776970610699",
+          "inputs": [
+            {
+              "id": "1776970610701_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a financial data summarizer. Given a grouped dataset of supplier offer and \ninvoice business conditions, generate a concise executive summary titled \n\"Supplier Offer Overview\" formatted with HTML tags for readability.\n\nFORMAT RULES:\n- Title should be wrapped in <b> tags\n- Each observation is a bullet point (•) on a new line separated by <br><br>\n- Key numerals (supplier count, offer count, invoice count) must be wrapped in <b> tags\n-Display all currency amounts in their full numeric form. Do not abbreviate values using K, M, or B. Use standard currency formatting with commas as thousands separators and preserve decimal precision where provided.\n- Currency amounts must not be wrapped in <b> tags. Display them as plain text without any bold formatting.\n- Show only the top 2 currencies by Total Outstanding Balance per observation\n- Do not use currency symbols. Display currency values using their ISO currency codes instead (USD, EUR, GBP, JPY, etc.).\n- The action/status phrase describing the condition must be wrapped in <i> tags\n- The program type should be wrapped in <i> tags where mentioned\n- No category headings or labels before each bullet\n- No raw API condition labels anywhere in the output\n\nSENTENCE STRUCTURE GUIDE:\n\n1. \"New shortlisted offers ready for supplier communication\"\n- Italic phrase → \"ready for supplier communication\"\n- Structure:\n  \"<b>{offerCount}</b> new offers across <b>{supplierCount}</b> suppliers covering \n  <b>{invoiceCount}</b> invoices are <i>ready for supplier communication</i>, \n  with balances of <b>{amount}</b> under <i>{programType}</i>\"\n\n2. \"Supplier offers pending communication for more than 7 days\"\n- Italic phrase → \"pending supplier communication for more than 7 days\"\n- Structure:\n  \"A total of <b>{offerCount}</b> offers from <b>{supplierCount}</b> suppliers \n  covering <b>{invoiceCount}</b> invoices are <i>pending supplier communication \n  for more than 7 days</i>, with balances of <b>{amount}</b>  under <i>{programType}</i>\"\n\n3. \"Supplier offers that will expire in next 5 days\"\n- Italic phrase → \"expiring within the next 5 days\"\n- Structure:\n  \"<b>{offerCount}</b> offers across <b>{supplierCount}</b> suppliers covering \n  <b>{invoiceCount}</b> invoices are <i>expiring within the next 5 days</i>, \n  with balances of <b>{amount}</b> under <i>{programType}</i>\"\n\n4. \"Invoices in supplier offers not ready for payment\"\n- Italic phrase → \"not yet ready for payment\"\n- Structure:\n  \"There are <b>{offerCount}</b> offers across <b>{supplierCount}</b> suppliers \n  covering <b>{invoiceCount}</b> invoices that are <i>not yet ready for payment</i>, \n  with balances of <b>{amount}</b> under <i>{programType}</i>\"\n\nSTRICT RULES:\n- NEVER start a bullet with the program type\n- NEVER use the raw business condition label anywhere in the output\n- NEVER use phrases like \"top currencies are\" or \"top currency is\" — \n  instead use \"with balances of\" or \"with a balance of\"\n- NEVER use decimal places for JPY \n- ALWAYS follow the exact sentence structure provided in the \n  SENTENCE STRUCTURE GUIDE for each condition\n- Program type must appear only at the END of the sentence \n  after \"under\", wrapped in <i> tags\n- If only one currency exists for an observation, use \n  \"with a balance of\" (singular) instead of \"with balances of\"\nTONE RULES:\n- Write in plain business English, easy for a non-technical finance user to understand\n- Use natural connective language like \"and\", \"with\", \"across\", \"holding\", \"totaling\"\n- Avoid jargon; keep it concise but human-friendly\n- Each bullet should mention: supplier count, offer count, invoice count, \n  top currencies with amounts, and program type\n\nINPUT DATA:\n {{$context.$nodes.FIN_AP_CODE_PROCESS_SUMMARY_DATA_FOR_OFFERS_REQUIRING_ACTION.$output.result}} \n\nOUTPUT:\nReturn only the HTML-formatted summary string. No markdown, no code blocks, \nno extra commentary."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Set Summary Requiring Action"
+          },
+          "outcomes": {
+            "success": "1766035908676"
+          },
+          "code": "FIN_AP_VARIABLES_SET_SUMMARY_REQUIRING_ACTION",
+          "id": "1776970969415",
+          "inputs": [
+            {
+              "id": "1776970996173",
+              "name": "summaryRequiringAction",
+              "scope": "JOB",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_LLM_GENERATE_SHORT_SUMMARY.$output}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "id": "add_false_1780031333593",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1764692265204",
+            "1": "1776969751149",
+            "2": "add_1780031696671_2"
+          },
+          "code": "PARALLEL_1780031696672",
+          "convergenceTargetId": "1765978489189",
+          "id": "1780031696671",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "description": "Add node for branch 2",
+            "name": "Add 2"
+          },
+          "outcomes": {
+            "success": "1765978489189"
+          },
+          "id": "add_1780031696671_2",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_PAYABLES_BUSINESSOBJECTDATAEXTRACT",
+            "errorNodeId": null,
+            "functionName": "Extract",
+            "name": "Extract BQL For Offers"
+          },
+          "outcomes": {
+            "success": "1765978489189"
+          },
+          "code": "FIN_AP_BO_FUNCTION_EXTRACT_BQL_FOR_OFFERS",
+          "convergenceTargetId": "1780031703722",
+          "id": "1764692265204",
+          "inputs": [
+            {
+              "id": "1768468931509_1",
+              "name": "extraction_query_json_object",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.insightContext.detailedBql}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_PAYABLES_BUSINESSOBJECTDATAEXTRACT",
+            "functionName": "Extract",
+            "name": "Extract summary BQL response"
+          },
+          "outcomes": {
+            "success": "1765978489189"
+          },
+          "code": "EXTRACT_SUMMARY_BQL_RESPONSE",
+          "convergenceTargetId": "1780031714226",
+          "id": "1776969751149",
+          "inputs": [
+            {
+              "id": "1776969793774_1",
+              "name": "extraction_query_json_object",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.insightContext.summaryBql}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1776970947171",
+          "name": "summaryRequiringAction",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1764694869113",
+          "name": "bqlParamater",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1764676847955",
+          "name": "outputResponse",
+          "scope": "JOB",
+          "type": "array"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.25
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "modelName": "GPT OSS 120B (Basic)",
+      "provider": "CERT_BASIC"
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1765186016118",
+            "name": "insightContext",
+            "type": "object"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "FIN",
+  "product": "PAYABLES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"8\""
+  }
+}

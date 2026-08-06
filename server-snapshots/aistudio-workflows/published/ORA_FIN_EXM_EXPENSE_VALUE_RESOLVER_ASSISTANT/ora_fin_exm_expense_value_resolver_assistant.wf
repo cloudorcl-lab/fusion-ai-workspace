@@ -1,0 +1,516 @@
+{
+  "workflowId": "100002355227096",
+  "workflowCode": "ORA_FIN_EXM_EXPENSE_VALUE_RESOLVER_ASSISTANT",
+  "name": "Expense Value Resolver Assistant",
+  "description": "This agent maps LLM-extracted values to corresponding records in the system by searching and resolving the correct record IDs for required fields (such as expense type, project, task, attendee, and other list-of-values fields). It validates results to ensure only valid, user-eligible values are selected and passed downstream for expense updates.",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1770109498512"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "filterLowVolumeFields",
+            "returnType": "array",
+            "sourceCode": "//let raw = $context.$nodes.EXPENSE_MESSAGE_DECOMPOSITION_AGENT;\n let raw=$context.$triggers.REST.$input.userDecompositionAgentOutput; \n// Step 1: parse output if needed\nlet output = raw;\n\nif (typeof output === \"string\") {\n  try {\n    output = JSON.parse(output);\n  } catch (e) {\n    output = {};\n  }\n}\n\n// Step 2: extract result\nlet DecomposedInstructionsArray =\n  output?.result?.DecomposedInstructions || [];\n\n\nlet LowVolumeFields = [\"receiptCurrency\",\"flightClass\",\"flightType\",\"expenseType\",\"spendAuthorizationLine\"];\nlet LowVolumeFieldsArray = DecomposedInstructionsArray.filter(inst => inst?.field && LowVolumeFields.includes(inst.field));\nreturn LowVolumeFieldsArray;"
+          },
+          "outcomes": {
+            "success": "1772636516837"
+          },
+          "code": "FILTERLOWVOLUMEFIELDS",
+          "id": "1770109498512",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "checkReceiptCurrency"
+          },
+          "outcomes": {
+            "true": "1779187639653",
+            "false": "add_false_1770112300290"
+          },
+          "code": "CHECKRECEIPTCURRENCY",
+          "convergenceTargetId": "1770147560257",
+          "id": "1770112300290",
+          "inputs": [
+            {
+              "id": "1770112300292_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FILTERLOWVOLUMEFIELDS.$output.result.some(inst => inst?.field === \"receiptCurrency\")}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1770147560257"
+          },
+          "id": "add_false_1770112300290",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_CURRENCY",
+            "functionName": "getCurrencyList",
+            "name": "getAllReceiptCurrencies"
+          },
+          "outcomes": {
+            "success": "1770147560257"
+          },
+          "code": "GETALLRECEIPTCURRENCIES",
+          "id": "1770147356439",
+          "inputs": [
+            {
+              "id": "1770200015883_1",
+              "name": "endDate",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_CURRENCY_EFFECTIVE_DATE.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "setLovVariables"
+          },
+          "outcomes": {
+            "success": "1773569151412"
+          },
+          "code": "SETLOVVARIABLES",
+          "id": "1770147560257",
+          "inputs": [
+            {
+              "id": "1770147580652",
+              "name": "flightClassLov",
+              "type": "object",
+              "value": "{\n\"items\": [\n{\n\"meaning\": \"Any\",\n\"$id\": \"EXM_TICKET_CLASS,ANY\"\n},\n{\n\"meaning\": \"First\",\n\"$id\": \"EXM_TICKET_CLASS,FIRST\"\n},\n{\n\"meaning\": \"Business\",\n\"$id\": \"EXM_TICKET_CLASS,BUSINESS\"\n},\n{\n\"meaning\": \"Coach\",\n\"$id\": \"EXM_TICKET_CLASS,COACH\"\n}\n],\n\"hasMore\": false\n}"
+            },
+            {
+              "id": "1770147576169",
+              "name": "flightTypeLov",
+              "type": "object",
+              "value": "{\n\"items\": [\n{\n\"meaning\": \"Domestic\",\n\"$id\": \"EXM_TRAVEL_TYPES,DOMESTIC\"\n},\n{\n\"meaning\": \"International\",\n\"$id\": \"EXM_TRAVEL_TYPES,INTERNATIONAL\"\n}\n],\n\"hasMore\": false\n}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Check if LowValueFieldsArray is empty"
+          },
+          "outcomes": {
+            "true": "add_true_1772636516837",
+            "false": "1772636642460"
+          },
+          "code": "CHECK_IF_LOWVALUEFIELDSARRAY_IS_EMPTY",
+          "convergenceTargetId": "1770112300290",
+          "id": "1772636516837",
+          "inputs": [
+            {
+              "id": "1772636516838_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FILTERLOWVOLUMEFIELDS.$output.result.length>0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for true branch",
+            "name": "Add (True Branch)"
+          },
+          "outcomes": {
+            "success": "1770112300290"
+          },
+          "id": "add_true_1772636516837",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Return payload",
+            "returnType": "object",
+            "sourceCode": "let returnObj= {\n  ResolvedInstructions: []\n};\nreturn returnObj;"
+          },
+          "outcomes": {
+            "success": "1772639304804"
+          },
+          "code": "RETURN_PAYLOAD",
+          "id": "1772636642460",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Return"
+          },
+          "outcomes": {},
+          "code": "RETURN",
+          "convergenceTargetId": "1770112300290",
+          "id": "1772639304804",
+          "inputs": [
+            {
+              "id": "1772639304806_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.RETURN_PAYLOAD.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_GETAGENTINITPARAMS",
+            "errorNodeId": "1773569289238",
+            "functionName": "getAgentInitParams",
+            "name": "Get Low Vol Resolver Prompt"
+          },
+          "outcomes": {
+            "success": "1773569289238"
+          },
+          "code": "GET_LOW_VOL_RESOLVER_PROMPT",
+          "id": "1773569151412",
+          "inputs": [
+            {
+              "id": "1773569184854_1",
+              "name": "agentName",
+              "type": "string",
+              "value": "{{$context.$workflow.$name}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "DefaultLowVolResolverPrompt",
+            "returnType": "object",
+            "sourceCode": "const defaultExpensePrompt = `### Task Overview\n\nYour task is to taken in the input consisting of the user decomposed Instructions and resolve that field.\n\n### Your Input\nLowVolumeFieldsArray - LowVolumeFieldsArrayVar\n\n--- Steps to follow ---\n\n# Step 1 - Identify the messages that need to be resolved\nFor each element in array of 'LowVolumeFieldsArray' check\nif the 'type' == 'needsResolution'\nProcess only these elements\n\n# Step 2 - Field Identification and Resolution\n\nFor each element in 'LowVolumeFieldsArray' get the field and use following rules to resolve the respective fields\n1. To Resolve the 'flightClass' - \n  check if the 'value' includes any of the flight class from FlightClassLovVar\n  if Yes :\n  Structure the Output in following format - \n  Where \n  copy every other field as it is \n  change the 'type' to 'resolved'\n  and populate the 'value' with the id from FlightClassLovVar\n  {\n    \"message\": \"<sentence>\",\n    \"type\": \"resolved\",\n    \"field\": \"<field Name>\",\n    \"value\":\"<value>\",\n    \"reasoning\":<reasoning>\n  }\n  if No : (None of the Flight class matches with value)\n  Structure the Output in following format - \n  Where \n  copy every other field as it is \n  change the 'type' to 'unsupported'\n  {\n    \"message\": \"<sentence>\",\n    \"type\": \"unsupported\",\n    \"field\": \"<field Name>\",\n    \"value\":\"\",\n    \"reasoning\":<reasoning>\n  }\n\n2. To Resolve the 'flightType' -\n  check if the 'value' includes any of the flight type from FlightTypeVar\n  if Yes :\n  Structure the Output in following format - \n  Where \n  copy every other field as it is \n  change the 'type' to 'resolved'\n  and populate the 'value' with the id from the FlightTypeVar\n  {\n    \"message\": \"<sentence>\",\n    \"type\": \"resolved\",\n    \"field\": \"<field Name>\",\n    \"value\":\"<value>\",\n    \"reasoning\":<reasoning>\n  }\n  if No : (None of the Flight type matches with value)\n  Structure the Output in following format - \n  Where \n  copy every other field as it is \n  change the 'type' to 'unsupported'\n  {\n    \"message\": \"<sentence>\",\n    \"type\": \"unsupported\",\n    \"field\": \"<field Name>\",\n    \"value\":\"\",\n    \"reasoning\":<reasoning>\n  }\n\n\n3. To Resolve the 'receiptCurrency' -\n  Check if 'value' matches with the any of the available currency from GetAllReceiptCurrenciesVar\n  if Yes :\n  Structure the Output in following format - \n  Where \n  copy every other field as it is \n  change the 'type' to 'resolved'\n  and populate the 'value' with the $id of that respective currency from the list.\n  {\n    \"message\": \"<sentence>\",\n    \"type\": \"resolved\",\n    \"field\": \"<field Name>\",\n    \"value\":\"<value>\",\n    \"reasoning\":<reasoning>\n  }\n  if No : (None of the currency matches with value)\n  Structure the Output in following format - \n  Where \n  copy every other field as it is \n  change the 'type' to 'unsupported'\n  {\n    \"message\": \"<sentence>\",\n    \"type\": \"unsupported\",\n    \"field\": \"<field Name>\",\n    \"value\":\"\",\n    \"reasoning\":<reasoning>\n  }\n\n\n\n\n## Examples\nInput - \n{\n  \"LowVolumeFieldsArray\":[\n    {\n      \"message\":\"update flight class to first class\",\n      \"type\": \"needsResolution\",\n      \"field\":\"flightClass\",\n      \"value\":\"first class\",\n      \"reasoning\":\"The sentence directly updates the flightClass, flightClass  is a Low Volume expense field belonging to ExpenseAttributeActions and ORA_FIN_EXM_EXPENSE_AIRFARE_FIELD topic and need further resolution\"\n    }\n  ]\n}\nOutput - \n{\n  \"ResolvedInstructions\":[\n    {\n      \"message\":\"update flight class to first class\",\n      \"type\": \"resolved\",\n      \"field\":\"flightClass\",\n      \"value\":\"EXM_TICKET_CLASS,FIRST\",\n      \"reasoning\":\"The sentence directly updates the flightClass, flightClass  is a Low Volume expense field belonging to ExpenseAttributeActions and ORA_FIN_EXM_EXPENSE_AIRFARE_FIELD topic and need further resolution\"\n    }\n  ]\n}\n##ALways output with ResolvedInstructions key as per example. Dont omit it. \n`;\n\nconst out = $context.$nodes.GET_LOW_VOL_RESOLVER_PROMPT?.$output;\nconst prompts = Array.isArray(out?.prompts) ? out.prompts : [];\nlet expensePrompt = prompts?.find(p => p.promptType === \"MAIN\")?.prompt || defaultExpensePrompt;\n\nlet prompt = {\n  expensePrompt: expensePrompt,\n};\n\nreturn prompt;"
+          },
+          "outcomes": {
+            "success": "1770112704848"
+          },
+          "code": "DEFAULTLOWVOLRESOLVERPROMPT",
+          "id": "1773569289238",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Get Currency Effective Date",
+            "returnType": "string",
+            "sourceCode": "const expenseDate = $context.$triggers.REST?.$input?.expenseData?.expenseDate\nconst dateText = expenseDate === null || expenseDate === undefined ? \"\" : String(expenseDate).trim()\nif (dateText) {\n  return dateText\n}\nreturn new Date().toISOString().slice(0, 10)"
+          },
+          "outcomes": {
+            "success": "1770147356439"
+          },
+          "code": "GET_CURRENCY_EFFECTIVE_DATE",
+          "id": "1779187639653",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "checkExpenseType"
+          },
+          "outcomes": {
+            "true": "1782367158607",
+            "false": "1782382677258"
+          },
+          "code": "CHECKEXPENSETYPE",
+          "convergenceTargetId": "end",
+          "id": "1770112331608",
+          "inputs": [
+            {
+              "id": "1770112331609_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CHECK_EXPENSE_TYPE_PRESENT.$output.result}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Input Payload for Defaulting",
+            "returnType": "object",
+            "sourceCode": "let decompositionOutput =\n  $context.$nodes.FILTERLOWVOLUMEFIELDS.$output.result || [];\n\nlet expenseTypeValue = \"\";\n\nif (Array.isArray(decompositionOutput)) {\n  let expenseTypeInstruction = decompositionOutput.find(\n    inst => inst?.field === \"expenseType\"\n  );\n\n  expenseTypeValue = expenseTypeInstruction?.value\n    ? \"Expense Type is \" + String(expenseTypeInstruction.value)\n    : \"\";\n}\n\nlet payload = {\n  partnerExpense: {\n    endDate: $context.$triggers.REST.$input.expenseData.expenseDate\n  },\n  expenseTypeValue: expenseTypeValue\n};\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "1782367338679"
+          },
+          "code": "PREPARE_INPUT_PAYLOAD_FOR_DEFAULTING",
+          "convergenceTargetId": "1770148141033",
+          "id": "1782367158607",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Expense Defaulting Assistant",
+            "workflowCode": "ORA_FIN_EXM_EXPENSE_DEFAULTING_ASSISTANT"
+          },
+          "outcomes": {
+            "success": "1782382561566"
+          },
+          "code": "EXPENSE_DEFAULTING_ASSISTANT",
+          "convergenceTargetId": "1770148141033",
+          "id": "1782367338679",
+          "inputs": [
+            {
+              "id": "1782367356780_1",
+              "name": "message",
+              "type": "string"
+            },
+            {
+              "id": "1782367356781_2",
+              "name": "userMessage",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_INPUT_PAYLOAD_FOR_DEFAULTING.$output.result.expenseTypeValue}}"
+            },
+            {
+              "id": "1782367356781_3",
+              "name": "partnerExpense",
+              "type": "object",
+              "value": "{{$context.$nodes.PREPARE_INPUT_PAYLOAD_FOR_DEFAULTING.$output.result.partnerExpense}}"
+            },
+            {
+              "id": "1782367356782_4",
+              "name": "buID",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.expenseData.businessUnit.id}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "Low Volume Resolution"
+          },
+          "outcomes": {
+            "success": "1781763454512"
+          },
+          "code": "LOW_VOLUME_RESOLUTION",
+          "convergenceTargetId": "1770112331608",
+          "id": "1770112704848",
+          "inputs": [
+            {
+              "id": "1770112704851_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "let LowVolumeFieldsArrayVar - {{$context.$nodes.FILTERLOWVOLUMEFIELDS.$output.result}}\nlet FlightClassLovVar - {{$context.$variables.flightClassLov}}\nlet FlightTypeVar- {{$context.$variables.flightTypeLov}}\nlet GetAllReceiptCurrenciesVar- {{$context.$nodes.GETALLRECEIPTCURRENCIES.$output}} \nlet isReplyFlow - {{$context.$triggers.REST.$input.isReplyFlow}}\n\n\n\n\n{{$context.$nodes.DEFAULTLOWVOLRESOLVERPROMPT.$output.result.expensePrompt}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"title\": \"ResolvedInstructions\",\n    \"type\": \"object\",\n    \"description\": \"List of decomposed user instructions derived from the original message\",\n    \"required\": [\n        \"ResolvedInstructions\"\n    ],\n    \"properties\": {\n        \"ResolvedInstructions\": {\n            \"type\": \"array\",\n            \"items\": {\n                \"$ref\": \"#/definitions/ResolvedInstructions\"\n            },\n            \"minItems\": 1\n        }\n    },\n    \"definitions\": {\n        \"ResolvedInstructions\": {\n            \"type\": \"object\",\n            \"required\": [\n                \"message\",\n                \"type\",\n                \"field\",\n                \"value\",\n                \"reasoning\"\n            ],\n            \"properties\": {\n                \"message\": {\n                    \"type\": \"string\",\n                    \"description\": \"Sub-message extracted from the original user instruction\"\n                },\n                \"type\": {\n                    \"type\": \"string\",\n                    \"description\": \"Resolution status of the instruction\",\n                    \"enum\": [\n                        \"resolved\",\n                        \"unsupported\",\n                        \"irrelevant\"\n                    ]\n                },\n                \"field\": {\n                    \"description\": \"Target field(s) identified in the instruction\",\n                    \"oneOf\": [\n                        {\n                            \"type\": \"string\"\n                        },\n                        {\n                            \"type\": \"array\",\n                            \"items\": {\n                                \"type\": \"string\"\n                            },\n                            \"minItems\": 1\n                        }\n                    ]\n                },\n                \"value\": {\n                    \"description\": \"Value(s) associated with the identified field(s)\",\n                    \"oneOf\": [\n                        {\n                            \"type\": \"string\"\n                        },\n                        {\n                            \"type\": \"array\",\n                            \"items\": {\n                                \"type\": \"string\"\n                            },\n                            \"minItems\": 1\n                        },\n                        {\n                            \"type\": \"object\"\n                        }\n                    ]\n                },\n                \"reasoning\": {\n                    \"type\": \"string\",\n                    \"description\": \"Explanation of how the instruction was interpreted and classified\"\n                }\n            },\n            \"additionalProperties\": false\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Check Expense Type Present",
+            "returnType": "boolean",
+            "sourceCode": "const result =\n  Array.isArray($context.$nodes.FILTERLOWVOLUMEFIELDS.$output.result) &&\n  $context.$nodes.FILTERLOWVOLUMEFIELDS.$output.result.some(\n    inst => inst?.field === \"expenseType\"\n  ) &&\n  $context.$triggers.REST.$input.isReplyFlow === true;\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1770112331608"
+          },
+          "code": "CHECK_EXPENSE_TYPE_PRESENT",
+          "convergenceTargetId": "1770112331608",
+          "id": "1781763454512",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Add Predicted Expense Type",
+            "returnType": "object",
+            "sourceCode": "let resolvedInstructions =\n  $context.$nodes.LOW_VOLUME_RESOLUTION.$output.ResolvedInstructions || [];\n\nlet expenseTypeAssistantOutput =\n  $context.$nodes.EXPENSE_DEFAULTING_ASSISTANT.$output;\n\nlet emptyObject = new Object();\n\nlet rawOutput = expenseTypeAssistantOutput\n  ? expenseTypeAssistantOutput.output\n  : null;\n\nlet rawPrediction =\n  typeof rawOutput === \"string\"\n    ? JSON.parse(rawOutput)\n    : rawOutput || emptyObject;\n\nlet expenseTypePrediction =\n  rawPrediction && rawPrediction.result\n    ? rawPrediction.result\n    : rawPrediction;\n\nlet predictedExpenseType =\n  expenseTypePrediction.predictedExpenseType || new Object();\n\nlet expenseTypeId = predictedExpenseType.expenseTypeId;\nlet expenseTypeName = predictedExpenseType.name;\n\nlet rawInput = expenseTypeAssistantOutput\n  ? expenseTypeAssistantOutput.input\n  : null;\n\nlet expenseTypeAssistantInput =\n  typeof rawInput === \"string\"\n    ? JSON.parse(rawInput)\n    : rawInput || new Object();\n\nresolvedInstructions = resolvedInstructions.filter(\n  instruction => instruction && instruction.field !== \"expenseType\"\n);\n\nlet expenseTypeValue = new Object();\n\nif (expenseTypeId != null) {\n  expenseTypeValue.id = expenseTypeId;\n  expenseTypeValue.name = expenseTypeName;\n}\n\nlet resolvedExpenseType = new Object();\nresolvedExpenseType.message =\n  expenseTypeAssistantInput.parameters &&\n  expenseTypeAssistantInput.parameters.userMessage\n    ? expenseTypeAssistantInput.parameters.userMessage\n    : \"<sentence>\";\nresolvedExpenseType.type =\n  expenseTypeId == null ? \"notResolved\" : \"resolved\";\nresolvedExpenseType.field = \"expenseType\";\nresolvedExpenseType.value = expenseTypeValue;\nresolvedExpenseType.reasoning = expenseTypePrediction.reason;\n\nresolvedInstructions.push(resolvedExpenseType);\n\nlet finalOutput = new Object();\nfinalOutput.ResolvedInstructions = resolvedInstructions;\n\nreturn finalOutput;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ADD_PREDICTED_EXPENSE_TYPE",
+          "id": "1782382561566",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Add Irrelevant Expense Type Prediction",
+            "returnType": "object",
+            "sourceCode": "let resolvedInstructions =\n  $context.$nodes.LOW_VOLUME_RESOLUTION.$output.ResolvedInstructions || [];\n\nlet decompositionOutput =\n  $context.$nodes.FILTERLOWVOLUMEFIELDS.$output.result || [];\n\nlet isExpenseTypePresent =\n  Array.isArray(decompositionOutput) &&\n  decompositionOutput.some(inst => inst?.field === \"expenseType\");\n\nlet isReplyFlow =\n  $context.$triggers.REST.$input.isReplyFlow === true;\n\nif (isExpenseTypePresent && !isReplyFlow) {\n  // Remove existing expense type instruction, if already present\n  resolvedInstructions = resolvedInstructions.filter(\n    instruction => instruction?.field !== \"expenseType\"\n  );\n\n  resolvedInstructions.push({\n    message: $context.$triggers.REST.$input.userMessage,\n    type: \"irrelevant\",\n    field: \"expenseType\",\n    value: $context.$triggers.REST.$input.userMessage,\n    reasoning: \"reply flow is false\"\n  });\n}\n\nlet finalOutput = {\n  ResolvedInstructions: resolvedInstructions\n};\n\nreturn finalOutput;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ADD_IRRELEVANT_EXPENSE_TYPE_PREDICTION",
+          "id": "1782382677258",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1770141178669",
+          "name": "expenseSourceLov",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1770141099368",
+          "name": "flightTypeLov",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1770141046426",
+          "name": "flightClassLov",
+          "scope": "JOB",
+          "type": "object"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.3
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "modelName": "Gpt Oss",
+      "provider": "CERT_BASIC"
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1782366904683",
+            "name": "userMessage",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1778177153414",
+            "name": "isReplyFlow",
+            "scope": "JOB",
+            "type": "boolean"
+          },
+          {
+            "id": "1770145628533",
+            "name": "expenseData",
+            "type": "object"
+          },
+          {
+            "id": "1770109351966",
+            "name": "expenseId",
+            "type": "string"
+          },
+          {
+            "id": "1770109342066",
+            "name": "userDecompositionAgentOutput",
+            "type": "object"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "FIN",
+  "product": "EXPENSES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": true,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"8\""
+  }
+}

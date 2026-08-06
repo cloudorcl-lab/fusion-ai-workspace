@@ -1,0 +1,336 @@
+{
+  "workflowId": "100002355227221",
+  "workflowCode": "ORA_EXTERNAL_CONTRACT_ANALYST",
+  "name": "External Contract Analyst",
+  "description": "The External Contract Analyst enables users to evaluate third-party legal documents against standard contract templates. The agent identifies and reports sections that match, differ, are missing, or have been added, focusing on the actual business impact rather than surface-level differences in wording. The resulting structured compliance report highlights substantive differences and additions, supporting legal and procurement teams with rapid, transparent risk assessment and facilitating efficient, policy-aligned contract negotiations",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1776161609657"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START",
+          "diagram": {
+            "x": 5117,
+            "y": 5000
+          }
+        },
+        {
+          "id": "1776161609657",
+          "code": "SET_INPUT_VARIABLES",
+          "type": "SET_FIELDS",
+          "metadata": {
+            "name": "Set Input Variables"
+          },
+          "diagram": {
+            "x": 5015,
+            "y": 5246
+          },
+          "outcomes": {
+            "success": "1768248519962"
+          },
+          "inputs": [
+            {
+              "id": "1776161609657_paragraphSnapshot",
+              "name": "paragraphSnapshot",
+              "value": "{{$context.$triggers.REST.$input.paragraphSnapshot}}"
+            },
+            {
+              "id": "1776161609657_contractId",
+              "name": "contractId",
+              "value": "{{$context.$triggers.REST.$input.ContractsId}}"
+            },
+            {
+              "id": "1776161609657_referenceTemplateId",
+              "name": "referenceTemplateId",
+              "value": "{{$context.$triggers.REST.$input.ReferenceTemplateId}}"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_CONTRACTS_CONTRACTDETAIL",
+            "functionName": "getContractsReferenceTemplateClauses",
+            "name": "Get Reference Template Clauses"
+          },
+          "outcomes": {
+            "success": "1768248568042"
+          },
+          "code": "GET_REFERENCE_TEMPLATE_CLAUSES",
+          "id": "1768248519962",
+          "inputs": [
+            {
+              "id": "1768248539043_1",
+              "name": "contractsUniqID",
+              "type": "string",
+              "value": "{{$context.$variables.contractId}}"
+            },
+            {
+              "id": "1768248539044_2",
+              "name": "referenceTemplate_id",
+              "type": "string",
+              "value": "{{$context.$variables.referenceTemplateId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION",
+          "diagram": {
+            "x": 5000,
+            "y": 5468
+          }
+        },
+        {
+          "metadata": {
+            "name": "clean response",
+            "returnType": "object",
+            "sourceCode": "const keep = [\"DisplaySequence\", \"TitleWithoutNumber\", \"Title\", \"ArticleId\", \"Id\", \"ArticleText\"];\nconst cleaned = $context.$nodes.GET_REFERENCE_TEMPLATE_CLAUSES.$output.result.map(obj =>Object.fromEntries(keep.map(k => [k, obj[k]])));\nreturn cleaned;"
+          },
+          "outcomes": {
+            "success": "1768248960455"
+          },
+          "code": "CLEAN_RESPONSE",
+          "id": "1768248568042",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE",
+          "diagram": {
+            "x": 5015,
+            "y": 5690
+          }
+        },
+        {
+          "metadata": {
+            "name": "find deviations"
+          },
+          "outcomes": {
+            "success": "1768248960456"
+          },
+          "code": "FIND_DEVIATIONS",
+          "id": "1768248960455",
+          "inputs": [
+            {
+              "id": "1768248960456_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Title\nDeterministic Legal Clause Compliance Engine — Tasks and Steps (Per‑Clause + Global)\n\nPurpose\nDetermine whether a third‑party document complies with, modifies, omits, or adds to the legal obligations in a standard template by comparing legal effect only.\n\nScope and Principles\n- Legal effect only: Ignore formatting, numbering, headings, HTML, and drafting style.\n- Template clauses are atomic: Each template clause is a complete requirement.\n- No inference: Do not assume unstated meaning.\n- Conservatism: Prefer false negatives; if strict equivalence is uncertain, classify as modified, not same.\n\nInputs and Validation\n- Inputs:\n  - third_party_document_text: JSON array of { pIndex: int, text: string }\n  - standard_template_clauses: JSON array of { DisplaySequence, TitleWithoutNumber, Title, ArticleText, Id, ArticleId }\n- If either input is missing, empty, non‑JSON, or malformed, output exactly:\n  {\n    \"template_matches\": [],\n    \"error\": \"missing_or_malformed_input\"\n  }\n\nTasks\n- Task A (Per‑Clause): For each standard template clause, determine classification ∈ { same, modified, missing_from_doc }.\n- Task B (Global): After all template clauses are processed, identify additional_in_doc obligations from remaining, unconsumed content.\n\nExecution Model\n- Per‑Clause Loop (repeat Steps 1–6 for each template clause in template order):\n  Step 1 — Canonicalize comparison features\n  Normalize obligations/rights, parties/roles, scope/triggers/timelines/survival, enforceability/modality (shall/must/will = obligation; may = discretion), jurisdiction/venue, remedies/limitations/caps/carve‑outs.\n\n  Step 2 — Span selection (non‑contiguous allowed)\n  Select the minimum necessary paragraph spans (contiguous or non‑contiguous) that together express the full legal effect of the current template clause. Each span must contribute a necessary element of the same obligation (party, duty/modality, trigger/scope/timeline, remedy/limitations). Exclude surplus text. If referenced text outside the selected spans is required, classify as missing_from_doc.\n\n  Step 3 — Candidate identification\n  Identify span sets that contain an obligation verb, a responsible party, and a matching legal object.\n\n  Step 4 — Candidate ranking (deterministic)\n  Rank by: (1) modality parity; (2) party role alignment; (3) trigger/scope/timeline parity; (4) remedies/carve‑outs; (5) defined‑term alignment; (6) terminology similarity. Select the highest‑ranked candidate. If none satisfy the core duty → missing_from_doc.\n\n  Step 5 — Classification gate\n  - same: Identical legal effect across obligations/rights, parties/roles, scope/triggers/timelines/survival, enforceability/modality, and remedies/caps/carve‑outs/jurisdiction/venue. Any difference fails same.\n  - modified: The same core duty toward the same legal object exists and ≥1 material element differs (modality; numeric/temporal term; carve‑outs; remedies/limitations/exclusivity; party scope/beneficiary; governing law/venue/jurisdiction).\n  - missing_from_doc: No span set satisfies the core duty, or the duty depends on text outside the selected spans.\n  - pIndex consistency: same/modified require a non-empty doc_clause_pIndex reflecting the selected spans; missing_from_doc requires doc_clause_pIndex = [].\n\n  Step 6 — pIndex consumption and exclusivity\n  Consume any pIndex used in the selected spans. Consumed pIndices cannot appear in additional_in_doc. Do not reuse a pIndex in two template matches if obligations overlap in party, trigger, or subject matter. A pIndex may appear in more than one template match only if the internally tracked obligation spans do not overlap and are legally separable. If reuse would be required due to overlapping obligations, select the best-aligned clause per Step 4 and classify the other as missing_from_doc.\n\n- Global Passes (run once after all template clauses):\n  Step 7 — additional_in_doc detection and emission rules\n  - Source: Consider only unconsumed pIndices from the per‑clause loop.\n  - Inclusion: Include only clauses that create or alter legal duties, rights, remedies, warranties, indemnities, termination rights, or liability limits.\n  - Exclusions: Definitions, recitals, interpretation rules, and drafting/formatting boilerplate are excluded.\n  - Atomicity: Emit one entry per independent obligation. Split if triggers, parties/beneficiaries, subject matter, remedies, or duration differ.\n  - Minimal spans: Use the minimum necessary spans (contiguous or non‑contiguous) for each independent obligation.\n  - Ordering: Order entries by lowest pIndex.\n  - Tightening vs addition: If text merely tightens or narrows a template obligation, mark the template clause as modified; do not create additional_in_doc.\n  - Emission constraints:\n    - Do not emit any additional_in_doc entry if none exist; never output a placeholder.\n    - Each additional_in_doc entry must have:\n      • doc_clause_pIndex: non‑empty array of unique, strictly ascending integers\n      • doc_title: a concise clause‑level label\n    - pIndex exclusivity: No pIndex used in any template match may appear in additional_in_doc.\n    - Template precedence: If a conflict arises between a template match and a potential additional_in_doc based on the same obligation, prefer classifying the template clause (same/modified) and exclude the additional_in_doc entry.\n\n  Step 8 — Final consistency and conflict resolution (deterministic)\n  Validate: (a) No pIndex appears in both a template match and additional_in_doc; (b) No template clause is both missing and matched. Resolve conflicts by priority: missing_from_doc > modified > same. Template matches take precedence over additional_in_doc.\n\nStrict Output Constraints\n- Output exactly one valid JSON object with top‑level key \"template_matches\". No extra keys, fields, or placeholder entries. Do not include 'explanation' or any fields not listed below.\n- Ordering: Template clause results appear in the order of standard_template_clauses. If and only if additional_in_doc entries exist, append them last, ordered by lowest pIndex.\n- Field requirements for template matches (same/modified/missing_from_doc)\n  - DisplaySequence: string copied verbatim from the template DisplaySequence.\n  - title_without_number: string copied verbatim from the template TitleWithoutNumber.\n  - template_title: string copied verbatim from the template Title, including prefixes and spacing. Do not paraphrase, truncate, or drop prefixes like “SP …”.\n  - classification: one of \"same\", \"modified\", \"missing_from_doc\".\n  - document_position: crisp summary of the matched third‑party clause’s legal effect (empty only for missing_from_doc)\n  - standard_position: crisp summary of the template clause’s legal effect (empty only for missing_from_doc)\n  - deviation_summary: array of crisp differences in legal effect (empty array only if classification = missing_from_doc)\n  - Id: string copied verbatim from the template Id.\n  - ArticleId: string copied from the template ArticleId if provided; otherwise \"\".\n  - doc_clause_pIndex: array of integers\n    • Empty only for \"missing_from_doc\"\n    • Non‑empty for \"same\" and \"modified\"\n    • Unique integers, strictly ascending\n    • A pIndex may appear in more than one template match only if the internally tracked obligation spans do not overlap and are legally separable\n  - doc_title: \"\" (always empty for same/modified/missing_from_doc)\n\n- Field requirements for additional_in_doc entries\n  - DisplaySequence: \"additional_in_doc\"\n  - title_without_number: \"\"\n  - template_title: \"\"\n  - classification: \"additional_in_doc\"\n  - document_position: \"\"\n  - standard_position: \"\"\n  - deviation_summary: []\n  - Id: \"\"\n  - ArticleId: \"\"\n  - doc_clause_pIndex: non‑empty array of unique, strictly ascending integers (drawn only from unconsumed pIndices)\n  - doc_title: concise clause‑level label describing the additional obligation\n  - Do not emit any additional_in_doc entry if no qualifying unconsumed obligations exist. Never output an empty placeholder.\n\nUniqueness and exclusivity\n- pIndices used in template matches cannot appear in additional_in_doc.\n- A clause labeled missing_from_doc must have doc_clause_pIndex = [].\n- Classifications are mutually exclusive per template clause.\n\nImplementation Notes (concise)\n- Normalize modality and party labels; avoid hedging language.\n- Keep span sets minimal and non‑overlapping across matches covering the same obligation.\n- If strict equivalence is uncertain, choose modified; when duties diverge, split obligations or classify as missing_from_doc.\n\n\nInputs :\n\nstandard_template_clauses:\n{{$context.$nodes.CLEAN_RESPONSE.$output.result}}\n\nthird_party_document_text:\n{{$context.$variables.paragraphSnapshot}}\n\n\n"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"template_matches\": {\n            \"type\": \"array\",\n            \"items\": {\n                \"type\": \"object\",\n                \"properties\": {\n                    \"DisplaySequence\": {\n                        \"type\": \"string\"\n                    },\n                    \"title_without_number\": {\n                        \"type\": \"string\"\n                    },\n                    \"template_title\": {\n                        \"type\": \"string\"\n                    },\n                    \"classification\": {\n                        \"type\": \"string\",\n                        \"enum\": [\n                            \"same\",\n                            \"modified\",\n                            \"missing_from_doc\",\n                            \"additional_in_doc\"\n                        ]\n                    },\n                    \"document_position\": {\n                        \"type\": \"string\"\n                    },\n                    \"standard_position\": {\n                        \"type\": \"string\"\n                    },\n                    \"deviation_summary\": {\n                        \"type\": \"array\",\n                        \"items\": {\n                            \"type\": \"string\"\n                        }\n                    },\n                    \"Id\": {\n                        \"type\": \"string\"\n                    },\n                    \"ArticleId\": {\n                        \"type\": \"string\"\n                    },\n                    \"doc_clause_pIndex\": {\n                        \"type\": \"array\",\n                        \"items\": {\n                            \"type\": \"integer\"\n                        }\n                    },\n                    \"doc_title\": {\n                        \"type\": \"string\"\n                    }\n                },\n                \"required\": [\n                    \"DisplaySequence\",\n                    \"title_without_number\",\n                    \"template_title\",\n                    \"classification\",\n                    \"document_position\",\n                    \"standard_position\",\n                    \"deviation_summary\",\n                    \"Id\",\n                    \"ArticleId\",\n                    \"doc_clause_pIndex\",\n                    \"doc_title\"\n                ]\n            }\n        }\n    },\n    \"required\": [\n        \"template_matches\"\n    ]\n}",
+          "type": "LLM",
+          "diagram": {
+            "x": 5015,
+            "y": 5912
+          }
+        },
+        {
+          "id": "1768248960456",
+          "code": "BUILD_CLAUSE_TITLE_TEXT_MAP",
+          "type": "CODE",
+          "metadata": {
+            "name": "Build Clause Title Text Map",
+            "sourceCode": "const startedAt = Date.now();\n\nconst pickClauseTitle = (item) => {\n  const titleWithoutNumber = item && item.title_without_number;\n  if (typeof titleWithoutNumber === 'string' && titleWithoutNumber !== '') {\n    return titleWithoutNumber;\n  }\n  const docTitle = item && item.doc_title;\n  if (typeof docTitle === 'string' && docTitle !== '') {\n    return docTitle;\n  }\n  return '';\n};\n\nconst toText = (value) => {\n  if (typeof value === 'string') {\n    return value;\n  }\n  if (value === null || value === undefined) {\n    return '';\n  }\n  return String(value);\n};\n\nconst matches = Array.isArray($context.$nodes.FIND_DEVIATIONS.$output?.template_matches)\n  ? $context.$nodes.FIND_DEVIATIONS.$output.template_matches\n  : [];\n\nconst filteredMatches = matches.filter((match) => {\n  const classification = match && match.classification;\n  return classification !== 'missing_from_doc';\n});\n\nconst contractId = String($context.$triggers.REST.$input.ContractsId || '');\nlet parsedInput = $context.$variables.paragraphSnapshot;\nlet parseAttempts = 0;\nlet status = 'ok';\nlet errorMessage = null;\n\nwhile (typeof parsedInput === 'string') {\n  parseAttempts += 1;\n  try {\n    parsedInput = JSON.parse(parsedInput);\n  } catch (e) {\n    status = 'parse_error';\n    errorMessage = String((e && e.message) || e);\n    break;\n  }\n}\n\nconst paragraphs = Array.isArray(parsedInput) ? parsedInput : [];\n\nconst paragraphTextByIndex = {};\nfor (const paragraph of paragraphs) {\n  const idx = Number(paragraph && paragraph.pIndex);\n  if (!Number.isFinite(idx)) {\n    continue;\n  }\n  paragraphTextByIndex[idx] = toText(paragraph && paragraph.text);\n}\n\nconst clauseTitleTextMap = {};\nfor (const match of filteredMatches) {\n  const title = pickClauseTitle(match);\n  if (!title) {\n    continue;\n  }\n\n  const rawIndices = Array.isArray(match && match.doc_clause_pIndex) ? match.doc_clause_pIndex : [];\n  const uniqueSortedIndices = Array.from(new Set(rawIndices.map((v) => Number(v)).filter((v) => Number.isFinite(v)))).sort((a, b) => a - b);\n\n  if (uniqueSortedIndices.length === 0) {\n    continue;\n  }\n\n  const texts = [];\n  for (const idx of uniqueSortedIndices) {\n    const t = toText(paragraphTextByIndex[idx]);\n    if (t !== '') {\n      texts.push(t);\n    }\n  }\n\n  if (texts.length === 0) {\n    continue;\n  }\n\n  const clauseText = texts.join('\\n');\n  if (Object.prototype.hasOwnProperty.call(clauseTitleTextMap, title)) {\n    clauseTitleTextMap[title] = clauseTitleTextMap[title] + '\\n' + clauseText;\n  } else {\n    clauseTitleTextMap[title] = clauseText;\n  }\n}\n\nconst result = {\n  contractId,\n  clauseTitleTextMap: JSON.stringify(clauseTitleTextMap),\n  counts: {\n    parseAttempts,\n    templateMatchCount: matches.length,\n    filteredTemplateMatchCount: filteredMatches.length,\n    paragraphCount: paragraphs.length,\n    mapEntryCount: Object.keys(clauseTitleTextMap).length\n  }\n};\n\nif (status !== 'ok') {\n  result.parseError = errorMessage;\n}\n\nconsole.log(JSON.stringify({\n  node: 'BUILD_CLAUSE_TITLE_TEXT_MAP',\n  event: 'parse_complete',\n  contractId,\n  counts: {\n    parseAttempts,\n    templateMatchCount: matches.length,\n    filteredTemplateMatchCount: filteredMatches.length,\n    paragraphCount: paragraphs.length,\n    mapEntryCount: Object.keys(clauseTitleTextMap).length\n  },\n  durationMs: Date.now() - startedAt,\n  status,\n  error: errorMessage\n}));\n\nreturn result;\n",
+            "returnType": "object"
+          },
+          "outcomes": {
+            "success": "1768248960457"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 5013.5,
+            "y": 6134
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1768248960457",
+          "code": "CALL_POLICY_DEVIATION_ANALYST",
+          "type": "WORKFLOW",
+          "metadata": {
+            "name": "Call Policy Deviation Analyst",
+            "workflowCode": "ORA_OKC_POLICY_DEVIATION_ANALYST",
+            "errorNodeId": "1768248960458"
+          },
+          "outcomes": {
+            "success": "1768248960458"
+          },
+          "inputs": [
+            {
+              "id": "1768248960457_message",
+              "name": "message",
+              "type": "string",
+              "value": "invoke"
+            },
+            {
+              "id": "1768248960457_ClauseTitleTextMap",
+              "name": "ClauseTitleTextMap",
+              "type": "string",
+              "value": "{{$context.$nodes.BUILD_CLAUSE_TITLE_TEXT_MAP.$output.result.clauseTitleTextMap}}"
+            },
+            {
+              "id": "1768248960457_ContractId",
+              "name": "ContractId",
+              "type": "string",
+              "value": "{{$context.$variables.contractId}}"
+            }
+          ],
+          "diagram": {
+            "x": 5004.5,
+            "y": 6356
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}"
+        },
+        {
+          "id": "1768248960458",
+          "code": "MERGE_POLICY_RESULT",
+          "type": "CODE",
+          "metadata": {
+            "name": "Merge Policy Result",
+            "sourceCode": "const startedAt = Date.now();\n\nconst pickClauseTitle = (item) => {\n  const titleWithoutNumber = item && item.title_without_number;\n  if (typeof titleWithoutNumber === 'string' && titleWithoutNumber !== '') {\n    return titleWithoutNumber;\n  }\n\n  const docTitle = item && item.doc_title;\n  if (typeof docTitle === 'string' && docTitle !== '') {\n    return docTitle;\n  }\n\n  return '';\n};\n\nconst toObject = (value) => {\n  if (value && typeof value === 'object') {\n    return value;\n  }\n  if (typeof value === 'string') {\n    try {\n      return JSON.parse(value);\n    } catch (e) {\n      return null;\n    }\n  }\n  return null;\n};\n\nconst parseErrorMessage = (raw) => {\n  const isEmptyString = typeof raw === 'string' && raw.trim() === '';\n  if (raw === null || raw === undefined || isEmptyString) {\n    return {\n      value: null,\n      parseAttempts: 0,\n      parseStatus: 'skipped_empty',\n      parseError: null\n    };\n  }\n\n  let result = raw;\n  let parseAttempts = 0;\n  let parseStatus = 'ok';\n  let parseError = null;\n  const maxAttempts = 5;\n\n  while (typeof result === 'string' && parseAttempts < maxAttempts) {\n    parseAttempts += 1;\n    try {\n      result = JSON.parse(result);\n    } catch (e) {\n      parseStatus = 'parse_error';\n      parseError = String(e?.message || e);\n      break;\n    }\n  }\n\n  return {\n    value: result,\n    parseAttempts,\n    parseStatus,\n    parseError\n  };\n};\n\nconst baseOutput = $context.$nodes.FIND_DEVIATIONS.$output || {};\nconst baseMatches = Array.isArray(baseOutput.template_matches) ? baseOutput.template_matches : [];\n\nconst analystOutput = $context.$nodes.CALL_POLICY_DEVIATION_ANALYST.$output || {};\nconst analystStatus = typeof analystOutput.status === 'string' ? analystOutput.status : null;\nconst analystOutputError =\n  typeof analystOutput.error === 'string' && analystOutput.error.trim() !== ''\n    ? analystOutput.error\n    : null;\n\nconst errorMessageRaw = $context.$error && Object.prototype.hasOwnProperty.call($context.$error, '$errorMessage')\n  ? $context.$error.$errorMessage\n  : null;\nconst parsedErrorMessage = parseErrorMessage(errorMessageRaw);\n\nconst errorEnvelope = parsedErrorMessage.value && typeof parsedErrorMessage.value === 'object'\n  ? parsedErrorMessage.value\n  : null;\nconst errorBody = errorEnvelope && typeof errorEnvelope.result === 'object'\n  ? errorEnvelope.result\n  : errorEnvelope;\n\nconst contextErrorStatus = errorBody && typeof errorBody.status === 'string' ? errorBody.status : null;\nconst contextErrorText = errorBody && typeof errorBody.error === 'string' && errorBody.error.trim() !== ''\n  ? errorBody.error\n  : null;\n\nlet event = 'policy_merge_skipped_due_to_unexpected_analyst_shape';\nlet nodeStatus = 'warn';\nlet nodeError = null;\nlet policyUpsertStatus = null;\nlet policyError = null;\nlet policyEntries = [];\nlet outputParseError = null;\nlet resultParseError = null;\nlet parsedOutput = null;\nlet source = '$output';\n\nconst hasAnalystFailure = contextErrorStatus === 'ERROR' || Boolean(contextErrorText);\n\nif (hasAnalystFailure) {\n  event = 'policy_merge_skipped_due_to_analyst_error';\n  nodeStatus = 'error';\n  policyError = contextErrorText || analystOutputError || 'Policy deviation analyst failed without error details.';\n  nodeError = policyError;\n  source = '$context.$error.$errorMessage';\n} else if (analystStatus === 'COMPLETE') {\n  parsedOutput = toObject(analystOutput.output);\n\n  if (!parsedOutput) {\n    outputParseError = typeof analystOutput.output === 'string'\n      ? 'Failed to parse analyst.output JSON string.'\n      : 'analyst.output missing or not an object.';\n    event = 'policy_merge_skipped_due_to_unexpected_analyst_shape';\n    nodeStatus = 'warn';\n    policyError = 'Policy deviation analyst response missing expected status/output shape.';\n    nodeError = policyError;\n  } else {\n    const policyRoot = parsedOutput && parsedOutput.result ? parsedOutput.result : {};\n    policyUpsertStatus = typeof policyRoot.upsert_status === 'string' ? policyRoot.upsert_status : null;\n\n    if (Array.isArray(policyRoot.result)) {\n      policyEntries = policyRoot.result;\n    } else if (typeof policyRoot.result === 'string') {\n      try {\n        const parsedResult = JSON.parse(policyRoot.result);\n        policyEntries = Array.isArray(parsedResult) ? parsedResult : [];\n      } catch (e) {\n        resultParseError = String(e?.message || e);\n        policyEntries = [];\n      }\n    }\n\n    event = 'policy_merge_complete';\n    nodeStatus = 'ok';\n  }\n} else {\n  event = 'policy_merge_skipped_due_to_unexpected_analyst_shape';\n  nodeStatus = 'warn';\n  policyError = 'Policy deviation analyst response missing expected status/output shape.';\n  nodeError = policyError;\n}\n\nconst severityByTitle = {};\nfor (const entry of policyEntries) {\n  const title = entry && entry.doc_clause_title;\n  const severity = entry && entry.severity_code;\n  if (typeof title === 'string' && title !== '' && typeof severity === 'string' && severity !== '') {\n    severityByTitle[title] = severity;\n  }\n}\n\nconst mergedMatches = baseMatches.map((match) => {\n  const title = pickClauseTitle(match);\n  const severity = title ? severityByTitle[title] : null;\n  const isPolicyRuleBased = Boolean(severity);\n\n  const merged = {\n    ...match,\n    IsPolicyRuleBased: isPolicyRuleBased,\n    SeverityCode: severity || null\n  };\n\n  if (isPolicyRuleBased) {\n    delete merged.document_position;\n    delete merged.standard_position;\n    delete merged.deviation_summary;\n  }\n\n  return merged;\n});\n\nconst result = {\n  ...baseOutput,\n  template_matches: mergedMatches,\n  policy_upsert_status: policyUpsertStatus\n};\n\nif (policyError) {\n  result.policy_error = policyError;\n}\n\nconst includeErrorMessageParseDiagnostics = event !== 'policy_merge_complete' && parsedErrorMessage.parseStatus !== 'skipped_empty';\n\nconsole.log(JSON.stringify({\n  node: 'MERGE_POLICY_RESULT',\n  event,\n  source,\n  analyst: {\n    status: analystStatus,\n    outputError: analystOutputError,\n    contextErrorStatus,\n    contextErrorText,\n    jobId: analystOutput.jobId || (errorBody && errorBody.jobId) || null,\n    traceId: analystOutput.traceId || (errorBody && errorBody.traceId) || null\n  },\n  observed: {\n    outputType: typeof analystOutput.output,\n    parsedOutputType: parsedOutput ? typeof parsedOutput : null,\n    outputParseError,\n    resultParseError,\n    contextErrorMessageType: typeof errorMessageRaw,\n    errorMessageParseAttempts: includeErrorMessageParseDiagnostics ? parsedErrorMessage.parseAttempts : null,\n    errorMessageParseStatus: includeErrorMessageParseDiagnostics ? parsedErrorMessage.parseStatus : null,\n    errorMessageParseError: includeErrorMessageParseDiagnostics ? parsedErrorMessage.parseError : null\n  },\n  upsertStatus: policyUpsertStatus,\n  counts: {\n    baseMatchCount: baseMatches.length,\n    policyEntryCount: policyEntries.length,\n    mergedMatchCount: mergedMatches.length,\n    policyMatchedCount: mergedMatches.filter((m) => m && m.IsPolicyRuleBased === true).length,\n    omittedFieldCount: mergedMatches.filter((m) => m && m.IsPolicyRuleBased === true && !Object.prototype.hasOwnProperty.call(m, 'document_position') && !Object.prototype.hasOwnProperty.call(m, 'standard_position') && !Object.prototype.hasOwnProperty.call(m, 'deviation_summary')).length\n  },\n  durationMs: Date.now() - startedAt,\n  status: nodeStatus,\n  error: nodeError\n}));\n\nreturn result;\n",
+            "returnType": "object"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [],
+          "diagram": {
+            "x": 5015,
+            "y": 6578
+          },
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "9f423027-65f2-4ad8-a466-edd7eed0dc92",
+          "name": "referenceTemplateId",
+          "type": "string",
+          "scope": "JOB"
+        },
+        {
+          "id": "09afbf2c-25ca-4a2e-a9ec-f42d7b55b8f7",
+          "name": "contractId",
+          "type": "string",
+          "scope": "JOB"
+        },
+        {
+          "id": "358902cb-9fdc-426d-b7f3-bb70eff0f901",
+          "name": "paragraphSnapshot",
+          "type": "string",
+          "scope": "JOB"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {},
+      "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+      "model": "OCI_GPT_5_MINI",
+      "modelName": "GPT-5 mini",
+      "provider": "CERT_PREMIUM"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1776161559742",
+            "name": "paragraphSnapshot",
+            "type": "string"
+          },
+          {
+            "id": "1768248498130",
+            "name": "ContractsId",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1768248475640",
+            "name": "ReferenceTemplateId",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "deletedTriggerTypes": [],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    }
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "CONTRACTS",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "FULL",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"2\""
+  }
+}

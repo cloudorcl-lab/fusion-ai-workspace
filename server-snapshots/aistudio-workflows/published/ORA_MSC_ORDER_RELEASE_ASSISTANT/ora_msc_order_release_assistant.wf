@@ -1,0 +1,1902 @@
+{
+  "workflowId": "100002240709464",
+  "workflowCode": "ORA_MSC_ORDER_RELEASE_ASSISTANT",
+  "name": "Planning Order Release Assistant",
+  "description": "Release order based on Exception Rules",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1766051966348"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "setData"
+          },
+          "outcomes": {
+            "success": "1770110760214"
+          },
+          "code": "SETDATA",
+          "id": "1765909843541",
+          "inputs": [
+            {
+              "id": "1765910343416",
+              "name": "documentAttached",
+              "type": "boolean",
+              "value": "{{$context.$triggers.REST.$input.AttachmentTrackerIds ? true : false }}"
+            },
+            {
+              "id": "1765909857635",
+              "name": "PlanId",
+              "type": "number",
+              "value": "{{$context.$triggers.REST.$input.InputPlanId}}"
+            },
+            {
+              "id": "1765909848083",
+              "name": "AttachmentTrackerIds",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.AttachmentTrackerIds}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Create Plan Status Json Code",
+            "returnType": "object",
+            "sourceCode": "let input = {};\n\ninput.PlanId = $context.$variables.PlanId;\ninput.WorkflowExecutionTrace = $context.$workflow.$traceId;\ninput.Status = 1;\ninput.ExecutionUser = $context.$user.$name;\ninput.StartDate = $context.$system.$currentDateTime;\ninput.PlanAction = 24;\ninput.OrderRelWorkflowRunId = $context.$variables.workflowRunId;\n\n\nreturn input;"
+          },
+          "outcomes": {
+            "success": "1765911981152"
+          },
+          "code": "CREATE_PLAN_STATUS_JSON_CODE",
+          "id": "1765910014224",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_SUPPLYCHAI_SCPPLANSTATUS",
+            "functionName": "createStatusRecord",
+            "name": "CreateTraceRecordinPlanStatus"
+          },
+          "outcomes": {
+            "success": "1770890360508"
+          },
+          "code": "CREATETRACERECORDINPLANSTATUS",
+          "id": "1765910109544",
+          "inputs": [
+            {
+              "id": "1765910130031_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.CREATE_PLAN_STATUS_JSON_CODE.$output.result }}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "ValidateAttachmentId"
+          },
+          "outcomes": {
+            "true": "1770279015528",
+            "false": "1765910499420"
+          },
+          "code": "VALIDATEATTACHMENTID",
+          "convergenceTargetId": "1765910534541",
+          "id": "1765910224413",
+          "inputs": [
+            {
+              "id": "1765910224415_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.AttachmentTrackerIds!==\"\"?true : false}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "setDocumentText"
+          },
+          "outcomes": {
+            "success": "1765910534541"
+          },
+          "code": "SETDOCUMENTTEXT",
+          "id": "1765910447455",
+          "inputs": [
+            {
+              "id": "1765910455970",
+              "name": "defaultDocumentText",
+              "type": "string",
+              "value": "{{$context.$nodes.DOCUMENTPROCESSOR.$output.text}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "setDefaultRuleTxt"
+          },
+          "outcomes": {
+            "success": "1765910534541"
+          },
+          "code": "SETDEFAULTRULETXT",
+          "id": "1765910499420",
+          "inputs": [
+            {
+              "id": "1765910514562",
+              "name": "defaultDocumentText",
+              "type": "string",
+              "value": "Rules\nDemand Exceptions:\n\tException: \"Demand at Risk Due to Insufficient Lead Time\", Days of shortage > 0\n        Exception: \"Late Supply Pegged to Forecast\", Supply Days Late > 0\n        Exception: \"Late Supply Pegged to Sales Order\", Supply Days Late > 0\nSupply Exceptions:\n\tException: \"Orders with Insufficient Lead Time\", Compression Days > 0\n        Exception: \"Orders To Be Rescheduled In\", Reschedule Days > 0\n        Exception: \"Orders To Be Rescheduled Out\", Reschedule Days > 0"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "errorNodeId": "1770377623149",
+            "name": "ExtractRules"
+          },
+          "outcomes": {
+            "success": "1765910706470"
+          },
+          "code": "EXTRACTRULES",
+          "id": "1765910534541",
+          "inputs": [
+            {
+              "id": "1765910534544_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a rule-extraction assistant. Input will be a `RulesText` document (free text, CSV-like, or pasted REST header + records). Your job is to parse the rulebook input and return structured exception filters for `demandOrders` and `supplyOrders` according to the reference mapping and the rules below.\n\nINPUT RULES TEXT: {{$context.$variables.defaultDocumentText}} \nGROUND TRUTH EXCEPTIONS LIST : {{$context.$nodes.GETEXCEPTIONSREST.$output}} \n\n### High-level rules\n1. Only use rules that appear in `RulesText`. Do NOT invent or rely on the example table to produce new exception types. The example table exists only as training/reference for classification.\n2. SupplyExceptions (rules labelled \"Supply\", \"Supply Exceptions\", or visually in the Supply section) and DemandExceptions (labelled \"Demand\", \"Demand Exceptions\", or in Demand section) must be classified.\n3. **Both** Demand and Supply exceptions (i.e., any exception listed anywhere) are considered valid for `supplyOrders`. Only Demand exceptions are valid for `demandOrders`.\n   - If a Demand exception is valid for both, include the same exception (with identical Filter) in both arrays.\n4. If the rulebook input does not clearly map to one of the known exception types / qualification criteria (i.e., ambiguous, missing exception name mapping, or criteria that do not match header fields), return only:\n{ \"valid\": false }\n5. Always return the canonical output object when any matches are found:\n{\n  \"valid\": true,\n  \"demandOrders\": [ { \"ExceptionType\": \"\", \"Filter\": \"\" } ],\n  \"supplyOrders\": [ { \"ExceptionType\": \"\", \"Filter\": \"\" } ]\n}\nInclude both arrays even if one is empty.\n\n### Header → canonical field mapping\nWhen rules refer to a criteria phrase (exception days, value of order, reschedule days, compression days, days past due, etc.), map them to the REST header columns below. Use the header field names exactly as shown for building filters.\n\n**Common mappings (use these exact field names in the Filter):**\n- ExceptionDays → map from maxDaysLate / minDaysLate (prefer max when rule uses a single threshold; use the one that best fits rule wording). If header contains only maxDaysLate use ExceptionDays = maxDaysLate.\n- OrderValue → map from maxOrderValue / minOrderValue (prefer the provided side consistent with the operator; e.g., \"value of order > 100\" → maxOrderValue > 100 if a max field exists; otherwise OrderValue -> maxOrderValue).\n- RescheduleDays → map from maxRescheduledDays / minRescheduledDays.\n- CompressionDays → map from maxCompressionDays / minCompressionDays.\n- DaysPastDue → map from maxDaysPastDue / minDaysPastDue.\n- If the REST header you receive is different, prefer these exact header names (for supply example):  \n  orderType,orderNumber,exceptionId,exception,maxOrderValue,minOrderValue,maxCompressionDays,minCompressionDays,maxRescheduledDays,minRescheduledDays,maxDaysPastDue,minDaysPastDue,storeKey\n- If the REST header you receive is the demand header (example):  \n  orderType,orderNumber,exceptionId,exception,maxDaysLate,minDaysLate,maxOrderValue,minOrderValue,storeKey  \n  map accordingly.\n\n### Default thresholds\n- If a rule statement omits a numeric threshold for a mapped field, use default threshold = 0. Example: Exception: \"Orders to be Cancelled\", value of order, Equal to → interpret as maxOrderValue == 0.\n- If both min and max header fields exist but only a single threshold is provided, map to the logical single field consistent with operator (e.g., > → use maxX > threshold or if text says \"min\" use minX).\n- If operator is Equal and the rule omits a numeric value, assume == 0.\n\n### Normalize operators & phrases\nConvert textual operators to canonical symbols in the Filter expression. Support these conversions:\n\nEqual, =, Equal to → ==\nGreater than, Greater than or equal to → > or >=\nLess than, Less Than or Equal → < or <=\nException days → ExceptionDays\nvalue of order → OrderValue\nReschedule Days → RescheduleDays\nCompression days → CompressionDays\n\n### Building the Filter string\n- Use the exact header column name (from mapping) in the Filter.\n- If rule specifies single numeric threshold and both min/max exist, prefer max* unless wording suggests min*.\n- Ranges: Exception days between 2 and 10 → minDaysLate >= 2 AND maxDaysLate <= 10.\n\n### Matching exception types\n- Match exception names exactly from Ground Truth Exceptions List ## CRITICAL\n- Same exception appearing multiple times → multiple entries.\n- If type not in reference set and cannot be mapped → return { \"valid\": false }.\n\n### Behavior for ambiguous or incomplete inputs\n- If cannot map → { \"valid\": false }.\n- If at least one clear mapping → valid: true.\n\n### Output format (strict)\nExample:\n{\n \"valid\": true,\n \"demandOrders\": [\n   { \"ExceptionType\": \"Demand at Risk Due to Insufficient Lead Time\", \"Filter\": \"maxDaysLate < 10\" }\n ],\n \"supplyOrders\": [\n   { \"ExceptionType\": \"Orders to be Cancelled\", \"Filter\": \"maxOrderValue == 0\" }\n ]\n}\n\n### Parsing examples\nException: \"Orders to be Cancelled\",value of order, Equal to 0 → maxOrderValue == 0\nException: \"Demand at Risk Due to Insufficient Lead Time\", Exception days > 4 → maxDaysLate > 4\nException: \"Demand at Risk Due To Insufficient Lead Time\", value of order < 3499 → maxOrderValue < 3499\nException: Past Due Orders Reschedule Days > 10 → maxRescheduledDays > 10\nException: Orders to be Rescheduled Out, Reschedule Days Less Than or Equal 4 → maxRescheduledDays <= 4"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"ExceptionRuleOutput\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"valid\": {\n      \"type\": \"boolean\"\n    },\n    \"demandOrders\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"ExceptionType\": {\n            \"type\": \"string\"\n          },\n          \"Filter\": {\n            \"type\": \"string\"\n          }\n        },\n        \"additionalProperties\": false\n      }\n    },\n    \"supplyOrders\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"ExceptionType\": {\n            \"type\": \"string\"\n          },\n          \"Filter\": {\n            \"type\": \"string\"\n          }\n        },\n        \"additionalProperties\": false\n      }\n    }\n  },\n  \"required\": [\"valid\"],\n  \"additionalProperties\": false\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "setInputJsonArray"
+          },
+          "outcomes": {
+            "success": "1765910109544"
+          },
+          "code": "SETINPUTJSONARRAY",
+          "id": "1765911981152",
+          "inputs": [
+            {
+              "id": "1765912029779",
+              "name": "inputJsonArray",
+              "type": "array",
+              "value": "{{$context.$variables.finalDataArray}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "setGlobalsVars"
+          },
+          "outcomes": {
+            "success": "1766743980395"
+          },
+          "code": "SETGLOBALSVARS",
+          "id": "1766051966348",
+          "inputs": [
+            {
+              "id": "1770111092495",
+              "name": "workflowRunId",
+              "type": "number",
+              "value": "{{$context.$triggers.REST.$input.RunId}}"
+            },
+            {
+              "id": "1768295214575",
+              "name": "workflowBatchProcessSize",
+              "type": "integer",
+              "value": "{{$context.$triggers.REST.$input.WorkflowBatchProcessSize ? $context.$triggers.REST.$input.WorkflowBatchProcessSize : 10}}"
+            },
+            {
+              "id": "1768295204550",
+              "name": "elasticLoopSize",
+              "type": "integer",
+              "value": "500"
+            },
+            {
+              "id": "1768295196081",
+              "name": "maxProcessingCount",
+              "type": "integer",
+              "value": "{{$context.$triggers.REST.$input.MaxProcessingCount ? $context.$triggers.REST.$input.MaxProcessingCount : 4000 }}"
+            },
+            {
+              "id": "1767321630640",
+              "name": "Query",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.Query}}"
+            },
+            {
+              "id": "1766744323409",
+              "name": "SelectedJsonArray",
+              "type": "object",
+              "value": "{{$context.$triggers.REST.$input.SelectedJsonArray}}"
+            },
+            {
+              "id": "1766743947742",
+              "name": "Mode",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.Mode}}"
+            },
+            {
+              "id": "1766128954260",
+              "name": "FiltersArray",
+              "type": "array",
+              "value": "{{$context.$triggers.REST.$input.FiltersArray}}"
+            },
+            {
+              "id": "1766051975448",
+              "name": "PlanShortId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.InputPlanShortId}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "CheckModeSelected"
+          },
+          "outcomes": {
+            "true": "1767963331291",
+            "false": "1766744057792"
+          },
+          "code": "CHECKMODESELECTED",
+          "convergenceTargetId": "1765909843541",
+          "id": "1766743980395",
+          "inputs": [
+            {
+              "id": "1766743980397_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.Mode === \"ALL_FILTERED_RECORDS\"?true:false}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "SetTotalOrderCount"
+          },
+          "outcomes": {
+            "success": "1766744155808"
+          },
+          "code": "SetTotalOrderCount",
+          "id": "1766744057792",
+          "inputs": [
+            {
+              "id": "1767326518474",
+              "name": "totalResults",
+              "type": "number",
+              "value": "{{$context.$triggers.REST.$input.SelectedJsonArray.totalRowCount}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "restOutputTotalResults"
+          },
+          "outcomes": {
+            "success": "1765739272875"
+          },
+          "code": "RESTOUTPUTTOTALRESULTS",
+          "convergenceTargetId": "1766744048011",
+          "id": "1765739060650",
+          "inputs": [
+            {
+              "id": "1765739088460",
+              "name": "totalResults",
+              "type": "number",
+              "value": "{{$context.$nodes.ELASTICTOTALRESULTCALL.$output.totalResults>$context.$variables.maxProcessingCount ?$context.$variables.maxProcessingCount:$context.$nodes.ELASTICTOTALRESULTCALL.$output.totalResults}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "totalCountMoreThanLimit"
+          },
+          "outcomes": {
+            "true": "1765773961701",
+            "false": "add_false_1765739272875"
+          },
+          "code": "TOTALCOUNTMORETHANLIMIT",
+          "convergenceTargetId": "1765909843541",
+          "id": "1765739272875",
+          "inputs": [
+            {
+              "id": "1765739272876_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.totalResults > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "ifPass",
+            "returnType": "array",
+            "sourceCode": "const result = [];\n    let offset = 0;\n    let limit = $context.$variables.elasticLoopSize;\n\n    while (offset < $context.$variables.totalResults) {\n        result.push({ offset, limit });\n        offset += limit;\n        limit = $context.$variables.elasticLoopSize;\n    }\n\n    if (offset < $context.$variables.totalResults) {\n        result.push({ offset, limit: $context.$variables.totalResults });\n    }\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1765774406903"
+          },
+          "code": "IFPASS",
+          "id": "1765773961701",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1765774489959"
+                  },
+                  "id": "start_1765774406903",
+                  "code": "START_1765774406903",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1765774406903",
+                  "code": "END_1765774406903",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_SUPPLYCHAI_SCPELASTICWRAP",
+                    "functionName": "getAllData",
+                    "name": "SD Data Agent Batches"
+                  },
+                  "outcomes": {
+                    "success": "1766570615579"
+                  },
+                  "code": "SD_DATA_AGENT_BATCHES",
+                  "id": "1765774489959",
+                  "inputs": [
+                    {
+                      "id": "1767321835309_1",
+                      "name": "limit",
+                      "type": "string",
+                      "value": "{{$context.$nodes.CALLSDELASTICBATCHES.$currentItem.limit}}"
+                    },
+                    {
+                      "id": "1767321835310_2",
+                      "name": "indexName",
+                      "type": "string",
+                      "value": "{{\"fa-scm-msc-supplies-demands-\" + $context.$variables.PlanShortId}}"
+                    },
+                    {
+                      "id": "1767321835310_3",
+                      "name": "filtersArray",
+                      "type": "string",
+                      "value": "{{$context.$variables.FiltersArray}}"
+                    },
+                    {
+                      "id": "1767321835311_4",
+                      "name": "query",
+                      "type": "string",
+                      "value": "{{$context.$variables.Query}}"
+                    },
+                    {
+                      "id": "1767321835312_5",
+                      "name": "offset",
+                      "type": "string",
+                      "value": "{{$context.$nodes.CALLSDELASTICBATCHES.$currentItem.offset}}"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "name": "createEachIterSets",
+                    "returnType": "array",
+                    "sourceCode": "let data = $context.$nodes.CALLSDELASTICBATCHES.SD_DATA_AGENT_BATCHES.$output.items;\nlet batchSize = $context.$variables.workflowBatchProcessSize;\n// Group data by SourceTablePrimary\n    const groupedData = data.reduce((acc, current) => {\n        if (!acc[current.SourceTablePrimary]) {\n            acc[current.SourceTablePrimary] = [];\n        }\n        acc[current.SourceTablePrimary].push(current);\n        return acc;\n    }, {});\n\n    // Process grouped data\n    const result = Object.keys(groupedData).map((tableName) => {\n        const orderNumbers = groupedData[tableName].map((item) => item.OrderNumber);\n        const transactionIds = groupedData[tableName].map((item) => item.TransactionId);\n\n        // Split order numbers and transaction ids into chunks of 25\n        const orderNumberChunks = [];\n        const transactionIdChunks = [];\n        for (let i = 0; i < orderNumbers.length; i += batchSize) {\n            orderNumberChunks.push(orderNumbers.slice(i, i + batchSize));\n            transactionIdChunks.push(transactionIds.slice(i, i + batchSize));\n        }\n\n        // Create output objects for each chunk\n        const outputObjects = orderNumberChunks.map((chunk, index) => {\n            const orderNumberList = \"'\" + chunk.join(\"','\") + \"'\";\n            const transactionIdList = transactionIdChunks[index].join(\",\");\n            return {\n                TableName: tableName,\n                OrderNumberList: orderNumberList,\n                TransactionIdList: transactionIdList,\n            };\n        });\n\n        return outputObjects;\n    }).flat();\n\n    return result;"
+                  },
+                  "outcomes": {
+                    "success": "end_1765774406903"
+                  },
+                  "code": "CREATEEACHITERSETS",
+                  "id": "1766570615579",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                }
+              ],
+              "rootNode": "start_1765774406903"
+            },
+            "errorNodeId": "1765910014224",
+            "loopType": "PARALLEL",
+            "name": "CallSDElasticBatches"
+          },
+          "outcomes": {
+            "success": "1766575984581"
+          },
+          "code": "CALLSDELASTICBATCHES",
+          "id": "1765774406903",
+          "inputs": [
+            {
+              "id": "1765774406907_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$nodes.IFPASS.$output.result}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1765910014224",
+            "name": "consolidatedSetsJsons",
+            "returnType": "array",
+            "sourceCode": "let finalCollectionArr = [];\nlet loopResult = $context.$nodes.CALLSDELASTICBATCHES.$output;\nfor(let i = 0; i < loopResult.length; i++) {\n    let jsonItem = JSON.parse(loopResult[i]);\n    finalCollectionArr.push(...jsonItem.result);\n}\nreturn finalCollectionArr;"
+          },
+          "outcomes": {
+            "success": "1765817429194"
+          },
+          "code": "CONSOLIDATEDSETSJSONS",
+          "id": "1766575984581",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1765817429194"
+          },
+          "id": "add_false_1765739272875",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "assignTransformedData"
+          },
+          "outcomes": {
+            "success": "1765909843541"
+          },
+          "code": "ASSIGNTRANSFORMEDDATA",
+          "convergenceTargetId": "1766744048011",
+          "id": "1765817429194",
+          "inputs": [
+            {
+              "id": "1765817441708",
+              "name": "finalDataArray",
+              "type": "array",
+              "value": "{{$context.$nodes.CONSOLIDATEDSETSJSONS.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1765909843541",
+            "name": "setSingleRecordInput",
+            "returnType": "array",
+            "sourceCode": "let inputJsonObject = $context.$variables.SelectedJsonArray;\nlet maxBatchSize = $context.$variables.workflowBatchProcessSize ;  // Set max batch size\nlet workflowIterationArray = [];\n\n// Extract the list of order numbers and transaction IDs\nlet orderNumbers = inputJsonObject.rows[0].OrderNumberList.split(',');\nlet transactionIds = inputJsonObject.rows[0].TransactionIdList\n    .split(',')\n    .map(function(id) {\n        return id.replace(/'/g, '').trim();\n    });\n\n// Get the total number of order numbers (should match total transaction IDs)\nlet totalOrders = orderNumbers.length;\n\n// Loop through the order numbers and split them into batches\nfor (let i = 0; i < totalOrders; i += maxBatchSize) {\n    // Create a new batch object for each chunk\n    let batch = {\n        \"headers\": inputJsonObject.headers,\n        \"rows\": [{\n            \"TableName\": inputJsonObject.rows[0].TableName,\n            \"OrderNumberList\": orderNumbers.slice(i, i + maxBatchSize).join(','),\n            \"TransactionIdList\": transactionIds.slice(i, i + maxBatchSize).join(',')\n        }]\n    };\n    workflowIterationArray.push(batch);\n}\n\n// below code will apply only when user selected a mix of MSC_SUPPLIES and MSC_DEMANDS.\n// Extract the list of order numbers and transaction IDs\nlet orderNumbers_2 = [];\nlet transactionIds_2 = [];\nlet totalOrders_2 = 0;\nif(inputJsonObject.rows.length > 1) {\n    // Extract the list of order numbers and transaction IDs\n    orderNumbers_2 = inputJsonObject.rows[1].OrderNumberList.split(',');\n    transactionIds_2 = inputJsonObject.rows[1].TransactionIdList\n    .split(',')\n    .map(function(id) {\n        return id.replace(/'/g, '').trim();\n    });\n\n    // Get the total number of order numbers (should match total transaction IDs)\n    totalOrders_2 = orderNumbers_2.length;\n\n    // Loop through the order numbers and split them into batches\n    for (let i = 0; i < totalOrders_2; i += maxBatchSize) {\n        // Create a new batch object for each chunk\n        let batch = {\n            \"headers\": inputJsonObject.headers,\n            \"rows\": [{\n                \"TableName\": inputJsonObject.rows[1].TableName,\n                \"OrderNumberList\": orderNumbers_2.slice(i, i + maxBatchSize).join(','),\n                \"TransactionIdList\": transactionIds_2.slice(i, i + maxBatchSize).join(',')\n            }]\n        };\n        workflowIterationArray.push(batch);\n    }\n}\n\nreturn workflowIterationArray;"
+          },
+          "outcomes": {
+            "success": "1766744383119"
+          },
+          "code": "SETSINGLERECORDINPUT",
+          "id": "1766744155808",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "setFinalArrayDataSelectedMode"
+          },
+          "outcomes": {
+            "success": "1765909843541"
+          },
+          "code": "SETFINALARRAYDATASELECTEDMODE",
+          "id": "1766744383119",
+          "inputs": [
+            {
+              "id": "1766744416608",
+              "name": "finalDataArray",
+              "type": "array",
+              "value": "{{$context.$nodes.SETSINGLERECORDINPUT.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_SUPPLYCHAI_SCPELASTICWRAP",
+            "errorNodeId": "1765909843541",
+            "functionName": "getAllData",
+            "processJson": true,
+            "name": "elasticTotalResultCall"
+          },
+          "outcomes": {
+            "success": "1765739060650"
+          },
+          "code": "ELASTICTOTALRESULTCALL",
+          "id": "1767963331291",
+          "inputs": [
+            {
+              "id": "1767963349963_1",
+              "name": "limit",
+              "type": "string",
+              "value": "100"
+            },
+            {
+              "id": "1767963349963_2",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{\"fa-scm-msc-supplies-demands-\" + $context.$variables.PlanShortId}}"
+            },
+            {
+              "id": "1767963349964_3",
+              "name": "filtersArray",
+              "type": "string",
+              "value": "{{$context.$variables.FiltersArray}}"
+            },
+            {
+              "id": "1767963349964_4",
+              "name": "query",
+              "type": "string",
+              "value": "{{$context.$variables.Query?$context.$variables.Query:\"\"}}"
+            },
+            {
+              "id": "1767963349965_5",
+              "name": "offset",
+              "type": "string",
+              "value": "0"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "checkInputRunId"
+          },
+          "outcomes": {
+            "true": "add_true_1770110760214",
+            "false": "1770120533413"
+          },
+          "code": "CHECKINPUTRUNID",
+          "convergenceTargetId": "1765910014224",
+          "id": "1770110760214",
+          "inputs": [
+            {
+              "id": "1770110760216_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.WorkflowRunId ? true : false }}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for true branch",
+            "name": "Add (True Branch)"
+          },
+          "outcomes": {
+            "success": "1765910014224"
+          },
+          "id": "add_true_1770110760214",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "SetWorkflowRunId"
+          },
+          "outcomes": {
+            "success": "1765910014224"
+          },
+          "code": "SETWORKFLOWRUNID",
+          "convergenceTargetId": "1770110816205",
+          "id": "1768851853950",
+          "inputs": [
+            {
+              "id": "1768851865458",
+              "name": "workflowRunId",
+              "type": "number",
+              "value": "{{$context.$nodes.GENERATEWORKFLOWRUNID.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "GENERATEworkflowrunid",
+            "returnType": "number",
+            "sourceCode": "return Math.floor(Math.random() * 900000) + 100000;"
+          },
+          "outcomes": {
+            "success": "1768851853950"
+          },
+          "code": "GENERATEWORKFLOWRUNID",
+          "id": "1770120533413",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "setValidDocVar"
+          },
+          "outcomes": {
+            "success": "1770318689962"
+          },
+          "code": "SETVALIDDOCVAR",
+          "convergenceTargetId": "1768219700722",
+          "id": "1765910706470",
+          "inputs": [
+            {
+              "id": "1765910733992",
+              "name": "isDocValid",
+              "type": "boolean",
+              "value": "{{$context.$nodes.EXTRACTRULES.$output.valid}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_SUPPLYCHAI_GETDOCUMENT",
+            "errorNodeId": "1770377623149",
+            "functionName": "get_document_from_key",
+            "name": "DocumentProcessor",
+            "type": "BO_FUNCTION"
+          },
+          "outcomes": {
+            "success": "1765910447455"
+          },
+          "code": "DOCUMENTPROCESSOR",
+          "id": "1770279015528",
+          "inputs": [
+            {
+              "id": "1770279035501_1",
+              "name": "keyString",
+              "type": "string",
+              "value": "{{$context.$variables.AttachmentTrackerIds}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"text\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"text\"\n  ]\n}",
+          "type": "DOCUMENT_PROCESSOR"
+        },
+        {
+          "metadata": {
+            "name": "isDocValidToProceed"
+          },
+          "outcomes": {
+            "true": "1768219700722",
+            "false": "1770377623149"
+          },
+          "code": "ISDOCVALIDTOPROCEED",
+          "convergenceTargetId": "end",
+          "id": "1770318689962",
+          "inputs": [
+            {
+              "id": "1770318689962_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.isDocValid}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "generateExceptionLists",
+            "returnType": "object",
+            "sourceCode": "const input = $context.$nodes.EXTRACTRULES.$output;\nconst output = {\n  demandOrderExceptionTypes: input.demandOrders.map(order => order.ExceptionType),\n  supplyOrderExceptionTypes: input.supplyOrders.map(order => order.ExceptionType)\n};\n\nreturn output;"
+          },
+          "outcomes": {
+            "success": "1765912984170"
+          },
+          "code": "GENERATEEXCEPTIONLISTS",
+          "convergenceTargetId": "1770318735988",
+          "id": "1768219700722",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "setRules"
+          },
+          "outcomes": {
+            "success": "1765910758869"
+          },
+          "code": "SETRULES",
+          "convergenceTargetId": "1770318735988",
+          "id": "1765912984170",
+          "inputs": [
+            {
+              "id": "1768219826901",
+              "name": "supplyExceptionTypes",
+              "type": "array",
+              "value": "{{$context.$nodes.GENERATEEXCEPTIONLISTS.$output.result.supplyOrderExceptionTypes}}"
+            },
+            {
+              "id": "1768219803722",
+              "name": "demandExceptionArr",
+              "type": "array",
+              "value": "{{$context.$nodes.GENERATEEXCEPTIONLISTS.$output.result.demandOrderExceptionTypes}}"
+            },
+            {
+              "id": "1765912988303",
+              "name": "extractedRulesJson",
+              "type": "object",
+              "value": "{{$context.$nodes.EXTRACTRULES.$output}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "createPayloadSet",
+            "returnType": "array",
+            "sourceCode": "let array = [];\nlet orderArrayData = $context.$variables.finalDataArray;\nlet mode = $context.$variables.Mode;\n\n\nfor(let item of orderArrayData){\nlet obj = {};\nif(mode === \"SELECTED\"){\nobj.headers = item.headers;\nobj.rows = item.rows;\n}\nelse{\nobj.headers = [\"TableName\", \"OrderNumberList\", \"TransactionIdList\"];\nobj.rows = [];\nobj.rows.push(item);\n}\nobj.isNothingToRelease = false;\nobj.isWorkflowError = false;\nobj.singleOrderRelease = \"\";\nobj.responseJson = {};\narray.push(obj);\n}\n\nreturn array;"
+          },
+          "outcomes": {
+            "success": "1765917106070"
+          },
+          "code": "CREATEPAYLOADSET",
+          "convergenceTargetId": "1770318735988",
+          "id": "1765910758869",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "setJsonPayload"
+          },
+          "outcomes": {
+            "success": "1765912054931"
+          },
+          "code": "SETJSONPAYLOAD",
+          "convergenceTargetId": "1770318735988",
+          "id": "1765917106070",
+          "inputs": [
+            {
+              "id": "1765917113273",
+              "name": "inputJsonArray",
+              "type": "array",
+              "value": "{{$context.$nodes.CREATEPAYLOADSET.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1765912470731"
+                  },
+                  "id": "start_1765912054931",
+                  "code": "START_1765912054931",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1765912054931",
+                  "code": "END_1765912054931",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "name": "CheckDemandOrderList"
+                  },
+                  "outcomes": {
+                    "true": "1765912510857",
+                    "false": "add_false_1765912470731"
+                  },
+                  "code": "CHECKDEMANDORDERLIST",
+                  "convergenceTargetId": "1765913564311",
+                  "id": "1765912470731",
+                  "inputs": [
+                    {
+                      "id": "1765912470734_1",
+                      "name": "condition",
+                      "type": "string",
+                      "value": "{{$context.$nodes.WORKFLOWITERATION.$currentItem.rows.some(row => row.TableName === \"MSC_DEMANDS\" && row.OrderNumberList.length > 0) ? true : false}}"
+                    }
+                  ],
+                  "type": "CONDITION"
+                },
+                {
+                  "metadata": {
+                    "name": "Add (False Branch)",
+                    "description": "Add node for false branch"
+                  },
+                  "outcomes": {
+                    "success": "1765913564311"
+                  },
+                  "id": "add_false_1765912470731",
+                  "type": "ADD"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_SUPPLYCHAI_SCPEXCEPTIONSBO",
+                    "functionName": "getDemandExceptions",
+                    "name": "GetDemandExceptions"
+                  },
+                  "outcomes": {
+                    "success": "1765912593774"
+                  },
+                  "code": "GETDEMANDEXCEPTIONS",
+                  "id": "1765912510857",
+                  "inputs": [
+                    {
+                      "id": "1768219874108_1",
+                      "name": "planId",
+                      "type": "number",
+                      "value": "{{$context.$variables.PlanId}}"
+                    },
+                    {
+                      "id": "1768219874109_2",
+                      "name": "demandOrderNumbers",
+                      "type": "string",
+                      "value": "{{ \"[\" + $context.$nodes.WORKFLOWITERATION.$currentItem.rows.find(row => row.TableName === \"MSC_DEMANDS\" && row.OrderNumberList.length > 0).OrderNumberList + \"]\" }}"
+                    },
+                    {
+                      "id": "1768219874110_3",
+                      "name": "supplyOrderNumbers",
+                      "type": "string",
+                      "value": "[]"
+                    },
+                    {
+                      "id": "1768219874111_4",
+                      "name": "exceptionArr",
+                      "type": "string",
+                      "value": "{{$context.$variables.demandExceptionArr}}"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "modelConfiguration": {
+                      "modelProperties": {
+                        "k": 0,
+                        "max_completion_tokens": 32000,
+                        "reasoning_effort": "low"
+                      },
+                      "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+                      "model": "OCI_GPT_5_MINI",
+                      "modelName": "Gpt-5 Mini",
+                      "provider": "CERT_PREMIUM"
+                    },
+                    "name": "FilterDemandOrders"
+                  },
+                  "outcomes": {
+                    "success": "1765913564311"
+                  },
+                  "code": "FILTERDEMANDORDERS",
+                  "id": "1765912593774",
+                  "inputs": [
+                    {
+                      "id": "1765912593780_1",
+                      "name": "prompt",
+                      "type": "string",
+                      "value": "You are given three inputs:  \n\n1. Exception Qualification Rules — a list of exception types with their qualification criteria. {{$context.$variables.extractedRulesJson.demandOrders}}\n2. Demand Exceptions Details — a list of exceptions raised against supply orders.  {{$context.$nodes.GETDEMANDEXCEPTIONS.$output}} \n3. Order List - List of orders which are need to be classified as either Review or Release based on below classification rules. {{$context.$nodes.WORKFLOWITERATION.$currentItem.rows.find(row => row.TableName === \"MSC_DEMANDS\" && row.OrderNumberList.length > 0).OrderNumberList}}\nTask:  \nClassify every order number found in the Demand Exceptions Details into one of two categories and include exceptionId for that order in the response:  \n\n- Review → At least one exception for the order matches a rule in the Exception Qualification Rules AND satisfies the rule's qualification criteria.  \n- Release → One of the following is true:  \n  a) Exceptions exist but none match any rule in the Exception Qualification Rules, OR  \n  b) Exceptions match rules but not satisfying the criteria\n  c) If we dont find any exceptions for a given order in exception details records , we mark it as Release. \n\nProcessing Logic:  \n1. Extract all unique orderNumber , exceptionId values from the Demand Exceptions Details.  \n2. For each order:  \n   - Collect all exceptions belonging to that order.  \n   - For each exception:  \n     - Check if the exception name matches a rule in the Exception Qualification Rules.  \n     - If it matches, evaluate against the qualification criteria.  \n       Example: If the rule says \"Exception Days > 5\", then the field `minDaysLate` in the exception details must be strictly greater than 5.  \n     - If any matching exception satisfies the rule criteria → mark order as Review.  \n   - If no rules matched or none satisfied → mark order as Release.  \n3. Ensure every order from the input appears exactly once, in either Review or Release. \n4. For each order which are classified as Review , we need the order to be added in ReviewException which hold pair of order number and exceptionId(exception type numeric value) from exception record. \n5.Ensure every output has ReviewException as array of pairs {orderNumber,exceptionId}\nReview and Release output has only comma separated orderNumbers\n\n\n> Note: If an order has multiple qualifying exceptions, include **one Review entry per qualifying exception** (same orderNumber can appear multiple times in Review with different exceptionId). Do **not** include that orderNumber in Release.\n\n\n---\n\n## IMPORTANT CRITICAL INSTRUCTIONS\n\n- **Never generate** an order number (even if you see a numeric sequence).  \n- Always cross-verify that the output contains **only** order numbers present in the **Supply Order List**.\n- **No order** should be present in output that is not present in the input Supply Order List.\n- Do not include the same orderNumber in both Review and Release.\n\n---\n\n\nOutput Format:  \nReturn a JSON object in exactly this format:  \n\n{\n  \"Review\": \"comma_separated_order_numbers_here\",\n  \"Release\": \"comma_separated_order_numbers_here\"\n  \"ReviewException\": \"array of pairs {orderNumber,exceptionId}\"\n}\n\n- Each key is array of order numbers except for ReviewException, key is array of Pair of {orderNumber,exceptionId}. \n- Three keys must always be present, even if empty.\n- ExceptionId is not unique for each order , it is just exception type numeric value , like 14, 23 etc , so multiple review orders with same exception id."
+                    }
+                  ],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"OrderSet\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"Review\": {\n      \"type\": \"array\",\n      \"items\": { \"type\": \"string\" },\n      \"uniqueItems\": true\n    },\n    \"Release\": {\n      \"type\": \"array\",\n      \"items\": { \"type\": \"string\" },\n      \"uniqueItems\": true\n    },\n    \"ReviewException\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"orderNumber\": {\n            \"type\": \"string\"\n          },\n          \"exceptionId\": {\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\"orderNumber\", \"exceptionId\"]\n      }\n    }\n  },\n  \"required\": [\"Review\", \"Release\"],\n  \"additionalProperties\": false\n}",
+                  "type": "LLM"
+                },
+                {
+                  "metadata": {
+                    "name": "SupplyOrdersCheck"
+                  },
+                  "outcomes": {
+                    "true": "1765913660749",
+                    "false": "add_false_1765913564311"
+                  },
+                  "code": "SUPPLYORDERSCHECK",
+                  "convergenceTargetId": "1765913837616",
+                  "id": "1765913564311",
+                  "inputs": [
+                    {
+                      "id": "1765913564318_1",
+                      "name": "condition",
+                      "type": "string",
+                      "value": "{{$context.$nodes.WORKFLOWITERATION.$currentItem.rows.some(row => row.TableName === \"MSC_SUPPLIES\" && row.OrderNumberList.length > 0) ? true : false}}"
+                    }
+                  ],
+                  "type": "CONDITION"
+                },
+                {
+                  "metadata": {
+                    "name": "Add (False Branch)",
+                    "description": "Add node for false branch"
+                  },
+                  "outcomes": {
+                    "success": "1765913837616"
+                  },
+                  "id": "add_false_1765913564311",
+                  "type": "ADD"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_SUPPLYCHAI_SCPEXCEPTIONSBO",
+                    "functionName": "getSuppliesExceptions",
+                    "name": "GetSuppliesException"
+                  },
+                  "outcomes": {
+                    "success": "1765913718138"
+                  },
+                  "code": "GETSUPPLIESEXCEPTION",
+                  "id": "1765913660749",
+                  "inputs": [
+                    {
+                      "id": "1768220051229_1",
+                      "name": "planId",
+                      "type": "number",
+                      "value": "{{$context.$variables.PlanId}}"
+                    },
+                    {
+                      "id": "1768220051231_2",
+                      "name": "demandOrderNumbers",
+                      "type": "string",
+                      "value": "[]"
+                    },
+                    {
+                      "id": "1768220051232_3",
+                      "name": "supplyOrderNumbers",
+                      "type": "string",
+                      "value": "{{ \"[\" + $context.$nodes.WORKFLOWITERATION.$currentItem.rows.find(row => row.TableName === \"MSC_SUPPLIES\" && row.OrderNumberList.length > 0).OrderNumberList + \"]\" }}"
+                    },
+                    {
+                      "id": "1768220051233_4",
+                      "name": "exceptionArr",
+                      "type": "string",
+                      "value": "{{$context.$variables.supplyExceptionTypes}}"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_SUPPLYCHAI_SCPEXCEPTIONSBO",
+                    "functionName": "getDemandExceptions",
+                    "name": "GetDemandExcp"
+                  },
+                  "outcomes": {
+                    "success": "1765913781611"
+                  },
+                  "code": "GETDEMANDEXCP",
+                  "id": "1765913718138",
+                  "inputs": [
+                    {
+                      "id": "1768220131194_1",
+                      "name": "planId",
+                      "type": "number",
+                      "value": "{{$context.$variables.PlanId}}"
+                    },
+                    {
+                      "id": "1768220131195_2",
+                      "name": "demandOrderNumbers",
+                      "type": "string",
+                      "value": "[]"
+                    },
+                    {
+                      "id": "1768220131196_3",
+                      "name": "supplyOrderNumbers",
+                      "type": "string",
+                      "value": "{{ \"[\" + $context.$nodes.WORKFLOWITERATION.$currentItem.rows.find(row => row.TableName === \"MSC_SUPPLIES\" && row.OrderNumberList.length > 0).OrderNumberList + \"]\" }}"
+                    },
+                    {
+                      "id": "1768220131197_4",
+                      "name": "exceptionArr",
+                      "type": "string",
+                      "value": "{{$context.$variables.supplyExceptionTypes}}"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "modelConfiguration": {
+                      "modelProperties": {
+                        "k": 0,
+                        "max_completion_tokens": 32000,
+                        "reasoning_effort": "low"
+                      },
+                      "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+                      "model": "OCI_GPT_5_MINI",
+                      "modelName": "Gpt-5 Mini",
+                      "provider": "CERT_PREMIUM"
+                    },
+                    "name": "FilterSupplyOrders"
+                  },
+                  "outcomes": {
+                    "success": "1765913837616"
+                  },
+                  "code": "FILTERSUPPLYORDERS",
+                  "id": "1765913781611",
+                  "inputs": [
+                    {
+                      "id": "1765913781619_1",
+                      "name": "prompt",
+                      "type": "string",
+                      "value": "You are given 4 inputs:\n\n1. **Exception Qualification Rules** — a list of exception types with their qualification criteria.  \n   `{{$context.$variables.extractedRulesJson.supplyOrders}}`\n\n2. **Demand Exceptions Details** — a list of exceptions raised against Supply orders.  \n   `{{$context.$nodes.GETDEMANDEXCP.$output}}`\n\n3. **Supply Exceptions Details** — a list of exceptions raised against Supply orders.  \n   `{{$context.$nodes.GETSUPPLIESEXCEPTION.$output}}`\n\n4. **Supply Order List** — list of orders which need to be classified as either Review or Release based on the classification rules.  \n   `{{$context.$nodes.WORKFLOWITERATION.$currentItem.rows.find(row => row.TableName === \"MSC_SUPPLIES\" && row.OrderNumberList.length > 0).OrderNumberList}}`\n\n---\n\nTask:  \nClassify every order number found in the Exceptions Details into one of two categories and include exceptionId for that order in the response:  \n\n- Review → At least one exception for the order matches a rule in the Exception Qualification Rules AND satisfies the rule's qualification criteria.  \n- Release → One of the following is true:  \n  a) Exceptions exist but none match any rule in the Exception Qualification Rules, OR  \n  b) Exceptions match rules but not satisfying the criteria\n  c) If we dont find any exceptions for a given order in exception details records , we mark it as Release. \n\nProcessing Logic:  \n1. Extract all unique orderNumber , exceptionId values from the Demand & Supply Exceptions Details.  \n2. For each order:  \n   - Collect all exceptions belonging to that order.  \n   - For each exception:  \n     - Check if the exception name matches a rule in the Exception Qualification Rules.  \n     - If it matches, evaluate against the qualification criteria.  \n       Example: If the rule says \"Exception Days > 5\", then the field `minDaysLate` in the exception details must be strictly greater than 5.  \n     - If any matching exception satisfies the rule criteria → mark order as Review.  \n   - If no rules matched or none satisfied → mark order as Release.  \n3. Ensure every order from the input appears exactly once, in either Review or Release. \n4. For each order which are classified as Review , we need the order to be added in ReviewException which hold pair of order number and exceptionId(exception type numeric value) from exception record. \n5.Ensure every output has ReviewException as array of pairs {orderNumber,exceptionId}\nReview and Release output has only comma separated orderNumbers\n\n\n> Note: If an order has multiple qualifying exceptions, include **one Review entry per qualifying exception** (same orderNumber can appear multiple times in Review with different exceptionId). Do **not** include that orderNumber in Release.\n\n\n---\n\n## IMPORTANT CRITICAL INSTRUCTIONS\n\n- **Never generate** an order number (even if you see a numeric sequence).  \n- Always cross-verify that the output contains **only** order numbers present in the **Supply Order List**.\n- **No order** should be present in output that is not present in the input Supply Order List.\n- Do not include the same orderNumber in both Review and Release.\n\n---\n\n\nOutput Format:  \nReturn a JSON object in exactly this format:  \n\n{\n  \"Review\": \"comma_separated_order_numbers_here\",\n  \"Release\": \"comma_separated_order_numbers_here\"\n  \"ReviewException\": \"array of pairs {orderNumber,exceptionId}\"\n}\n\n- Each key is array of order numbers except for ReviewException, key is array of Pair of {orderNumber,exceptionId}. \n- Three keys must always be present, even if empty.\n- ExceptionId is not unique for each order , it is just exception type numeric value , like 14, 23 etc , so multiple review orders with same exception id."
+                    }
+                  ],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"OrderSet\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"Review\": {\n      \"type\": \"array\",\n      \"items\": { \"type\": \"string\" },\n      \"uniqueItems\": true\n    },\n    \"Release\": {\n      \"type\": \"array\",\n      \"items\": { \"type\": \"string\" },\n      \"uniqueItems\": true\n    },\n    \"ReviewException\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"orderNumber\": {\n            \"type\": \"string\"\n          },\n          \"exceptionId\": {\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\"orderNumber\", \"exceptionId\"]\n      }\n    }\n  },\n  \"required\": [\"Review\", \"Release\"],\n  \"additionalProperties\": false\n}",
+                  "type": "LLM"
+                },
+                {
+                  "metadata": {
+                    "name": "mergeJsonCodeNode",
+                    "returnType": "object",
+                    "sourceCode": "const DemandOrderFilteredResults = $context.$nodes.WORKFLOWITERATION.FILTERDEMANDORDERS.$output || {Review: [], Release: [],ReviewException: []}; \nconst SupplyOrderFilteredResults = $context.$nodes.WORKFLOWITERATION.FILTERSUPPLYORDERS.$output || {Review: [], Release: [],ReviewException: []};\nconst InputJsonArray = $context.$nodes.WORKFLOWITERATION.$currentItem;\n\n// Parse InputJsonArray to extract order-to-transaction mapping\nconst inputData = InputJsonArray.rows[0];\nconst orderList = inputData.OrderNumberList.split(',').map(o => o.replace(/'/g, '').trim());\nconst transactionList = inputData.TransactionIdList.split(',').map(t => t.trim());\n\n// Create order-to-transaction mapping\nconst orderToTransaction = {};\nfor (let i = 0; i < orderList.length; i++) {\n  if (orderList[i] && transactionList[i]) {\n    orderToTransaction[orderList[i]] = String(transactionList[i]).trim();\n  }\n}\n\n// Build ReviewTransactions set - normalize all IDs to TRANSACTION IDS\nconst reviewTransactions = new Set();\n\n// DemandOrderFilteredResults.Review already assumed txIds\nif (DemandOrderFilteredResults?.Review) {\n  DemandOrderFilteredResults.Review.forEach(orderNum => {\n    const txId = orderToTransaction[orderNum];\n    if (txId != null) reviewTransactions.add(String(txId).trim());\n  });\n}\n\n// SupplyOrderFilteredResults.Review are ORDER NUMBERS → convert to txIds\nif (SupplyOrderFilteredResults?.Review) {\n  SupplyOrderFilteredResults.Review.forEach(orderNum => {\n    const txId = orderToTransaction[orderNum];\n    if (txId) {\n      reviewTransactions.add(String(txId).trim());\n    }\n  });\n}\n\n\n// Create sets for quick lookup - normalize all IDs to strings\nconst demandTransactions = new Set();\nconst supplyTransactions = new Set();\n\nif (DemandOrderFilteredResults) {\n  if (DemandOrderFilteredResults.Review) {\n    DemandOrderFilteredResults.Review.forEach(orderNum => {\n      const txId = orderToTransaction[orderNum];\n      if (txId !== null && txId !== undefined) {\n        demandTransactions.add(String(txId).trim());\n      }\n    });\n  }\n  if (DemandOrderFilteredResults.Release) {\n    DemandOrderFilteredResults.Release.forEach(orderNum => {\n      const txId = orderToTransaction[orderNum];\n      if (txId !== null && txId !== undefined) {\n        demandTransactions.add(String(txId).trim());\n      }\n    });\n  }\n}\n\nif (SupplyOrderFilteredResults) {\n  if (SupplyOrderFilteredResults.Review) {\n    SupplyOrderFilteredResults.Review.forEach(orderNum => {\n      const txId = orderToTransaction[orderNum];\n      if (txId !== null && txId !== undefined) {\n        supplyTransactions.add(String(txId).trim());\n      }\n    });\n  }\n  if (SupplyOrderFilteredResults.Release) {\n    SupplyOrderFilteredResults.Release.forEach(orderNum => {\n      const txId = orderToTransaction[orderNum];\n      if (txId !== null && txId !== undefined) {\n        supplyTransactions.add(String(txId).trim());\n      }\n    });\n  }\n}\n\n// Initialize result structure\nconst result = {\n  ByOrderNumber: {\n    DemandOrder: { Review: [], Release: [] },\n    SupplyOrder: { Review: [], Release: [] }\n  },\n  ByTransactionId: {\n    DemandOrder: { Review: [], Release: [],ReviewException: [] },\n    SupplyOrder: { Review: [], Release: [],ReviewException: [] }\n  },\n  Count: 0\n};\n\n// ---- NEW: index ReviewException by orderNumber per orderType (preserves exceptionId order within each orderNumber)\nfunction indexExceptionsByOrderNumber(reviewExceptionArr) {\n  const map = Object.create(null);\n  (reviewExceptionArr || []).forEach(ex => {\n    const orderNumber = ex?.orderNumber != null ? String(ex.orderNumber).trim() : \"\";\n    const exceptionId = ex?.exceptionId != null ? String(ex.exceptionId).trim() : \"\";\n    if (!orderNumber || !exceptionId) return;\n\n    if (!map[orderNumber]) map[orderNumber]=[];\n\n    if(map[orderNumber].length===0){\n    map[orderNumber].push(exceptionId);}\n  });\n  return map;\n}\n\nconst demandExByOrder = indexExceptionsByOrderNumber(DemandOrderFilteredResults.ReviewException);\nconst supplyExByOrder = indexExceptionsByOrderNumber(SupplyOrderFilteredResults.ReviewException);\n\n// Process each order in the exact order they appear in InputJsonArray\nfor (const orderNum of orderList) {\n  const txId = orderToTransaction[orderNum];\n  \n  // Skip malformed entries\n  if (!txId) continue;\n  \n  // Determine if Review or Release\n  const isReview = reviewTransactions.has(txId);\n  const category = isReview ? 'Review' : 'Release';\n  \n  // Determine if Demand or Supply\n  // If appears in both, prefer Supply\n  let orderType;\n  if (supplyTransactions.has(txId)) {\n    orderType = 'SupplyOrder';\n  } else if (demandTransactions.has(txId)) {\n    orderType = 'DemandOrder';\n  } else {\n    if(inputData.rows[0].TableName === 'MSC_DEMANDS'){\n      orderType = 'DemandOrder';\n    }\n    else{\n      orderType = 'SupplyOrder';\n    }\n  }\n  \n  // Add to ByOrderNumber\n  result.ByOrderNumber[orderType][category].push(orderNum);\n  \n  // Add to ByTransactionId (preserve original type from mapping)\n  result.ByTransactionId[orderType][category].push(txId);\n\n   // ---- NEW: attach converted ReviewException INSIDE the Review path, in the same order as orderList\n  if (category === \"Review\") {\n    const exIds =\n      (orderType === \"DemandOrder\" ? demandExByOrder[orderNum] : supplyExByOrder[orderNum]) || [];\nconst exceptionId = exIds.length ? exIds[0] : null; \n\n     result.ByTransactionId[orderType].ReviewException.push({\n        orderNumber: String(txId).trim(),\n        exceptionId\n      });\n    \n  }\n  // Increment count if Release\n  if (!isReview) {\n    result.Count++;\n  }\n}\n\nreturn result;"
+                  },
+                  "outcomes": {
+                    "success": "1765915872263"
+                  },
+                  "code": "MERGEJSONCODENODE",
+                  "id": "1765913837616",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "name": "isvalidToRelease"
+                  },
+                  "outcomes": {
+                    "true": "1768852435556",
+                    "false": "1770716577937"
+                  },
+                  "code": "ISVALIDTORELEASE",
+                  "convergenceTargetId": "end_1765912054931",
+                  "id": "1765915872263",
+                  "inputs": [
+                    {
+                      "id": "1765915872265_1",
+                      "name": "condition",
+                      "type": "string",
+                      "value": "true"
+                    }
+                  ],
+                  "type": "CONDITION"
+                },
+                {
+                  "metadata": {
+                    "name": "Generate Payload for new rest",
+                    "returnType": "object",
+                    "sourceCode": "// ===== INPUTS FROM WORKFLOW =====\nvar rows = $context.$nodes.WORKFLOWITERATION.$currentItem.rows;\nvar classification = $context.$nodes.WORKFLOWITERATION.MERGEJSONCODENODE.$output.result ;   \nvar planId = $context.$variables.PlanId ;\nvar workflowRunId = $context.$variables.workflowRunId ;\n\n\n// ===== STEP 1: Parse original transaction lists =====\nvar originalSupply = [];\nvar originalDemand = [];\n\nfor (var i = 0; i < rows.length; i++) {\n\n  var r = rows[i];\n\n  var txIds = [];\n  if (r.TransactionIdList) {\n    txIds = r.TransactionIdList\n      .split(\",\")\n      .map(function(s) {\n        return s.replace(/'/g, \"\").trim();\n      })\n      .filter(function(x) {\n        return x;\n      });\n  }\n\n  if (r.TableName === \"MSC_SUPPLIES\") {\n    originalSupply = originalSupply.concat(txIds);\n  }\n\n  if (r.TableName === \"MSC_DEMANDS\") {\n    originalDemand = originalDemand.concat(txIds);\n  }\n}\n\n// unique\noriginalSupply = Array.from(new Set(originalSupply));\noriginalDemand = Array.from(new Set(originalDemand));\n\n\n// ===== STEP 2: Read classified arrays =====\nvar classified = classification.ByTransactionId;\n\nvar releaseSupply = new Set(classified.SupplyOrder.Release || []);\nvar reviewSupply  = new Set(classified.SupplyOrder.Review || []);\n\nvar releaseDemand = new Set(classified.DemandOrder.Release || []);\nvar reviewDemand  = new Set(classified.DemandOrder.Review || []);\nvar supplyExcpArr = classified.SupplyOrder.ReviewException || [];\nvar demandExcpArr = classified.DemandOrder.ReviewException || [];\n\n// ===== STEP 3: Reconciliation – ensure nothing is missed =====\nfor (var i = 0; i < originalSupply.length; i++) {\n  var id = originalSupply[i];\n  if (!releaseSupply.has(id)) {\n    reviewSupply.add(id);\n  }\n}\n\nfor (var i = 0; i < originalDemand.length; i++) {\n  var id = originalDemand[i];\n  if (!releaseDemand.has(id)) {\n    reviewDemand.add(id);\n  }\n}\n\n\n// ===== STEP 4: Build arrays =====\nvar supplyOrdersArr = Array.from(releaseSupply).map(function(x) {\n  return Number(x);\n});\n\nvar demandOrdersArr = Array.from(releaseDemand).map(function(x) {\n  return Number(x);\n});\n\nvar reviewDemandOrdersArr = Array.from(reviewDemand).map(function(x) {\n  return Number(x);\n});\n\nvar reviewSupplyOrdersArr = Array.from(reviewSupply).map(function(x) {\n  return Number(x);\n});\n\n\n// ===== STEP 5: Build payload =====\nvar payload = {\n  planId: planId,\n\n  supplyOrders: supplyOrdersArr,\n  demandOrders: demandOrdersArr,\n  reviewDemandOrders: reviewDemandOrdersArr,\n  reviewSupplyOrders: reviewSupplyOrdersArr,\n\n  OrderRelWorkflowRunId: workflowRunId,\n\n  singleSupplyOrder: null,\n  singleDemandOrder: null,\n  singleReviewSupplyOrder: null,\n  singleReviewDemandOrder: null,\n  supplyReviewException : null,\n  demandReviewException : null\n};\n\npayload.supplyReviewException = supplyExcpArr;\npayload.demandReviewException = demandExcpArr;\n\n\n// ===== STEP 6: Single-order corner case (mutually exclusive) =====\nif (payload.supplyOrders.length === 1) {\n  payload.singleSupplyOrder = payload.supplyOrders[0];\n  payload.supplyOrders = [];\n}\n\nif (payload.demandOrders.length === 1) {\n  payload.singleDemandOrder = payload.demandOrders[0];\n  payload.demandOrders = [];\n}\n\nif (payload.reviewSupplyOrders.length === 1) {\n  payload.singleReviewSupplyOrder = payload.reviewSupplyOrders[0];\n  payload.reviewSupplyOrders = [];\n}\n\nif (payload.reviewDemandOrders.length === 1) {\n  payload.singleReviewDemandOrder = payload.reviewDemandOrders[0];\n  payload.reviewDemandOrders = [];\n}\n\nreturn payload;"
+                  },
+                  "outcomes": {
+                    "success": "1768854114636"
+                  },
+                  "code": "GENERATE_PAYLOAD_FOR_NEW_REST",
+                  "id": "1768852435556",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+                  "type": "CODE"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_SUPPLYCHAI_GENERATEPAYLOAD",
+                    "functionName": "updatedGeneratePayload",
+                    "processJson": true,
+                    "name": "generatePayloadNew"
+                  },
+                  "outcomes": {
+                    "success": "1768854463983"
+                  },
+                  "code": "GENERATEPAYLOADNEW",
+                  "id": "1768854114636",
+                  "inputs": [
+                    {
+                      "id": "1773820453017_1",
+                      "name": "planId",
+                      "type": "string",
+                      "value": "{{$context.$variables.PlanId}}"
+                    },
+                    {
+                      "id": "1773820453018_2",
+                      "name": "supplyOrders",
+                      "type": "string",
+                      "value": "{{$context.$nodes.WORKFLOWITERATION.GENERATE_PAYLOAD_FOR_NEW_REST.$output.result.supplyOrders}}"
+                    },
+                    {
+                      "id": "1773820453019_3",
+                      "name": "demandOrders",
+                      "type": "string",
+                      "value": "{{$context.$nodes.WORKFLOWITERATION.GENERATE_PAYLOAD_FOR_NEW_REST.$output.result.demandOrders}}"
+                    },
+                    {
+                      "id": "1773820453020_4",
+                      "name": "reviewDemandOrders",
+                      "type": "string",
+                      "value": "{{$context.$nodes.WORKFLOWITERATION.GENERATE_PAYLOAD_FOR_NEW_REST.$output.result.reviewDemandOrders}}"
+                    },
+                    {
+                      "id": "1773820453021_5",
+                      "name": "reviewSupplyOrders",
+                      "type": "string",
+                      "value": "{{$context.$nodes.WORKFLOWITERATION.GENERATE_PAYLOAD_FOR_NEW_REST.$output.result.reviewSupplyOrders}}"
+                    },
+                    {
+                      "id": "1773820453022_6",
+                      "name": "singleSupplyOrder",
+                      "type": "string",
+                      "value": "{{$context.$nodes.WORKFLOWITERATION.GENERATE_PAYLOAD_FOR_NEW_REST.$output.result.singleSupplyOrder}}"
+                    },
+                    {
+                      "id": "1773820453023_7",
+                      "name": "singleDemandOrder",
+                      "type": "string",
+                      "value": "{{$context.$nodes.WORKFLOWITERATION.GENERATE_PAYLOAD_FOR_NEW_REST.$output.result.singleDemandOrder}}"
+                    },
+                    {
+                      "id": "1773820453024_8",
+                      "name": "singleReviewDemandOrder",
+                      "type": "string",
+                      "value": "{{$context.$nodes.WORKFLOWITERATION.GENERATE_PAYLOAD_FOR_NEW_REST.$output.result.singleReviewDemandOrder}}"
+                    },
+                    {
+                      "id": "1773820453025_9",
+                      "name": "singleReviewSupplyOrder",
+                      "type": "string",
+                      "value": "{{$context.$nodes.WORKFLOWITERATION.GENERATE_PAYLOAD_FOR_NEW_REST.$output.result.singleReviewSupplyOrder}}"
+                    },
+                    {
+                      "id": "1773820453026_10",
+                      "name": "runId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.WORKFLOWITERATION.GENERATE_PAYLOAD_FOR_NEW_REST.$output.result.OrderRelWorkflowRunId}}"
+                    },
+                    {
+                      "id": "1773820453027_11",
+                      "name": "supplyReviewException",
+                      "type": "string",
+                      "value": "{{$context.$nodes.WORKFLOWITERATION.GENERATE_PAYLOAD_FOR_NEW_REST.$output.result.supplyReviewException}}"
+                    },
+                    {
+                      "id": "1773820453028_12",
+                      "name": "demandReviewException",
+                      "type": "string",
+                      "value": "{{$context.$nodes.WORKFLOWITERATION.GENERATE_PAYLOAD_FOR_NEW_REST.$output.result.demandReviewException}}"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_SUPPLYCHAI_MARKFORRELEASEA",
+                    "functionName": "callReleaseBatch",
+                    "name": "BatchCallRelease"
+                  },
+                  "outcomes": {
+                    "success": "1768855116003"
+                  },
+                  "code": "BATCHCALLRELEASE",
+                  "id": "1768854463983",
+                  "inputs": [
+                    {
+                      "id": "1768854899396_1",
+                      "name": "partsArr",
+                      "type": "string",
+                      "value": "{{$context.$nodes.WORKFLOWITERATION.GENERATEPAYLOADNEW.$output}}"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "name": "PrintLLMRespones"
+                  },
+                  "outcomes": {
+                    "success": "end_1765912054931"
+                  },
+                  "code": "PRINTLLMRESPONES",
+                  "id": "1768855116003",
+                  "inputs": [
+                    {
+                      "id": "1768855116004_1",
+                      "name": "prompt",
+                      "type": "string",
+                      "value": "Print the json object \n {{$context.$nodes.WORKFLOWITERATION.MERGEJSONCODENODE.$output.result}}"
+                    }
+                  ],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"OrderTransactionSet\",\n  \"type\": \"object\",\n  \"required\": [\"ByOrderNumber\", \"ByTransactionId\", \"Count\"],\n  \"properties\": {\n    \"ByOrderNumber\": {\n      \"type\": \"object\",\n      \"required\": [\"DemandOrder\", \"SupplyOrder\"],\n      \"properties\": {\n        \"DemandOrder\": {\n          \"type\": \"object\",\n          \"required\": [\"Review\", \"Release\"],\n          \"properties\": {\n            \"Review\": {\n              \"type\": \"array\",\n              \"items\": { \"type\": \"string\" }\n            },\n            \"Release\": {\n              \"type\": \"array\",\n              \"items\": { \"type\": \"string\" }\n            }\n          }\n        },\n        \"SupplyOrder\": {\n          \"type\": \"object\",\n          \"required\": [\"Review\", \"Release\"],\n          \"properties\": {\n            \"Review\": {\n              \"type\": \"array\",\n              \"items\": { \"type\": \"string\" }\n            },\n            \"Release\": {\n              \"type\": \"array\",\n              \"items\": { \"type\": \"string\" }\n            }\n          }\n        }\n      }\n    },\n    \"ByTransactionId\": {\n      \"type\": \"object\",\n      \"required\": [\"DemandOrder\", \"SupplyOrder\"],\n      \"properties\": {\n        \"DemandOrder\": {\n          \"type\": \"object\",\n          \"required\": [\"Review\", \"Release\", \"ReviewException\"],\n          \"properties\": {\n            \"Review\": {\n              \"type\": \"array\",\n              \"items\": { \"type\": \"string\" }\n            },\n            \"Release\": {\n              \"type\": \"array\",\n              \"items\": { \"type\": \"string\" }\n            },\n            \"ReviewException\": {\n              \"type\": \"array\",\n              \"items\": {\n                \"type\": \"object\",\n                \"required\": [\"transactionId\", \"exceptionId\"],\n                \"properties\": {\n                  \"transactionId\": { \"type\": \"string\" },\n                  \"exceptionId\": { \"type\": \"string\" }\n                }\n              }\n            }\n          }\n        },\n        \"SupplyOrder\": {\n          \"type\": \"object\",\n          \"required\": [\"Review\", \"Release\", \"ReviewException\"],\n          \"properties\": {\n            \"Review\": {\n              \"type\": \"array\",\n              \"items\": { \"type\": \"string\" }\n            },\n            \"Release\": {\n              \"type\": \"array\",\n              \"items\": { \"type\": \"string\" }\n            },\n            \"ReviewException\": {\n              \"type\": \"array\",\n              \"items\": {\n                \"type\": \"object\",\n                \"required\": [\"transactionId\", \"exceptionId\"],\n                \"properties\": {\n                  \"transactionId\": { \"type\": \"string\" },\n                  \"exceptionId\": { \"type\": \"string\" }\n                }\n              }\n            }\n          }\n        }\n      }\n    },\n    \"Count\": {\n      \"type\": \"integer\",\n      \"minimum\": 0\n    }\n  }\n}",
+                  "type": "LLM"
+                },
+                {
+                  "metadata": {
+                    "name": "ReturnNothingToRelease"
+                  },
+                  "outcomes": {},
+                  "code": "RETURNNOTHINGTORELEASE",
+                  "convergenceTargetId": "end_1765912054931",
+                  "id": "1770716577937",
+                  "inputs": [
+                    {
+                      "id": "1770716577938_1",
+                      "name": "returnValue",
+                      "type": "string",
+                      "value": "{\n\t\"Count\" : 0,\n\t\"Output\" : \"Nothing_to_release\"\n}"
+                    }
+                  ],
+                  "type": "RETURN"
+                }
+              ],
+              "rootNode": "start_1765912054931"
+            },
+            "loopType": "PARALLEL",
+            "name": "workflowIteration"
+          },
+          "outcomes": {
+            "success": "1765911246236"
+          },
+          "code": "WORKFLOWITERATION",
+          "convergenceTargetId": "1770318735988",
+          "id": "1765912054931",
+          "inputs": [
+            {
+              "id": "1765912054935_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$variables.inputJsonArray}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "name": "temp3"
+          },
+          "outcomes": {
+            "success": "1770225713499"
+          },
+          "code": "TEMP3",
+          "convergenceTargetId": "1770318735988",
+          "id": "1765911246236",
+          "inputs": [],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "loopBackNodeId": null,
+            "maxIterations": 0,
+            "name": "waitForIngestionToTakePlace",
+            "waitTimeValue": 2
+          },
+          "outcomes": {
+            "success": "1769626746934"
+          },
+          "code": "WAITFORINGESTIONTOTAKEPLACE",
+          "convergenceTargetId": "1770318735988",
+          "id": "1770225713499",
+          "inputs": [
+            {
+              "id": "1770225713503_1",
+              "name": "message",
+              "type": "string",
+              "value": ""
+            }
+          ],
+          "type": "WAIT"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_SUPPLYCHAI_SCPELASTICWRAP",
+            "errorNodeId": "1770377623149",
+            "functionName": "getAllData",
+            "processJson": true,
+            "name": "getTotalCount"
+          },
+          "outcomes": {
+            "success": "1770717630191"
+          },
+          "code": "GETTOTALCOUNT",
+          "convergenceTargetId": "1770318735988",
+          "id": "1769626746934",
+          "inputs": [
+            {
+              "id": "1769629215663_1",
+              "name": "limit",
+              "type": "string",
+              "value": "5000"
+            },
+            {
+              "id": "1769629215663_2",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{\"fa-scm-msc-supplies-demands-\" + $context.$variables.PlanShortId}}"
+            },
+            {
+              "id": "1769629215664_3",
+              "name": "filtersArray",
+              "type": "string",
+              "value": "{{[{\"name\":\"OrderReleaseWorkflowRunId\",\"terms\":[$context.$variables.workflowRunId]},{\"name\":\"ReleaseStatus\",\"terms\":[11,12,14,15,17,18]}]}}"
+            },
+            {
+              "id": "1769629215665_4",
+              "name": "query",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "1769629215666_5",
+              "name": "offset",
+              "type": "string",
+              "value": "0"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "updateStatusCode",
+            "returnType": "object",
+            "sourceCode": "let input = {};\n\ninput.ExecutionId = null;\nif($context.$nodes.CREATETRACERECORDINPLANSTATUS.$output.keys){\n input.ExecutionId = $context.$nodes.CREATETRACERECORDINPLANSTATUS.$output.keys[0].value;\n}\nelse if($context.$nodes.CREATETRACERECORDINPLANSTATUS.$output.Keys){\n  input.ExecutionId = $context.$nodes.CREATETRACERECORDINPLANSTATUS.$output.Keys[0].value;\n}\ninput.Status = 0;\ninput.EndDate = $context.$system.$currentDateTime;\n\nreturn input;"
+          },
+          "outcomes": {
+            "success": "1768233943709"
+          },
+          "code": "UPDATESTATUSCODE",
+          "convergenceTargetId": "1770318735988",
+          "id": "1768233889322",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_SUPPLYCHAI_SCPPLANSTATUS",
+            "functionName": "updateStatusRecord",
+            "name": "updateWorkflowStatus"
+          },
+          "outcomes": {
+            "success": "1766132273187"
+          },
+          "code": "UPDATEWORKFLOWSTATUS",
+          "convergenceTargetId": "1770318735988",
+          "id": "1768233943709",
+          "inputs": [
+            {
+              "id": "1768233976255_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.UPDATESTATUSCODE.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_completion_tokens": 32000,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "Gpt-5 Mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "errorNodeId": "1770377623149",
+            "name": "finalResponseJson"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FINALRESPONSEJSON",
+          "convergenceTargetId": "1770318735988",
+          "id": "1766132273187",
+          "inputs": [
+            {
+              "id": "1766132273189_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are json response output llm. \n\nYou need to return json like this : \n\n{\n\"TotalOrderCount\" : 234,\n\"Count\" : 32\n}\n\nTake inputs : \n\nfor TotalOrderCount : {{$context.$nodes.GETTOTALPROCESSEDCOUNT.$output.totalResults}} , for Count : {{$context.$nodes.GETTOTALCOUNT.$output.totalResults}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"Count\": {\n            \"type\": \"number\"\n        },\n        \"TotalOrderCount\": {\n            \"type\": \"number\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "UpdateErrorStatus",
+            "returnType": "object",
+            "sourceCode": "let input = {};\n\ninput.ExecutionId = null;\nif($context.$nodes.CREATETRACERECORDINPLANSTATUS.$output.keys){\n input.ExecutionId = $context.$nodes.CREATETRACERECORDINPLANSTATUS.$output.keys[0].value;\n}\nelse if($context.$nodes.CREATETRACERECORDINPLANSTATUS.$output.Keys){\n  input.ExecutionId = $context.$nodes.CREATETRACERECORDINPLANSTATUS.$output.Keys[0].value;\n}\n\ninput.Status = 2;\ninput.EndDate = $context.$system.$currentDateTime;\n\nreturn input;"
+          },
+          "outcomes": {
+            "success": "1770377740933"
+          },
+          "code": "UPDATEERRORSTATUS",
+          "id": "1770377623149",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_SUPPLYCHAI_SCPPLANSTATUS",
+            "functionName": "updateStatusRecord",
+            "name": "UpdateErrorStatusBo"
+          },
+          "outcomes": {
+            "success": "1770377879860"
+          },
+          "code": "UPDATEERRORSTATUSBO",
+          "id": "1770377740933",
+          "inputs": [
+            {
+              "id": "1770377774742_1",
+              "name": "payload",
+              "type": "string",
+              "value": "{{$context.$nodes.UPDATEERRORSTATUS.$output.result}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "ReturnUpdateRecord",
+            "returnType": "object",
+            "sourceCode": "let isValidDoc = $context.$variables.isDocValid;\nlet errorObj = {};\n\nconst restJson = {\n    \"internalStatus\" : 2,\n    \"internalErrorReasonCode\" : \"REST_ERROR\"\n}\n\nconst invalidDocJson = {\n    \"internalStatus\" : 2,\n    \"internalErrorReasonCode\" : \"MSC_ORDER_REL_WORKFLOW_DOC_ERR\" \n}\n\nif(isValidDoc == false){\n\terrorObj = invalidDocJson;\n}\nelse{\n\terrorObj = restJson;\n}\nreturn errorObj;"
+          },
+          "outcomes": {
+            "success": "1770378557213"
+          },
+          "code": "RETURNUPDATERECORD",
+          "id": "1770377879860",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Return Error Value"
+          },
+          "outcomes": {},
+          "code": "RETURN_ERROR_VALUE",
+          "convergenceTargetId": "end",
+          "id": "1770378557213",
+          "inputs": [
+            {
+              "id": "1770378557214_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.RETURNUPDATERECORD.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_SUPPLYCHAI_SCPELASTICWRAP",
+            "errorNodeId": "1770377623149",
+            "functionName": "getAllData",
+            "processJson": true,
+            "name": "getTotalProcessedCount"
+          },
+          "outcomes": {
+            "success": "1768233889322"
+          },
+          "code": "GETTOTALPROCESSEDCOUNT",
+          "id": "1770717630191",
+          "inputs": [
+            {
+              "id": "1770717671061_1",
+              "name": "limit",
+              "type": "string",
+              "value": "5000"
+            },
+            {
+              "id": "1770717671062_2",
+              "name": "indexName",
+              "type": "string",
+              "value": "{{\"fa-scm-msc-supplies-demands-\" + $context.$variables.PlanShortId}}"
+            },
+            {
+              "id": "1770717671063_3",
+              "name": "filtersArray",
+              "type": "string",
+              "value": "{{[{\"name\":\"OrderReleaseWorkflowRunId\",\"terms\":[$context.$variables.workflowRunId]}]}}"
+            },
+            {
+              "id": "1770717671063_4",
+              "name": "query",
+              "type": "string"
+            },
+            {
+              "id": "1770717671064_5",
+              "name": "offset",
+              "type": "string",
+              "value": "0"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_SUPPLYCHAI_SCPPLANSTATUS",
+            "errorNodeId": "1770377623149",
+            "functionName": "getExceptionsList",
+            "processJson": true,
+            "name": "getExceptionsREST"
+          },
+          "outcomes": {
+            "success": "1765910224413"
+          },
+          "code": "GETEXCEPTIONSREST",
+          "id": "1770890360508",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1768851729941",
+          "name": "workflowRunId",
+          "scope": "JOB",
+          "type": "number"
+        },
+        {
+          "id": "1768295172611",
+          "name": "workflowBatchProcessSize",
+          "scope": "JOB",
+          "type": "integer"
+        },
+        {
+          "id": "1768295157210",
+          "name": "elasticLoopSize",
+          "scope": "JOB",
+          "type": "integer"
+        },
+        {
+          "id": "1768295139396",
+          "name": "maxProcessingCount",
+          "scope": "JOB",
+          "type": "integer"
+        },
+        {
+          "id": "1768219301817",
+          "name": "demandExceptionArr",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1768219282005",
+          "name": "supplyExceptionTypes",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1766746592598",
+          "name": "Query",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1766743883618",
+          "name": "Mode",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1766743822847",
+          "name": "SelectedJsonArray",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1766128935895",
+          "name": "FiltersArray",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1766051893508",
+          "name": "PlanShortId",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1765972221534",
+          "name": "isReleaseValid",
+          "scope": "JOB",
+          "type": "boolean"
+        },
+        {
+          "id": "1765912963892",
+          "name": "extractedRulesJson",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1765911433966",
+          "name": "inputJsonArray",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1765910675542",
+          "name": "isDocValid",
+          "scope": "JOB",
+          "type": "boolean"
+        },
+        {
+          "id": "1765910282759",
+          "name": "documentAttached",
+          "scope": "JOB",
+          "type": "boolean"
+        },
+        {
+          "id": "1765909955903",
+          "name": "defaultDocumentText",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1765909825476",
+          "name": "workflowCollection",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1765909815718",
+          "name": "PlanId",
+          "scope": "JOB",
+          "type": "number"
+        },
+        {
+          "id": "1765909801034",
+          "name": "AttachmentTrackerIds",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1765817273083",
+          "name": "finalDataArray",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1765783267688",
+          "name": "completeRestData",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1765738632135",
+          "name": "totalResults",
+          "scope": "JOB",
+          "type": "number"
+        },
+        {
+          "id": "1765706454487",
+          "name": "testing",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1765704889301",
+          "name": "limit",
+          "scope": "JOB",
+          "type": "number"
+        },
+        {
+          "id": "1765704878346",
+          "name": "offset",
+          "scope": "JOB",
+          "type": "number"
+        },
+        {
+          "id": "1765704860992",
+          "name": "indexName",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1765704832952",
+          "name": "filtersArray",
+          "scope": "JOB",
+          "type": "array"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": true,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1770110544781",
+            "name": "RunId",
+            "type": "integer"
+          },
+          {
+            "id": "1770110536298",
+            "name": "MaxProcessingCount",
+            "type": "integer"
+          },
+          {
+            "id": "1770110529311",
+            "name": "WorkflowBatchProcessSize",
+            "type": "integer"
+          },
+          {
+            "id": "1766746581115",
+            "name": "Query",
+            "type": "string"
+          },
+          {
+            "id": "1766743815978",
+            "name": "Mode",
+            "type": "string"
+          },
+          {
+            "id": "1766743799774",
+            "name": "SelectedJsonArray",
+            "type": "object"
+          },
+          {
+            "id": "1766128906696",
+            "name": "FiltersArray",
+            "type": "array"
+          },
+          {
+            "id": "1766051876328",
+            "name": "InputPlanShortId",
+            "type": "string"
+          },
+          {
+            "id": "1765909744112",
+            "name": "InputPlanId",
+            "type": "number"
+          },
+          {
+            "id": "1765909732987",
+            "name": "AttachmentTrackerIds",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "SCM",
+  "product": "SUPPLY_CHAIN_PLANNING",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": true,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"4\""
+  }
+}

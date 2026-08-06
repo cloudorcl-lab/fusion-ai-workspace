@@ -1,0 +1,1329 @@
+{
+  "workflowId": "100002355226950",
+  "workflowCode": "ORA_FIN_AP_PROGRAM_BENEFITS_ADVISOR",
+  "name": "Program Benefits Advisor",
+  "description": "The Program Benefits Advisor evaluates financing programs, calculates savings, discounts and payment flexibility, then recommends the best payment option for the user’s goals.",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1773256752929"
+          },
+          "diagram": {
+            "x": 6215.5,
+            "y": 5000
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Supplier Program Benefit Table Generator"
+          },
+          "outcomes": {
+            "success": "1770985024653"
+          },
+          "diagram": {
+            "x": 5423,
+            "y": 9700
+          },
+          "code": "FIN_AP_LLM_SUPPLIER_PROGRAM_BENEFIT_TABLE_GENERATOR",
+          "convergenceTargetId": "1766767953450",
+          "id": "1765868765203",
+          "inputs": [
+            {
+              "id": "1765868765205_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "# Input\nYou will receive a JSON from {{$context.$nodes.FIN_AP_CODE_REMOVE_SCF_PROGRAMS.$output}}.\nUser Query : {{$context.$system.$inputMessage}}\nTarget Program Name: {{$context.$nodes.FIN_AP_LLM_USER_INTENT_IDENTIFIER.$output.financingProgramName}} (May be empty/null)\nTarget Program Category: {{$context.$nodes.FIN_AP_LLM_USER_INTENT_IDENTIFIER.$output.financingProgramCategory}} (May be empty/null)\nUnrecognized Name Detected: {{$context.$nodes.FIN_AP_LLM_USER_INTENT_IDENTIFIER.$output.unrecognizedNameDetected}} (true/false)\n\n\nInjected Best Programs:\n- Highest Internal VCC: {{$context.$nodes.FIN_AP_CODE_REMOVE_SCF_PROGRAMS.$output.highestInternalVCC}} (Benefit: {{$context.$nodes.FIN_AP_CODE_REMOVE_SCF_PROGRAMS.$output.highestInternalVCCBenefit}})\n- Highest External VCC: {{$context.$nodes.FIN_AP_CODE_REMOVE_SCF_PROGRAMS.$output.highestExternalVCC}} (Benefit: {{$context.$nodes.FIN_AP_CODE_REMOVE_SCF_PROGRAMS.$output.highestExternalVCCBenefit}})\n- Highest Internal DD: {{$context.$nodes.FIN_AP_CODE_REMOVE_SCF_PROGRAMS.$output.highestInternalDD}} (Benefit: {{$context.$nodes.FIN_AP_CODE_REMOVE_SCF_PROGRAMS.$output.highestInternalDDBenefit}})\n- Highest External DD: {{$context.$nodes.FIN_AP_CODE_REMOVE_SCF_PROGRAMS.$output.highestExternalDD}} (Benefit: {{$context.$nodes.FIN_AP_CODE_REMOVE_SCF_PROGRAMS.$output.highestExternalDDBenefit}})\n\n# Execution Steps\n1. Analyze and Parse Results\n\n-STEP 1: Determine Allowed Program Types, Origins, and Targets (Intent Filter)\n\nBased on user query and provided context variables, determine the allowed scope:\n\nA. Allowed Program Types (Intent Filter):\n- 1. EXPLICIT VCC: If the user explicitly mentions \"Virtual Card\" or \"VCC\" (and does not ask for a comparison with DD) → allowedPrograms = [VCC]\n- 2. EXPLICIT DD: If the user explicitly mentions \"Dynamic Discounting\" or \"DD\" (and does not ask for a comparison with VCC) → allowedPrograms = [DD]\n- 3. CASH OUTFLOW: If query is about delaying payments / reducing cash outflow → allowedPrograms = [VCC]\n- 4. ROI/DISCOUNTS: If query is about ROI / discounts → allowedPrograms = [DD]\n- 5. GENERAL/COMPARISON: If query is general / what-if / origin-specific (e.g., \"show external programs\") → allowedPrograms = [DD, VCC]\n\nGLOBAL PRE-FILTERING RULE (MANDATORY): Once `allowedPrograms` and `allowedOrigins` are set, you MUST mentally delete all unallowed data from the JSON for the rest of this execution:\n1. TYPE BLINDNESS: If allowedPrograms = [VCC], act as if no DD data exists (and vice versa).\n2. ORIGIN BLINDNESS: If allowedOrigins = [\"internal\"], act as if NO external data exists. If allowedOrigins = [\"external\"], act as if NO internal data exists.\n3. SCF BLINDNESS: Act as if Supply Chain Financing (SCF) completely does not exist, regardless of the query.\n\nB. Allowed Origins (Internal vs. External Filter):\n- CRITICAL RULE: Read the user query carefully for origin keywords.\n- 1. BOTH CONFLICT: If the user query contains BOTH an internal keyword (\"internal\" or \"signed\") AND an external keyword (\"external\") → allowedOrigins = [\"internal\", \"external\"].\n- 2. INTERNAL ONLY: Else if the query contains ONLY \"internal\" OR \"signed\" → allowedOrigins = [\"internal\"]. YOU MUST COMPLETELY EXCLUDE ALL EXTERNAL DATA AND COLUMNS.\n- 3. EXTERNAL ONLY: Else if the query contains ONLY \"external\" → allowedOrigins = [\"external\"]. YOU MUST COMPLETELY EXCLUDE ALL INTERNAL DATA AND COLUMNS.\n- 4. UPSTREAM OVERRIDE: If a target category is passed via {{$context.$nodes.FIN_AP_LLM_USER_INTENT_IDENTIFIER.$output.financingProgramCategory}} → allowedOrigins = [{{$context.$nodes.FIN_AP_LLM_USER_INTENT_IDENTIFIER.$output.financingProgramCategory}}]\n- 5. DEFAULT: If no specific origin keyword is found or passed → allowedOrigins = [\"internal\", \"external\"]\n\n**NOTE ON WHAT-IFS: The \"what-if\" category is ALWAYS whitelisted in allowedOrigins so that hypothetical columns can be generated for the permitted base programs.**\n\nC. Explicit Target Program Override:\n- Target Name = {{$context.$nodes.FIN_AP_LLM_USER_INTENT_IDENTIFIER.$output.financingProgramName}} \n\nIMPORTANT:\n- Any program type NOT in allowedPrograms MUST NOT have columns generated.\n- Any program category NOT in allowedOrigins MUST NOT have columns generated. (Example: If allowedOrigins = [\"internal\"], DO NOT generate ANY External columns, even if external data exists in the JSON).\n\n- STEP 2: Enforce Completeness & Selection Logic (WITHIN allowed scope)\n\nFor EACH programType in allowedPrograms:\n\n    Detect:\n    - hasInternal = any record with programCategory = \"internal\" AND programType\n    - hasExternal = any record with programCategory = \"external\" AND programType\n\n    RULES:\n\n    1. If hasInternal = true AND \"internal\" is in allowedOrigins:\n        → MUST include ALL Internal columns for that programType\n\n    2. If hasExternal = true AND \"external\" is in allowedOrigins:\n        → MUST include ALL External columns for that programType\n\n    3. Internal and External are INDEPENDENT:\n        → NEVER skip external columns because internal is better\n        → NEVER skip internal columns because external is better\n---\n    - **If no VCC programs** are present in the input data, include the note in the Summary & Recommendation part of output json:\n        _\"There are no VCC programs available.\"_\n    - Extract supplier program benefits from the input JSON.\n    - Identify the origin of each program using the `programCategory` property:\n        - Internal programs will have programCategory as \"internal\"\n        - External programs (uploaded via RAG document) will have `\"programCategory\": \"external\"`.\n        - What-if programs will have `\"programCategory\": \"what-if\"`. Use the program name to map a what-if record back to its base internal or external program.\n    - For each supplier, consolidate all program calculations into a single row.\n    - Add columns for each key metric relevant to program types (Dynamic Discounting \"DD\", Supply Chain Financing \"SCF\", Virtual Card \"VCC\").\n    - **Column Ordering Rule**: Columns must strictly follow this exact layout order: \n        1. [Internal DD Originals] \n        2. [Internal DD What-Ifs] (ONLY if what-if data exists)\n        3. [Internal VCC Originals] \n        4. [Internal VCC What-Ifs] (ONLY if what-if data exists)\n        5. [External DD Originals] \n        6. [External DD What-Ifs] (ONLY if what-if data exists)\n        7. [External VCC Originals] \n        8. [External VCC What-Ifs] (ONLY if what-if data exists)\n      All columns used for internal programs must be replicated for external programs by adding \"External \" to the column name to differentiate.\n        - For any overrides present in `{{$context.$nodes.FIN_AP_LLM_OVERRIDE_FINANCING_PROGRAMS.$output.overrides}}`, include separate columns for the relevant metrics, such as:\n            - **defaultAPR** (e.g., \"What-If: APR = X\")\n            - **marketShortTermInvestmentInterestRate** (e.g., \"What-If: Short Term Interest Rate = Y\")\n        - These columns should only reflect what is specifically overridden in the `overrides` JSON. If no overrides exist for a given metric, do not create that column.\n    - **For VCC programs**:\n        - Focus on **rebate rate** overrides (e.g., \"What-If: Rebate Rate = 7%\").\n        - If other metrics are overridden for VCC, like **marketBorrowingInterestRate**, **billingDate**, etc., generate columns for those as well.\n        - Example for VCC:  \n            - **Rebate Rate** override: \"What-If: Rebate Rate = 7%\"  \n            - Other possible overrides could be for **marketBorrowingInterestRate** or **billingDate**.\n\n    - **Handling What-If Scenarios (`\"programCategory\": \"what-if\"`)**:\n        - **CONDITIONAL GENERATION**: What-If columns MUST NOT be generated by default. You must ONLY create what-if columns if there are actual `\"programCategory\": \"what-if\"` records present in the input JSON. If no what-if data exists, completely skip generating any what-if columns.\n        - What-if records are always linked to their base programs by name (e.g., \"What-if :: Dynamic Discounting\" maps to the base program \"Dynamic Discounting\", \"What-if :: Corporate Virtual Card Program\" maps to \"Corporate Virtual Card Program\").\n        - **CRITICAL MAPPING RULE**: For EVERY base program (Internal or External) that is selected to be displayed in the table, you MUST explicitly generate and populate its corresponding \"what-if\" columns if a matched what-if record exists for it in the JSON.\n        - Do not merge the what-if results with the base results. They must reside in separate, dedicated columns side-by-side.\n        - Base program results go in the standard columns. What-if results go ONLY in the specific \"What-If\" columns. \n    - **EXPLICIT TARGET OVERRIDE**: If `{{$context.$nodes.FIN_AP_LLM_USER_INTENT_IDENTIFIER.$output.financingProgramName}}` is provided and matches a program in the JSON, you MUST bypass the \"highest benefit\" filter. Evaluate and display ONLY the program matching this exact name (and its associated what-ifs) in the base columns. \n    - **STANDARD HIGHEST BENEFIT LOGIC** (Use only if no target name is provided): If multiple programs of the SAME type and origin exist for one supplier (e.g., multiple Internal VCCs, or multiple External DDs), display ONLY the one with the highest benefit for that specific bucket. Summarize the omitted ones as short text.\n    - CRITICAL: Internal and External programs do not compete with each other. Never filter out a top External DD/VCC program just because an Internal DD/VCC program has a higher overall benefit. \n    - Only include the real VCC program (i.e., the one that has a programId or a non-what-if category) in the base columns.\n    - Do not do any calculation on your end; use the values from the JSON exactly as they are.\n    - Do not assume the \"what-if\" scenario from the JSON defaults. What-IF overrides can strictly be identified using: {{$context.$nodes.FIN_AP_LLM_OVERRIDE_FINANCING_PROGRAMS.$output.overrides}}. Use this specifically for the dynamic column naming.\n    - If there are multiple lines for program type then one will be the original result and the other might be the what if result.\n\n    - Determination of \"Best-Fit\" Program & Column Selection:\n        - You must evaluate Internal and External programs independently. \n        - For each program category allowed by the user's intent, you MUST include columns for both the highest-benefit Internal program AND the highest-benefit External program (unless restricted by the allowedOrigins filter). Even if the External program has a lower benefit than the Internal program, its columns MUST still be generated and populated.\n        - If User Query is about \"Cash Outflow\" or \"Extending Dates\":\n            - Show ONLY VCC. Display the Best Internal VCC and Best External VCC.\n        - If User Query is about \"Discounts\" or \"ROI\" or mentions \"extra cash balance\": \n            - Show ONLY DD. Display the Best Internal DD and Best External DD.\n        - If user Query is about rebates, card-based benefits, or vendor financing: \n            - Show ONLY VCC. Display the Best Internal VCC and Best External VCC.\n        - If User Query is General (e.g., \"optimize payments\", \"what options do I have\", or \"what if\") or Origin-Specific: \n            - Show BOTH DD and VCC. Display the Best Internal DD, Best External DD, Best Internal VCC, and Best External VCC.\n\n    - What-If Columns Naming Logic:\n        - Extract the meaningful part from {{$context.$nodes.FIN_AP_LLM_OVERRIDE_FINANCING_PROGRAMS.$output.overrides}} (e.g., `rebateRate = 7` becomes `Rebate Rate = 7%`, `defaultAPR = 25` becomes `APR = 25%`).\n        - Generate dynamic, unique column names tied to the base program's origin to ensure Internal and External what-ifs do not overwrite each other. You MUST generate a column for EVERY metric applicable to that program type, not just Total Benefit.\n            - **Internal What-Ifs**: `[ProgramType] What-If [Override Condition] : [Metric]` (e.g., `DD What-If APR = 25% : Accelerated Days`, `DD What-If APR = 25% : Discounts`, `DD What-If APR = 25% : Interest Lost`, `DD What-If APR = 25% : Total Benefit`).\n            - **External What-Ifs**: `External [ProgramType] What-If [Override Condition] : [Metric]` (e.g., `External VCC What-If Rebate Rate = 35% : Extended Days`, `External VCC What-If Rebate Rate = 35% : Rebate`, `External VCC What-If Rebate Rate = 35% : Working Capital Benefit`, `External VCC What-If Rebate Rate = 35% : Total Benefit`).\nSTRICT NAMING GUARDRAIL: You MUST NOT include the program's specific name in the what-if column headers (e.g., NEVER write \"VCC What-If (Corporate Card) : Rebate\"). You must use the generic format strictly: [ProgramType] What-If [Override Condition] : [Metric]. Do not generate duplicate columns for different programs.\n\n\n2. Summary & Recommendation\n\nNO AVAILABLE PROGRAMS FOR SELECTED TYPE RULE:\n  - If allowedPrograms contains only one program type and no eligible programs of that type are available after applying allowedOrigins and other filters, this rule takes precedence over \"SEQUENCE 1 REQUIRED CONSTRUCTION FOR USER-FOCUS EXCLUSIONS\".\n\n  - When this rule applies:\n    - Do NOT generate a recommendation sentence such as \"Recommend evaluating...\"\n    - Do NOT say the selected program type is the best-fit payment lever.\n    - Sequence 1 must only explain the selected scope, why no benefit analysis was calculated, and how the user can request broader analysis.\n\n  - Use this phrasing: \"Your request focused on [Selected Program Type] benefits, so the analysis was limited to [Selected Program Type] programs. No eligible [Selected Program Type] programs are available for the selected filters, so no [Selected Program Type] benefit analysis could be calculated. To explore other options, ask for analysis across all available financing programs.\"\n\n  - If allowedPrograms includes both VCC and DD and no eligible programs are available, do NOT say \"ask for analysis across all available financing programs.\"             \n  - Instead say: \"Your request covered all available financing program types. No eligible Virtual Card or Dynamic Discounting programs are available for the selected filters, so no benefit analysis could be calculated.\"\n\nPROGRAM TYPE DISPLAY NAMES:\n  - If selected program type is VCC, display it as \"Virtual Card\".\n  - If selected program type is DD, display it as \"Dynamic Discounting\".\n\nSEQUENCE 1 REQUIRED CONSTRUCTION FOR USER-FOCUS EXCLUSIONS\n\nIf only one program type is shown because of the user’s stated focus, Sequence 1 must contain exactly these three parts in one concise paragraph:\n1. Recommendation sentence:\n   Recommend evaluating <selected program type> programs as the best-fit payment lever to <user goal> for <supplier name>.\n2. Evaluation rationale and exclusion sentence:\n   I evaluated <selected program type> options because your request focuses on <user goal>; <excluded program type> was excluded because <reason from the program decision logic>.\n3. Broader-plan hint:\n   For a broader payment program plan, ask for payment program optimization opportunities including both Virtual Card and Dynamic Discounting.\n\nSEQUENCE 1 TEXT BLOCK CONSTRUCTION:\nThe \"content\" array of sequence 1 must be constructed as follows:\n\nSpecific Program Match Found: {{$context.$nodes.FIN_AP_LLM_USER_INTENT_IDENTIFIER.$output.matchFound}}\nSpecific Program Name: {{$context.$nodes.FIN_AP_LLM_USER_INTENT_IDENTIFIER.$output.financingProgramName}}\n\n\n**- EXPLICIT PROGRAM SCENARIO: Use \"Here is the benefit analysis for the requested program: [Specific Program Name].\" ONLY when Specific Program Match Found is exactly true AND Target Program Name is not null, empty, \"null\", or \"N/A\".**\n\n**- UNRECOGNIZED PROGRAM SCENARIO: If `Unrecognized Name Detected` is true, you MUST output EXACTLY: \"The specific financing program requested could not be identified. Showing the optimal benefit analysis based on your general request. [Single Best Program Name] provides the highest overall benefit.\"**\n\n**- DEFAULT SCENARIO (No target provided): You must determine the absolute best program by comparing the numerical benefits provided in the \"Injected Best Programs\" list above.\n    - STRICT FILTER: You must ONLY compare the injected programs that fall within your `allowedPrograms` AND `allowedOrigins` limits. Ignore injected programs that were filtered out by the user's intent.\n    - STRICT LIMIT: Select the SINGLE program name with the highest numerical benefit out of the permitted options. \n    - You are STRICTLY FORBIDDEN from listing multiple programs. Do NOT use the word \"and\" to list programs (e.g., NEVER write \"Program A and Program B provide...\").\n    - Use the exact phrasing: \"[Single Best Program Name] provides the highest overall benefit.\"\n- Exclusions: If a valid program type was hidden based on the user's focus (e.g., reducing cash outflow), add: \"...Note: [Program Type] has been excluded based on your focus.\" If both DD and VCC are in the table, do not add any note. Never mention SCF.**\n\nSEQUENCE 3 TEXT BLOCK CONSTRUCTION (STRICT ORDER)\n\nYou MUST always include a sequence 3 text block whenever a table is returned.\n\nThe sequence 3 text block must summarize the financing programs considered for the analysis and include any applicable notices.\n\nDo NOT create one message per supplier. Sequence 3 must use a single generic considered-program summary for the full table.\n\nThe \"content\" array of sequence 3 must be constructed in the following exact order:\n\nStep 1 (Considered Programs Summary):\n- Extract the unique financing program names considered after applying `allowedPrograms` and `allowedOrigins`.\n- You MUST ONLY extract string values from the `programName` JSON key.\n- HALLUCINATION GUARDRAIL: You are STRICTLY FORBIDDEN from extracting values from the `instrumentName` key. Strings like \"RCN #1\", \"RCN #2\", or \"JP Morgan Test\" are instruments, NOT programs. Do not list them.\n- FILTER GUARDRAILS:\n  1. Do not list any SCF (Supply Chain Financing) programs.\n  2. Do not list DD programs if `allowedPrograms` is strictly [VCC].\n  3. Do not list VCC programs if `allowedPrograms` is strictly [DD].\n  4. Do not list external programs if `allowedOrigins` is strictly [\"internal\"].\n  5. Do not list internal programs if `allowedOrigins` is strictly [\"external\"].\n- ABSOLUTE GUARDRAIL ON PROGRAM NAMES: Output the exact program names strictly as they appear in the JSON without adding descriptive tags like \"(External DD)\", \"(Internal VCC)\", \"Internal\", or \"External\".\n- If exactly one program name was considered, add exactly one content item:\n  \"<p>The considered financing program was [Program Name]. The benefit analysis is shown for each supplier in the table.</p>\"\n- If more than one program name was considered, add exactly one content item:\n  \"<p>The considered financing programs included [Program Name 1, Program Name 2]. The highest-benefit program for each supplier is shown in the table.</p>\"\n- If no considered program names can be identified, add exactly one content item:\n  \"<p>The table shows the highest-benefit program available for each supplier based on the selected filters.</p>\"\n\n\nStep 2 (VCC Availability Notice):\n- vccCount = {{$context.$nodes.FIN_AP_CODE_PROCESS_SIGNED_FINANCING_PROGRAM.$output.result.vccCount}}.\n- If **vccCount = 0** AND user query is **not exclusively about Dynamic Discounting (DD)**, append exactly:\n  \"<p>There are no VCC programs available.</p>\"\n**Important**:\n- For general queries (e.g., \"optimize payments for Vision Operations in USD\"), **user query is considered non-DD**, so Step 2 and Step 3 MUST be applied if their conditions are met.\n\nStep 3 (External Programs Notice):\n- Check your `allowedOrigins` filter from Execution Step 1.\n- If `allowedOrigins` includes \"external\" AND there are records in the JSON with `\"programCategory\": \"external\"`, append exactly:\n  \"<p>External financing programs cannot be used to create draft offers and have been included via RAG document for analysis.</p>\"\n- STRICT RULE: If `allowedOrigins` is STRICTLY [\"internal\"] (e.g., the user asked for signed programs), YOU MUST NOT append this notice, even if external records exist in the raw JSON payload.\n\nSequence 3 output format:\n{\n  \"type\": \"text\",\n  \"content\": [\n    \"<Step 1 message>\",\n    \"<Step 2 message only if applicable>\",\n    \"<Step 3 message only if applicable>\"\n  ],\n  \"sequence\": 3\n}\n\nMANDATORY RULES:\n- Never skip sequence 3 when a table is returned.\n- Never create supplier-specific sequence 3 messages.\n- Never say \"For [Supplier Name]...\" in sequence 3.\n- Never wrap sequence 3 messages in `<ul>`, `<li>`, or any HTML list.\n- Wrap each sequence 3 message in its own `<p>...</p>` paragraph.\n- Never omit sequence 3 just because a target program is identified.\n- Never include SCF in sequence 3.\n- Do not include the Accelerated Days definition in Sequence 1 or Sequence 3 summary text.\n- Do not generate this sentence: \"Accelerated Days are calculated using weekly buckets and bucket midpoints, not individual invoice-level days.\"\n- That Accelerated Days definition is handled downstream by FIN_AP_CODE_RETURN_BENEFIT_ANALYSIS_SUCCESS_RESULT as a separate Note block when the DD Accelerated Days column is present.\n\nEMPTY TABLE RULE:\n  - If no eligible financing programs are available after applying allowedPrograms and allowedOrigins, do not return a table block. Return only text blocks explaining the selected scope, why no benefit analysis was calculated, and how the user can request broader analysis.\n\nProgram Decision Logic:\n\n• If the user asks about reducing cash outflow (e.g., \"How can I optimize/analyze my payments to reduce my cash outflow?\" or \"How can I delay my payments in the next 42 days?\"):\n    - Priority 1: VCC (Virtual Cards), as it delays cash outflow and offers rebates.\n    - Priority 2: DD (Dynamic Discounting), if extra cash is available.\n    - Only VCC columns (Internal and External) will be shown in the table.\n    - VCC-related Step 2 and Step 3 messages will apply.\n\n• If the user asks about discounts or ROI (e.g., \"How can I optimize payments for better ROI?\" or \"How can I earn more discounts from my suppliers?\"):\n    - Priority 1: DD (Dynamic Discounting)\n    - Only DD columns (Internal and External) will be shown in the table.\n    - Step 2 messages related to VCC will NOT be shown.\n\n• If the user asks about rebates, card-based benefits, or working capital optimization (e.g., \"How can I optimize/analyze my payments to earn rebates?\" or \"How can I improve my working capital by using cards?\"):\n    - Priority 1: VCC (Virtual Cards)\n    - Only VCC columns (Internal and External) will be shown in the table.\n    - VCC-related Step 2 and Step 3 messages will apply.\n\n• If the user asks a general question about payment optimization (e.g., \"How can I optimize/analyze payments for the Vision Operations business unit in USD?\", \"What options do I have to optimize payments?\", or asks a \"What-If\" question):\n    - Choose the program that provides the highest total benefit based on the data:\n        - If DD offers the highest benefit, include DD columns.\n        - If VCC offers the highest benefit, include VCC columns.\n        - If both DD and VCC are similar and relevant, include both.\n    - VCC-related Step 2 and Step 3 messages will only appear if the user query allows VCC.\n\nNote: Even when columns are excluded from the table based on these rules, the excluded programs must still be evaluated to generate the Sequence 1 pre-table summary. Do not include SCF in this evaluation.\n\nMANDATORY RULES:\n\n• These appended strings (Steps 2 & 3) are mandatory when their condition evaluates to true.\n• They must be separate array elements.\n• They must not be merged with supplier summary sentences.\n• They must not be omitted due to table column filtering.\n• They must not be suppressed by supplier-only guardrails.\n• They must not be treated as optional commentary.\n• This construction rule overrides any conflicting summary restrictions.\n\n\n3. Guardrails\n    -Structure all output in JSON, strictly following the example below.\n    -Do not fabricate data, infer results, or recommend unsupported actions.\n    -Do not recommend or mention onboarding/outreach/unsupported follow-up actions except in compliance text when directly requested.\n    -The sequence should only be continuous integers.\n    -Provide recommendations strictly based on actual table data; do not generalize or infer beyond what is shown.\n    -Only generate recommendation text that directly references each supplier and their best-fit program as reflected in the table. For best-fit program refer step 1.\n    -Only include the compliance/limitation notice in the output if the user directly asks for onboarding, outreach, or draft actions for VCC/SCF; do not include it otherwise.\n    -Do not mention or recommend SCF in summary, recommendations, or actions if SCF data is excluded per requirements. This is a strict rule.\n\n4. **Column Structure**\n    userQuery = {{$context.$system.$inputMessage}}.\n\n- **Program Decision Logic**:\n    - **Category 1: Reducing/Delaying Cash Outflow**\n        - **Triggers**: \"reduce cash outflow\", \"delay payments\", \"conserve cash\", \"dial back spending\", \"liquidity management\", \"improve float\", \"next 42 days\", \"six weeks\".\n        - **Logic**: Show **VCC (Virtual Cards) only**. \n        - **Reasoning**: Dynamic Discounting (DD) requires early payment, which increases immediate cash outflow, contradicting the user's goal.\n        - **Column Structure**: Include only VCC-related columns (Internal + External + What-Ifs if present).\n\n    - **Category 2: ROI, Yield, and Benefit Comparison**\n        - **Triggers**: \"ROI\", \"Return on Investment\", \"which lever is better\", \"maximize benefits\", \"highest yield\", \"earn more\", \"improve ROI\".\n        - **Logic**: Show **Both DD and VCC columns**. \n        - **Reasoning**: Both programs offer financial returns (Discounts vs. Rebates + Interest on held cash). To determine which \"improves ROI the most,\" the user must see both side-by-side.\n        - **Column Structure**: Include both DD and VCC-related columns (Internal + External + What-Ifs if present).\n\n    - **Category 3: General Optimization / Business Unit Analysis / Origin-Specific / What-Ifs**\n        - **Triggers**: \"optimize payables\", \"analyze [Business Unit]\", \"what options do I have\", \"optimize payments\", \"what if\", \"assume\", \"suppose\", \"external programs\", \"internal programs\", \"signed programs\".\n        - **Logic**: Show **Both DD and VCC**.\n        - **Reasoning**: Unless a specific constraint (like cash outflow) is mentioned, a \"Help me optimize\" or origin-filtering request implies a need for a full analysis of all available levers within that origin.\n        - **Column Structure**: Include DD and VCC-related columns, STRICTLY limited to the allowedOrigins determined in Step 1 (plus What-Ifs if present). Do not generate columns for origins excluded by Step 1.\n\n    - **Category 4: Explicit Program Request**\n        - **Triggers**: User mentions only \"Dynamic Discounting\" or only \"Virtual Cards\" without asking for a comparison or a general optimization.\n        - **Logic**: Show **only the requested program type**.\n        - **Column Structure**: Include the requested program columns, STRICTLY limited to the allowedOrigins determined in Step 1 (plus What-Ifs if present).\n\n---\n\n### Column Generation Rules:\n\n1.1. If the user asks about Dynamic Discounting (DD) or DD is triggered:\n   - Only DD-related columns will be included:\n     - \"DD: Program\", \"DD: Accelerated Days\", \"DD: Discounts\", \"DD: Interest Lost\", \"DD: Total Benefit\"\n     - DD What-If columns based on overrides (ONLY if what-if data is present). You MUST include ALL base metrics:\n       - \"DD What-If [Override] : Name\", \"DD What-If [Override] : Accelerated Days\", \"DD What-If [Override] : Discounts\", \"DD What-If [Override] : Interest Lost\", \"DD What-If [Override] : Total Benefit\"\n     - External DD columns MUST be included IF AND ONLY IF:\n       - DD is part of allowedPrograms AND \"external\" is in allowedOrigins AND External DD data exists in input JSON\n       - \"External DD: Program\", \"External DD: Accelerated Days\", \"External DD: Discounts\", \"External DD: Interest Lost\", \"External DD: Total Benefit\"\n     - External DD What-If columns (ONLY if what-if data is present). You MUST include ALL base metrics:\n       - \"External DD What-If [Override] : Name\", \"External DD What-If [Override] : Accelerated Days\", \"External DD What-If [Override] : Discounts\", \"External DD What-If [Override] : Interest Lost\", \"External DD What-If [Override] : Total Benefit\"\n\n2. **If the user asks about Virtual Cards (VCC)** or VCC is triggered:\n    - **Only VCC-related columns** will be included:\n        - \"VCC: Program\", \"VCC: Instrument\", \"VCC: Extended Days\", \"VCC: Rebate\", \"VCC: Working Capital Benefit\", \"VCC: Total Benefit\"\n        - **VCC What-If** columns based on overrides (ONLY if what-if data is present). You MUST include ALL base metrics:\n            - \"VCC What-If [Override] : Extended Days\", \"VCC What-If [Override] : Rebate\", \"VCC What-If [Override] : Working Capital Benefit\", \"VCC What-If [Override] : Total Benefit\"\n        - **External VCC columns** (if external data is present AND \"external\" is in allowedOrigins):\n            - \"External VCC: Program\", \"External VCC: Instrument\", \"External VCC: Extended Days\", \"External VCC: Rebate\", \"External VCC: Working Capital Benefit\", \"External VCC: Total Benefit\"\n        - **External VCC What-If** columns (ONLY if what-if data is present). You MUST include ALL base metrics:\n            - \"External VCC What-If [Override] : Extended Days\", \"External VCC What-If [Override] : Rebate\", \"External VCC What-If [Override] : Working Capital Benefit\", \"External VCC What-If [Override] : Total Benefit\"\n\n3. **If the user asks a general question about payment optimization**:\n    - **Both DD and VCC-related columns** will be shown if both programs are relevant based on the data. Apply all internal, external, and what-if columns (if present and permitted by allowedOrigins) for both types according to the strict ordering rule.\n\nCRITICAL COLUMN GUARDRAIL: When generating columnOrder, check your 2_allowed_origins_array. If both 'internal' and 'external' are present, you MUST generate BOTH sets of base columns, regardless of which program won in Sequence 1.\n\n---\n\n### Example User Queries and Column Structure:\n\n1. **User Query**: \"I need to dial back cash outflows over the next six weeks. What payment levers can you walk me through for BU Vision Operations and USD?\"\n    - **Recommended Program**: **VCC** (Priority 1 for cash outflow reduction).\n    - **Column Structure**: Only **VCC-related columns** (e.g., \"VCC: Program\", \"VCC What-If...\", \"External VCC: Program\", \"External VCC What-If...\").\n\n2. **User Query**: \"I only care about return on investment—what program should I choose for Business unit VISION RRF BU, USD?\"\n    - **Recommended Program**: **DD** (Priority 1 for ROI optimization).\n    - **Column Structure**: Only **DD-related columns** (e.g., \"DD: Accelerated Days\", \"DD What-If...\", \"External DD: Accelerated Days\", \"External DD What-If...\").\n\n3. **User Query**: \"Using Business unit VISION RRF BU, USD setup, tell me which lever improves ROI the most.\"\n    - **Recommended Program**: **Both DD and VCC** (since ROI can be improved by both programs).\n    - **Column Structure**: Include **both DD and VCC-related columns** (Internal + External + What-Ifs).\n\n\n### CRITICAL REASONING STEP (CHAIN OF THOUGHT)\nBefore generating the `columnOrder` and `content` arrays, you MUST generate an `_analysis` object. This forces you to calculate the correct filters before writing the table.\n\nYou must structure the beginning of your JSON EXACTLY like this:\n{\n  \"_analysis\": {\n    \"1_intent_origin\": \"State whether the user asked for internal/signed, external, or both.\",\n    \"2_allowed_origins_array\": \"List the exact array, e.g., ['internal']. I WILL ONLY GENERATE COLUMNS FOR THESE ORIGINS.\",\n    \"3_allowed_programs_array\": \"List the exact array, e.g., ['VCC', 'DD'].\",\n    \"4_highest_benefit_calculation\": \"List the exact totalBenefit numbers for the allowed programs to prove which one is mathematically highest.\",\n    \"5_winning_program\": \"The single exact program name with the highest number.\"\n  },\n  \"columnOrder\": [ ... ]\n\n\n# Sample JSON Output\n\n{\n\"_analysis\": {\n    \"1_intent_origin\": \"State whether the user asked for internal/signed, external, or both.\",\n    \"2_allowed_origins_array\": \"List the exact array, e.g., ['internal']. I WILL ONLY GENERATE COLUMNS FOR THESE ORIGINS.\",\n    \"3_allowed_programs_array\": \"List the exact array, e.g., ['VCC', 'DD'].\",\n    \"4_highest_internal_benefit\": \"State the highest totalBenefit for the allowed internal program (or 'N/A' if none).\",\n    \"5_highest_external_benefit\": \"State the highest totalBenefit for the allowed external program (or 'N/A' if none).\",\n    \"6_winning_program_for_sequence_1\": \"The single exact program name with the absolute highest number across all origins.\"\n}\n\n\"columnOrder\": [\n    \"Supplier\", \n    \"Total Amount Due\",\n\n    // 1. Internal DD Originals\n   \"DD: Program\", \"DD: Accelerated Days\", \"DD: Discounts\", \"DD: Interest Lost\", \"DD: Total Benefit\",\n\n    // 2. Internal DD What-Ifs (ONLY INCLUDE THESE IF WHAT-IF DATA IS IN THE JSON)\n    \"DD What-If APR = X% : Accelerated Days\", \"DD What-If APR = X% : Discounts\", \"DD What-If APR = X% : Interest Lost\", \"DD What-If APR = X% : Total Benefit\", \n    \"DD What-If Short Term Interest Rate = Y% : Accelerated Days\", \"DD What-If Short Term Interest Rate = Y% : Discounts\", \"DD What-If Short Term Interest Rate = Y% : Interest Lost\", \"DD What-If Short Term Interest Rate = Y% : Total Benefit\", \n\n    // 3. Internal VCC Originals\n    \"VCC: Program\", \"VCC: Instrument\", \"VCC: Extended Days\", \"VCC: Rebate\", \"VCC: Working Capital Benefit\", \"VCC: Total Benefit\",\n\n    // 4. Internal VCC What-Ifs (ONLY INCLUDE THESE IF WHAT-IF DATA IS IN THE JSON)\n    \"VCC What-If Rebate Rate = Z% : Extended Days\", \"VCC What-If Rebate Rate = Z% : Rebate\",  \"VCC What-If Rebate Rate = Z% : Working Capital Benefit\", \"VCC What-If Rebate Rate = Z% : Total Benefit\", \n    \"VCC What-If Interest Rate = A% : Extended Days\", \"VCC What-If Interest Rate = A% : Rebate\",  \"VCC What-If Interest Rate = A% : Working Capital Benefit\", \"VCC What-If Interest Rate = A% : Total Benefit\", \n    \"VCC What-If Billing Date = B% : Extended Days\", \"VCC What-If Billing Date = B% : Rebate\",  \"VCC What-If Billing Date = B% : Working Capital Benefit\", \"VCC What-If Billing Date = B% : Total Benefit\",\n\n    // 5. External DD Originals\n   \"DD: Program\", \"External DD: Accelerated Days\", \"External DD: Discounts\", \"External DD: Interest Lost\", \"External DD: Total Benefit\",\n\n    // 6. External DD What-Ifs (ONLY INCLUDE THESE IF WHAT-IF DATA IS IN THE JSON)\n    \"External DD What-If APR = X% : Accelerated Days\", \"External DD What-If APR = X% : Discounts\", \"External DD What-If APR = X% : Interest Lost\", \"External DD What-If APR = X% : Total Benefit\",\n\n    // 7. External VCC Originals\n    \"External VCC: Program\", \"External VCC: Instrument\", \"External VCC: Extended Days\", \"External VCC: Rebate\", \"External VCC: Working Capital Benefit\", \"External VCC: Total Benefit\",\n\n    // 8. External VCC What-Ifs (ONLY INCLUDE THESE IF WHAT-IF DATA IS IN THE JSON)\n    \"External VCC What-If Rebate Rate = Z% : Extended Days\", \"External VCC What-If Rebate Rate = Z% : Rebate\", \"External VCC What-If Rebate Rate = Z% : Working Capital Benefit\", \"External VCC What-If Rebate Rate = Z% : Total Benefit\"\n  ],\n\"content\" : [\n  {\n    \"type\": \"text\",\n    \"content\": [\n      \"Dynamic Discounting provides the highest overall benefit for Advanced Network Devices and Penguin Publisher.\" // NO exclusions mentioned because nothing was excluded\n    ],\n    \"sequence\": 1\n  },\n  {\n    \"type\": \"table\",\n    \"sequence\": 2\n  },\n{\n  \"type\": \"text\",\n  \"content\": [\n        // Step 1 - Supplier Summaries focused ONLY on considered programs formatted as HTML list\n        \"<ul><li>For Advanced Network Devices, the considered financing programs included [Exact Program Name 1] and [Exact Program Name 2]. Among these, the programs providing the highest overall benefit were selected for the table.</li></ul>\",\n\n        // Step 2 - Only if zero VCC programs AND user query allows VCC\n        \"{{#if (VCC_program_count == 0 && user_query_allows_VCC)}}There are no VCC programs available.{{/if}}\",\n\n        // Step 3 - Only if external programs are present\n        \"{{#if (has_external_programs)}}External financing programs cannot be used to create draft offers and have been included via RAG document for analysis.{{/if}}\"\n      ],\n  \"sequence\": 3\n},\n  {\n    \"type\": \"actions\",\n    \"content\": [\n      \"Would you like to create a draft DD offer for these suppliers?\",\n      \"Would you like to visualize your cash flow?\"\n    ],\n    \"sequence\": 4\n  }\n]\n}\n\n5. Amount Formatting Rules (Strict)\n\n    - All monetary values must be displayed in the following exact format: 256,260,064,388.00 USD\n\n    - Formatting requirements:\n        - Use comma separators for thousands\n        - Always show two decimal places\n        - Append the currency code at the end, separated by a space\n\n    - This format must be applied consistently across:\n        - Table values\n        - Totals or aggregated amounts\n\n    - Do not display:\n        - Currency symbols (e.g., $, ₹)\n        - Scientific notation\n        - Rounded or abbreviated values (e.g., 256M, 256.26B)\n\n# Output Requirement\n- Return only the JSON output as above, customized based on the actual input.\n- Adhere to all guardrails and format strictly as directed.\n- Always reference all suppliers and recommend the highest-benefit program for each, rather than omitting any result (unless overridden by an explicitly requested target program).\n- Ensure context and professionalism precede explanatory or limitation statements.\n- Only include compliance/limitation notices if prompted by unsupported user requests.\n- Exclude all SCF (Supply Chain Financing) content from the final output (applies to both internal and external SCF programs).\n    - Remove all SCF-related columns from tables.\n    - Do not include SCF in recommendations, evaluation logic, or notes.\n    - This is a strict rule and must be enforced without exceptions.\n -- ABSOLUTE COLUMN GUARDRAIL: Before finalizing the JSON, verify the user's origin request. If allowedOrigins = [\"internal\"], ensure NO column names containing the word \"External\" exist in the columnOrder array. If allowedOrigins = [\"external\"], ensure the standard internal columns (e.g., \"VCC: Program\", \"DD: Program\") DO NOT exist in the columnOrder array.\n- STRICT JSON ENFORCEMENT: You must output ONLY raw, valid JSON. \n- Do NOT wrap the JSON in markdown formatting (e.g., do not use ```json or ```).\n- Do NOT include any conversational text before or after the JSON.\n- Ensure all double quotes inside string values are properly escaped (e.g., \\\"External DD\\\")."
+            }
+          ],
+          "outputSpecification": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"_analysis\": {\n      \"type\": \"object\",\n      \"description\": \"Chain of thought reasoning to determine allowed origins, programs, and highest benefit.\",\n      \"properties\": {\n        \"1_intent_origin\": {\n          \"type\": \"string\",\n          \"description\": \"State whether the user asked for internal/signed, external, or both.\"\n        },\n        \"2_allowed_origins_array\": {\n          \"type\": \"array\",\n          \"description\": \"The exact array of allowed origins, e.g., ['internal']. I WILL ONLY GENERATE COLUMNS FOR THESE ORIGINS.\",\n          \"items\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"internal\",\n              \"external\",\n              \"what-if\"\n            ]\n          },\n          \"minItems\": 1,\n          \"uniqueItems\": true\n        },\n        \"3_allowed_programs_array\": {\n          \"type\": \"array\",\n          \"description\": \"The exact array of allowed programs, e.g., ['VCC', 'DD'].\",\n          \"items\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"VCC\",\n              \"DD\"\n            ]\n          },\n          \"minItems\": 1,\n          \"uniqueItems\": true\n        },\n        \"4_highest_internal_benefit\": {\n          \"type\": [\n            \"string\",\n            \"null\"\n          ],\n          \"description\": \"State the highest totalBenefit for the allowed internal program (or 'N/A' if none).\"\n        },\n        \"5_highest_external_benefit\": {\n          \"type\": [\n            \"string\",\n            \"null\"\n          ],\n          \"description\": \"State the highest totalBenefit for the allowed external program (or 'N/A' if none).\"\n        },\n        \"6_winning_program_for_sequence_1\": {\n          \"type\": \"string\",\n          \"description\": \"The single exact program name with the absolute highest number across all origins.\"\n        }\n      },\n      \"required\": [\n        \"1_intent_origin\",\n        \"2_allowed_origins_array\",\n        \"3_allowed_programs_array\",\n        \"4_highest_internal_benefit\",\n        \"5_highest_external_benefit\",\n        \"6_winning_program_for_sequence_1\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"columnOrder\": {\n      \"type\": \"array\",\n      \"description\": \"The exact ordered list of column headers to be displayed in the table.\",\n      \"items\": {\n        \"type\": \"string\"\n      }\n    },\n    \"content\": {\n      \"type\": \"array\",\n      \"description\": \"The sequential blocks of content making up the response UI.\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"type\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"text\",\n              \"table\",\n              \"actions\"\n            ],\n            \"description\": \"The UI component type for this block.\"\n          },\n          \"sequence\": {\n            \"type\": \"integer\",\n            \"description\": \"The numerical order of this block.\"\n          },\n          \"content\": {\n            \"type\": \"array\",\n            \"description\": \"The array of strings representing sentences or actions. (Not required for the 'table' type).\",\n            \"items\": {\n              \"type\": \"string\"\n            }\n          }\n        },\n        \"required\": [\n          \"type\",\n          \"sequence\"\n        ],\n        \"additionalProperties\": false\n      }\n    }\n  },\n  \"required\": [\n    \"_analysis\",\n    \"columnOrder\",\n    \"content\"\n  ],\n  \"additionalProperties\": false\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1765864680372",
+            "1": "1765864850515"
+          },
+          "diagram": {
+            "x": 5199,
+            "y": 7723.189120000001,
+            "width": 872.7396571428571,
+            "height": 777
+          },
+          "code": "PARALLEL_1767630162348",
+          "convergenceTargetId": "1784116494257",
+          "id": "1767630162346",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "name": "Check If Supplier Specific Request"
+          },
+          "outcomes": {
+            "true": "1770980584573",
+            "false": "1770980284595"
+          },
+          "diagram": {
+            "x": 6060.5,
+            "y": 5650
+          },
+          "code": "FIN_AP_IF_CONDITION_CHECK_IF_SUPPLIER_SPECIFIC_REQUEST",
+          "convergenceTargetId": "1770980468258",
+          "id": "1770980141303",
+          "inputs": [
+            {
+              "id": "1770980141304_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.requestedSupplier != null && $context.$triggers.REST.$input.requestedSupplier != \"null\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Get Requested Supplier IDs"
+          },
+          "outcomes": {
+            "success": "1770980695481"
+          },
+          "diagram": {
+            "x": 5790.5,
+            "y": 5872
+          },
+          "code": "FIN_AP_LLM_GET_REQUESTED_SUPPLIER_IDS",
+          "id": "1770980584573",
+          "inputs": [
+            {
+              "id": "1770980584575_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "# Context\n\n- identifiedSupplier: {{$context.$triggers.REST.$input.identifiedSuppliers}}\n- requestedSupplier: {{$context.$triggers.REST.$input.requestedSupplier}} \n\n# Instructions\n\n- Identify the requestedSupplier within the identifiedSupplier list.\n- Once identified, retrieve the corresponding supplier’s ID.\n- Return the result as a list named items, in the following format:\n\n\"response\": {\n    \"items\": [\n      {\n          \"supplierTypeHierarchy\": {\n          \"supplierId\": <identified supplier id>\n          }\n      }\n    ]\n}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"response\": {\n            \"type\": \"object\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Set Supplier ID Object With Requested Supplier IDs"
+          },
+          "outcomes": {
+            "success": "1770980468258"
+          },
+          "diagram": {
+            "x": 5685.5,
+            "y": 6094
+          },
+          "code": "FIN_AP_SET_SUPPLIER_ID_OBJECT_WITH_REQUESTED_SUPPLIER_IDS",
+          "id": "1770980695481",
+          "inputs": [
+            {
+              "id": "1770980703552",
+              "name": "supplierIdObect",
+              "type": "object",
+              "value": "{{$context.$nodes.FIN_AP_LLM_GET_REQUESTED_SUPPLIER_IDS.$output.response}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_PAYABLES_GETPROGRAMBENEF",
+            "functionName": "get_top_20_suppliers",
+            "processJson": true,
+            "name": "Get Top 20 Suppliers"
+          },
+          "outcomes": {
+            "success": "1770980411368"
+          },
+          "diagram": {
+            "x": 6423.5,
+            "y": 5872
+          },
+          "code": "FIN_AP_BUSINESS_OBJECT_GET_TOP_20_SUPPLIERS",
+          "id": "1770980284595",
+          "inputs": [
+            {
+              "id": "1773260229949_1",
+              "name": "currency",
+              "value": "{{$context.$triggers.REST.$input.currencyCode}}",
+              "required": true
+            },
+            {
+              "id": "1773260229949_2",
+              "name": "BU",
+              "value": "{{$context.$triggers.REST.$input.businessUnitName}}",
+              "required": true
+            },
+            {
+              "id": "1773260229950_3",
+              "name": "startDay",
+              "value": "{{$context.$variables.startDate}}",
+              "required": true
+            },
+            {
+              "id": "1773260229951_4",
+              "name": "endDays",
+              "value": "{{$context.$triggers.REST.$input.endNoOfDays}}",
+              "required": true
+            },
+            {
+              "id": "1770980284595_topNSuppliers",
+              "name": "topNSuppliers",
+              "value": "{{$context.$triggers.REST.$input.topNSuppliers}}",
+              "required": true,
+              "type": "integer"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Set Supplier ID Object With Top 20 Suppliers"
+          },
+          "outcomes": {
+            "success": "1770980468258"
+          },
+          "diagram": {
+            "x": 6345.5,
+            "y": 6094
+          },
+          "code": "FIN_AP_SET_SUPPLIER_ID_OBJECT_WITH_TOP_20_SUPPLIERS",
+          "id": "1770980411368",
+          "inputs": [
+            {
+              "id": "1770980418972",
+              "name": "supplierIdObect",
+              "type": "object",
+              "value": "{{$context.$nodes.FIN_AP_BUSINESS_OBJECT_GET_TOP_20_SUPPLIERS.$output}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Get Supplier IDs",
+            "returnType": "string",
+            "sourceCode": "let supplierIDList = $context.$variables.supplierIdObect?.items;\n\nconst result = Array.isArray(supplierIDList)\n  ? supplierIDList\n      .map(item => item?.supplierTypeHierarchy?.supplierId)\n      .filter(Boolean)\n      .join(\", \")\n  : \"\";\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1770980856462"
+          },
+          "diagram": {
+            "x": 6093.5,
+            "y": 6316
+          },
+          "code": "FIN_AP_CODE_GET_SUPPLIER_IDS",
+          "convergenceTargetId": "1767630162346",
+          "id": "1770980468258",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_PAYABLES_GETPROGRAMBENEF",
+            "functionName": "get_payables_balance_for_program_benefits_calculation",
+            "processJson": true,
+            "name": "Get Financing Program Benefits Payables Balance Input"
+          },
+          "outcomes": {
+            "success": "1770981941324"
+          },
+          "diagram": {
+            "x": 5708,
+            "y": 6760
+          },
+          "code": "FIN_AP_BUSINESS_OBJECT_FUNCTION_GET_FINANCING_PROGRAM_BENEFITS_PAYABLES_BALANCE_INPUT",
+          "convergenceTargetId": "1770980856462",
+          "id": "1770981086049",
+          "inputs": [
+            {
+              "id": "1773257843019_1",
+              "name": "currency",
+              "value": "{{$context.$triggers.REST.$input.currencyCode}}",
+              "required": true
+            },
+            {
+              "id": "1773257843020_2",
+              "name": "BU",
+              "value": "{{$context.$triggers.REST.$input.businessUnitName}}",
+              "required": true
+            },
+            {
+              "id": "1773257843020_3",
+              "name": "supplierIdList",
+              "value": "{{$context.$nodes.FIN_AP_CODE_GET_SUPPLIER_IDS.$output.result}}",
+              "required": true
+            },
+            {
+              "id": "1773257843021_4",
+              "name": "startDay",
+              "value": "{{$context.$variables.startDate}}",
+              "required": true
+            },
+            {
+              "id": "1773257843021_5",
+              "name": "endDay",
+              "value": "{{$context.$triggers.REST.$input.endNoOfDays}}",
+              "required": true
+            },
+            {
+              "id": "1770981086049_topNSuppliers",
+              "name": "topNSuppliers",
+              "value": "20",
+              "required": true,
+              "type": "integer"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Validate If top 20 suppliers list is empty"
+          },
+          "outcomes": {
+            "true": "1770985190417",
+            "false": "1770981086049"
+          },
+          "diagram": {
+            "x": 6024.5,
+            "y": 6538
+          },
+          "code": "FIN_AP_IF_CONDITION_VALIDATE_IF_TOP_20_SUPPLIERS_LIST_IS_EMPTY",
+          "convergenceTargetId": "end",
+          "id": "1770980856462",
+          "inputs": [
+            {
+              "id": "1770980856464_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_GET_SUPPLIER_IDS.$output.result == \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Return Benefit Analysis Success Result",
+            "returnType": "object",
+            "sourceCode": "// Get input data and currency code\nvar input =  $context.$nodes.FIN_AP_CODE_REMOVE_SCF_PROGRAMS.$output.result.filteredBenefits || [];\nif (Array.isArray(input)) {\n  input.forEach(item => {\n    if (Array.isArray(item.roiResults)) {\n      item.roiResults.forEach(roi => {\n        if (roi.extendedDays !== undefined && roi.extendedDays !== null) {\n          roi.extendedDays = Math.round(roi.extendedDays);\n        }\n        if (roi.acceleratedDays !== undefined && roi.acceleratedDays !== null) {\n          roi.acceleratedDays = Math.abs(Math.round(Number(roi.acceleratedDays)));\n        }\n      });\n    }\n  });\n}\nvar currencyCode = $context.$triggers.REST.$input.currencyCode || \"USD\";\nvar vccCount = $context.$nodes.FIN_AP_CODE_PROCESS_SIGNED_FINANCING_PROGRAM.$output.result.vccCount;\n\n// Amount fields for DD and VCC needing currency formatting (by pretty label)\nvar ddAmountLabels = [\"Discounts\", \"Interest Lost\", \"Total Benefit\"];\nvar vccAmountLabels = [\"Rebate\", \"Working Capital\", \"Total Benefit\"];\n\n// Field definitions and display labels for DD and VCC\nvar ddFields = [\"programName\", \"acceleratedDays\", \"discounts\", \"interestLost\", \"totalBenefit\"];\nvar ddLabels = {\n    \"programName\": \"Program\",\n    \"acceleratedDays\": \"Accelerated Days\",\n    \"discounts\": \"Discounts\",\n    \"interestLost\": \"Interest Lost\",\n    \"totalBenefit\": \"Total Benefit\"\n};\n\nvar vccFields = [\"programName\", \"instrumentName\", \"extendedDays\", \"rebate\", \"workingCapital\", \"totalBenefit\"];\nvar vccLabels = {\n    \"programName\": \"Program\",\n    \"instrumentName\": \"Instrument\",\n    \"extendedDays\": \"Extended Days\",\n    \"rebate\": \"Rebate\",\n    \"workingCapital\": \"Working Capital Benefit\",\n    \"totalBenefit\": \"Total Benefit\"\n};\n\n// Scan max DD/VCC variants (Internal, External, What-Ifs)\nvar maxDDInternal = 0, maxDDExternal = 0, maxDDWhatIfs = 0;\nvar maxVCCInternal = 0, maxVCCExternal = 0, maxVCCWhatIfs = 0;\n\ninput.forEach(function(supplier) {\n    // DD Scanning\n    var ddRois = (supplier.roiResults || []).filter(x => x.programType === \"DYNAMIC_DISCOUNTING\");\n    var ddInternal = ddRois.filter(roi => roi.programCategory === \"internal\" || !roi.programCategory);\n    var ddExternal = ddRois.filter(roi => roi.programCategory === \"external\");\n    var ddWhatIfs = ddRois.filter(roi => roi.programCategory === \"what-if\");\n\n    if (ddInternal.length > maxDDInternal) maxDDInternal = ddInternal.length;\n    if (ddExternal.length > maxDDExternal) maxDDExternal = ddExternal.length;\n    if (ddWhatIfs.length > maxDDWhatIfs) maxDDWhatIfs = ddWhatIfs.length;\n\n    // VCC Scanning\n    var vccRois = (supplier.roiResults || []).filter(x => x.programType === \"VIRTUAL_CREDIT_CARD\");\n    var vccInternal = vccRois.filter(roi => roi.programCategory === \"internal\" || !roi.programCategory);\n    var vccExternal = vccRois.filter(roi => roi.programCategory === \"external\");\n    var vccWhatIfs = vccRois.filter(roi => roi.programCategory === \"what-if\");\n\n    if (vccInternal.length > maxVCCInternal) maxVCCInternal = vccInternal.length;\n    if (vccExternal.length > maxVCCExternal) maxVCCExternal = vccExternal.length;\n    if (vccWhatIfs.length > maxVCCWhatIfs) maxVCCWhatIfs = vccWhatIfs.length;\n});\n\nvar hasMoreThanOneRealVCC = maxVCCInternal > 1;\nvar columnOrder = $context.$nodes.FIN_AP_LLM_SUPPLIER_PROGRAM_BENEFIT_TABLE_GENERATOR.$output.columnOrder || [];\nvar content = [];\n\nconst hasAcceleratedDaysColumn = columnOrder.some(col => col.toLowerCase().includes(\"accelerated days\"));\n\n// Helper function to map ONLY the best data to a row\nfunction mapBestDataToRow(rowObj, dataArray, prefix, fields, labelsMap, amountLabels) {\n    if (dataArray.length > 0) {\n        var roi = dataArray[0]; // ONLY take the best one\n        fields.forEach(function(fld) {\n            var label = prefix + labelsMap[fld];\n            if (columnOrder.indexOf(label) !== -1) {\n                if (amountLabels.indexOf(labelsMap[fld]) >= 0 && roi && roi[fld] !== undefined && roi[fld] !== \"\") {\n                    rowObj[label] = Number(roi[fld]).toFixed(2) + \" \" + currencyCode;\n                } else {\n                    rowObj[label] = (roi && fld && roi[fld] !== undefined) ? String(roi[fld]) : \"\";\n                }\n            }\n        });\n    }\n}\n\n// Build table rows\ninput.forEach(function(supplier) {\n    var row = {};\n    row[\"Supplier\"] = supplier.supplierName;\n\n    var totalAmtLabel = \"Total Amount Due\";\n    if (columnOrder.indexOf(totalAmtLabel) !== -1) {\n        var amt = Number(supplier.amount);\n        row[totalAmtLabel] = Number(amt).toFixed(2) + \" \" + currencyCode;\n    }\n\n    // --------- DD ---------\n    var ddRois = (supplier.roiResults || []).filter(x => x.programType === \"DYNAMIC_DISCOUNTING\");\n\n    // Filter and SORT descending by What-If totalBenefit (if present), else base totalBenefit\n    var ddWhatIfs = ddRois.filter(roi => roi.programCategory === \"what-if\");\n    var ddInternal = ddRois.filter(roi => roi.programCategory === \"internal\" || !roi.programCategory)\n        .sort((a, b) => {\n            let aWhatIf = ddWhatIfs.find(w => String(w.programName).replace(/^what-if\\s*::\\s*/i, \"\").trim() === String(a.programName).trim());\n            let bWhatIf = ddWhatIfs.find(w => String(w.programName).replace(/^what-if\\s*::\\s*/i, \"\").trim() === String(b.programName).trim());\n            let aScore = aWhatIf ? Number(aWhatIf.totalBenefit) : Number(a.totalBenefit);\n            let bScore = bWhatIf ? Number(bWhatIf.totalBenefit) : Number(b.totalBenefit);\n            aScore = Number(aScore) || 0;\n            bScore = Number(bScore) || 0;\n\n            if (bScore !== aScore) {\n                return bScore - aScore;\n            }\n\n            let aName = String(a.programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim().toLowerCase();\n            let bName = String(b.programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim().toLowerCase();\n\n            return aName.localeCompare(bName);\n        });\n\n    var ddExternal = ddRois.filter(roi => roi.programCategory === \"external\")\n        .sort((a, b) => {\n            let aWhatIf = ddWhatIfs.find(w => String(w.programName).replace(/^what-if\\s*::\\s*/i, \"\").trim() === String(a.programName).trim());\n            let bWhatIf = ddWhatIfs.find(w => String(w.programName).replace(/^what-if\\s*::\\s*/i, \"\").trim() === String(b.programName).trim());\n            let aScore = aWhatIf ? Number(aWhatIf.totalBenefit) : Number(a.totalBenefit);\n            let bScore = bWhatIf ? Number(bWhatIf.totalBenefit) : Number(b.totalBenefit);\n            aScore = Number(aScore) || 0;\n            bScore = Number(bScore) || 0;\n\n            if (bScore !== aScore) {\n                return bScore - aScore;\n            }\n\n            let aName = String(a.programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim().toLowerCase();\n            let bName = String(b.programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim().toLowerCase();\n\n            return aName.localeCompare(bName);\n        });\n\n    // Match what-if rows to the selected base program names\n    var ddInternalWhatIfs = [];\n    var ddExternalWhatIfs = [];\n\n    if (ddInternal.length > 0) {\n        var ddInternalBaseName = String(ddInternal[0].programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim();\n        for (var di = 0; di < ddWhatIfs.length; di++) {\n            var ddi = ddWhatIfs[di];\n            var ddiName = String(ddi.programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim();\n            if (ddiName === ddInternalBaseName) {\n                ddInternalWhatIfs.push(ddi);\n            }\n        }\n    }\n\n    if (ddExternal.length > 0) {\n        var ddExternalBaseName = String(ddExternal[0].programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim();\n        for (var de = 0; de < ddWhatIfs.length; de++) {\n            var dde = ddWhatIfs[de];\n            var ddeName = String(dde.programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim();\n            if (ddeName === ddExternalBaseName) {\n                ddExternalWhatIfs.push(dde);\n            }\n        }\n    }\n\n    // Map the BEST DD Internal & BEST External\n    mapBestDataToRow(row, ddInternal, \"DD: \", ddFields, ddLabels, ddAmountLabels);\n    mapBestDataToRow(row, ddExternal, \"External DD: \", ddFields, ddLabels, ddAmountLabels);\n\n    // Map DD What-Ifs to the correct internal/external columns\n    for (var dwi = 0; dwi < ddInternalWhatIfs.length; dwi++) {\n        var roi = ddInternalWhatIfs[dwi];\n        ddFields.forEach(function(fld) {\n            var labelMatch = columnOrder.find(col => col.includes(\"DD What-If\") && !col.includes(\"External DD\") && col.endsWith(ddLabels[fld]));\n            if (labelMatch && roi && roi[fld] !== undefined && roi[fld] !== \"\") {\n                if (ddAmountLabels.indexOf(ddLabels[fld]) >= 0) {\n                    row[labelMatch] = Number(roi[fld]).toFixed(2) + \" \" + currencyCode;\n                } else {\n                    row[labelMatch] = String(roi[fld]);\n                }\n            }\n        });\n    }\n\n    for (var dwe = 0; dwe < ddExternalWhatIfs.length; dwe++) {\n        var roi = ddExternalWhatIfs[dwe];\n        ddFields.forEach(function(fld) {\n            var labelMatch = columnOrder.find(col => col.includes(\"External DD What-If\") && col.endsWith(ddLabels[fld]));\n            if (labelMatch && roi && roi[fld] !== undefined && roi[fld] !== \"\") {\n                if (ddAmountLabels.indexOf(ddLabels[fld]) >= 0) {\n                    row[labelMatch] = Number(roi[fld]).toFixed(2) + \" \" + currencyCode;\n                } else {\n                    row[labelMatch] = String(roi[fld]);\n                }\n            }\n        });\n    }\n\n    // --------- VCC ---------\n    var vccRois = (supplier.roiResults || []).filter(x => x.programType === \"VIRTUAL_CREDIT_CARD\");\n\n    // Filter and SORT descending by What-If totalBenefit (if present), else base totalBenefit\n    var vccWhatIfs = vccRois.filter(roi => roi.programCategory === \"what-if\");\n    var vccInternal = vccRois.filter(roi => roi.programCategory === \"internal\" || !roi.programCategory)\n        .sort((a, b) => {\n            let aWhatIf = vccWhatIfs.find(w => String(w.programName).replace(/^what-if\\s*::\\s*/i, \"\").trim() === String(a.programName).trim());\n            let bWhatIf = vccWhatIfs.find(w => String(w.programName).replace(/^what-if\\s*::\\s*/i, \"\").trim() === String(b.programName).trim());\n            let aScore = aWhatIf ? Number(aWhatIf.totalBenefit) : Number(a.totalBenefit);\n            let bScore = bWhatIf ? Number(bWhatIf.totalBenefit) : Number(b.totalBenefit);\n            aScore = Number(aScore) || 0;\n            bScore = Number(bScore) || 0;\n\n            if (bScore !== aScore) {\n                return bScore - aScore;\n            }\n\n            let aName = String(a.programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim().toLowerCase();\n            let bName = String(b.programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim().toLowerCase();\n\n            return aName.localeCompare(bName);\n        });\n\n    var vccExternal = vccRois.filter(roi => roi.programCategory === \"external\")\n        .sort((a, b) => {\n            let aWhatIf = vccWhatIfs.find(w => String(w.programName).replace(/^what-if\\s*::\\s*/i, \"\").trim() === String(a.programName).trim());\n            let bWhatIf = vccWhatIfs.find(w => String(w.programName).replace(/^what-if\\s*::\\s*/i, \"\").trim() === String(b.programName).trim());\n            let aScore = aWhatIf ? Number(aWhatIf.totalBenefit) : Number(a.totalBenefit);\n            let bScore = bWhatIf ? Number(bWhatIf.totalBenefit) : Number(b.totalBenefit);\n            aScore = Number(aScore) || 0;\n            bScore = Number(bScore) || 0;\n\n            if (bScore !== aScore) {\n                return bScore - aScore;\n            }\n\n            let aName = String(a.programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim().toLowerCase();\n            let bName = String(b.programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim().toLowerCase();\n\n            return aName.localeCompare(bName);\n        });\n\n    // Match what-if rows to the selected base program names\n    var vccInternalWhatIfs = [];\n    var vccExternalWhatIfs = [];\n\n    if (vccInternal.length > 0) {\n        var vccInternalBaseName = String(vccInternal[0].programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim();\n        for (var vi = 0; vi < vccWhatIfs.length; vi++) {\n            var vwi = vccWhatIfs[vi];\n            var vwiName = String(vwi.programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim();\n            if (vwiName === vccInternalBaseName) {\n                vccInternalWhatIfs.push(vwi);\n            }\n        }\n    }\n\n    if (vccExternal.length > 0) {\n        var vccExternalBaseName = String(vccExternal[0].programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim();\n        for (var ve = 0; ve < vccWhatIfs.length; ve++) {\n            var vwe = vccWhatIfs[ve];\n            var vweName = String(vwe.programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim();\n            if (vweName === vccExternalBaseName) {\n                vccExternalWhatIfs.push(vwe);\n            }\n        }\n    }\n\n    // Map the BEST VCC Internal & BEST External\n    mapBestDataToRow(row, vccInternal, \"VCC: \", vccFields, vccLabels, vccAmountLabels);\n    mapBestDataToRow(row, vccExternal, \"External VCC: \", vccFields, vccLabels, vccAmountLabels);\n\n    // Map VCC What-Ifs to the correct internal/external columns\n    for (var vwi1 = 0; vwi1 < vccInternalWhatIfs.length; vwi1++) {\n        var roi = vccInternalWhatIfs[vwi1];\n        var selectedVccFields = [\"programName\", \"instrumentName\", \"extendedDays\", \"rebate\", \"workingCapital\", \"totalBenefit\"];\n        selectedVccFields.forEach(function(fld) {\n            var labelMatch = columnOrder.find(col => col.includes(\"VCC What-If\") && !col.includes(\"External VCC\") && col.endsWith(vccLabels[fld]));\n            if (labelMatch && roi && roi[fld] !== undefined && roi[fld] !== \"\") {\n                if (vccAmountLabels.indexOf(vccLabels[fld]) >= 0) {\n                    row[labelMatch] = Number(roi[fld]).toFixed(2) + \" \" + currencyCode;\n                } else {\n                    row[labelMatch] = String(roi[fld]);\n                }\n            }\n        });\n    }\n\n    for (var vwi2 = 0; vwi2 < vccExternalWhatIfs.length; vwi2++) {\n        var roi = vccExternalWhatIfs[vwi2];\n        var selectedVccFields = [\"programName\", \"instrumentName\", \"extendedDays\", \"rebate\", \"workingCapital\", \"totalBenefit\"];\n        selectedVccFields.forEach(function(fld) {\n            var labelMatch = columnOrder.find(col => col.includes(\"External VCC What-If\") && col.endsWith(vccLabels[fld]));\n            if (labelMatch && roi && roi[fld] !== undefined && roi[fld] !== \"\") {\n                if (vccAmountLabels.indexOf(vccLabels[fld]) >= 0) {\n                    row[labelMatch] = Number(roi[fld]).toFixed(2) + \" \" + currencyCode;\n                } else {\n                    row[labelMatch] = String(roi[fld]);\n                }\n            }\n        });\n    }\n\n    content.push(row);\n});\n\n// Output result table format\nvar result = {\n    type: \"table\",\n    heading: \"\",\n    content: content,\n    sequence: 2,\n    columnOrder: columnOrder\n};\n\n// Adjust Sequence 3 text and apply table\nlet arr = $context.$nodes.FIN_AP_LLM_SUPPLIER_PROGRAM_BENEFIT_TABLE_GENERATOR.$output.content || [];\narr = Array.isArray(arr) ? arr.filter(Boolean) : [];\n\n// Collapsing text messages to all suppliers\nfor (let i = 0; i < arr.length; i++) {\n    const item = arr[i];\n    if (!item) continue;\n\n    if (item.sequence === 3 && item.type === \"text\" && Array.isArray(item.content)) {\n        let normalizedContent = [];\n        let genericMessageAdded = false;\n\n        for (let j = 0; j < item.content.length; j++) {\n            let originalText = String(item.content[j] || \"\");\n            let plainText = originalText.replace(/<[^>]*>/g, \" \").replace(/\\s+/g, \" \").trim();\n            let lowerText = plainText.toLowerCase();\n\n            let startMarker = \"the considered financing programs included \";\n            let endMarker = \". among these\";\n\n            let startIndex = lowerText.indexOf(startMarker);\n            let endIndex = lowerText.indexOf(endMarker);\n\n            if (startIndex >= 0 && endIndex > startIndex) {\n                let programText = plainText.substring(startIndex + startMarker.length, endIndex).trim();\n                let genericConsideredMessage = \"The considered financing programs included \" + programText + \". The highest-benefit program for each supplier is shown in the table.\";\n\n                if (!genericMessageAdded) {\n                    normalizedContent.push(genericConsideredMessage);\n                    genericMessageAdded = true;\n                }\n            } else if (plainText !== \"\") {\n                normalizedContent.push(originalText);\n            }\n        }\n\n        item.content = normalizedContent;\n    }\n}\n\nfor (let i = 0; i < arr.length; i++) {\n    const item = arr[i];\n    if (!item) continue;\n\n    if (item.sequence === 3 && item.type === \"text\" && !hasMoreThanOneRealVCC && Array.isArray(item.content)) {\n        item.content = item.content.filter(\n            c => !(typeof c === \"string\" && c.toLowerCase().includes(\"there are no vcc programs available\"))\n        );\n    }\n\n    if (item.sequence === 3 && item.type === \"text\" && vccCount > 1 && Array.isArray(item.content)) {\n        const vccExistsInColumnOrder = columnOrder.some(col => col.toLowerCase().includes(\"vcc\"));\n        if (vccExistsInColumnOrder) {\n            item.content.push(\"Additional VCC program options are available for some suppliers but are not shown in the table above.\");\n        }\n    }\n\n    if (item.type === \"table\") {\n        arr[i] = result;\n    }\n}\n\n// Remove any prior hardcoded footer blocks before appending fresh ones.\narr = arr.filter(item => {\n    if (!item) return false;\n\n    if (\n        item.type === \"text\" &&\n        Array.isArray(item.content) &&\n        item.content.some(c => typeof c === \"string\" && c.includes(\"Excluded from results\"))\n    ) {\n        return false;\n    }\n\n    if (\n        item.type === \"actions\" &&\n        Array.isArray(item.content) &&\n        item.content.some(c => typeof c === \"string\" && c.includes(\"Create a draft DD offer\"))\n    ) {\n        return false;\n    }\n\n    return true;\n});\n\n// Hardcoded appends\n// Append footer blocks only when a benefit table was actually produced.\nconst hasEligibleBenefitRows = Array.isArray(input) && input.length > 0;\nconst hasGeneratedColumns = Array.isArray(columnOrder) && columnOrder.length > 0;\nconst hasBenefitTable = hasEligibleBenefitRows && hasGeneratedColumns;\n\nif (hasBenefitTable) {\n    arr.push({\n        type: \"text\",\n        content: [\n            \"<b>Excluded from results</b> <ul> <li>Invoices not ready or available for payment</li> <li>Non-standard invoice type</li><li>Intercompany invoices, credit memos, and payment requests</li> <li>Payments to suppliers in these categories: Government, Public Sector, Insurance, Utility Services, Banks, Corporate Card Providers</li> <li>Installments due in less than 7 days</li> <li>Installments already enrolled in a program</li> <li>Installments with an early discount already applied</li> </ul>\"\n        ],\n        sequence: arr.length + 1\n    });\n\n    const actions = [\n        \"Visualize your new cash flow to better understand liquidity impact.\",\n        \"Create a draft DD offer for these suppliers.\"\n    ];\n\n    arr.push({\n        type: \"actions\",\n        content: actions,\n        sequence: arr.length + 1\n    });\n}\n\nconst acceleratedDaysNote =\n  \"Accelerated Days are calculated using weekly buckets and bucket midpoints, not individual invoice-level days.\";\n\narr.forEach(item => {\n  if (item && Array.isArray(item.content)) {\n    item.content = item.content.filter(\n      c => !(typeof c === \"string\" && c.includes(acceleratedDaysNote))\n    );\n  }\n});\n\nif (hasAcceleratedDaysColumn) {\n  const noteBlock = {\n    type: \"text\",\n    content: [`<b>Note:</b> ${acceleratedDaysNote}`],\n    sequence: 4\n  };\n\n  const excludedIndex = arr.findIndex(item =>\n    item &&\n    item.type === \"text\" &&\n    Array.isArray(item.content) &&\n    item.content.some(c => typeof c === \"string\" && c.includes(\"Excluded from results\"))\n  );\n\n  if (excludedIndex >= 0) {\n    arr.splice(excludedIndex, 0, noteBlock);\n  } else {\n    arr.push(noteBlock);\n  }\n}\n\n// Filter empty tables and apply final table result\narr = arr.filter(item => {\n    if (!item) return false;\n\n    if (item.type === \"table\") {\n        if (!Array.isArray(item.content) || item.content.length === 0) {\n            return false;\n        } else {\n            Object.assign(item, result);\n        }\n    }\n\n    return true;\n});\n\n// Re-sequence final output after all insertions/removals\narr.forEach((item, index) => {\n    if (item) {\n        item.sequence = index + 1;\n    }\n});\n\n// Final Output\nlet finalResult = {\n    \"output\": arr,\n    \"payablesBalance\": $context.$variables.payablesBalance,\n    \"filteredBenefits\": $context.$nodes.FIN_AP_CODE_REMOVE_SCF_PROGRAMS.$output.result.filteredBenefits\n};\n\nreturn finalResult;"
+          },
+          "outcomes": {
+            "success": "1771176614909"
+          },
+          "diagram": {
+            "x": 5432,
+            "y": 9922
+          },
+          "code": "FIN_AP_CODE_RETURN_BENEFIT_ANALYSIS_SUCCESS_RESULT",
+          "id": "1770985024653",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Return Benefit Analysis Error Result",
+            "returnType": "object",
+            "sourceCode": "const result = {\n  output: [\n    {\n      type: \"text\",\n      content: [\n        `We were unable to find any installments eligible for benefit analysis for the Business Unit and Currency you requested within the range from the next {{$context.$variables.startDate}} to {{$context.$triggers.REST.$input.endNoOfDays}} days.`\n      ],\n      sequence: 1\n    },\n    {\n      type: \"text\",\n      content: [\n        \"<b>Excluded from results</b> <ul> <li>Invoices not ready or available for payment</li> <li>Non-standard invoice type</li> <li>Intercompany invoices, credit memos, and payment requests</li> <li>Payments to suppliers in these categories: Government, Public Sector, Insurance, Utility Services, Banks, Corporate Card Providers</li> <li>Installments due in less than 7 days</li> <li>Installments already enrolled in a program</li> <li>Installments with an early discount already applied</li> </ul>\"\n      ],\n      sequence: 2\n    }\n  ],\n  payablesBalance: null\n};\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1771219720019"
+          },
+          "diagram": {
+            "x": 6904,
+            "y": 6760
+          },
+          "code": "FIN_AP_CODE_RETURN_BENEFIT_ANALYSIS_ERROR_RESULT",
+          "id": "1770985190417",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set Final Response"
+          },
+          "outcomes": {
+            "success": "1780643842207"
+          },
+          "diagram": {
+            "x": 5483,
+            "y": 10144
+          },
+          "code": "FIN_AP_VARIABLES_SET_FINAL_RESPONSE",
+          "id": "1771176614909",
+          "inputs": [
+            {
+              "id": "1771176633910",
+              "name": "summarizerInput",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_RETURN_BENEFIT_ANALYSIS_SUCCESS_RESULT.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Check for valid response"
+          },
+          "outcomes": {
+            "true": "1771176732025",
+            "false": "1780650783668"
+          },
+          "diagram": {
+            "x": 5483,
+            "y": 10588
+          },
+          "code": "FIN_AP_CONDITION_CHECK_FOR_VALID_RESPONSE",
+          "convergenceTargetId": "end",
+          "id": "1771176691893",
+          "inputs": [
+            {
+              "id": "1771176691895_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_VALIDATE_BENEFIT_TABLE_HAS_PROGRAM_DATA.$output.result === true}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Return final response"
+          },
+          "outcomes": {},
+          "diagram": {
+            "x": 5966,
+            "y": 10810
+          },
+          "code": "FIN_AP_RETURN_FINAL_RESPONSE",
+          "convergenceTargetId": "end",
+          "id": "1771176732025",
+          "inputs": [
+            {
+              "id": "1771176732027_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$variables.summarizerInput}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Set Final Error Message"
+          },
+          "outcomes": {
+            "success": "1772184423269"
+          },
+          "diagram": {
+            "x": 6946,
+            "y": 6982
+          },
+          "code": "FIN_AP_CODE_SET_FINAL_ERROR_MESSAGE",
+          "id": "1771219720019",
+          "inputs": [
+            {
+              "id": "1771219735155",
+              "name": "summarizerInput",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_RETURN_BENEFIT_ANALYSIS_ERROR_RESULT.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Validate If Payables Balance Is Empty"
+          },
+          "outcomes": {
+            "true": "1771222843730",
+            "false": "1767867574054"
+          },
+          "diagram": {
+            "x": 5780,
+            "y": 7204
+          },
+          "code": "FIN_AP_IF_CONDITION_VALIDATE_IF_PAYABLES_BALANCE_IS_EMPTY",
+          "convergenceTargetId": "end",
+          "id": "1771222002969",
+          "inputs": [
+            {
+              "id": "1771222002971_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.payablesBalance == null || $context.$variables.payablesBalance === \"\" || ( Array.isArray($context.$variables.payablesBalance) && $context.$variables.payablesBalance.length === 0 )}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Set Payables Balance"
+          },
+          "outcomes": {
+            "success": "1771222002969"
+          },
+          "diagram": {
+            "x": 5826.5,
+            "y": 6982
+          },
+          "code": "FIN_AP_SET_VARIABLES_SET_PAYABLES_BALANCE",
+          "convergenceTargetId": "1771222002969",
+          "id": "1770981941324",
+          "inputs": [
+            {
+              "id": "1770981959105",
+              "name": "payablesBalance",
+              "type": "array",
+              "value": "{{$context.$nodes.FIN_AP_BUSINESS_OBJECT_FUNCTION_GET_FINANCING_PROGRAM_BENEFITS_PAYABLES_BALANCE_INPUT.$output.items}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Return Benefit Analysis Invalid Supplier Error Result",
+            "returnType": "object",
+            "sourceCode": "const result = {\n  output: [\n    {\n      type: \"text\",\n      content: [\n        `We were unable to find any installments eligible for benefit analysis for the requested Business Unit, Currency, and Suppliers within the range from the next {{$context.$variables.startDate}} to {{$context.$triggers.REST.$input.endNoOfDays}} days.`\n      ],\n      sequence: 1\n    },\n    {\n      type: \"text\",\n      content: [\n        \"<b>Excluded from results</b> <ul> <li>Invoices not ready or available for payment</li> <li>Non-standard invoice type</li> <li>Intercompany invoices, credit memos, and payment requests</li> <li>Payments to suppliers in these categories: Government, Public Sector, Insurance, Utility Services, Banks, Corporate Card Providers</li> <li>Installments due in less than 7 days</li> <li>Installments already enrolled in a program</li> <li>Installments with an early discount already applied</li> </ul>\"\n      ],\n      sequence: 2\n    }\n  ],\n  payablesBalance: null\n};\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1771222945884"
+          },
+          "diagram": {
+            "x": 6217,
+            "y": 7426
+          },
+          "code": "FIN_AP_CODE_RETUEN_BENEFIT_ANALYSIS_INVALID_SUPPLIER_ERROR_RESULT",
+          "id": "1771222843730",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set Final Supplier Error Message"
+          },
+          "outcomes": {
+            "success": "1772184440968"
+          },
+          "diagram": {
+            "x": 6311.5,
+            "y": 7648
+          },
+          "code": "SET_FINAL_SUPPLIER_ERROR_MESSAGE",
+          "id": "1771222945884",
+          "inputs": [
+            {
+              "id": "1771222955489",
+              "name": "summarizerInput",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_RETUEN_BENEFIT_ANALYSIS_INVALID_SUPPLIER_ERROR_RESULT.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_PAYABLES_RETRIEVEPROGRAM",
+            "functionName": "program_benefits_service",
+            "name": "Payment Benefit Service"
+          },
+          "outcomes": {
+            "success": "1774945802098"
+          },
+          "diagram": {
+            "x": 5483,
+            "y": 8812
+          },
+          "code": "FIN_AP_BUSINESS_OBJECT_FUNCTION_PAYMENT_BENEFIT_SERVICE",
+          "convergenceTargetId": "1765868765203",
+          "id": "1767866587538",
+          "inputs": [
+            {
+              "id": "1767866602423_1",
+              "name": "ragDocument",
+              "value": "{{$context.$nodes.FIN_AP_LLM_RAG_OUTPUT_PROCESSING_AGENT.$output.ragDocument}}",
+              "required": true
+            },
+            {
+              "id": "1767866602424_2",
+              "name": "businessUnitID",
+              "value": "{{$context.$triggers.REST.$input.businessUnitId}}",
+              "required": true
+            },
+            {
+              "id": "1767866602425_3",
+              "name": "payablesBalance",
+              "value": "{{$context.$variables.payablesBalance}}",
+              "required": true
+            },
+            {
+              "id": "1767866602426_4",
+              "name": "financingPrograms",
+              "value": "{{$context.$nodes.FIN_AP_CODE_PROCESS_SIGNED_FINANCING_PROGRAM.$output.result.programs}}",
+              "required": true
+            },
+            {
+              "id": "1767866602427_5",
+              "name": "paymentInstruments",
+              "value": "{{$context.$nodes.FIN_AP_CODE_PROCESS_PAYMENT_INSTRUMENTS.$output.result}}",
+              "required": true
+            },
+            {
+              "id": "1767866602427_6",
+              "name": "overrides",
+              "value": "{{$context.$nodes.FIN_AP_APPLY_VCC_DEFAULT_OVERRIDES.$output.result.overrides}}",
+              "required": true,
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Return Missing Installments Info"
+          },
+          "outcomes": {},
+          "diagram": {
+            "x": 6922,
+            "y": 7204
+          },
+          "code": "FIN_AP_RETURN_MISSING_INSTALLMENTS_INFO",
+          "convergenceTargetId": "1770981086049",
+          "id": "1772184423269",
+          "inputs": [
+            {
+              "id": "1772184423272_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$variables.summarizerInput}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return Missing Supplier Installments Info"
+          },
+          "outcomes": {},
+          "diagram": {
+            "x": 6271,
+            "y": 7870
+          },
+          "code": "FIN_AP_RETURN_MISSING_SUPPLIER_INSTALLMENTS_INFO",
+          "convergenceTargetId": "1767630162346",
+          "id": "1772184440968",
+          "inputs": [
+            {
+              "id": "1772184440969_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$variables.summarizerInput}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Check Start Date"
+          },
+          "outcomes": {
+            "true": "1773256866210",
+            "false": "1773256905941"
+          },
+          "diagram": {
+            "x": 6093.5,
+            "y": 5206
+          },
+          "code": "FIN_AP_IF_CHECK_START_DATE",
+          "convergenceTargetId": "1770980141303",
+          "id": "1773256752929",
+          "inputs": [
+            {
+              "id": "1773256752930_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.startNoOfDays>6}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Set Day Variable True"
+          },
+          "outcomes": {
+            "success": "1770980141303"
+          },
+          "diagram": {
+            "x": 5868.5,
+            "y": 5428
+          },
+          "code": "FIN_AP_SET_DAY_VARIABLE_TRUE",
+          "id": "1773256866210",
+          "inputs": [
+            {
+              "id": "1773256885579",
+              "name": "startDate",
+              "type": "number",
+              "value": "{{$context.$triggers.REST.$input.startNoOfDays}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Set Day Variable False"
+          },
+          "outcomes": {
+            "success": "1770980141303"
+          },
+          "diagram": {
+            "x": 6318.5,
+            "y": 5428
+          },
+          "code": "FIN_AP_SET_DAY_VARIABLE_FALSE",
+          "id": "1773256905941",
+          "inputs": [
+            {
+              "id": "1773256924772",
+              "name": "startDate",
+              "type": "number",
+              "value": "7"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "RAG Output Processing Agent"
+          },
+          "outcomes": {
+            "success": "1767630162346"
+          },
+          "diagram": {
+            "x": 5481.5,
+            "y": 7573.3504
+          },
+          "code": "FIN_AP_LLM_RAG_OUTPUT_PROCESSING_AGENT",
+          "convergenceTargetId": "1767630162346",
+          "id": "1765868600545",
+          "inputs": [
+            {
+              "id": "1765868600546_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "### LOSSLESS RECORD-MAPPING CONTRACT — EXECUTE BEFORE ALL OTHER INSTRUCTIONS\nYou are a deterministic, lossless record mapper. The RAG Output is the authoritative candidate-program source. Your job is transformation and explicit eligibility filtering only; it is NOT recommendation, ranking, summarization, relevance selection, or choosing the best program.\n\nMANDATORY RULES:\n1. Read the complete RAG Output before producing any JSON.\n2. Create an ordered source ledger with one entry for every distinct financing program, keyed first by financingProgramCode and otherwise by exact financingProgramName.\n3. Preserve the source order and independently transform every ledger entry. After transforming one entry, resume at the next ledger entry; never stop because a valid object has already been produced.\n4. Do not use the user request, requested financing strategy, apparent usefulness, program type, internal/external status, missing optional attributes, or another program already selected as a reason to omit a program.\n5. The ONLY permitted exclusions are those explicitly required by the existing Program-Level and Instrument-Level Filtering Rules below. An exclusion requires an explicit conflicting source value. Missing values always follow the existing keep-on-missing rules.\n6. Treat VIRTUAL_CREDIT_CARD, DYNAMIC_DISCOUNTING, and SUPPLY_CHAIN_FINANCING as equally mandatory. The presence of one type never permits omission of another type.\n7. Preserve every eligible program even when it duplicates a signed/internal program; downstream logic, not this node, decides how to use it. Deduplicate only repeated occurrences of the same RAG source program.\n8. For each eligible VIRTUAL_CREDIT_CARD program, map every eligible RCN/instrument block belonging to that program. Never attach an instrument to a different program.\n\nFINAL SET-EQUALITY CHECK — REQUIRED BEFORE RETURN:\nA. Build the eligible-source key set from the source ledger after applying only the explicit filters.\nB. Build the output key set from ragDocument using financingProgramCode, otherwise financingProgramName.\nC. The two sets and their counts MUST be identical.\nD. If any eligible-source key is absent, return to that source record, transform it, and add it before responding.\nE. If any output key has no eligible source record, remove it.\nF. Do not emit JSON until set equality succeeds.\nG. Never expose the ledger, counts, validation notes, or exclusion reasons. Return only the schema-defined JSON.\n\nINVALID BEHAVIOR:\n- Returning only programs that appear relevant to the user question.\n- Returning only SCF or DD when eligible VCC programs exist.\n- Dropping all VCC programs because they require instrument mapping.\n- Returning a syntactically valid but incomplete ragDocument.\n- Stopping after the first program type or source section.\n\nYou are an expert data transformation API. Your task is to read the provided output from a RAG system and transform it strictly into the target API payload format.\n\nRAG Output - {{$context.$nodes.FIN_AP_RAG_DOCUMENT_TOOL_FINANCING_PROGRAMS_RAG.$output.value}}\n\nContext Business Unit Name - {{$context.$triggers.REST.$input.businessUnitName}}\nContext Currency Code - {{$context.$triggers.REST.$input.currencyCode}}\n\n### Completeness Contract (HIGHEST PRIORITY)\n\nCompleteness is mandatory. Returning a valid-looking but partial `ragDocument` is an invalid result.\n\nBefore mapping any fields, perform these internal passes over the ENTIRE RAG Output from beginning to end:\n\nPASS 1 — SOURCE INVENTORY\n\n1. Identify every distinct financing program mentioned anywhere in the source, including headings, prose, tables, summaries, and repeated detail blocks.\n2. Build an internal ordered inventory containing each program's exact name and apparent type. Deduplicate only when the exact same program is repeated in the source.\n3. Do not begin the JSON response while inventorying. Do not stop after one program type, one table, one heading, or one source section.\n\nPASS 2 — ELIGIBILITY DECISIONS\n\n4. Evaluate every inventoried program against the existing Business Unit and Currency filtering rules.\n5. A program may be excluded only when the source explicitly supplies an eligibility value that explicitly conflicts with the provided context.\n6. Missing Business Unit, Currency, instrument Currency, optional rate, optional date, or optional descriptive fields are never evidence of ineligibility. Apply the existing keep-on-missing rules.\n7. For each excluded program, retain an internal reason identifying the exact source value and context value that conflicted. Do not invent exclusions.\n\nPASS 3 — COMPLETE TRANSFORMATION\n\n8. Transform every eligible inventoried program into exactly one object in `ragDocument`.\n9. Process all eligible VIRTUAL_CREDIT_CARD, DYNAMIC_DISCOUNTING, and SUPPLY_CHAIN_FINANCING programs. Never return only the first type or the last type processed.\n10. For a VIRTUAL_CREDIT_CARD program, process all of its RCN/instrument blocks before advancing to the next inventoried program. When an instrument has no explicit currency, keep it as required by the existing rules.\n\nPASS 4 — FINAL RECONCILIATION\n\n11. Before returning, compare the exact names in the source inventory with the exact `financingProgramName` values in `ragDocument`.\n12. Every eligible inventoried program must appear exactly once. Every omitted program must have passed an explicit exclusion under steps 4–7.\n13. If any eligible program is missing, continue processing and add it before returning. Never return a partial array.\n14. Verify the final count: output count must equal eligible source-inventory count. Recheck all source sections if the counts differ.\n15. Return JSON only after this reconciliation succeeds. Do not expose the inventory, counts, or internal exclusion reasons in the output.\n\n### Execution Sequence (MANDATORY)\n\nYou must process the text using this strict sequence to prevent data loss:\n\n1. Identify a financing program and map its Type, Name, and Code.\n2. Map its eligibility fields: Assigned Business Units and Currencies.\n3. Apply program-level eligibility filtering using the Context Business Unit Name.\n4. Map its top-level numerical attributes (Rates, Dates).\n5. CRITICAL HALT: If the program is a VIRTUAL_CREDIT_CARD, you are strictly forbidden from moving to the next program until you have scanned the text immediately following it for \"RCN\" blocks and fully populated the `instruments` array.\n6. Apply instrument-level eligibility filtering using the Context Currency Code.\n\n### General Mapping Rules\n\n1. Wrap the output in a single root object containing the array \"ragDocument\".\n2. Drop all boolean availability flags and descriptive text fields. Do not generate backend database IDs.\n3. LINE BREAK GUARDRAIL: The text contains erratic line breaks mid-value (e.g., \"Net\n30\"). You MUST read across these line breaks to extract the full logical value.\n4. CASE PRESERVATION: Preserve the exact text casing for all extracted strings exactly as they appear in the source.\n5. Eligibility fields are not descriptive text. They are required extraction targets when present.\n6. Extract Assigned Business Unit / Assigned BU / Business Unit / BU assignment values to `assignedBusinessUnits`.\n7. If multiple BUs are listed using commas, slashes, \"and\", or separate lines, output each BU as a separate string.\n8. Extract Currency / Currency Code / Supported Currency values to `currencies`.\n9. If currency appears only inside RCN/instrument blocks, also collect those currencies into the parent program-level `currencies` array with duplicates removed.\n\n### Program-Level Filtering Rules\n\n1. Let `contextBusinessUnitName` be `{{$context.$triggers.REST.$input.businessUnitName}}`.\n2. If a RAG financing program has `assignedBusinessUnits` with one or more values, keep the program only when `contextBusinessUnitName` exactly matches one of those values, ignoring leading/trailing spaces and case.\n3. If a RAG financing program does not specify assigned business units, or the extracted `assignedBusinessUnits` array is empty, keep the program.\n4. If a program is filtered out by assigned BU, do not include it in `ragDocument`.\n5. Do not filter a program only because `currencies` is missing. Currency filtering is applied at instrument level for Virtual Cards.\n\n### Instrument-Level Currency Filtering Rules\n\n1. Let `contextCurrencyCode` be `{{$context.$triggers.REST.$input.currencyCode}}`.\n2. For VIRTUAL_CREDIT_CARD instruments, extract `currency` from each RCN block when present.\n3. If an instrument has a `currency` value, keep that instrument only when it matches `contextCurrencyCode`, ignoring leading/trailing spaces and case.\n4. If an instrument does not specify currency, keep that instrument.\n5. If all instruments under a VIRTUAL_CREDIT_CARD program are filtered out, do not include that VIRTUAL_CREDIT_CARD program in `ragDocument`.\n6. The parent program-level `currencies` array must reflect the currencies of the remaining kept instruments when instrument currencies are available.\n\n### Type-Specific Rules\n\n1. For Supply Chain Financing:\n\n- Set \"financingProgramType\": \"SUPPLY_CHAIN_FINANCING\".\n- Map assigned business units to \"assignedBusinessUnits\" if present.\n- Map currency values to \"currencies\" if present.\n- Apply Program-Level Filtering Rules.\n- Map the borrowing rate to \"marketBorrowingInterestRate\".\n- Extract the FIRST integer from the payment terms text and map to \"extendedPaymentDate\".\n\n2. For Dynamic Discounting:\n\n- Set \"financingProgramType\": \"DYNAMIC_DISCOUNTING\".\n- Map assigned business units to \"assignedBusinessUnits\" if present.\n- Map currency values to \"currencies\" if present.\n- Apply Program-Level Filtering Rules.\n- Map the investment rate to \"marketShortTermInvestmentInterestRate\".\n- Map the default APR to \"defaultAPR\", minimum APR to \"minAPR\", maximum APR to \"maxAPR\".\n\n3. For Virtual Cards (ZERO TOLERANCE FOR DROPPED INSTRUMENTS):\n\n- Set \"financingProgramType\": \"VIRTUAL_CREDIT_CARD\".\n- Map assigned business units to \"assignedBusinessUnits\" if present.\n- Map program-level currency values to \"currencies\" if present.\n- Apply Program-Level Filtering Rules before outputting the program.\n- Map the \"Market Short Term Borrowing Rate (%)\" to \"marketBorrowingInterestRate\".\n- INSTRUMENT ARRAY ENFORCEMENT: A VIRTUAL_CREDIT_CARD object without an \"instruments\" array is an invalid output. Scan the text for repeating numbered blocks (e.g., \"RCN #1\", \"RCN #2\"). For EVERY numbered block found under this program, generate a candidate object inside the \"instruments\" array.\n- Inside each candidate object in the \"instruments\" array, apply these exact mappings:\n  - instrumentName: Find the anchor \"Alias Name:\". Extract ONLY the exact value that immediately follows it. Do not include any preceding labels, prefixes, or the anchor itself.\n  - currency: Extract the exact value following \"Currency:\", \"Currency Code:\", or \"Supported Currency:\" within the same RCN block if present.\n  - rebateRate: Extract the numeric float value following \"Rebate Rate (%)\".\n  - billingCycle: If \"Billing Date\" is present, extract the integer day to \"billingCycleDayNumber\", and map the frequency appropriately. If it says \"each month\", set \"billingCycleFrequency\": \"ORA_MONTHLY\".\n  - gracePeriod: If \"Payment Terms\" or \"Grace Period\" is present, extract the integer days. For example, from \"Net 30\", extract 30.\n- After building all candidate instruments, apply Instrument-Level Currency Filtering Rules.\n- Output only the kept instruments.\n- If no instruments remain after currency filtering, omit the entire VIRTUAL_CREDIT_CARD program from `ragDocument`.\n\n### Output Rules\n\nReturn one raw JSON object containing `ragDocument`.\n\nDo not use Markdown fences.\nDo not return analysis, inventory, counts, reconciliation details, or explanatory text.\nThe response must conform to the configured node output specification."
+            }
+          ],
+          "outputSpecification": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"ragDocument\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"financingProgramType\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"SUPPLY_CHAIN_FINANCING\",\n              \"DYNAMIC_DISCOUNTING\",\n              \"VIRTUAL_CREDIT_CARD\"\n            ]\n          },\n          \"financingProgramName\": {\n            \"type\": \"string\"\n          },\n          \"assignedBusinessUnits\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"string\"\n            }\n          },\n          \"currencies\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"string\"\n            }\n          },\n          \"financingProgramCode\": {\n            \"type\": \"string\"\n          },\n          \"marketBorrowingInterestRate\": {\n            \"type\": \"number\"\n          },\n          \"marketShortTermInvestmentInterestRate\": {\n            \"type\": \"number\"\n          },\n          \"defaultAPR\": {\n            \"type\": \"number\"\n          },\n          \"minAPR\": {\n            \"type\": \"number\"\n          },\n          \"maxAPR\": {\n            \"type\": \"number\"\n          },\n          \"extendedPaymentDate\": {\n            \"type\": \"integer\"\n          },\n          \"instruments\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"instrumentName\": {\n                  \"type\": \"string\"\n                },\n                \"billingCycleFrequency\": {\n                  \"type\": \"string\"\n                },\n                \"billingCycleDayNumber\": {\n                  \"type\": \"integer\"\n                },\n                \"gracePeriod\": {\n                  \"type\": \"integer\"\n                },\n                \"rebateRate\": {\n                  \"type\": \"number\"\n                }\n              },\n              \"required\": [\n                \"instrumentName\",\n                \"rebateRate\"\n              ],\n              \"additionalProperties\": false\n            }\n          }\n        },\n        \"required\": [\n          \"financingProgramType\",\n          \"financingProgramName\",\n          \"financingProgramCode\"\n        ],\n        \"additionalProperties\": false\n      }\n    }\n  },\n  \"required\": [\n    \"ragDocument\"\n  ],\n  \"additionalProperties\": false\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Financing Programs RAG",
+            "toolCode": "ORA_FIN_AP_FINANCINGPROGRAMSRAG"
+          },
+          "outcomes": {
+            "success": "1765868600545"
+          },
+          "diagram": {
+            "x": 5483,
+            "y": 7426
+          },
+          "code": "FIN_AP_RAG_DOCUMENT_TOOL_FINANCING_PROGRAMS_RAG",
+          "id": "1767867574054",
+          "inputs": [
+            {
+              "id": "1767867574057_1",
+              "name": "question",
+              "type": "string",
+              "value": "what are the complete details of each financing programs (Virtual Card, Dynamic Discounting and Supply Chain Financing) ?"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"AnswerWithCitations\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"value\": {\n      \"type\": \"string\",\n      \"description\": \"The answer text.\"\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"description\": \"List of citations relevant to the answer.\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"citedText\": {\n            \"type\": \"string\",\n            \"description\": \"The cited text.\"\n          }\n        },\n        \"required\": [\n          \"citedText\"\n        ],\n        \"additionalProperties\": false\n      }\n    }\n  },\n  \"required\": [\n    \"value\",\n    \"citations\"\n  ],\n  \"additionalProperties\": false\n}",
+          "type": "RAG_DOCUMENT_TOOL"
+        },
+        {
+          "metadata": {
+            "name": "Remove SCF Programs",
+            "returnType": "object",
+            "sourceCode": "const programBenefits = $context.$nodes.FIN_AP_BUSINESS_OBJECT_FUNCTION_PAYMENT_BENEFIT_SERVICE.$output || [];\n\n// Initialize trackers for the highest programs\nlet maxInternalVCC = null;\nlet maxExternalVCC = null;\nlet maxInternalDD = null;\nlet maxExternalDD = null;\n\n// 1. Filter out SCF and find highest benefits inline\nconst filteredBenefits = programBenefits\n  .map(item => {\n    let validRois = (item.roiResults || []).filter(\n      result => result.programType !== \"SUPPLY_CHAIN_FINANCING\"\n    );\n\n    // 2a. First Pass: Create a map of base program names to their origins (internal/external)\n    const categoryMap = {};\n    validRois.forEach(roi => {\n      if (roi.programCategory !== \"what-if\") {\n        const name = String(roi.programName || \"\").trim();\n        // Default to internal if programCategory is missing\n        categoryMap[name] = roi.programCategory || \"internal\";\n      }\n    });\n\n    // NEW STEP: Filter out orphaned what-if programs that have no base program\n    validRois = validRois.filter(roi => {\n      if (roi.programCategory === \"what-if\") {\n        const baseName = String(roi.programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim();\n        // Only keep this what-if if its base name was found in the categoryMap\n        return categoryMap.hasOwnProperty(baseName);\n      }\n      return true; // Keep all normal programs\n    });\n\n    // 2b. Second Pass: Scan valid results and evaluate totalBenefit\n    validRois.forEach(roi => {\n      let category = roi.programCategory || \"internal\";\n      \n      // If it's a what-if, look up its category from the base program map\n      if (category === \"what-if\") {\n        const baseName = String(roi.programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim();\n        category = categoryMap[baseName]; // No fallback needed now, we know it exists\n      }\n\n      const roiBenefit = Number(roi.totalBenefit) || 0;\n      const roiName = String(roi.programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim().toLowerCase();\n\n      if (roi.programType === \"VIRTUAL_CREDIT_CARD\") {\n        if (category === \"internal\") {\n          const currentBenefit = maxInternalVCC ? (Number(maxInternalVCC.totalBenefit) || 0) : null;\n          const currentName = maxInternalVCC ? String(maxInternalVCC.programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim().toLowerCase() : \"\";\n\n          if (!maxInternalVCC || roiBenefit > currentBenefit || (roiBenefit === currentBenefit && roiName < currentName)) {\n            maxInternalVCC = roi;\n          }\n        } else if (category === \"external\") {\n          const currentBenefit = maxExternalVCC ? (Number(maxExternalVCC.totalBenefit) || 0) : null;\n          const currentName = maxExternalVCC ? String(maxExternalVCC.programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim().toLowerCase() : \"\";\n\n          if (!maxExternalVCC || roiBenefit > currentBenefit || (roiBenefit === currentBenefit && roiName < currentName)) {\n            maxExternalVCC = roi;\n          }\n        }\n      } \n      \n      else if (roi.programType === \"DYNAMIC_DISCOUNTING\") {\n        if (category === \"internal\") {\n          const currentBenefit = maxInternalDD ? (Number(maxInternalDD.totalBenefit) || 0) : null;\n          const currentName = maxInternalDD ? String(maxInternalDD.programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim().toLowerCase() : \"\";\n\n          if (!maxInternalDD || roiBenefit > currentBenefit || (roiBenefit === currentBenefit && roiName < currentName)) {\n            maxInternalDD = roi;\n          }\n        } else if (category === \"external\") {\n          const currentBenefit = maxExternalDD ? (Number(maxExternalDD.totalBenefit) || 0) : null;\n          const currentName = maxExternalDD ? String(maxExternalDD.programName || \"\").replace(/^what-if\\s*::\\s*/i, \"\").trim().toLowerCase() : \"\";\n\n          if (!maxExternalDD || roiBenefit > currentBenefit || (roiBenefit === currentBenefit && roiName < currentName)) {\n            maxExternalDD = roi;\n          }\n        }\n      }\n    });\n\n    return {\n      ...item,\n      roiResults: validRois,\n    };\n  })\n  .filter(item => item.roiResults.length > 0); // remove empty suppliers\n\n// 3. Return the payload with the raw names intact\nreturn {\n  filteredBenefits: filteredBenefits,\n  \n  highestInternalVCC: maxInternalVCC ? maxInternalVCC.programName : \"N/A\",\n  highestExternalVCC: maxExternalVCC ? maxExternalVCC.programName : \"N/A\",\n  highestInternalDD: maxInternalDD ? maxInternalDD.programName : \"N/A\",\n  highestExternalDD: maxExternalDD ? maxExternalDD.programName : \"N/A\",\n  \n  highestInternalVCCBenefit: maxInternalVCC ? maxInternalVCC.totalBenefit : \"N/A\",\n  highestExternalVCCBenefit: maxExternalVCC ? maxExternalVCC.totalBenefit : \"N/A\",\n  highestInternalDDBenefit: maxInternalDD ? maxInternalDD.totalBenefit : \"N/A\",\n  highestExternalDDBenefit: maxExternalDD ? maxExternalDD.totalBenefit : \"N/A\"\n};"
+          },
+          "outcomes": {
+            "success": "1774849459722"
+          },
+          "diagram": {
+            "x": 5483,
+            "y": 9034
+          },
+          "code": "FIN_AP_CODE_REMOVE_SCF_PROGRAMS",
+          "convergenceTargetId": "1765868765203",
+          "id": "1774945802098",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Capturing all Financing Programs",
+            "returnType": "object",
+            "sourceCode": "// Get signed financing programs\nconst data = $context.$nodes.FIN_AP_BUSINESS_OBJECT_FUNCTION_GET_SIGNED_FINANCING_PROGRAMS.$output;\nconst signedPrograms = (data.items || []).map(item => {\n  const obj = {\n    financingProgramId: item.financingProgramId,\n    financingProgramName: item.name,\n    financingProgramType: item.financingOptionTypeCode,\n    financingProgramCode: item.financingProgramCode,\n    financingProgramCategory: \"internal\",\n  };\n  if (item.maximumDiscountRate !== undefined) obj.maxAPR = item.maximumDiscountRate;\n  if (item.minimumDiscountRate !== undefined) obj.minAPR = item.minimumDiscountRate;\n  if (item.defaultDiscountRate !== undefined) obj.defaultAPR = item.defaultDiscountRate;\n  if (item.defaultCurrencyCode !== undefined) obj.defaultCurrencyCode = item.defaultCurrencyCode;\n  return obj;\n});\n\nconst signedCodesSet = new Set(signedPrograms.map(p => p.financingProgramCode));\n\n// Get and normalize rag programs\nconst ragOutput = $context.$nodes.FIN_AP_LLM_RAG_OUTPUT_PROCESSING_AGENT.$output.ragDocument ?? [];\nconst ragPrograms = ragOutput.map(item => {\n  const obj = {\n    financingProgramName: item.financingProgramName,\n    financingProgramType: item.financingProgramType,\n    financingProgramCode: item.financingProgramCode,\n  };\n  if (item.defaultAPR !== undefined) obj.defaultAPR = item.defaultAPR;\n  if (item.marketBorrowingInterestRate !== undefined) obj.marketBorrowingInterestRate = item.marketBorrowingInterestRate;\n  if (item.marketShortTermInvestmentInterestRate !== undefined) obj.marketShortTermInvestmentInterestRate = item.marketShortTermInvestmentInterestRate;\n  if (item.instruments !== undefined) obj.instruments = item.instruments;\n  return obj;\n});\n\n// Filter rag programs to avoid duplicates and mark as external\nconst uniqueRagPrograms = ragPrograms\n  .filter(program => !signedCodesSet.has(program.financingProgramCode))\n  .map(program => ({\n    ...program,\n    financingProgramCategory: \"external\",\n  }));\n\nconst allPrograms = signedPrograms.concat(uniqueRagPrograms);\n\nreturn allPrograms;"
+          },
+          "outcomes": {
+            "success": "1774847018737"
+          },
+          "diagram": {
+            "x": 5459,
+            "y": 9256
+          },
+          "code": "FIN_AP_CODE_CAPTURING_ALL_FINANCING_PROGRAMS",
+          "convergenceTargetId": "1765868765203",
+          "id": "1774849459722",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "User Intent Identifier"
+          },
+          "outcomes": {
+            "success": "1765868765203"
+          },
+          "diagram": {
+            "x": 5483,
+            "y": 9478
+          },
+          "code": "FIN_AP_LLM_USER_INTENT_IDENTIFIER",
+          "convergenceTargetId": "1765868765203",
+          "id": "1774847018737",
+          "inputs": [
+            {
+              "id": "1774847018738_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "# System Role\nYou are an expert Named Entity Recognition (NER) and financial data extraction agent. Your sole objective is to analyze a user's message, identify if they are asking to analyze a specific single financing program by name, and map it to a provided list of available programs.\n\n# Inputs\nUser Message:\n{{$context.$system.$inputMessage}}\n\nAvailable Financing Programs:\n{{$context.$nodes.FIN_AP_CODE_CAPTURING_ALL_FINANCING_PROGRAMS.$output.result}}\n(Assume this contains a list of valid program names and their associated categories, e.g., \"internal\" or \"external\")\n\n# Execution Rules\n\n    Analyze Intent: Determine if the user is explicitly naming a single, specific program (e.g., \"Show me the Corporate VCC program\") rather than stating a general goal or asking for a whole category (e.g., \"Show me signed programs\").\n\n    Fuzzy Matching: If a specific name is mentioned, find the closest match in the Available Financing Programs list.\n\n        You MUST account for common abbreviations (e.g., \"VCC\" for \"Virtual Card\", \"DD\" for \"Dynamic Discounting\").\n\n        You MUST account for partial matches (e.g., \"Global Vendor\" matches \"Global Vendor VCC 2024\").\n\n        Ignore case sensitivity and minor punctuation differences.\n\n        Important: treat a phrase as a specific program name when it contains a distinguishing proper-noun modifier around a generic token. For example, \"VCC Financing Program\" is a specific candidate name, while \"VCC\" alone is generic.\n\n    CRITICAL CATEGORY GUARDRAIL (Negative Constraint): Words like \"signed\", \"internal\", \"external\", \"all\", or plural nouns like \"programs\", \"options\", and \"cards\" indicate a request for a filter or category, NOT a specific program name.\n\n        If the user asks for \"signed financing programs\", \"external DD programs\", or \"internal options\", you MUST treat this as a general intent. DO NOT guess or fuzzy-match it to a specific program like \"Signed Dynamic Discounting Program\". Return matchFound: false.\n\n    Ambiguity Guardrail: If the user uses a generic term like \"Dynamic Discounting\" and there are multiple DD programs in the available list, DO NOT guess. Treat it as no specific match found unless their wording clearly points to one distinct item.\n\n    Unrecognized Names (Missing from List): If the user clearly names a specific program (e.g., using proper nouns, capital letters, or phrasing like \"the X program\") but it does NOT map to anything in the Available Financing Programs list, you must flag unrecognizedNameDetected as true, but keep matchFound as false.\n\n    Strict Output: You must return ONLY a raw JSON object. Do not include markdown formatting (like ```json), conversational text, or explanations.\n\n# Output Schema\nYou must strictly adhere to this JSON structure:\n{\n\"matchFound\": boolean, // true if a specific program is identified and matched to the list, false otherwise.\n\"unrecognizedNameDetected\": boolean, // true ONLY if the user explicitly named a program that does NOT exist in the Available list.\n\"financingProgramName\": string | null, // The EXACT name of the program exactly as it appears in the Available list. Null if matchFound is false.\n\"financingProgramCategory\": string | null // \"internal\" or \"external\" based on the matched item in the Available list. Null if matchFound is false.\n}\n\n# Examples\n\nExample 1: Exact Match\nUser Message: \"Can we look at the benefits for Global Vendor VCC 2024?\"\nAvailable Programs: [{\"name\": \"Global Vendor VCC 2024\", \"category\": \"internal\"}, {\"name\": \"Standard DD\", \"category\": \"external\"}]\nOutput:\n{\n\"matchFound\": true,\n\"unrecognizedNameDetected\": false,\n\"financingProgramName\": \"Global Vendor VCC 2024\",\n\"financingProgramCategory\": \"internal\"\n}\n\nExample 2: Generic Goal (No Match)\nUser Message: \"How can I improve my ROI with early payments?\"\nAvailable Programs: [{\"name\": \"Standard VCC\", \"category\": \"internal\"}, {\"name\": \"MegaCorp Dynamic Discounting Program\", \"category\": \"external\"}]\nOutput:\n{\n\"matchFound\": false,\n\"unrecognizedNameDetected\": false,\n\"financingProgramName\": null,\n\"financingProgramCategory\": null\n}\n\nExample 3: Unrecognized Specific Program Name\nUser Message: \"Run the numbers for the Super Fast Cash 3000 program.\"\nAvailable Programs: [{\"name\": \"Standard VCC\", \"category\": \"internal\"}, {\"name\": \"Standard DD\", \"category\": \"external\"}]\nOutput:\n{\n\"matchFound\": false,\n\"unrecognizedNameDetected\": true,\n\"financingProgramName\": null,\n\"financingProgramCategory\": null\n}\n\nExample 4: Category/Origin Request (No Match - Plural/Status Filter)\nUser Message: \"Perform a benefit analysis for Supplier Advanced Network Devices, Business Unit Vision Operations, and Currency USD for signed financing programs\"\nAvailable Programs: [{\"name\": \"Signed Dynamic Discounting Program\", \"category\": \"internal\"}, {\"name\": \"Corporate Virtual Card Program\", \"category\": \"internal\"}]\nOutput:\n{\n\"matchFound\": false,\n\"unrecognizedNameDetected\": false,\n\"financingProgramName\": null,\n\"financingProgramCategory\": null\n}\n\n# Execution\nProcess the Inputs and generate the JSON output now."
+            }
+          ],
+          "outputSpecification": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"matchFound\": {\n      \"type\": \"boolean\"\n    },\n    \"unrecognizedNameDetected\": {\n      \"type\": \"boolean\"\n    },\n    \"financingProgramName\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ]\n    },\n    \"financingProgramCategory\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ],\n      \"enum\": [\n        \"internal\",\n        \"external\",\n        null\n      ]\n    }\n  },\n  \"required\": [\n    \"matchFound\",\n    \"unrecognizedNameDetected\",\n    \"financingProgramName\",\n    \"financingProgramCategory\"\n  ],\n  \"additionalProperties\": false\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Validate Benefit Table Has Program Data",
+            "returnType": "boolean",
+            "sourceCode": "var response = $context.$variables.summarizerInput;\nvar output = response && response.output;\n\nif (!Array.isArray(output)) {\n  return true;\n}\n\nvar table = null;\n\nfor (var i = 0; i < output.length; i++) {\n  if (output[i] && output[i].type === \"table\") {\n    table = output[i];\n    break;\n  }\n}\n\nif (!table) {\n  return true;\n}\n\nvar columns = [];\n\nif (Array.isArray(table.columnOrder)) {\n  columns = table.columnOrder;\n} else if (Array.isArray(table.content) && table.content.length > 0 && table.content[0]) {\n  columns = Object.keys(table.content[0]);\n}\n\nif (columns.length === 2\n  && columns.indexOf(\"Supplier\") !== -1\n  && columns.indexOf(\"Total Amount Due\") !== -1) {\n  return false;\n}\n\nreturn true;"
+          },
+          "outcomes": {
+            "success": "1771176691893"
+          },
+          "diagram": {
+            "x": 5427.5,
+            "y": 10366
+          },
+          "code": "FIN_AP_CODE_VALIDATE_BENEFIT_TABLE_HAS_PROGRAM_DATA",
+          "id": "1780643842207",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check Benefit Table Columns",
+            "returnType": "object",
+            "sourceCode": "var payablesBalance = $context.$variables.payablesBalance || [];\n\nreturn {\n  \"output\": [\n    {\n      \"type\": \"text\",\n      \"sequence\": 1,\n      \"content\": [\n        \"Installments were found, but no financing programs are available for the selected criteria, so financing benefits cannot be calculated or recommended.\"\n      ]\n    }\n  ],\n  \"payablesBalance\": payablesBalance\n};"
+          },
+          "outcomes": {
+            "success": "1780651161371"
+          },
+          "diagram": {
+            "x": 5256.5,
+            "y": 10810
+          },
+          "code": "FIN_AP_CODE_CHECK_BENEFIT_TABLE_COLUMNS",
+          "id": "1780650783668",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check If No Program Benefits Message Should Return"
+          },
+          "outcomes": {
+            "true": "1780651172719",
+            "false": "1782297751960"
+          },
+          "diagram": {
+            "x": 5153,
+            "y": 11032
+          },
+          "code": "FIN_AP_IF_CONDITION_CHECK_IF_NO_PROGRAM_BENEFITS_MESSAGE_SHOULD_RETURN",
+          "convergenceTargetId": "end",
+          "id": "1780651161371",
+          "inputs": [
+            {
+              "id": "1780651161371_1",
+              "name": "condition",
+              "type": "string",
+              "value": "true"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Return No Program Benefits Message"
+          },
+          "outcomes": {},
+          "diagram": {
+            "x": 5000,
+            "y": 11254
+          },
+          "code": "FIN_AP_RETURN_NO_PROGRAM_BENEFITS_MESSAGE",
+          "convergenceTargetId": "end",
+          "id": "1780651172719",
+          "inputs": [
+            {
+              "id": "1780651172719_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_CODE_CHECK_BENEFIT_TABLE_COLUMNS.$output.result}}"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Return No Program Fallback"
+          },
+          "outcomes": {},
+          "diagram": {
+            "x": 5516,
+            "y": 11254
+          },
+          "code": "RETURN_NO_PROGRAM_FALLBACK",
+          "id": "1782297751960",
+          "inputs": [
+            {
+              "id": "1782297751960_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "false"
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_PAYABLES_GETPAYMENTINSTR",
+            "functionName": "get_instruments",
+            "name": "Get Payment Instrument Details"
+          },
+          "outcomes": {
+            "success": "1765866703570"
+          },
+          "diagram": {
+            "x": 5714.630171428572,
+            "y": 7926.271862857144
+          },
+          "code": "FIN_AP_BUSINESS_OBJECT_FUNCTION_GET_PAYMENT_INSTRUMENT_DETAILS",
+          "convergenceTargetId": "1765866703570",
+          "id": "1765864680372",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Process Payment Instruments",
+            "returnType": "object",
+            "sourceCode": "const data = $context.$nodes.FIN_AP_BUSINESS_OBJECT_FUNCTION_GET_PAYMENT_INSTRUMENT_DETAILS.$output\n\n// ensure items is always an array\nconst programs = data.items || [];\n\nconst result = programs.flatMap(program => {\n  const financingProgramId = Number(\n    program.financingProgram.financingProgramId\n  );\n\n  const instruments =\n    program.virtualCardProgramPaymentInstrumentUses?.items || [];\n\n  return instruments.flatMap(use => {\n    const instrument = use.paymentInstrument;\n    const instrumentName = instrument?.paymentInstrumentAlias;\n    const instrumentId = Number(instrument?.id);\n    const currency = instrument?.currency?.currencyCode;\n    const billingCycleDayNumber = instrument?.nextBillingDate;\n    const billingCycleFrequency = instrument?.billingCycleFrequency;\n    const paymentTermsId = instrument?.paymentTerm?.termId;\n\n    const assignments =\n      instrument.paymentInstrumentBusinessUnitAssignments?.items || [];\n\n    // create one record per business unit assignment\n    return assignments.map(assign => {\n      const record = {\n        instrumentName,\n        instrumentId,\n        currency,\n        financingProgramId,\n        businessUnitId: Number(assign.businessUnit?.id)\n      };\n\n      if (\n        billingCycleDayNumber !== undefined &&\n        billingCycleDayNumber !== null\n      ) {\n        record.billingCycleDayNumber = Number(billingCycleDayNumber);\n      }\n\n      if (\n        billingCycleFrequency !== undefined &&\n        billingCycleFrequency !== null &&\n        billingCycleFrequency !== \"\"\n      ) {\n        record.billingCycleFrequency = billingCycleFrequency;\n      }\n\n      if (\n        paymentTermsId !== undefined &&\n        paymentTermsId !== null &&\n        paymentTermsId !== \"\"\n      ) {\n        record.paymentTermsId = Number(paymentTermsId);\n      }\n\n      return record;\n    });\n  });\n});\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1784116494257"
+          },
+          "diagram": {
+            "x": 5728.130171428571,
+            "y": 8074.807177142837
+          },
+          "code": "FIN_AP_CODE_PROCESS_PAYMENT_INSTRUMENTS",
+          "convergenceTargetId": "1767630170154",
+          "id": "1765866703570",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Process Signed Financing Program",
+            "returnType": "object",
+            "sourceCode": "const data = $context.$nodes.FIN_AP_BUSINESS_OBJECT_FUNCTION_GET_SIGNED_FINANCING_PROGRAMS.$output;\n\nconst programs = (data.items || []).map(item => {\n  const obj = {\n    financingProgramId: item.financingProgramId,\n    financingProgramName: item.name,\n    financingProgramType: item.financingOptionTypeCode,\n    financingProgramCode: item.financingProgramCode,\n  };\n\n  // Add APR fields only if present\n  if (item.maximumDiscountRate !== undefined) {\n    obj.maxAPR = item.maximumDiscountRate;\n  }\n\n  if (item.minimumDiscountRate !== undefined) {\n    obj.minAPR = item.minimumDiscountRate;\n  }\n\n  if (item.defaultDiscountRate !== undefined) {\n    obj.defaultAPR = item.defaultDiscountRate;\n  }\n\n  // Add currency code only if present\n  if (item.defaultCurrencyCode !== undefined) {\n    obj.defaultCurrencyCode = item.defaultCurrencyCode;\n  }\n\n  return obj;\n});\n\n// Count the VCC programs\nconst vccCount = programs.filter(program => program.financingProgramType === \"VIRTUAL_CREDIT_CARD\").length;\n\nreturn { programs : programs,vccCount : vccCount};"
+          },
+          "outcomes": {
+            "success": "1784116106423"
+          },
+          "diagram": {
+            "x": 5219,
+            "y": 8070.0675199999805
+          },
+          "code": "FIN_AP_CODE_PROCESS_SIGNED_FINANCING_PROGRAM",
+          "convergenceTargetId": "1765864850515",
+          "id": "1765866582919",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.01
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Override Financing Programs"
+          },
+          "outcomes": {
+            "success": "1784116494257"
+          },
+          "diagram": {
+            "x": 5241.5,
+            "y": 8363.162377142835
+          },
+          "code": "FIN_AP_LLM_OVERRIDE_FINANCING_PROGRAMS",
+          "convergenceTargetId": "1765864850515",
+          "id": "1767950300507",
+          "inputs": [
+            {
+              "id": "1767950300508_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "# Input\nYou will receive:\n\n- User request:\n  {{$context.$system.$inputMessage}}\n\n- Primary financing programs list:\n  {{$context.$nodes.FIN_AP_CODE_PROCESS_SIGNED_FINANCING_PROGRAM.$output.result.programs}}\n\n- Secondary financing programs list (RAG output, may include external programs and enriched duplicates):\n  {{$context.$nodes.FIN_AP_LLM_RAG_OUTPUT_PROCESSING_AGENT.$output}}\n\n- Authoritative override intent identified from the user request:\n  {{$context.$nodes.FIN_AP_LLM_IDENTIFY_OVERRIDE_REQUEST.$output.overrideRequest}}\n\nUse the authoritative override intent above to determine the program type, property, target program scope, and exact value. If it says no supported override was requested, return { \"overrides\": [] }. Do not independently replace its value with a value from any program list, RAG output, default, or example.\n\n--------------------------------------------------\n\n# Supported Properties by Program Type\n\nVIRTUAL_CREDIT_CARD (VC):\n- rebateRate\n- billingDate\n- gracePeriod\n- marketBorrowingInterestRate\n\nDYNAMIC_DISCOUNTING (DD):\n- defaultAPR\n- accelerateByDays\n- paymentDate\n- marketShortTermInvestmentInterestRate\n\nSUPPLY_CHAIN_FINANCING (SCF):\n- extendedPaymentDate\n- marketBorrowingInterestRate\n\n--------------------------------------------------\n\n# Task\n\nIf the user:\n- Requests to change/update/set/modify any supported property, OR\n- Asks a hypothetical question about changing a property\n\nReturn:\n{\n  \"overrides\": [ ... ]\n}\n\nEach object must include:\n- financingProgramType\n- financingProgramName\n- financingProgramCode\n  - If programCategory = \"external\" and no code → use programName\n- ONLY the overridden properties with new values\n\n--------------------------------------------------\n\n# Special Formatting Rules\n\nFor VIRTUAL_CREDIT_CARD (VC):\n\n- marketBorrowingInterestRate → outside instruments\n- rebateRate → inside instruments as a number\n- billingDate → inside instruments as an ISO YYYY-MM-DD string\n\nExample structure:\n{\n  \"marketBorrowingInterestRate\": <value>,\n  \"instruments\": [\n    {\n      \"rebateRate\": <value>,\n      \"billingDate\": <value>\n    }\n  ]\n}\n\n--------------------------------------------------\n\n# Override Detection Rules\n\nTreat as override if user uses:\n\n1. Action verbs:\n- change\n- update\n- set\n- modify\n- increase\n- decrease\n- revise\n- make it\n- adjust\n\n2. Hypothetical phrases:\n- what if\n- if the rate is\n- assume the rate is\n- suppose the rate is\n\n3. Direct value statements:\n- \"with rebate rate 17%\"\n- \"using APR 14%\"\n- \"at interest rate 8%\"\n\nIf a supported property is mentioned with a new value, treat it as override.\n\n--------------------------------------------------\n\n# Interest Rate Mapping Rules\n\nIf user says \"interest rate\":\n\n- VC / VCC / virtual credit card → marketBorrowingInterestRate\n- DD / dynamic discount → marketShortTermInvestmentInterestRate\n- SCF / supply chain financing → marketBorrowingInterestRate\n- No context → apply to ALL program types that support interest rates\n\n--------------------------------------------------\n\n# Processing Logic\n\n1. Identify property\n   Example: \"rebate rate\" → rebateRate\n\n2. Identify program type\n   Based on property or wording\n\n3. Merge program lists\n   Combine primary + secondary\n\n4. Deduplication (CRITICAL)\n   - Same financingProgramCode → same program\n   - Do NOT duplicate overrides\n\n5. Identify external programs\n   Only if:\n   \"programCategory\": \"external\"\n\n6. Apply overrides\n\n- If user specifies program name/code → apply only to that program\n- If multiple programs exist for that type → apply to ALL\n- If property is type-specific → apply to all programs of that type\n\n7. Output rules\n\n- If override detected AND matching programs exist → MUST return overrides\n- If no override detected → return:\n\n  { \"overrides\": [] }\n\n--------------------------------------------------\n\n# Mandatory Semantic Numeric Override Rules\n\n- The user request is authoritative for every explicitly supplied override value.\n- Do not replace a user-supplied value with a default, RAG value, program-list value, calculated value, or value from an example.\n- Treat \"assuming\", \"assume\", \"with\", \"using\", \"at\", \"suppose\", and \"what if\" followed by a supported property and value as an override.\n- Map \"assuming a virtual card rebate rate of N%\" to instruments[0].rebateRate = N for every matching VIRTUAL_CREDIT_CARD program unless a specific program is named.\n- Extract N from the user request itself. For example, 2% means numeric 2 and 0% means numeric 0.\n- Treat 0 and 0.0 as valid numeric override values. Never omit an override because its value is zero, never treat zero as false, and never replace zero with a default.\n- Before returning, verify that every overridden numeric value exactly matches the corresponding value stated in the user request.\n\n--------------------------------------------------\n\n# Mandatory Date Override Rules\n\n- Date-valued overrides are strings, not numbers.\n- For billingDate, paymentDate, and extendedPaymentDate, preserve the complete ISO YYYY-MM-DD value supplied by the authoritative override intent.\n- Never reduce an ISO date to only its day-of-month component. For example, 2026-07-20 MUST remain \"2026-07-20\" and MUST NOT become 20.\n- For VIRTUAL_CREDIT_CARD billingDate, output instruments[0].billingDate as the complete ISO YYYY-MM-DD string.\n- Before returning, verify that every date override exactly matches the complete date in the authoritative override intent.\n\n--------------------------------------------------\n\n# Examples\n\nExample 1 – VC override:\n{\n  \"overrides\": [\n    {\n      \"financingProgramType\": \"VIRTUAL_CREDIT_CARD\",\n      \"financingProgramName\": \"Corp VCC\",\n      \"financingProgramCode\": \"VC100\",\n      \"marketBorrowingInterestRate\": 11,\n      \"instruments\": [\n        {\n          \"rebateRate\": 15,\n          \"billingDate\": \"2026-07-20\"\n        }\n      ]\n    }\n  ]\n}\n\nExample 2 – Dynamic Discount APR:\n{\n  \"overrides\": [\n    {\n      \"financingProgramType\": \"DYNAMIC_DISCOUNTING\",\n      \"financingProgramName\": \"Standard Dynamic Discounting\",\n      \"financingProgramCode\": \"DD_FINANCING_PROGRAM\",\n      \"defaultAPR\": 6\n    }\n  ]\n}\n\nExample 3 – Interest rate applied to all VC programs:\n{\n  \"overrides\": [\n    {\n      \"financingProgramType\": \"VIRTUAL_CREDIT_CARD\",\n      \"financingProgramName\": \"Internal VCC Program\",\n      \"financingProgramCode\": \"VC100\",\n      \"marketBorrowingInterestRate\": 8\n    },\n    {\n      \"financingProgramType\": \"VIRTUAL_CREDIT_CARD\",\n      \"financingProgramName\": \"External Partner VCC\",\n      \"financingProgramCode\": \"EXT_VC_200\",\n      \"marketBorrowingInterestRate\": 8\n    }\n  ]\n}\n\nExample 4 – Semantic VC rebate override, including zero:\n\nUser request:\n\"Calculate potential benefits assuming a virtual card rebate rate of 0%.\"\n\nRequired override fragment:\n{\n  \"instruments\": [\n    {\n      \"rebateRate\": 0\n    }\n  ]\n}\n\nReturn only raw, valid JSON. Do not use Markdown fences. Do not include analysis, explanations, comments, or text before or after the JSON."
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"overrides\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"financingProgramType\": {\n            \"type\": \"string\"\n          },\n          \"financingProgramName\": {\n            \"type\": \"string\"\n          },\n          \"financingProgramCode\": {\n            \"type\": \"string\"\n          },\n          \"marketBorrowingInterestRate\": {\n            \"type\": \"number\"\n          },\n          \"instruments\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"rebateRate\": {\n                  \"type\": \"number\"\n                },\n                \"billingDate\": {\n                  \"type\": \"string\"\n                },\n                \"gracePeriod\": {\n                  \"type\": \"number\"\n                }\n              },\n              \"additionalProperties\": false\n            }\n          }\n        },\n        \"required\": [\n          \"financingProgramType\",\n          \"financingProgramName\",\n          \"financingProgramCode\"\n        ],\n        \"additionalProperties\": false\n      }\n    }\n  },\n  \"required\": [\n    \"overrides\"\n  ],\n  \"additionalProperties\": false\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_PAYABLES_FINANCINGPROGRA",
+            "functionName": "get_payment_program_details",
+            "processJson": true,
+            "name": "Get Signed Financing Programs"
+          },
+          "outcomes": {
+            "success": "1765866582919"
+          },
+          "diagram": {
+            "x": 5232.5,
+            "y": 7926.271862857144
+          },
+          "code": "FIN_AP_BUSINESS_OBJECT_FUNCTION_GET_SIGNED_FINANCING_PROGRAMS",
+          "convergenceTargetId": "1765866582919",
+          "id": "1765864850515",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.01,
+                "temperature": 0.01,
+                "reasoning_effort": "low"
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B"
+            },
+            "name": "Identify Override Request"
+          },
+          "diagram": {
+            "x": 5242.965685714284,
+            "y": 8221.829207142857
+          },
+          "outcomes": {
+            "success": "1767950300507"
+          },
+          "id": "1784116106423",
+          "code": "FIN_AP_LLM_IDENTIFY_OVERRIDE_REQUEST",
+          "type": "LLM",
+          "inputs": [
+            {
+              "id": "1784116106423_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "# Input\n\nUser request:\n{{$context.$system.$inputMessage}}\n\nCurrent date:\n{{$context.$system.$currentDate}}\n\n# Supported Overrides\n\nVIRTUAL_CREDIT_CARD:\n- rebateRate\n- billingDate\n- gracePeriod\n- marketBorrowingInterestRate\n\nDYNAMIC_DISCOUNTING:\n- defaultAPR\n- accelerateByDays\n- paymentDate\n- marketShortTermInvestmentInterestRate\n\nSUPPLY_CHAIN_FINANCING:\n- extendedPaymentDate\n- marketBorrowingInterestRate\n\n# Task\n\nIdentify whether the user requests an explicit or hypothetical override. Interpret semantic wording such as \"assuming\", \"assume\", \"what if\", \"suppose\", \"with\", \"using\", \"at\", \"set\", \"change\", and \"make it\".\n\nIf an override is requested, state in one short natural-language sentence:\n- the canonical program type;\n- the exact supported property name;\n- the exact value supplied by the user;\n- a specifically named program, or \"all matching programs\" when no program is named.\n\nThe value must be copied from the user request. Treat 0 and 0.0 as valid values. A percentage such as 2% must be reported as numeric value 2; do not convert it to 0.02. Do not use values from examples or defaults.\n\nFor date-valued properties (`billingDate`, `paymentDate`, and `extendedPaymentDate`), always return an actual ISO `YYYY-MM-DD` date. Resolve explicit, partial, and relative date expressions using the Current date supplied above. Do not return natural-language date phrases in the override sentence.\n\nDate resolution rules:\n- A complete date such as \"20th July 2026\" becomes `2026-07-20`.\n- A month and day without a year, such as \"20th July\", uses the current year when that date is today or in the future; if it has already passed, use the next year.\n- \"tomorrow\" means Current date plus one calendar day.\n- \"this month 20th\" means day 20 of the Current date's month and year.\n- \"next month 20th\" means day 20 of the calendar month immediately after the Current date's month, including year rollover from December to January.\n- \"this Friday\" means the first Friday on or after the Current date. If Current date is Friday, use Current date.\n- \"next Friday\" means seven calendar days after the date resolved for \"this Friday\".\n- Apply the same weekday rules to other explicitly named weekdays.\n- Validate the resulting calendar date and preserve the exact intended day, month, and year.\n\nExample:\n\nUser request:\n\"Calculate benefits assuming a virtual card rebate rate of 2%.\"\n\nOutput:\n\"Override requested for all matching VIRTUAL_CREDIT_CARD programs: set rebateRate to 2.\"\n\nUser request:\n\"Calculate benefits assuming the billing date is 20th July 2026.\"\n\nOutput:\n\"Override requested for all matching VIRTUAL_CREDIT_CARD programs: set billingDate to 2026-07-20.\"\n\nWhen Current date is `2026-07-13`:\n- \"billing date is tomorrow\" becomes `2026-07-14`.\n- \"billing date is this Friday\" becomes `2026-07-17`.\n- \"billing date is next Friday\" becomes `2026-07-24`.\n- \"billing date is this month 20th\" becomes `2026-07-20`.\n- \"billing date is next month 20th\" becomes `2026-08-20`.\n\nIf no supported override is requested, output exactly:\n\"No supported financing program override requested.\"\n\nReturn natural language only. Do not return JSON, Markdown, analysis, or additional explanation."
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"overrideRequest\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"overrideRequest\"\n  ],\n  \"additionalProperties\": false\n}"
+        },
+        {
+          "metadata": {
+            "name": "Apply VCC Default Overrides",
+            "returnType": "object",
+            "sourceCode": "const overrideOutput =\n  $context.$nodes.FIN_AP_LLM_OVERRIDE_FINANCING_PROGRAMS.$output || {};\n\nconst overrides =\n  Array.isArray(overrideOutput.overrides)\n    ? overrideOutput.overrides\n    : [];\n\nconst primaryPrograms =\n  $context.$nodes.FIN_AP_CODE_PROCESS_SIGNED_FINANCING_PROGRAM.$output.result.programs || [];\n\nconst paymentInstruments =\n  $context.$nodes.FIN_AP_CODE_PROCESS_PAYMENT_INSTRUMENTS.$output.result || [];\n\nconst ragPrograms =\n  $context.$nodes.FIN_AP_LLM_RAG_OUTPUT_PROCESSING_AGENT.$output.ragDocument || [];\n\nconst normalize = value =>\n  String(value ?? \"\").trim().toLowerCase();\n\nconst hasOwn = (object, property) =>\n  Object.prototype.hasOwnProperty.call(object, property);\n\nfunction programMatches(program, override) {\n  const overrideCode = normalize(override.financingProgramCode);\n  const overrideName = normalize(override.financingProgramName);\n\n  return (\n    overrideCode &&\n    normalize(program.financingProgramCode) === overrideCode\n  ) || (\n    overrideName &&\n    normalize(program.financingProgramName) === overrideName\n  );\n}\n\nfunction getProgramId(override) {\n  const program = primaryPrograms.find(item =>\n    programMatches(item, override)\n  );\n\n  return program?.financingProgramId;\n}\n\nfunction getCandidateInstrumentNames(\n  override,\n  instrumentOverride\n) {\n  const names = [];\n\n  if (instrumentOverride?.instrumentName) {\n    names.push(instrumentOverride.instrumentName);\n  }\n\n  const ragProgram = ragPrograms.find(item =>\n    programMatches(item, override)\n  );\n\n  for (const instrument of ragProgram?.instruments || []) {\n    if (instrument?.instrumentName) {\n      names.push(instrument.instrumentName);\n    }\n  }\n\n  const programId = getProgramId(override);\n\n  if (programId !== undefined && programId !== null) {\n    for (const instrument of paymentInstruments) {\n      if (\n        String(instrument?.financingProgramId) ===\n          String(programId) &&\n        instrument?.instrumentName\n      ) {\n        names.push(instrument.instrumentName);\n      }\n    }\n  }\n\n  return [\n    ...new Map(\n      names.map(name => [normalize(name), name])\n    ).values()\n  ];\n}\n\nfunction findPaymentInstrument(\n  override,\n  instrumentName\n) {\n  const normalizedName = normalize(instrumentName);\n  const programId = getProgramId(override);\n\n  return paymentInstruments.find(instrument =>\n    normalize(instrument?.instrumentName) === normalizedName &&\n    (\n      programId === undefined ||\n      programId === null ||\n      String(instrument?.financingProgramId) === String(programId)\n    )\n  ) || paymentInstruments.find(instrument =>\n    normalize(instrument?.instrumentName) === normalizedName\n  );\n}\n\nfunction enrichInstrument(\n  override,\n  instrumentOverride,\n  instrumentName\n) {\n  const enriched = {\n    ...instrumentOverride,\n    instrumentName\n  };\n\n  const hasBillingDateOverride =\n    hasOwn(instrumentOverride, \"billingDate\");\n\n  const needsBillingCycle =\n    hasOwn(instrumentOverride, \"rebateRate\") ||\n    hasOwn(override, \"marketBorrowingInterestRate\");\n\n  if (hasBillingDateOverride || !needsBillingCycle) {\n    delete enriched.billingCycleFrequency;\n    delete enriched.billingCycleDayNumber;\n    return enriched;\n  }\n\n  const paymentInstrument =\n    findPaymentInstrument(override, instrumentName);\n\n  if (\n    paymentInstrument?.billingCycleFrequency !== undefined &&\n    paymentInstrument.billingCycleFrequency !== null &&\n    paymentInstrument.billingCycleFrequency !== \"\"\n  ) {\n    enriched.billingCycleFrequency =\n      paymentInstrument.billingCycleFrequency;\n  }\n\n  if (\n    paymentInstrument?.billingCycleDayNumber !== undefined &&\n    paymentInstrument.billingCycleDayNumber !== null &&\n    paymentInstrument.billingCycleDayNumber !== \"\"\n  ) {\n    enriched.billingCycleDayNumber =\n      Number(paymentInstrument.billingCycleDayNumber);\n  }\n\n  return enriched;\n}\n\nconst enrichedOverrides = overrides.map(override => {\n  if (\n    override?.financingProgramType !==\n    \"VIRTUAL_CREDIT_CARD\"\n  ) {\n    return override;\n  }\n\n  const sourceInstrumentOverrides =\n    Array.isArray(override.instruments) &&\n    override.instruments.length > 0\n      ? override.instruments\n      : [{}];\n\n  const enrichedInstruments = [];\n\n  for (\n    const instrumentOverride of sourceInstrumentOverrides\n  ) {\n    const names = getCandidateInstrumentNames(\n      override,\n      instrumentOverride\n    );\n\n    for (const instrumentName of names) {\n      enrichedInstruments.push(\n        enrichInstrument(\n          override,\n          instrumentOverride,\n          instrumentName\n        )\n      );\n    }\n  }\n\n  return {\n    ...override,\n    instruments:\n      enrichedInstruments.length > 0\n        ? enrichedInstruments\n        : sourceInstrumentOverrides\n  };\n});\n\nreturn {\n  overrides: enrichedOverrides\n};"
+          },
+          "diagram": {
+            "x": 5481.6975918367325,
+            "y": 8624.305285714283
+          },
+          "outcomes": {
+            "success": "1767866587538"
+          },
+          "id": "1784116494257",
+          "code": "FIN_AP_APPLY_VCC_DEFAULT_OVERRIDES",
+          "type": "CODE",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1773256791497",
+          "name": "startDate",
+          "scope": "JOB",
+          "type": "number"
+        },
+        {
+          "id": "1770981924089",
+          "name": "payablesBalance",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1770980386599",
+          "name": "supplierIdObect",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1767785477291",
+          "name": "summarizerInput",
+          "scope": "JOB",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.25
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "modelName": "GPT OSS 120B (Basic)",
+      "provider": "CERT_BASIC"
+    },
+    "dtRunProfiles": {
+      "activeProfileId": null,
+      "profiles": [
+        {
+          "id": "78b4b328-ffdf-4e77-ba9a-eecf9a6bf68d",
+          "name": "New run profile 1",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"message\": \"Optimize payments for BU Vision Operations in currency USD.\",\n  \"startNoOfDays\": 1,\n  \"endNoOfDays\": 42,\n  \"identifiedSuppliers\": [\n    {\n      \"entity\": \"Supplier\",\n      \"id\": \"11127\",\n      \"name\": \"Vision Operations\",\n      \"source\": \"HS|EV\",\n      \"score\": 100\n    },\n    {\n      \"entity\": \"Supplier\",\n      \"id\": \"999992000322407\",\n      \"name\": \"Vision Operations\",\n      \"source\": \"HS|EV\",\n      \"score\": 100\n    }\n  ],\n  \"businessUnitName\": \"Vision Operations\",\n  \"requestedSupplier\": null,\n  \"businessUnitId\": 204,\n  \"currencyCode\": \"USD\"\n}",
+          "inputMessage": "Optimize payments for BU Vision Operations in currency USD."
+        }
+      ]
+    },
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1784117476296",
+            "name": "topNSuppliers",
+            "type": "integer"
+          },
+          {
+            "id": "1773256834512",
+            "name": "startNoOfDays",
+            "type": "number"
+          },
+          {
+            "id": "1773256828251",
+            "name": "endNoOfDays",
+            "type": "number"
+          },
+          {
+            "id": "1770980542356",
+            "name": "identifiedSuppliers",
+            "type": "array"
+          },
+          {
+            "id": "1770980209788",
+            "name": "businessUnitName",
+            "type": "string"
+          },
+          {
+            "id": "1770980108629",
+            "name": "requestedSupplier",
+            "type": "string"
+          },
+          {
+            "id": "1766382087148",
+            "name": "businessUnitId",
+            "type": "string"
+          },
+          {
+            "id": "1766074480473",
+            "name": "currencyCode",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "FIN",
+  "product": "PAYABLES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"9\""
+  }
+}

@@ -1,0 +1,359 @@
+{
+  "workflowId": "100002355227046",
+  "workflowCode": "ORA_RMC_ROLE_RECOMMENDATIONS_GENERATOR",
+  "name": "RMC Role Recommendations Generator",
+  "description": "Generates role-splitting recommendations for roles with intra-role violations.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1766761866406"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_GRC_OTHER_GETALLACCESSCONTROLS",
+            "functionName": "getall_advancedControls",
+            "name": "Get Access Controls"
+          },
+          "outcomes": {
+            "success": "1766761929451"
+          },
+          "code": "GET_CONTROLS",
+          "id": "1766761866406",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Extract Control Fields",
+            "returnType": "array",
+            "sourceCode": "let items = $context.$nodes.GET_CONTROLS.$output.items;\n\nlet result = items.map(item => ({\n  controlRequestName: item.Name,\n  controlRequestId: item.Id\n}));\n\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1766762108933"
+          },
+          "code": "EXTRACT_CONTROL_FIELDS",
+          "id": "1766761929451",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set Control List"
+          },
+          "outcomes": {
+            "success": "1766762178433"
+          },
+          "code": "SET_CONTROL_LIST",
+          "id": "1766762108933",
+          "inputs": [
+            {
+              "id": "1766762136996",
+              "name": "ControlList",
+              "scope": "JOB",
+              "type": "array",
+              "value": "{{$context.$nodes.EXTRACT_CONTROL_FIELDS.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1766762726941"
+                  },
+                  "id": "start_1766762178433",
+                  "code": "START_1766762178433",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1766762178433",
+                  "code": "END_1766762178433",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_GRC_OTHER_GETINTRAROLEACCESSVIOLATIONS",
+                    "functionName": "getall_advancedControls-incidents",
+                    "processJson": true,
+                    "name": "Get Incidents"
+                  },
+                  "outcomes": {
+                    "success": "1768335926099"
+                  },
+                  "code": "GET_INCIDENTS",
+                  "id": "1766762272532",
+                  "inputs": [
+                    {
+                      "id": "1769645534136_1",
+                      "name": "advancedControls_Id",
+                      "type": "integer",
+                      "value": "{{$context.$variables.ControlId}}"
+                    }
+                  ],
+                  "outputSpecification": "{}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "name": "Current Control"
+                  },
+                  "outcomes": {
+                    "success": "1766762272532"
+                  },
+                  "code": "CURRENT_CONTROL",
+                  "id": "1766762726941",
+                  "inputs": [
+                    {
+                      "id": "1766762793106",
+                      "name": "ControlName",
+                      "scope": "JOB",
+                      "type": "string",
+                      "value": "{{$context.$nodes.INCIDENT_LOOP.$currentItem.controlRequestName}}"
+                    },
+                    {
+                      "id": "1766762736445",
+                      "name": "ControlId",
+                      "scope": "JOB",
+                      "type": "string",
+                      "value": "{{$context.$nodes.INCIDENT_LOOP.$currentItem.controlRequestId}}"
+                    }
+                  ],
+                  "type": "SET_FIELDS"
+                },
+                {
+                  "metadata": {
+                    "name": "Analyze Intra-role Conflicts",
+                    "returnType": "array",
+                    "sourceCode": "let incidents = $context.$nodes.GET_INCIDENTS.$output.items || [];\n\nif (incidents.length === 0) {\n  return [];\n}\n\nlet results = [];\nlet suggestionSet = new Set();\n\n// Group incidents by GlobalUserName\nlet userGroups = {};\nincidents.forEach(incident => {\n  let user = incident.GlobalUserName;\n  if (!userGroups[user]) {\n    userGroups[user] = [];\n  }\n  userGroups[user].push(incident);\n});\n\n// Process each user group to find conflicts\nObject.keys(userGroups).forEach(user => {\n  let userIncidents = userGroups[user];\n  \n  // Find pairs with different entitlements but common tokens\n  for (let i = 0; i < userIncidents.length; i++) {\n    for (let j = i + 1; j < userIncidents.length; j++) {\n      let incident1 = userIncidents[i];\n      let incident2 = userIncidents[j];\n      \n      if (incident1.Entitlement !== incident2.Entitlement) {\n        // Check for common tokens in IncidentInformationCodes\n        let tokens1 = incident1.IncidentInformationCodes ? incident1.IncidentInformationCodes.split('>').map(token => token.trim()) : [];\n        let tokens2 = incident2.IncidentInformationCodes ? incident2.IncidentInformationCodes.split('>').map(token => token.trim()) : [];\n        \n        let commonTokens = tokens1.filter(token => tokens2.includes(token.trim()));\n        \n        if (commonTokens.length > 0) {\n          // Extract role from first token\n          let role = incident1.Role || tokens1[0] || '';\n          \n          // Create a unique key for this suggestion to avoid duplicates\n          let sortedEntitlements = [incident1.Entitlement, incident2.Entitlement].sort();\n          let suggestionKey = `${role}:${sortedEntitlements.join(':')}`;\n          \n          if (!suggestionSet.has(suggestionKey)) {\n            suggestionSet.add(suggestionKey);\n            \n            results.push({\n              Role: role,\n              IncidentInformation1: incident1.IncidentInformation || '',\n              Entitlement1: incident1.Entitlement || '',\n              IncidentInformation2: incident2.IncidentInformation || '',\n              Entitlement2: incident2.Entitlement || '',\n              Suggestion: `Split role \"${role}\" into separate roles: one containing \"${incident1.Entitlement}\" and another containing \"${incident2.Entitlement}\"`\n            });\n          }\n        }\n      }\n    }\n  }\n});\n\nreturn results;"
+                  },
+                  "outcomes": {
+                    "success": "end_1766762178433"
+                  },
+                  "code": "INTRAROLE_ADVISOR",
+                  "id": "1768335926099",
+                  "inputs": [],
+                  "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"Suggestion\": {\n            \"type\": \"string\"\n        },\n        \"Entitlement2\": {\n            \"type\": \"string\"\n        },\n        \"IncidentInformation2\": {\n            \"type\": \"string\"\n        },\n        \"Entitlement1\": {\n            \"type\": \"string\"\n        },\n        \"IncidentInformation1\": {\n            \"type\": \"string\"\n        },\n        \"Role\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+                  "type": "CODE"
+                }
+              ],
+              "rootNode": "start_1766762178433"
+            },
+            "loopType": "SEQUENTIAL",
+            "name": "Incident loop"
+          },
+          "outcomes": {
+            "success": "1768340055004"
+          },
+          "code": "INCIDENT_LOOP",
+          "id": "1766762178433",
+          "inputs": [
+            {
+              "id": "1766762178436_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$variables.ControlList}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.75,
+                "reasoning_effort": "minimal"
+              },
+              "code": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI",
+              "model": "OCI_GPT_5_MINI",
+              "modelName": "GPT-5 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Organize Results"
+          },
+          "outcomes": {
+            "success": "1768414451043"
+          },
+          "code": "ORGANIZE_RESULTS",
+          "id": "1768340055004",
+          "inputs": [
+            {
+              "id": "1768340055007_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Display the value of {{$context.$nodes.INCIDENT_LOOP.$output}} by combining all the suggestions for each role. Display the role and suggestion only.\n\nGroup information consistently, organized by role, and using bullet points for recommended new roles based on entitlements. Include only one recommended role per entitlement. Do not include the number with parenthesis in the name of the recommended new role. Do not include information about specific users who have the role. There should be no role based on a GlobalUserName or user.\n\nSample format:\nCurrent Role: name of role\nRecommended New Roles:\n- Bullet list of recommended new roles\n\nOutput format:\nOutput as json"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_GRC_OTHER_DESCRIPTIONCLOB",
+            "functionName": "replace_announcements-DescriptionClob",
+            "processJson": true,
+            "name": "Write Recommendations"
+          },
+          "outcomes": {
+            "success": "1768414920596"
+          },
+          "code": "WRITE_RECOMMENDATIONS",
+          "id": "1768414451043",
+          "inputs": [
+            {
+              "id": "1768414502507_1",
+              "name": "announcements_Id",
+              "type": "string",
+              "value": "894871897531011"
+            },
+            {
+              "id": "1768414502508_2",
+              "name": "pContent",
+              "type": "string",
+              "value": "{{$context.$nodes.ORGANIZE_RESULTS.$output}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Output Completed"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "OUTPUT_COMPLETED",
+          "id": "1768414920596",
+          "inputs": [
+            {
+              "id": "1768414920597_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Output: {{$context.$nodes.ORGANIZE_RESULTS.$output}}"
+            }
+          ],
+          "type": "LLM"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1766762089881",
+          "name": "ControlList",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1766762079298",
+          "name": "ControlName",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1766762065203",
+          "name": "ControlId",
+          "scope": "JOB",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "GRC",
+  "product": "OTHER",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"2\""
+  }
+}

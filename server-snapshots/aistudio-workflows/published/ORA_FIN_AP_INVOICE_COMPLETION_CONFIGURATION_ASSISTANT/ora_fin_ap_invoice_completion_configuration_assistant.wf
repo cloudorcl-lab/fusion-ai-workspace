@@ -1,0 +1,253 @@
+{
+  "workflowId": "300000333384337",
+  "workflowCode": "ORA_FIN_AP_INVOICE_COMPLETION_CONFIGURATION_ASSISTANT",
+  "name": "Invoice Completion Configuration Assistant",
+  "description": "Invoice Completion Configuration Assistant",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "name": "Start",
+            "description": "Start of data pipeline"
+          },
+          "outcomes": {
+            "success": "1783864747458"
+          },
+          "diagram": {
+            "x": 6094.5,
+            "y": 5000
+          },
+          "id": "start",
+          "code": "START",
+          "type": "START",
+          "inputs": []
+        },
+        {
+          "metadata": {
+            "name": "Invoice Payables Compliance and Controls Policy"
+          },
+          "diagram": {
+            "x": 5000,
+            "y": 5206,
+            "width": 2245,
+            "height": 348
+          },
+          "outcomes": {
+            "0": "1783864791007",
+            "1": "1783864986848",
+            "2": "1783865027946",
+            "3": "1783865089361",
+            "4": "1783865128125"
+          },
+          "id": "1783864747458",
+          "code": "INVOICE_PAYABLES_COMPLIANCE_AND_CONTROLS_POLICY",
+          "type": "PARALLEL",
+          "inputs": [],
+          "convergenceTargetId": "1783867207060"
+        },
+        {
+          "metadata": {
+            "name": "Fetch Account Coding Details",
+            "policyCode": "ORA_PAYABLES_COMPLIANCE_AND_CONTROL_POLICIES",
+            "functionCode": "GETACCOUNTCODING"
+          },
+          "diagram": {
+            "x": 5020,
+            "y": 5447
+          },
+          "outcomes": {
+            "success": "1783867207060"
+          },
+          "id": "1783864791007",
+          "code": "FETCH_ACCOUNT_CODING_DETAILS",
+          "type": "POLICY",
+          "inputs": []
+        },
+        {
+          "metadata": {
+            "name": "Fetch Tax Determinant Policies",
+            "policyCode": "ORA_PAYABLES_COMPLIANCE_AND_CONTROL_POLICIES",
+            "functionCode": "GETTAXDETERMINANTS"
+          },
+          "diagram": {
+            "x": 5482,
+            "y": 5447
+          },
+          "outcomes": {
+            "success": "1783867207060"
+          },
+          "id": "1783864986848",
+          "code": "FETCH_TAX_DETERMINANT_POLICIES",
+          "type": "POLICY",
+          "inputs": []
+        },
+        {
+          "metadata": {
+            "description": "",
+            "name": "Fetch Project Detail Policies",
+            "policyCode": "ORA_PAYABLES_COMPLIANCE_AND_CONTROL_POLICIES",
+            "functionCode": "GETALLPROJECTDETAILS"
+          },
+          "diagram": {
+            "x": 5962,
+            "y": 5447
+          },
+          "outcomes": {
+            "success": "1783867207060"
+          },
+          "id": "1783865027946",
+          "code": "FETCH_PROJECT_DETAIL_POLICIES",
+          "type": "POLICY",
+          "inputs": []
+        },
+        {
+          "metadata": {
+            "description": "",
+            "name": "Fetch Payment Details Policies",
+            "policyCode": "ORA_PAYABLES_COMPLIANCE_AND_CONTROL_POLICIES",
+            "functionCode": "GETPAYMENTDETAILS"
+          },
+          "diagram": {
+            "x": 6433,
+            "y": 5447
+          },
+          "outcomes": {
+            "success": "1783867207060"
+          },
+          "id": "1783865089361",
+          "code": "FETCH_PAYMENT_DETAILS_POLICIES",
+          "type": "POLICY",
+          "inputs": []
+        },
+        {
+          "metadata": {
+            "description": "",
+            "name": "Fetch Asset Details Policies",
+            "policyCode": "ORA_PAYABLES_COMPLIANCE_AND_CONTROL_POLICIES",
+            "functionCode": "GETASSETDETAILS"
+          },
+          "diagram": {
+            "x": 6913,
+            "y": 5447
+          },
+          "outcomes": {
+            "success": "1783867207060"
+          },
+          "id": "1783865128125",
+          "code": "FETCH_ASSET_DETAILS_POLICIES",
+          "type": "POLICY",
+          "inputs": []
+        },
+        {
+          "metadata": {
+            "name": "Merge Polciies from all SubCategories",
+            "sourceCode": "function mergeComplianceOutputs(outputs) {\n  const list = Array.isArray(outputs) ? outputs : Object.values(outputs ?? {});\n  const clone =\n    typeof structuredClone === \"function\"\n      ? structuredClone\n      : (value) => JSON.parse(JSON.stringify(value));\n\n  const categoryMap = new Map();\n  const mergedPolicies = [];\n  const mergedDetails = [];\n\n  let nextPolicyNumber = 1;\n  let nextDetailNumber = 1;\n\n  for (const output of list) {\n    if (!output) {\n      continue;\n    }\n\n    for (const category of output.categories ?? []) {\n      if (category && !categoryMap.has(category.categoryId)) {\n        categoryMap.set(category.categoryId, clone(category));\n      }\n    }\n\n    const detailsByPolicyId = new Map();\n    for (const detail of output.details ?? []) {\n      if (!detail) {\n        continue;\n      }\n      const key = detail.policyId ?? \"__missing_policy__\";\n      if (!detailsByPolicyId.has(key)) {\n        detailsByPolicyId.set(key, []);\n      }\n      detailsByPolicyId.get(key).push(detail);\n    }\n\n    const consumedDetailIds = new Set();\n    for (const policy of output.policies ?? []) {\n      if (!policy) {\n        continue;\n      }\n\n      const sourceDetails = detailsByPolicyId.get(policy.policyId) ?? [];\n      const detailIds = [];\n      let validDetailCount = 0;\n      let invalidDetailCount = 0;\n      const newPolicyId = `ic-pol-${String(nextPolicyNumber++).padStart(3, \"0\")}`;\n\n      for (const detail of sourceDetails) {\n        const newDetail = clone(detail);\n        const newDetailId = `ic-det-${String(nextDetailNumber++).padStart(3, \"0\")}`;\n\n        newDetail.detailId = newDetailId;\n        newDetail.policyId = newPolicyId;\n        newDetail.status = normalizeStatus(newDetail.status, newDetail.errorMessage);\n        if (newDetail.status === \"Invalid\" && !isNonEmptyString(newDetail.errorMessage)) {\n          newDetail.errorMessage = \"Detail is invalid.\";\n        }\n\n        detailIds.push(newDetailId);\n        consumedDetailIds.add(detail.detailId);\n        if (newDetail.status === \"Valid\") {\n          validDetailCount += 1;\n        } else {\n          invalidDetailCount += 1;\n        }\n\n        mergedDetails.push(newDetail);\n      }\n\n      const mergedPolicy = clone(policy);\n      const sourceStatus = normalizeStatus(mergedPolicy.status, mergedPolicy.errorMessage);\n\n      mergedPolicy.policyId = newPolicyId;\n      mergedPolicy.detailIds = detailIds;\n      mergedPolicy.detailCount = detailIds.length;\n      mergedPolicy.validDetailCount = validDetailCount;\n      mergedPolicy.invalidDetailCount = invalidDetailCount;\n      mergedPolicy.allDetailsValid = invalidDetailCount === 0;\n      mergedPolicy.status = sourceStatus;\n\n      if (mergedPolicy.status === \"Invalid\" && !isNonEmptyString(mergedPolicy.errorMessage)) {\n        mergedPolicy.errorMessage = \"Policy is invalid.\";\n      }\n      if (mergedPolicy.status === \"Valid\" && mergedPolicy.errorMessage == null) {\n        mergedPolicy.errorMessage = \"\";\n      }\n\n      mergedPolicies.push(mergedPolicy);\n    }\n\n    for (const detail of output.details ?? []) {\n      if (!detail || consumedDetailIds.has(detail.detailId)) {\n        continue;\n      }\n\n      const orphanDetail = clone(detail);\n      orphanDetail.detailId = `ic-det-${String(nextDetailNumber++).padStart(3, \"0\")}`;\n      orphanDetail.status = normalizeStatus(orphanDetail.status, orphanDetail.errorMessage);\n      if (orphanDetail.status === \"Invalid\" && !isNonEmptyString(orphanDetail.errorMessage)) {\n        orphanDetail.errorMessage = \"Detail is invalid.\";\n      }\n\n      mergedDetails.push(orphanDetail);\n    }\n  }\n\n  const categories = Array.from(categoryMap.values());\n  const summary = buildSummary(categories, mergedPolicies, mergedDetails);\n\n  return {\n    summary,\n    categories,\n    policies: mergedPolicies,\n    details: mergedDetails\n  };\n}\n\nfunction normalizeStatus(status, errorMessage) {\n  if (status === \"Valid\" || status === \"Invalid\") {\n    return status;\n  }\n\n  return isNonEmptyString(errorMessage) ? \"Invalid\" : \"Valid\";\n}\n\nfunction isNonEmptyString(value) {\n  return typeof value === \"string\" && value.trim().length > 0;\n}\n\nfunction buildSummary(categories, policies, details) {\n  const policyIdSet = new Set(policies.map((policy) => policy.policyId));\n  const invalidPolicies = policies.filter((policy) => policy.status === \"Invalid\");\n  const validDetails = details.filter((detail) => detail.status === \"Valid\");\n  const invalidDetails = details.filter((detail) => detail.status === \"Invalid\");\n\n  return {\n    allPoliciesValid: policies.length === 0 ? true : invalidPolicies.length === 0,\n    orphanDetailsExist: details.some((detail) => !policyIdSet.has(detail.policyId)),\n    categoryValidationStatus: categories.map((category) => {\n      const categoryPolicies = policies.filter((policy) => policy.categoryId === category.categoryId);\n\n      return {\n        categoryId: category.categoryId,\n        category: category.name ?? category.categoryId,\n        allPoliciesValid: categoryPolicies.length === 0 ? true : categoryPolicies.every((policy) => policy.status === \"Valid\"),\n        policyCount: categoryPolicies.length,\n        validPolicyCount: categoryPolicies.filter((policy) => policy.status === \"Valid\").length,\n        invalidPolicyCount: categoryPolicies.filter((policy) => policy.status === \"Invalid\").length\n      };\n    }),\n    totals: {\n      categoryCount: categories.length,\n      policyCount: policies.length,\n      detailCount: details.length,\n      validDetailCount: validDetails.length,\n      invalidDetailCount: invalidDetails.length\n    }\n  };\n}\n\nconst accountCoding = $context.$nodes.FETCH_ACCOUNT_CODING_DETAILS.$output ;\nconst taxDeterminants = $context.$nodes.FETCH_TAX_DETERMINANT_POLICIES.$output ;\nconst projectDetails  = $context.$nodes.FETCH_PROJECT_DETAIL_POLICIES.$output ;\nconst paymentDetails = $context.$nodes.FETCH_PAYMENT_DETAILS_POLICIES.$output ;\nconst assetDetails = $context.$nodes.FETCH_ASSET_DETAILS_POLICIES.$output ;\n\nconst merged = mergeComplianceOutputs([\n  accountCoding,\n  assetDetails,\n  paymentDetails,\n  projectDetails,\n  taxDeterminants\n]);\n\nreturn merged;",
+            "returnType": "object"
+          },
+          "diagram": {
+            "x": 5985.5,
+            "y": 5617.4384765625
+          },
+          "outcomes": {
+            "success": "1783867632209"
+          },
+          "id": "1783867207060",
+          "code": "MERGE_POLCIIES_FROM_ALL_SUBCATEGORIES",
+          "type": "CODE",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "metadata": {
+            "name": "New return Node"
+          },
+          "diagram": {
+            "x": 6184.5,
+            "y": 5731.4384765625
+          },
+          "outcomes": {},
+          "id": "1783867632209",
+          "code": "NEW_RETURN_NODE",
+          "type": "RETURN",
+          "inputs": [
+            {
+              "id": "1783867632209_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.MERGE_POLCIIES_FROM_ALL_SUBCATEGORIES.$output.result}}"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "name": "End",
+            "description": "End of data pipeline"
+          },
+          "outcomes": {},
+          "id": "end",
+          "code": "END",
+          "type": "END",
+          "inputs": []
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": []
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.75,
+        "temperature": 0.01,
+        "reasoning_effort": "low"
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "modelName": "GPT OSS 120B (Basic)",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "provider": "CERT_BASIC"
+    },
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": "",
+    "agentsValueMappings": [],
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "deletedTriggerTypes": [],
+    "answerInUserLanguage": false,
+    "userLanguagePrompt": "",
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI"
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "FIN",
+  "product": "PAYABLES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"1\""
+  }
+}

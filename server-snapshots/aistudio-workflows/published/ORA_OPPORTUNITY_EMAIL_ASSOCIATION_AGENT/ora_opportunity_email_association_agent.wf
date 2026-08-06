@@ -1,0 +1,974 @@
+{
+  "workflowId": "300000331067537",
+  "workflowCode": "ORA_OPPORTUNITY_EMAIL_ASSOCIATION_AGENT",
+  "name": "Opportunity Email Association Agent",
+  "description": "Automatically analyzes inbound email content and context to identify the most relevant CRM opportunity, then associates the email to the correct Opportunity record - keeping the deal timeline complete, reducing manual logging, and improving pipeline accuracy.",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1774353199800"
+          },
+          "diagram": {
+            "x": 5422,
+            "y": 5000
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "name": "Get adaptive payload for opportunity",
+            "returnType": "object",
+            "sourceCode": "const engagementContext =\n  $context.$triggers.REST.$input.engagementContext || {};\n\nconst accountPartyNumbers = Array.isArray(engagementContext.association?.accounts)\n  ? engagementContext.association.accounts\n      .map(acc => acc?.accountPartyNumber)\n      .filter((num, idx, arr) => typeof num === 'string' && num && arr.indexOf(num) === idx)\n  : [];\n\nconst salesUserEmails = $context.$triggers.REST.$input.engagementContext?.salesUserEmails || [];\n\nconst payload = {\n  \"limit\": 50,\n  \"offset\": 0,\n  \"sort\": [],\n  \"entity\": \"Opportunity\",\n  \"q\": {\n    \"op\": \"$and\",\n    \"criteria\": [\n      {\n        \"op\": \"$in\",\n        \"attribute\": \"StatusCode\",\n        \"values\": [\"OPEN\"]\n      },\n      {\n        \"op\": \"$in\",\n        \"attribute\": \"CustomerAccount.PartyNumber\",\n        \"values\": accountPartyNumbers \n      },\n      {\n        \"op\": \"$in\",\n        \"attribute\": \"ListOfResourcesForTheTeam.ResourceId.ResourceEmailAddress\",\n        \"values\": salesUserEmails \n      }\n    ]\n  },\n  \"fields\": [\"OptyId\", \"OptyNumber\", \"Name\", \"CustomerAccount.PartyId\"]\n}\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "1774353464929"
+          },
+          "diagram": {
+            "x": 5258,
+            "y": 5206
+          },
+          "code": "GET_ADAPTIVE_PAYLOAD_FOR_OPPORTUNITY",
+          "convergenceTargetId": "1774352693068",
+          "id": "1774353199800",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "name": "Get opportunities",
+            "functionName": "SEARCH_OBJECTS"
+          },
+          "outcomes": {
+            "success": "1774353613787"
+          },
+          "diagram": {
+            "x": 5300,
+            "y": 5428
+          },
+          "code": "GET_OPPORTUNITIES",
+          "convergenceTargetId": "1774352693068",
+          "id": "1774353464929",
+          "inputs": [
+            {
+              "id": "1774353464929_object",
+              "name": "object",
+              "value": "{{$context.$nodes.GET_ADAPTIVE_PAYLOAD_FOR_OPPORTUNITY.$output.result.entity}}",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "id": "1774353464929_q",
+              "name": "q",
+              "value": "{{$context.$nodes.GET_ADAPTIVE_PAYLOAD_FOR_OPPORTUNITY.$output.result.q}}",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "id": "1774353464929_sort",
+              "name": "sort",
+              "value": "{{$context.$nodes.GET_ADAPTIVE_PAYLOAD_FOR_OPPORTUNITY.$output.result.sort}}",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "id": "1774353464929_limit",
+              "name": "limit",
+              "value": "{{$context.$nodes.GET_ADAPTIVE_PAYLOAD_FOR_OPPORTUNITY.$output.result.limit}}",
+              "required": false,
+              "type": "integer"
+            },
+            {
+              "id": "1774353464929_fields",
+              "name": "fields",
+              "value": "{{$context.$nodes.GET_ADAPTIVE_PAYLOAD_FOR_OPPORTUNITY.$output.result.fields}}",
+              "required": false,
+              "type": "string"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Has Opportunities"
+          },
+          "outcomes": {
+            "true": "1775197150675",
+            "false": "1774954357934"
+          },
+          "diagram": {
+            "x": 5300,
+            "y": 5650
+          },
+          "code": "HAS_OPPORTUNITIES",
+          "convergenceTargetId": "end",
+          "id": "1774353613787",
+          "inputs": [
+            {
+              "id": "1774353613788_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_OPPORTUNITIES.$output?.length > 0}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Unable to associate any opportunity"
+          },
+          "outcomes": {},
+          "diagram": {
+            "x": 5000,
+            "y": 5872
+          },
+          "code": "UNABLE_TO_ASSOCIATE_ANY_OPPORTUNITY",
+          "convergenceTargetId": "end",
+          "id": "1774954357934",
+          "inputs": [
+            {
+              "id": "1774954357936_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "\"Unable to associate any opportunity\""
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Get payload for opportunity summary",
+            "returnType": "object",
+            "sourceCode": "const items = Array.isArray($context.$nodes.GET_OPPORTUNITIES.$output)\n  ? $context.$nodes.GET_OPPORTUNITIES.$output\n  : [];\n\nconst objectAltKeys = items\n  .map(item => item?.OptyNumber)\n  .filter(num => typeof num === 'string' && num.trim().length > 0);\n\nconst payload = {\n  outcomeStandardParameters: {\n    objectType: 'OPPORTUNITY',\n    objectAltKeys\n  },\n  outcomeOptionalParameters:\n    \"outcomeReferences[primaryRef='Y'] and outcomeType = 'SUMMARY' and outcomeSubtype = 'STATE_SUMMARY' and category = 'ENGAGEMENT'\"\n};\n\nreturn payload;"
+          },
+          "outcomes": {
+            "success": "1775189249598"
+          },
+          "diagram": {
+            "x": 5525,
+            "y": 5872
+          },
+          "code": "GET_PAYLOAD_FOR_OPPORTUNITY_SUMMARY",
+          "id": "1775197150675",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Get content to match"
+          },
+          "outcomes": {
+            "0": "1775191685788",
+            "1": "1775191685790"
+          },
+          "diagram": {
+            "x": 5049,
+            "y": 6094,
+            "width": 802,
+            "height": 3342
+          },
+          "code": "GET_CONTENT_TO_MATCH",
+          "convergenceTargetId": "1774354083760",
+          "id": "1775189249598",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "name": "Build LLM input for opportunity matching",
+            "returnType": "object",
+            "sourceCode": "const outcomes = Array.isArray($context.$nodes.GET_ENGAGEMENT_INSIGHTS.$output?.items)\n  ? $context.$nodes.GET_ENGAGEMENT_INSIGHTS.$output.items\n  : [];\n\nconst sourceOpportunities = Array.isArray($context.$nodes.GET_OPPORTUNITIES.$output)\n  ? $context.$nodes.GET_OPPORTUNITIES.$output\n  : [];\n\nconst opportunities = outcomes.map(item => {\n  const matchedOpportunity = sourceOpportunities.find(\n    opportunity => opportunity?.OptyNumber === item?.primaryObjectAltKey\n  );\n\n  let payload = {};\n\n  try {\n    payload = JSON.parse(item.payload || '{}');\n  } catch (e) {\n    payload = {};\n  }\n\n  return {\n    optyId: matchedOpportunity?.OptyId ?? null,\n    optyNumber: item.primaryObjectAltKey ?? null,\n    optyName: matchedOpportunity?.Name ?? matchedOpportunity?.OptyName ?? 'Unknown',\n    summary: payload?.what?.summary ?? ''\n  };\n});\n\nconst attachmentSummaries = Array.isArray($context.$variables.attachmentSummaries)\n  ? $context.$variables.attachmentSummaries\n  : [];\n\nconst llmInput = {\n  emailContent: $context.$nodes.NORMALIZE_EMAIL_HTML.$output.result ?? '',\n  attachmentSummaries,\n  opportunities\n};\n\nreturn llmInput;"
+          },
+          "outcomes": {
+            "success": "1776327329073"
+          },
+          "diagram": {
+            "x": 5240,
+            "y": 9586
+          },
+          "code": "BUILD_LLM_INPUT_FOR_OPPORTUNITY_MATCHING",
+          "id": "1774354083760",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check progression summary exists"
+          },
+          "diagram": {
+            "x": 5276,
+            "y": 9808
+          },
+          "outcomes": {
+            "true": "1776001000001",
+            "false": "1776327449547"
+          },
+          "id": "1776327329073",
+          "code": "CHECK_PROGRESSION_SUMMARY_EXISTS",
+          "type": "CONDITION",
+          "convergenceTargetId": "end",
+          "inputs": [
+            {
+              "id": "1776327329073_condition",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.BUILD_LLM_INPUT_FOR_OPPORTUNITY_MATCHING.$output.result?.opportunities?.some(opty => opty.summary && opty.summary.trim().length > 0)}}"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "name": "Match email with opportunities"
+          },
+          "outcomes": {
+            "success": "1776001000002"
+          },
+          "diagram": {
+            "x": 5058.5,
+            "y": 10030
+          },
+          "code": "MATCH_EMAIL_WITH_OPPORTUNITIES",
+          "id": "1776001000001",
+          "inputs": [
+            {
+              "id": "1776001000001_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "**Role**\nYou are an AI assistant that determines how well one email conversation (including attachment context) matches multiple CRM opportunities. Precision is more important than recall.\n\n---\n\n### Goal\nScore the same conversation against every provided opportunity summary in a single evaluation session so the scores stay calibrated relative to each other.\n\n---\n\n### Inputs\n1. Email conversation text:\n{{$context.$nodes.BUILD_LLM_INPUT_FOR_OPPORTUNITY_MATCHING.$output.result.emailContent}}\n\n2. Attachment summaries array (already filtered for relevant summaries):\n{{$context.$nodes.BUILD_LLM_INPUT_FOR_OPPORTUNITY_MATCHING.$output.result.attachmentSummaries}}\n\n3. Opportunity candidates JSON:\n{{$context.$nodes.BUILD_LLM_INPUT_FOR_OPPORTUNITY_MATCHING.$output.result.opportunities}}\n\nEach candidate contains:\n- `optyId`\n- `optyNumber`\n- `optyName`\n- `summary`\n\n---\n\n### Evaluation Rules\n1. Treat the conversation evidence as:\n   - primary: email conversation text\n   - supporting: attachment summaries\n2. Extract the email subject and main message content. Ignore signatures, disclaimers, and boilerplate.\n3. Compare combined evidence (email + attachment summaries) against every opportunity candidate using the same scoring scale.\n4. Use these signals:\n   - explicit identifiers such as opportunity name/number, quote references, deal references\n   - solution or product fit\n   - stakeholders and teams mentioned\n   - timeline or milestone alignment\n   - continuity with prior deal activity\n5. Penalize generic overlap, conflicting product/domain focus, or missing identifiers.\n6. Use calibrated scores:\n   - 9-10 only for unmistakable matches\n   - 7-8 for strong evidence with multiple signals\n   - 5-6 for partial or ambiguous overlap\n   - 0-4 for weak, generic, conflicting, or absent evidence\n7. If the solution/domain conflicts, cap the score at 4 unless identifiers conclusively tie the conversation to the opportunity.\n8. Do not over-weight attachment summaries when they are generic. Email evidence should dominate unless attachment evidence is specific and strongly aligned.\n\n---\n\n### Output Rules\n- Return one object for every supplied opportunity candidate.\n- For each object, copy `optyId` exactly from the input candidate.\n- For each object, copy `optyName` exactly from the input candidate. This is for trace/debug visibility.\n- Return strict JSON only.\n- Do not wrap the JSON in markdown.\n\n### Output Shape\n```json\n[\n  {\n    \"optyId\": \"<candidate optyId copied exactly from input>\",\n    \"optyName\": \"<candidate optyName copied exactly from input>\",\n    \"email_subject\": \"<subject extracted from the email>\",\n    \"score\": <integer 0-10>,\n    \"justification\": \"<2-4 concise sentences>\"\n  }\n]\n```"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"required\": [\n      \"optyId\",\n      \"optyName\",\n      \"email_subject\",\n      \"score\",\n      \"justification\"\n    ],\n    \"additionalProperties\": false,\n    \"properties\": {\n      \"optyId\": {\n        \"type\": \"string\",\n        \"description\": \"Opportunity id copied exactly from the input candidate\"\n      },\n      \"optyName\": {\n        \"type\": \"string\",\n        \"description\": \"Opportunity name copied exactly from the input candidate for trace/debug visibility\"\n      },\n      \"email_subject\": {\n        \"type\": \"string\",\n        \"description\": \"Subject line extracted from the email\"\n      },\n      \"score\": {\n        \"type\": \"integer\",\n        \"minimum\": 0,\n        \"maximum\": 10,\n        \"description\": \"Match score between the email and the opportunity\"\n      },\n      \"justification\": {\n        \"type\": \"string\",\n        \"description\": \"Brief explanation of the score\"\n      }\n    }\n  }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Missing progression summary"
+          },
+          "diagram": {
+            "x": 5538.5,
+            "y": 10030
+          },
+          "outcomes": {},
+          "id": "1776327449547",
+          "code": "MISSING_PROGRESSION_SUMMARY",
+          "type": "RETURN",
+          "inputs": [
+            {
+              "id": "1776327449547_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "Progression summaries are yet to generate for Opportunities"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "name": "Build association result",
+            "returnType": "object",
+            "sourceCode": "const { conversationId, conversationNumber } =\n  $context.$triggers.REST.$input.engagementContext || {};\n\nconst STRONG_MATCH_THRESHOLD = 7;\n\nconst llmMatchScores = Array.isArray($context.$nodes.MATCH_EMAIL_WITH_OPPORTUNITIES.$output)\n  ? $context.$nodes.MATCH_EMAIL_WITH_OPPORTUNITIES.$output\n  : [];\n\nconst normalizeScore = value => {\n  const parsed = Number(value);\n  if (Number.isNaN(parsed)) {\n    return 0;\n  }\n\n  return Math.max(0, Math.min(10, Math.round(parsed)));\n};\n\nconst strongMatches = llmMatchScores\n  .filter(match => match?.optyId !== undefined && match.optyId !== null)\n  .map(match => ({\n    optyId: String(match.optyId),\n    score: normalizeScore(match.score)\n  }))\n  .filter(match => match.optyId.trim() !== '' && match.score >= STRONG_MATCH_THRESHOLD)\n  .sort((a, b) => b.score - a.score);\n\nconst opportunitiesList = strongMatches.map(match => ({\n  id: match.optyId\n}));\n\nconst matchType = opportunitiesList.length > 0 ? 'strong' : 'none';\nconst matchScope =\n  opportunitiesList.length === 0\n    ? 'none'\n    : opportunitiesList.length === 1\n      ? 'single'\n      : 'multiple';\n\nconst conversationAssociation = {\n  type: 'email',\n  matchType,\n  matchScope,\n  conversationId,\n  conversationNumber,\n  opportunities: opportunitiesList\n};\n\nreturn {\n  llmMatchScores,\n  conversationAssociation\n};"
+          },
+          "outcomes": {
+            "success": "1775135415055"
+          },
+          "diagram": {
+            "x": 5300,
+            "y": 10252
+          },
+          "code": "BUILD_ASSOCIATION_RESULT",
+          "id": "1776001000002",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "rootNode": "start_1775135415055",
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "description": "Start of data pipeline",
+                    "name": "Start"
+                  },
+                  "diagram": {
+                    "x": 5449.5,
+                    "y": 10564
+                  },
+                  "outcomes": {
+                    "success": "1775637705429"
+                  },
+                  "id": "start_1775135415055",
+                  "code": "START",
+                  "type": "START",
+                  "inputs": []
+                },
+                {
+                  "metadata": {
+                    "name": "Create reference record for oppty",
+                    "businessObjectCode": "ORA_CX_SALESFORCE_CONVERSATIONS",
+                    "functionName": "create_conversationReferences"
+                  },
+                  "diagram": {
+                    "x": 5271.5,
+                    "y": 10715
+                  },
+                  "outcomes": {
+                    "success": "end_1775135415055"
+                  },
+                  "id": "1775637705429",
+                  "code": "CREATE_REFERENCE_RECORD_FOR_OPPTY",
+                  "type": "BO_FUNCTION",
+                  "inputs": [
+                    {
+                      "id": "1775232106870_conversationNumber",
+                      "name": "conversationNumber",
+                      "value": "{{$context.$nodes.BUILD_ASSOCIATION_RESULT.$output.result.conversationAssociation.conversationNumber}}",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "id": "1775232106870_objectId",
+                      "name": "objectId",
+                      "value": "{{$context.$nodes.FOR_EACH_OPPORTUNITY.$currentItem.id}}",
+                      "required": false
+                    },
+                    {
+                      "id": "1775232106870_objectTypeCd",
+                      "name": "objectTypeCd",
+                      "value": "ORA_MOO_OPTY",
+                      "required": false
+                    }
+                  ]
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "id": "end_1775135415055",
+                  "code": "END",
+                  "type": "END",
+                  "inputs": []
+                }
+              ]
+            },
+            "loopType": "SEQUENTIAL",
+            "name": "For each opportunity"
+          },
+          "outcomes": {
+            "success": "1776161745156"
+          },
+          "diagram": {
+            "x": 5150,
+            "y": 10474,
+            "width": 600,
+            "height": 348
+          },
+          "code": "FOR_EACH_OPPORTUNITY",
+          "id": "1775135415055",
+          "inputs": [
+            {
+              "id": "1775135415055_collection",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$nodes.BUILD_ASSOCIATION_RESULT.$output.result.conversationAssociation.opportunities}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "name": "Return conversation association"
+          },
+          "diagram": {
+            "x": 5280.5,
+            "y": 10972
+          },
+          "outcomes": {},
+          "id": "1776161745156",
+          "code": "RETURN_CONVERSATION_ASSOCIATION",
+          "type": "RETURN",
+          "inputs": [
+            {
+              "id": "1776161745156_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{\n  \"llmMatchScores\": {{$context.$nodes.BUILD_ASSOCIATION_RESULT.$output.result.llmMatchScores}},\n  \"conversationAssociation\": {{$context.$nodes.BUILD_ASSOCIATION_RESULT.$output.result.conversationAssociation}}\n}"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "description": "",
+            "name": "Get an email message content",
+            "businessObjectCode": "ORA_CX_SALESFORCE_EMAILS",
+            "functionName": "get_email_content"
+          },
+          "outcomes": {
+            "success": "1775637738223"
+          },
+          "diagram": {
+            "x": 5069,
+            "y": 6335
+          },
+          "code": "GET_AN_EMAIL_MESSAGE_CONTENT",
+          "id": "1775191685788",
+          "inputs": [
+            {
+              "id": "1775191685788_messageNumber",
+              "name": "messageNumber",
+              "value": "{{$context.$triggers.REST.$input.engagementContext.recentMessage.messageNumber}}",
+              "required": false,
+              "type": "string"
+            }
+          ],
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Get engagement insights",
+            "businessObjectCode": "ORA_CX_SALESFORCE_AIOUTCOMESTORE",
+            "functionName": "getOutcomes",
+            "description": "Read opportunity summary from AI Outcome Store."
+          },
+          "outcomes": {
+            "success": "1774354083760"
+          },
+          "diagram": {
+            "x": 5531,
+            "y": 6335
+          },
+          "code": "GET_ENGAGEMENT_INSIGHTS",
+          "id": "1775191685790",
+          "inputs": [
+            {
+              "id": "1775191685790_Outcome_Standard_Parameters",
+              "name": "Outcome_Standard_Parameters",
+              "value": "{{$context.$nodes.GET_PAYLOAD_FOR_OPPORTUNITY_SUMMARY.$output.result.outcomeStandardParameters}}",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "id": "1775191685790_Outcome_Optional_Parameters",
+              "name": "Outcome_Optional_Parameters",
+              "value": "{{$context.$nodes.GET_PAYLOAD_FOR_OPPORTUNITY_SUMMARY.$output.result.outcomeOptionalParameters}}",
+              "required": false,
+              "type": "string"
+            }
+          ],
+          "type": "BO_FUNCTION",
+          "outputSpecification": ""
+        },
+        {
+          "metadata": {
+            "description": "Normalize Email HTML To Plain Text",
+            "name": "Normalize Email HTML",
+            "returnType": "string",
+            "sourceCode": "// Email body HTML\nconst inputHtmlString = $context.$nodes.GET_AN_EMAIL_MESSAGE_CONTENT.$output || \"\";\n\n// Subject from recent message\nconst inputSubject =\n  $context.$triggers.REST.$input.engagementContext.recentMessage.messageTitle || \"\";\n\n// Remove non-content blocks\nlet outputPlainTextString = inputHtmlString\n  .replace(/<!--[\\s\\S]*?-->/g, \" \")\n  .replace(/<script\\b[^>]*>[\\s\\S]*?<\\/script>/gi, \" \")\n  .replace(/<style\\b[^>]*>[\\s\\S]*?<\\/style>/gi, \" \")\n  .replace(/<meta\\b[^>]*\\/?>/gi, \" \")\n  .replace(/<link\\b[^>]*\\/?>/gi, \" \")\n  .replace(/<xml\\b[^>]*>[\\s\\S]*?<\\/xml>/gi, \" \")\n  .replace(/<o:p\\b[^>]*>[\\s\\S]*?<\\/o:p>/gi, \" \");\n\n// Preserve structure as readable text\noutputPlainTextString = outputPlainTextString\n  .replace(/<\\s*br\\s*\\/?\\s*>/gi, \"\\n\")\n  .replace(/<\\s*hr\\b[^>]*\\/?\\s*>/gi, \"\\n----------------------------------------\\n\")\n  .replace(/<\\s*\\/\\s*(p|div|tr|li|h1|h2|h3|h4|h5|h6)\\s*>/gi, \"\\n\")\n  .replace(/<\\s*\\/\\s*td\\s*>/gi, \"\\t\");\n\n// Remove common HTML tags (explicit list only)\noutputPlainTextString = outputPlainTextString\n  .replace(/<\\s*\\/?\\s*(html|head|body|title|section|article|main|header|footer|aside|nav)\\b[^>]*>/gi, \" \")\n  .replace(/<\\s*\\/?\\s*(p|div|span|pre|code|blockquote|strong|b|em|i|u|small|sup|sub)\\b[^>]*>/gi, \" \")\n  .replace(/<\\s*\\/?\\s*(table|thead|tbody|tfoot|tr|td|th|ul|ol|li|dl|dt|dd)\\b[^>]*>/gi, \" \")\n  .replace(/<\\s*\\/?\\s*font\\b[^>]*>/gi, \" \");\n\n// Decode HTML entities\noutputPlainTextString = outputPlainTextString\n  .replace(/&nbsp;/gi, \" \")\n  .replace(/&amp;/gi, \"&\")\n  .replace(/&lt;/gi, \"<\")\n  .replace(/&gt;/gi, \">\")\n  .replace(/&quot;/gi, '\"')\n  .replace(/&#39;/gi, \"'\");\n\n// Normalize whitespace\noutputPlainTextString = outputPlainTextString\n  .replace(/[ \\t]+\\n/g, \"\\n\")\n  .replace(/\\n[ \\t]+/g, \"\\n\")\n  .replace(/[ \\t]{2,}/g, \" \")\n  .replace(/\\n{3,}/g, \"\\n\\n\")\n  .trim();\n\n// Prepend Subject\nconst subject = String(inputSubject).trim();\n\nif (subject) {\n  outputPlainTextString = `Subject: ${subject}\\n\\n${outputPlainTextString}`;\n}\n\n// String output\nreturn outputPlainTextString;"
+          },
+          "outcomes": {
+            "success": "1775724260660"
+          },
+          "diagram": {
+            "x": 5300,
+            "y": 6557
+          },
+          "code": "NORMALIZE_EMAIL_HTML",
+          "id": "1775637738223",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Init attachmentSummaries variable"
+          },
+          "outcomes": {
+            "success": "1775710270956"
+          },
+          "diagram": {
+            "x": 5271.5,
+            "y": 6779
+          },
+          "code": "INIT_ATTACHMENTSUMMARIES_VARIABLE",
+          "id": "1775724260660",
+          "inputs": [
+            {
+              "id": "1775724260660_attachmentSummaries",
+              "name": "attachmentSummaries",
+              "value": "[]"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "rootNode": "start_1775710270956",
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "dataPipeline": {
+                      "rootNode": "start_1775711301519",
+                      "pipelineNodes": [
+                        {
+                          "metadata": {
+                            "description": "Start of data pipeline",
+                            "name": "Start"
+                          },
+                          "diagram": {
+                            "x": 5449.5,
+                            "y": 7998
+                          },
+                          "outcomes": {
+                            "success": "1775745240025"
+                          },
+                          "id": "start_1775711301519",
+                          "code": "START",
+                          "type": "START",
+                          "inputs": []
+                        },
+                        {
+                          "metadata": {
+                            "name": "Is text based attachment"
+                          },
+                          "diagram": {
+                            "x": 5300,
+                            "y": 8149
+                          },
+                          "outcomes": {
+                            "true": "1775711433382",
+                            "false": ""
+                          },
+                          "id": "1775745240025",
+                          "code": "IS_TEXT_BASED_ATTACHMENT",
+                          "type": "CONDITION",
+                          "convergenceTargetId": "end",
+                          "inputs": [
+                            {
+                              "id": "1775745240025_condition",
+                              "name": "condition",
+                              "type": "string",
+                              "value": "{{!$context.$nodes.FOR_EACH_MESSAGES.FOR_EACH_ATTACHMENT.$currentItem.isImage}}"
+                            }
+                          ]
+                        },
+                        {
+                          "metadata": {
+                            "name": "Get text based attachment content",
+                            "type": "BO_FUNCTION",
+                            "businessObjectCode": "ORA_CX_SALESFORCE_EMAILS",
+                            "functionName": "get_attachment_FileContents"
+                          },
+                          "diagram": {
+                            "x": 5271.5,
+                            "y": 8371
+                          },
+                          "outcomes": {
+                            "success": "1775745472963"
+                          },
+                          "id": "1775711433382",
+                          "code": "GET_TEXT_BASED_ATTACHMENT_CONTENT",
+                          "type": "DOCUMENT_PROCESSOR",
+                          "inputs": [
+                            {
+                              "id": "1775711433382_messageNumber",
+                              "name": "messageNumber",
+                              "type": "string",
+                              "value": "{{$context.$nodes.FOR_EACH_MESSAGES.$currentItem.messageNumber}}"
+                            },
+                            {
+                              "id": "1775711433382_attachmentUid",
+                              "name": "attachmentUid",
+                              "type": "string",
+                              "value": "{{$context.$nodes.FOR_EACH_MESSAGES.FOR_EACH_ATTACHMENT.$currentItem.attachmentUid}}"
+                            }
+                          ],
+                          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"text\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"text\"\n  ]\n}"
+                        },
+                        {
+                          "metadata": {
+                            "name": "Validate attachment content"
+                          },
+                          "diagram": {
+                            "x": 5298.5,
+                            "y": 8593
+                          },
+                          "outcomes": {
+                            "true": "1775716640230",
+                            "false": ""
+                          },
+                          "id": "1775745472963",
+                          "code": "VALIDATE_ATTACHMENT_CONTENT",
+                          "type": "CONDITION",
+                          "convergenceTargetId": "end",
+                          "inputs": [
+                            {
+                              "id": "1775745472963_condition",
+                              "name": "condition",
+                              "type": "string",
+                              "value": "{{$context.$nodes.FOR_EACH_MESSAGES.FOR_EACH_ATTACHMENT.GET_TEXT_BASED_ATTACHMENT_CONTENT.$output.text?.length > 0}}"
+                            }
+                          ]
+                        },
+                        {
+                          "metadata": {
+                            "name": "Summarize attachment content"
+                          },
+                          "diagram": {
+                            "x": 5294,
+                            "y": 8815
+                          },
+                          "outcomes": {
+                            "success": "1775718667898"
+                          },
+                          "id": "1775716640230",
+                          "code": "SUMMARIZE_ATTACHMENT_CONTENT",
+                          "type": "LLM",
+                          "inputs": [
+                            {
+                              "id": "1775716640230_systemPrompt",
+                              "name": "systemPrompt",
+                              "type": "string",
+                              "value": ""
+                            },
+                            {
+                              "id": "1775716640230_prompt",
+                              "name": "prompt",
+                              "type": "string",
+                              "value": "You are a CRM attachment summarizer for an email-to-opportunity association workflow.\n\nYou will receive:\n- email_thread_text: the email conversation\n- attachment_text: parsed text from exactly one attachment\n\nThe parser may return an empty string or noisy text when extraction fails.\n\nYour task:\n- Determine whether the attachment contains meaningful business content.\n- Determine whether that attachment content is relevant to the email thread.\n- If and only if the attachment contains meaningful business content and is relevant, summarize the attachment itself.\n\nNON-NEGOTIABLE RULES\n1) Your output must be grounded in attachment_text, not in email_thread_text.\n2) Never use email_thread_text to invent, reconstruct, or guess missing attachment contents.\n3) Use email_thread_text only to judge relevance or disambiguate a clearly present attachment topic.\n4) If attachment_text is empty, blank, null-like, whitespace-only, or contains only parser noise / boilerplate / OCR fragments, you must return insufficient context.\n5) When uncertain, prefer \"insufficient context\" over guessing.\n6) Do not summarize the email itself.\n\nWhat counts as meaningful business content:\n- Proposals, quotes, SOWs, contracts, invoices, pricing, requirements, project updates, meeting notes, presentations, technical specs, customer issues, timelines, stakeholders, metrics, product or deal details.\n\nWhat does NOT count as meaningful business content:\n- Empty string\n- Whitespace\n- Legal disclaimers\n- Email signatures\n- Headers/footers\n- Repeated navigation labels\n- Page numbers\n- File names only\n- OCR garbage\n- Random isolated words/numbers/dates\n- Boilerplate with no substantive business meaning\n\nClassification logic in this exact order:\nSTEP 1: Inspect attachment_text alone.\n- If it does not contain meaningful business content, return:\n{\n  \"summaryText\": \"Insufficient business context in attachment.\",\n  \"isInsufficientContext\": true,\n  \"isRelevantToEmailContext\": false\n}\n\nSTEP 2: If attachment_text does contain meaningful business content, compare it against email_thread_text only for relevance.\n- If the attachment content is business-related but clearly unrelated to the email thread, return:\n{\n  \"summaryText\": \"Attachment content is not relevant to the email context.\",\n  \"isInsufficientContext\": false,\n  \"isRelevantToEmailContext\": false\n}\n\nSTEP 3: If the attachment content is meaningful and relevant, summarize the attachment only.\n- Return:\n{\n  \"summaryText\": \"<1-4 sentences, max 120 words, attachment-focused summary>\",\n  \"isInsufficientContext\": false,\n  \"isRelevantToEmailContext\": true\n}\n\nImportant interpretation rules:\n- If attachment_text is empty or effectively empty, do NOT produce a summary from the email.\n- If attachment_text has only weak fragments and the email suggests what the attachment might have been, still return insufficient context.\n- Use \"irrelevant context\" only when the attachment itself has clear business content, but that content does not match the email thread.\n- Ignore legal disclaimers, signatures, headers/footers, navigation noise, OCR garbage, and boilerplate.\n- Do not invent facts.\n\nReturn ONLY valid JSON exactly in this shape:\n{\n  \"summaryText\": \"string\",\n  \"isInsufficientContext\": true/false,\n  \"isRelevantToEmailContext\": true/false\n}\n\nemail_thread_text:\n<email_thread>\n{{$context.$nodes.NORMALIZE_EMAIL_HTML.$output.result}}\n</email_thread>\n\nattachment_text:\n<attachment_text>\n{{$context.$nodes.FOR_EACH_MESSAGES.FOR_EACH_ATTACHMENT.GET_TEXT_BASED_ATTACHMENT_CONTENT.$output.text}}\n</attachment_text>"
+                            }
+                          ],
+                          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"AttachmentSummaryOutput\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"summaryText\": { \"type\": \"string\" },\n    \"isInsufficientContext\": { \"type\": \"boolean\" },\n    \"isRelevantToEmailContext\": { \"type\": \"boolean\" }\n  },\n  \"required\": [\"summaryText\", \"isInsufficientContext\", \"isRelevantToEmailContext\"],\n  \"additionalProperties\": false\n}"
+                        },
+                        {
+                          "metadata": {
+                            "name": "Process LLM response",
+                            "returnType": "array",
+                            "sourceCode": "const llmResponse = $context.$nodes.FOR_EACH_MESSAGES.FOR_EACH_ATTACHMENT.SUMMARIZE_ATTACHMENT_CONTENT.$output || {};\n\nconst existingSummaries = Array.isArray($context.$variables.attachmentSummaries)\n  ? [...$context.$variables.attachmentSummaries]\n  : [];\n\nconst summaryText = String(llmResponse.summaryText || \"\").trim();\nconst isInsufficientContext = llmResponse.isInsufficientContext === true;\nconst isRelevantToEmailContext = llmResponse.isRelevantToEmailContext === true;\n\n// Append only useful summaries: sufficient + relevant\nif (!isInsufficientContext && isRelevantToEmailContext && summaryText) {\n  existingSummaries.push(summaryText);\n}\n\nreturn existingSummaries;"
+                          },
+                          "diagram": {
+                            "x": 5300,
+                            "y": 9037
+                          },
+                          "outcomes": {
+                            "success": "1775717904635"
+                          },
+                          "id": "1775718667898",
+                          "code": "PROCESS_LLM_RESPONSE",
+                          "type": "CODE",
+                          "inputs": [],
+                          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                        },
+                        {
+                          "metadata": {
+                            "name": "Update attachment summaries"
+                          },
+                          "diagram": {
+                            "x": 5298.5,
+                            "y": 9259
+                          },
+                          "outcomes": {
+                            "success": "end_1775711301519"
+                          },
+                          "id": "1775717904635",
+                          "code": "UPDATE_ATTACHMENT_SUMMARIES",
+                          "type": "SET_FIELDS",
+                          "inputs": [
+                            {
+                              "id": "1775717904635_attachmentSummaries",
+                              "name": "attachmentSummaries",
+                              "value": "{{$context.$nodes.FOR_EACH_MESSAGES.FOR_EACH_ATTACHMENT.PROCESS_LLM_RESPONSE.$output.result}}"
+                            }
+                          ]
+                        },
+                        {
+                          "metadata": {
+                            "name": "End",
+                            "description": "End of data pipeline"
+                          },
+                          "outcomes": {},
+                          "id": "end_1775711301519",
+                          "code": "END",
+                          "type": "END",
+                          "inputs": []
+                        }
+                      ]
+                    },
+                    "name": "For each attachment",
+                    "loopType": "SEQUENTIAL"
+                  },
+                  "diagram": {
+                    "x": 5150,
+                    "y": 7908,
+                    "width": 600,
+                    "height": 1458
+                  },
+                  "outcomes": {
+                    "success": "end_1775710270956"
+                  },
+                  "id": "1775711301519",
+                  "code": "FOR_EACH_ATTACHMENT",
+                  "type": "LOOP",
+                  "inputs": [
+                    {
+                      "id": "1775711301519_collection",
+                      "name": "collection",
+                      "type": "string",
+                      "value": "{{$context.$nodes.FOR_EACH_MESSAGES.PARSE_ATTACHMENT_METADATA.$output.result}}"
+                    }
+                  ]
+                },
+                {
+                  "metadata": {
+                    "description": "Start of data pipeline",
+                    "name": "Start"
+                  },
+                  "diagram": {
+                    "x": 5449.5,
+                    "y": 7091
+                  },
+                  "outcomes": {
+                    "success": "1775710751431"
+                  },
+                  "id": "start_1775710270956",
+                  "code": "START",
+                  "type": "START",
+                  "inputs": []
+                },
+                {
+                  "metadata": {
+                    "name": "Get email attachment metadata",
+                    "businessObjectCode": "ORA_CX_SALESFORCE_EMAILS",
+                    "functionName": "get_all_attachments_metadata"
+                  },
+                  "diagram": {
+                    "x": 5289.5,
+                    "y": 7242
+                  },
+                  "outcomes": {
+                    "success": "1775710907022"
+                  },
+                  "id": "1775710751431",
+                  "code": "GET_EMAIL_ATTACHMENT_METADATA",
+                  "type": "BO_FUNCTION",
+                  "inputs": [
+                    {
+                      "id": "1775710751431_messageNumber",
+                      "name": "messageNumber",
+                      "value": "{{$context.$nodes.FOR_EACH_MESSAGES.$currentItem.messageNumber}}",
+                      "required": false,
+                      "type": "string"
+                    }
+                  ]
+                },
+                {
+                  "metadata": {
+                    "name": "Has attachments"
+                  },
+                  "diagram": {
+                    "x": 5300,
+                    "y": 7464
+                  },
+                  "outcomes": {
+                    "true": "1775711076931",
+                    "false": ""
+                  },
+                  "id": "1775710907022",
+                  "code": "HAS_ATTACHMENTS",
+                  "type": "CONDITION",
+                  "convergenceTargetId": "end",
+                  "inputs": [
+                    {
+                      "id": "1775710907022_condition",
+                      "name": "condition",
+                      "type": "string",
+                      "value": "{{$context.$nodes.FOR_EACH_MESSAGES.GET_EMAIL_ATTACHMENT_METADATA.$output?.count > 0}}"
+                    }
+                  ]
+                },
+                {
+                  "metadata": {
+                    "name": "Parse attachment metadata",
+                    "sourceCode": "const attachmentMetadataResponse = $context.$nodes.FOR_EACH_MESSAGES.GET_EMAIL_ATTACHMENT_METADATA.$output;\nconst items = Array.isArray(attachmentMetadataResponse.items) ? attachmentMetadataResponse.items : [];\n\nconst attachments = items\n  .map((item) => {\n    const attachmentUid = item && item[\"@context\"] ? item[\"@context\"].key : null;\n    const uploadedFileContentType = String(item?.UploadedFileContentType || \"\").toLowerCase().trim();\n\n    if (typeof attachmentUid !== \"string\" || attachmentUid.trim().length === 0) {\n      return null;\n    }\n\n    const isImage = uploadedFileContentType.startsWith(\"image/\");\n\n    return {\n      attachmentUid,\n      isImage\n    };\n  })\n  .filter((entry) => entry !== null);\n\nreturn attachments;",
+                    "returnType": "array"
+                  },
+                  "diagram": {
+                    "x": 5300,
+                    "y": 7686
+                  },
+                  "outcomes": {
+                    "success": "1775711301519"
+                  },
+                  "id": "1775711076931",
+                  "code": "PARSE_ATTACHMENT_METADATA",
+                  "type": "CODE",
+                  "inputs": [],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "id": "end_1775710270956",
+                  "code": "END",
+                  "type": "END",
+                  "inputs": []
+                }
+              ]
+            },
+            "loopType": "SEQUENTIAL",
+            "name": "For each messages"
+          },
+          "outcomes": {
+            "success": "1774354083760"
+          },
+          "diagram": {
+            "x": 5130,
+            "y": 7001,
+            "width": 640,
+            "height": 2400
+          },
+          "code": "FOR_EACH_MESSAGES",
+          "id": "1775710270956",
+          "inputs": [
+            {
+              "id": "1775710270956_collection",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.engagementContext.messageChain}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1ffd6fc3-726e-4186-ae21-b1b8a935644c",
+          "name": "attachmentSummaries",
+          "scope": "CONVERSATION",
+          "type": "array",
+          "typeSpecification": "{\n  \"type\": \"array\",\n  \"description\": \"Summaries of all attachments found across the email conversation thread.\",\n  \"default\": [],\n  \"items\": {\n    \"type\": \"string\",\n    \"minLength\": 1\n  }\n}"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "dtRunProfiles": {
+      "activeProfileId": null,
+      "profiles": [
+        {
+          "id": "dccb42a5-317d-4328-95a3-fe9b47d59ef7",
+          "name": "New run profile 1",
+          "type": "rest",
+          "agenticAppMode": "query",
+          "restConfigJson": "{\n  \"engagementContext\": {\n    \"conversationId\": 300100647023765,\n    \"conversationNumber\": \"CDRM_0000010048\",\n    \"association\": {\n      \"isAssociated\": true,\n      \"isAcntAssociated\": true,\n      \"isOptyAssociated\": false,\n      \"accounts\": [\n        {\n          \"accountPartyNumber\": \"CDRM_1017608\",\n          \"accountPartyId\": 300100646961932\n        }\n      ]\n    },\n    \"recentMessage\": {\n      \"messageId\": \"300100647023766\",\n      \"messageNumber\": \"CDRM_0000009016\",\n      \"messageTitle\": \"Compute hardware proposal follow-up\",\n      \"direction\": \"ORA_SVC_INBOUND\",\n      \"senderEmail\": \"tmorgan@4roappdev.onmicrosoft.com\",\n      \"sentDate\": null\n    },\n    \"messageChain\": [\n      {\n        \"messageId\": \"300100647023766\",\n        \"messageNumber\": \"CDRM_0000009016\"\n      }\n    ],\n    \"customerContactEmails\": [\n      \"tmorgan@4roappdev.onmicrosoft.com\",\n      \"asharma@4roappdev.onmicrosoft.com\"\n    ],\n    \"salesUserEmails\": [\n      \"rmorro@4roappdev.onmicrosoft.com\"\n    ]\n  }\n\n\n}"
+        }
+      ]
+    },
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": "",
+    "agentsValueMappings": [],
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1774976938880",
+            "name": "engagementContext",
+            "scope": "JOB",
+            "type": "object",
+            "typeSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"EngagementContext\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"conversationId\": {\n      \"type\": [\"integer\", \"null\"],\n      \"description\": \"CRM conversation identifier.\"\n    },\n    \"conversationNumber\": {\n      \"type\": \"string\",\n      \"description\": \"Readable conversation number.\",\n      \"default\": \"\"\n    },\n    \"association\": {\n      \"type\": \"object\",\n      \"description\": \"Current linkage flags plus referenced accounts.\",\n      \"properties\": {\n        \"isAssociated\": { \"type\": \"boolean\", \"default\": false },\n        \"isAcntAssociated\": { \"type\": \"boolean\", \"default\": false },\n        \"isOptyAssociated\": { \"type\": \"boolean\", \"default\": false },\n        \"accounts\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"accountPartyId\": { \"type\": [\"integer\", \"null\"] },\n              \"accountPartyNumber\": { \"type\": \"string\" }\n            },\n            \"required\": [\"accountPartyNumber\"],\n            \"additionalProperties\": false\n          },\n          \"default\": []\n        }\n      },\n      \"additionalProperties\": false,\n      \"default\": {}\n    },\n    \"recentMessage\": {\n      \"type\": [\"object\", \"null\"],\n      \"description\": \"Most recent conversation message metadata.\",\n      \"properties\": {\n        \"messageId\": { \"type\": [\"integer\", \"string\", \"null\"] },\n        \"messageNumber\": { \"type\": \"string\" },\n        \"messageTitle\": { \"type\": \"string\", \"default\": \"\" },\n        \"direction\": { \"type\": \"string\", \"description\": \"Raw MessageTypeCd value.\" },\n        \"senderEmail\": { \"type\": \"string\", \"default\": \"\" },\n        \"sentDate\": { \"type\": [\"string\", \"null\"], \"description\": \"ISO timestamp.\" }\n      },\n      \"required\": [\"messageNumber\", \"direction\", \"senderEmail\"],\n      \"additionalProperties\": false\n    },\n    \"messageChain\": {\n      \"type\": \"array\",\n      \"description\": \"All messages in the conversation thread, ordered by CreationDate asc.\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"messageId\": { \"type\": [\"integer\", \"string\", \"null\"] },\n          \"messageNumber\": { \"type\": \"string\", \"default\": \"\" }\n        },\n        \"required\": [\"messageNumber\"],\n        \"additionalProperties\": false\n      },\n      \"default\": []\n    },\n    \"customerContactEmails\": {\n      \"type\": \"array\",\n      \"items\": { \"type\": \"string\" },\n      \"default\": []\n    },\n    \"salesUserEmails\": {\n      \"type\": \"array\",\n      \"items\": { \"type\": \"string\" },\n      \"default\": []\n    }\n  },\n  \"required\": [\n    \"association\",\n    \"messageChain\",\n    \"customerContactEmails\",\n    \"salesUserEmails\"\n  ],\n  \"additionalProperties\": false\n}"
+          }
+        ]
+      }
+    ],
+    "deletedTriggerTypes": [],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI"
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "SALES_FORCE_AUTOMATION",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "FULL",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

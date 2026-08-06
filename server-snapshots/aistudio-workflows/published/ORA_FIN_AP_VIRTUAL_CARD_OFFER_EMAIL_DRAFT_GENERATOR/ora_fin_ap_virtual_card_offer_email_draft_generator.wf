@@ -1,0 +1,447 @@
+{
+  "workflowId": "100002355226968",
+  "workflowCode": "ORA_FIN_AP_VIRTUAL_CARD_OFFER_EMAIL_DRAFT_GENERATOR",
+  "name": "Virtual Card Offer Email Draft Generator",
+  "description": "The Virtual Card Offer Email Draft Generator retrieves draft offer details and composes supplier-addressed email drafts for the selected Virtual Card program. It produces only Virtual Card email drafts, which users can copy and send to suppliers.",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1775515334452"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Supplier and Payment Term Extractor"
+          },
+          "outcomes": {
+            "success": "1767695048308"
+          },
+          "code": "FIN_AP_LLM_SUPPLIER_AND_PAYMENT_TERM_EXTRACTOR",
+          "id": "1767694266569",
+          "inputs": [
+            {
+              "id": "1767694266573_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "# ROLE\n\n- You are an AI agent.\n- Your sole responsibility is to review the user's message, chat history, and suppliers list to determine if the user has selected a supplier and payment term for Virtual Card offer email drafting. Return the supplierName, supplierId, and paymentTermName.\n\n# GUIDELINES\n\n- Use the following as context:\n    - input message: {{$context.$system.$inputMessage}}\n    - chat history: {{$context.$triggers.REST.$input.chatHistory}}\n    - suppliers list: {{$context.$triggers.REST.$input.identifiedSuppliers}}\n\n- Determine the user’s request intent from the input message. If the user’s latest message is a reply to a follow-up question, use the chat history to understand the original request and its context. If the request identified from the context is not an email generation request (for example, VCC/Virtual Card offer creation or offer drafting request instead of email drafting):\n    - set invalidRequest = true.\n    - set userRequest = short summary on users request from the context.\n- Else:\n    - set invalidRequest = false.\n\n- Search the suppliers list for supplier names mentioned in the combined context.\n- If multiple suppliers are found, use the most recently mentioned supplier.\n- Set supplierName to the latest supplier name identified.\n- Find and set supplierId for this supplier from the suppliers list.\n- Only select suppliers that are available in the suppliers list.\n- Extract payment term name from the context if it is provided by the user; set this as paymentTermName.\n- If either the supplier or payment term name is missing, set missingInformation = true; otherwise, set missingInformation = false.\n\n- Output ONLY the following JSON object, with the appropriate values.\n- Do not include any additional explanation, formatting, or text."
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"supplierName\": {\n            \"type\": \"string\"\n        },\n        \"supplierId\": {\n            \"type\": \"integer\"\n        },\n        \"paymentTermName\": {\n             \"type\": \"string\"\n        },\n        \"missingInformation\": {\n             \"type\": \"boolean\"\n        },\n        \"invalidRequest\": {\n            \"type\": \"boolean\"\n        },\n        \"userRequest\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Need More Details From User"
+          },
+          "outcomes": {
+            "true": "1767714499314",
+            "false": "1767714917706"
+          },
+          "code": "FIN_AP_IF_CONDITION_NEED_MORE_DETAILS_FROM_USER",
+          "convergenceTargetId": "1767784816902",
+          "id": "1767695048308",
+          "inputs": [
+            {
+              "id": "1767695048310_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_LLM_SUPPLIER_AND_PAYMENT_TERM_EXTRACTOR.$output.missingInformation}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Missing Information Collector"
+          },
+          "outcomes": {
+            "success": "1767784851328"
+          },
+          "code": "FIN_AP_LLM_MISSING_INFORMATION_COLLECTOR",
+          "convergenceTargetId": "1767714740531",
+          "id": "1767714499314",
+          "inputs": [
+            {
+              "id": "1767714499317_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "- You are an agent. Your sole responsibility is to inform the user that no valid supplier or payment term could be found.\n- Check the following values:\n    - Supplier: {{$context.$nodes.FIN_AP_LLM_SUPPLIER_AND_PAYMENT_TERM_EXTRACTOR.$output.supplierName}}\n    - Payment Term: {{$context.$nodes.FIN_AP_LLM_SUPPLIER_AND_PAYMENT_TERM_EXTRACTOR.$output.paymentTermName}}\n- If either supplier or payment term is missing, politely ask the user to provide the missing information.\n- Only ask the user to provide the missing information.\n- Do not add any other details or information."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_PAYABLES_SUPPLIER_INSTALLMENT_SUMMARY",
+            "functionName": "supplier_installment_summary",
+            "processJson": true,
+            "name": "Suppliers Upcoming Installment Details"
+          },
+          "outcomes": {
+            "success": "1767715612748"
+          },
+          "code": "FIN_AP_BUSINESS_OBJECT_FUNCTION_SUPPLIERS_UPCOMING_INSTALLMENT_DETAILS",
+          "id": "1767714917706",
+          "inputs": [
+            {
+              "id": "1775514938223_1",
+              "name": "currency",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.currencyCode}}"
+            },
+            {
+              "id": "1775514938224_2",
+              "name": "BU",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.businessUnitName}}"
+            },
+            {
+              "id": "1775514938224_3",
+              "name": "startDay",
+              "type": "integer",
+              "value": "{{$context.$variables.startDay}}"
+            },
+            {
+              "id": "1775514938225_4",
+              "name": "endDay",
+              "type": "integer",
+              "value": "{{$context.$triggers.REST.$input.endNoOfDays}}"
+            },
+            {
+              "id": "1775514938226_5",
+              "name": "supplierId",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_LLM_SUPPLIER_AND_PAYMENT_TERM_EXTRACTOR.$output.supplierId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Draft Email"
+          },
+          "outcomes": {
+            "success": "1767784884417"
+          },
+          "code": "FIN_AP_LLM_DRAFT_EMAIL",
+          "id": "1767715612748",
+          "inputs": [
+            {
+              "id": "1767715612750_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Produce the email draft following the exact template below.\n- Do NOT change any word.\n- Do NOT change sentence order.\n- Do NOT rephrase or add creativity.\n- Do NOT include greetings or sign-offs.\n- Do NOT ask for placeholder values related to VC_Partner_Name or Buyer_Support_Contact.\n\n- If {{$context.$nodes.FIN_AP_LLM_SUPPLIER_AND_PAYMENT_TERM_EXTRACTOR.$output.invalidRequest}} is true: \n    - Politely inform the user that the operation requested ( {{$context.$nodes.FIN_AP_LLM_SUPPLIER_AND_PAYMENT_TERM_EXTRACTOR.$output.userRequest}} ) is not currently supported. Provide a draft email that the user can use to initiate offline communication with the supplier.\n\n**Strict Email Template (MUST BE OUTPUT EXACTLY AS WRITTEN):**\n\nWhen generating the email, you must output the following text verbatim, replacing only the placeholder fields:\n\nSubject: Payment Offer via Virtual Credit Card  \nEmail Content:  \nWe value our partnership and are committed to improving efficiency and security in our payment processes.  \nWe’re pleased to extend an opportunity for you to receive early payment through Virtual Credit Cards, enabled via {VC_Partner_Name}.  \nThis payment method can offer your organization:  \nFaster payments – access funds much sooner than standard payment terms  \nEnhanced security – virtual card processing minimizes payment risk  \nImproved cash flow – accelerated receipt of funds supports liquidity  \nBelow is a summary of your payment terms and eligible transactions that qualify for early payment under this Virtual Card Offer.  \nAn interchange fee will apply on the total amount payable.  \nSupplier: {{$context.$nodes.FIN_AP_LLM_SUPPLIER_AND_PAYMENT_TERM_EXTRACTOR.$output.supplierName}} \nNew Payment Term: {{$context.$nodes.FIN_AP_LLM_SUPPLIER_AND_PAYMENT_TERM_EXTRACTOR.$output.paymentTermName}} \nNumber of Installments: {{$context.$nodes.FIN_AP_BUSINESS_OBJECT_FUNCTION_SUPPLIERS_UPCOMING_INSTALLMENT_DETAILS.$output.items[0].countInstallments}} \nOutstanding Amount: {{$context.$nodes.FIN_AP_BUSINESS_OBJECT_FUNCTION_SUPPLIERS_UPCOMING_INSTALLMENT_DETAILS.$output.items[0].invoiceRemainingAmount}} \nAction Required: Review and respond to Virtual Card Offer  \nPlease review the details of the virtual card offer and inform us of your decision to accept or decline the offer.  \nIf you accept the offer, the virtual card will be sent to the email address used for this communication. Alternatively, you may provide up to five (5) email addresses to receive the virtual card.  \nFor questions, please contact {Buyer_Support_Contact}."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.25
+              },
+              "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+              "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+              "modelName": "GPT OSS 120B (Basic)",
+              "provider": "CERT_BASIC"
+            },
+            "name": "Content Summarizer"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FIN_AP_LLM_CONTENT_SUMMARIZER",
+          "id": "1767784816902",
+          "inputs": [
+            {
+              "id": "1767784816903_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "ROLE\nYou are a Response Structuring Agent.\n\nYour ONLY task is to analyze and structure the BUSINESS OUTPUT\ngenerated by a previous LLM.\n\nYou must NEVER analyze, summarize, or transform:\n- Your own instructions\n- System messages\n- Prompt text\n- Rules or guidelines\n\nCRITICAL INPUT BOUNDARY:\nYou will receive RAW BUSINESS CONTENT strictly enclosed between\nthe markers:\n\n<<<RAW_INPUT_START>>>\n {{$context.$variables.summarizerInput}} \n<<<RAW_INPUT_END>>>\n\nONLY the text between these markers is valid input.\nIGNORE everything outside these markers completely.\n\nIf no meaningful business data exists inside the markers,\nreturn an EMPTY JSON ARRAY: []\n\nWHAT TO EXTRACT:\nFrom the RAW INPUT ONLY, identify and structure:\nSummary text (descriptive or informational)\n\nYou must NOT generate new information.\nYou must ONLY reorganize what exists in the RAW INPUT.\n\nOUTPUT RULES (STRICT):\n- Output ONLY valid JSON\n- Output MUST be a JSON array\n- NO explanations, comments, or markdown\n- NO inferred or calculated data\n- Preserve original wording exactly\n- Maintain original order using \"sequence\"\n\nOUTPUT SCHEMA:\n\n1) TEXT BLOCK\nUse ONLY if the RAW INPUT contains a business summary.\n\n{\n  \"type\": \"text\",\n  \"content\": [\"<summary text>\"],\n  \"sequence\": 1,\n  \"formatHint\": \"Identify the content as an email template if it includes a clear subject/header marker (e.g., a line starting with “Subject:”), an explicit body marker (e.g., “Email Content:”, “Body:”), recipient-directed messaging and a call-to-action (“please review/respond/accept/decline”), and/or support contact details (email/phone) and a signature-like ending; once identified, format it using structure-preserving styling rather than relying on raw newlines (which many systems collapse): output as HTML with each logical block wrapped in <p> tags (and controlled margins for spacing), convert any list-like benefit lines into a proper <ul><li> list, render key-value fields (terms, amounts, action required) in a simple two-column <table> with minimal padding, use <strong> sparingly for critical labels/values (amount, action required, fee note), keep fonts/colors minimal and left-aligned for broad client compatibility, place the call-to-action in its own paragraph for visibility, and put the support contact in a final paragraph with a mailto: link; if HTML is not allowed, emit explicit line-break tokens (\\\\n, \\\\n\\\\n) and have the client replace them at render time so the layout doesn’t collapse into a single paragraph.\"\n}\n\nRules:\n- content MUST be an array\n- Include formatHint ONLY if explicitly required by the text\n\nFORBIDDEN BEHAVIOR:\n- NEVER treat instructions as content\n- NEVER extract lists from rules or guidelines\n- NEVER create actions from constraints\n- NEVER summarize system or assistant text\n\nFINAL INSTRUCTION:\nReturn the structured JSON array based ONLY on the text\ninside <<<RAW_INPUT_START>>> and <<<RAW_INPUT_END>>>.\nReturn NOTHING ELSE."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Set Missing Information Collector Message"
+          },
+          "outcomes": {
+            "success": "1767784816902"
+          },
+          "code": "FIN_AP_SET_VARIABLES_SET_MISSING_INFORMATION_COLLECTOR_MESSAGE",
+          "id": "1767784851328",
+          "inputs": [
+            {
+              "id": "1767784859370",
+              "name": "summarizerInput",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_LLM_MISSING_INFORMATION_COLLECTOR.$output}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Set Draft Email Message"
+          },
+          "outcomes": {
+            "success": "1767784816902"
+          },
+          "code": "FIN_AP_SET_VARIABLES_SET_DRAFT_EMAIL_MESSAGE",
+          "id": "1767784884417",
+          "inputs": [
+            {
+              "id": "1767784895469",
+              "name": "summarizerInput",
+              "type": "string",
+              "value": "{{$context.$nodes.FIN_AP_LLM_DRAFT_EMAIL.$output}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Check Start Date"
+          },
+          "outcomes": {
+            "true": "1775515382350",
+            "false": "1775515411660"
+          },
+          "code": "FIN_AP_IF_CHECK_START_DATE",
+          "convergenceTargetId": "1767694266569",
+          "id": "1775515334452",
+          "inputs": [
+            {
+              "id": "1775515334453_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.startNoOfDays>6}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Set Day Variable True"
+          },
+          "outcomes": {
+            "success": "1767694266569"
+          },
+          "code": "FIN_AP_SET_DAY_VARIABLE_TRUE",
+          "id": "1775515382350",
+          "inputs": [
+            {
+              "id": "1775515388219",
+              "name": "startDay",
+              "scope": "JOB",
+              "type": "integer",
+              "value": "{{$context.$triggers.REST.$input.startNoOfDays}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Set Day Variable False"
+          },
+          "outcomes": {
+            "success": "1767694266569"
+          },
+          "code": "FIN_AP_SET_DAY_VARIABLE_FALSE",
+          "id": "1775515411660",
+          "inputs": [
+            {
+              "id": "1775515430153",
+              "name": "startDay",
+              "scope": "JOB",
+              "type": "integer",
+              "value": "7"
+            }
+          ],
+          "type": "SET_FIELDS"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1775515359240",
+          "name": "startDay",
+          "scope": "CONVERSATION",
+          "type": "integer"
+        },
+        {
+          "id": "1767784790226",
+          "name": "summarizerInput",
+          "scope": "JOB",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.25
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "modelName": "GPT OSS 120B (Basic)",
+      "provider": "CERT_BASIC"
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1775514860725",
+            "name": "endNoOfDays",
+            "scope": "JOB",
+            "type": "integer"
+          },
+          {
+            "id": "1767715007415",
+            "name": "startNoOfDays",
+            "type": "integer"
+          },
+          {
+            "id": "1767714997816",
+            "name": "businessUnitName",
+            "type": "string"
+          },
+          {
+            "id": "1767714989373",
+            "name": "currencyCode",
+            "type": "string"
+          },
+          {
+            "id": "1767694522751",
+            "name": "chatHistory",
+            "type": "string"
+          },
+          {
+            "id": "1767693993197",
+            "name": "identifiedSuppliers",
+            "type": "array"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "FIN",
+  "product": "PAYABLES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"8\""
+  }
+}

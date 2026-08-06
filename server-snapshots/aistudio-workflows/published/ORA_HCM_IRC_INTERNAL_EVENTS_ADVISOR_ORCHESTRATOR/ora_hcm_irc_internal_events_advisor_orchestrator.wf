@@ -1,0 +1,823 @@
+{
+  "workflowId": "300000326918732",
+  "workflowCode": "ORA_HCM_IRC_INTERNAL_EVENTS_ADVISOR_ORCHESTRATOR",
+  "name": "Internal Events Advisor Orchestrator",
+  "description": "Orchestrates internal events discovery, readiness checks, and communications.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1765250282913"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Switch For OraMessageHint"
+          },
+          "outcomes": {
+            "Summary": "1765226439678",
+            "Query": "1765226590057",
+            "InitActions": "1765782741323",
+            "InvokeAction": "1767769610546",
+            "InitDisplay": "1765229900132",
+            "InitCommunications": "1765230116849"
+          },
+          "code": "SWITCH_FOR_ORAMESSAGEHINT",
+          "convergenceTargetId": "end",
+          "id": "1765224461108",
+          "inputs": [
+            {
+              "id": "1765224461111_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.OraMessageHint}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Summary LLM_For Widget"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SUMMARY",
+          "id": "1765225186556",
+          "inputs": [
+            {
+              "id": "1765225186557_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Following output contains list of events that have been suggested based on the employee profile and skill gaps that may be of interest/useful to the employee. Generate a brief summary explaining about why events were suggested and how they could be useful to the employee based on their skill profile and skill gaps\n\nDo not show any additional thinking/explanation. Only display a summary of max two to three sentences.\n\n {{$context.$nodes.FINDMATCHINGEVENTS.$output.output}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_CARD",
+                "ORA_LAYOUT_MULTIRECORD"
+              ],
+              "enableActions": true,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Query LLM For Widget"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "QUERY",
+          "id": "1765225606482",
+          "inputs": [
+            {
+              "id": "1765225606483_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "**ROLE**\nYou are an AI assistant that ONLY answers questions on events STRICTLY based on the provided \"Events\" data below. \n- DO NOT invent answers or answer from your general knowledge.\n- Generate the response in the *Response Format Guidelines*. \n- If the query does not pertain to the information in *Events*, simply tell the user that the query is not related to the data you have available to you and that you can help answer questions regarding employee events.\n\n#User Query:\n {{$context.$system.$inputMessage}}\n\n#Chat History:\n {{$context.$system.$chatHistory}}\n\n#Events\n{{$context.$nodes.FINDMATCHINGEVENTS.$output.output}}\n\n\n#Response Format Guidelines\nDO NOT output raw JSON.  \nDO NOT describe actions in text.  \nDO NOT render markdown.  \n\n────────────────────────────────────  \nGLOBAL RULES (STRICT)  \n────────────────────────────────────  \n- Display ONLY user-facing business data  \n- NEVER display JobId, GigId, RequestId, or internal/system fields  \n- Use widgets ONLY  \n- Actions MUST be bound to supported widget locations  \n- After rendering required widgets, STOP immediately  \n\n────────────────────────────────────  \nWIDGET SELECTION (only if the query is related to Events data)  \n────────────────────────────────────  \nUse appropriate widget to display the result based on the output data\n\nWhen generating Card widget follow the following\n**cardWidget:**  \n- Subject: Event Title \n- Summary:  \n  - Location  \n  - Description of Event\n  - Duration\n  - Date\n- Variant:  \n- Event Type \n- Action (MANDATORY):  \n  - Register  \n\n────────────────────────────────────  \nNON-NEGOTIABLE CONSTRAINTS  \n────────────────────────────────────  \n- Never show action JSON visibly  \n- Do not include any actions in the output widget\n- Exclude empty or duplicate fields  \n\n#Action Definitions\n- Generate action only when the response is directly related to \"Events\" data\n- Available Actions: This section defines the supported actions and their description\n    - Register : Allows the user to register for an event\n\n- Action Selection:  This section defines how to select the correct action to generate.\n    - If the response contains detailed information regarding an event, generate Register action\n    - If the response contains multiple events and they have not been explained in full detail, generate Register for each one\n \n- Action Details : This section defines the details for each action \n    - Register: .\n        - Template: {\"text\": \"Register\", \"action\": \"ora.Invoke('REGISTERFOREVENT', {\\\"actionCode\\\":\\\"register\\\",\\\"EventNumber\\\":<EventNumber>})\"}\n     \n    - substituting <EventNumber> with the current event's Event Number, so that this information is passed back for follow-up processing.\n- Action Generation Directives :\n    - Generate the action exactly following the syntax mentioned in the Action Details section.\n    - Use only the data provided to you.\n    - Do not generate any actions not defined in Available Actions"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Data For Summary Agent",
+            "returnType": "object",
+            "sourceCode": "//Get Data from WF Agent And Pass it to LLM\nreturn null;"
+          },
+          "outcomes": {
+            "success": "1765225186556"
+          },
+          "code": "PREPARE_DATA_FOR_SUMMARY_AGENT",
+          "id": "1765226439678",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Data For Query Agent",
+            "returnType": "object",
+            "sourceCode": "//Get the data from WF Agent and pass it to LLM for widgets \nreturn null;"
+          },
+          "outcomes": {
+            "success": "1765225606482"
+          },
+          "code": "PREPARE_DATA_FOR_QUERY_AGENT",
+          "id": "1765226590057",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Data For Display Agent",
+            "returnType": "object",
+            "sourceCode": "//Get the data from WF Agent and pass it to LLM for widgets \nreturn null;"
+          },
+          "outcomes": {
+            "success": "1765229991674"
+          },
+          "code": "PREPARE_DATA_FOR_DISPLAY_AGENT",
+          "id": "1765229900132",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_MESSAGES_LIST"
+              ],
+              "enableActions": true,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {},
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Display LLM Agent Widget"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "DISPLAY_LLM_AGENT",
+          "id": "1765229991674",
+          "inputs": [
+            {
+              "id": "1765229991679_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Input: {{$context.$nodes.FINDMATCHINGEVENTS.$output.output}} \n\nYou are a specialized UI rendering assistant for Employee Event Listings.\nYou must adhere to the standard oraInfoDisplay Knowledge Base.\n\n**DIRECTIVE:**\nYour sole purpose is to transform input data about available events for employees into a valid <oraInfoDisplay> XML block using the messageListWidget.\n\n**ROOT CONFIGURATION:**\n\ntitle: Generate a concise headline (e.g., \"Upcoming Employee Events\").\ndescription: Generate a short, non-repetitive summary explaining the value of participating in these events.\n\n**STRICT MAPPING RULES:**\n\nitems[].title: Map the event Name here.\nitems[].summary: Map a strictly one sentence, concise summary of the Description field here.\nitems[].Subtitle:  StartDate - EndDate. (Display the StartDate and EndDate exactly as received in the input data.)\nitems[].badgeText: Decide the badge based on factors such as StartDate, RegisteredCount, MaximumCapacity, and Event status (e.g., “Posted”). For example: Use \"Filling Fast\" if RegisteredCount is greater than 70% of MaximumCapacity.\nUse \"Starting Soon\" if StartDate is within the next 7 days. 1) Current time in UTC (system time): {{$context.$system.$currentDateTime}}\nUse \"Open for Registration\" if the event status is \"Posted\" and the event has not started yet.\nDisplay the number of people registered if neither of the above conditions is met, such as \"2 Registered\".\nUse your best judgement to choose the most relevant badge for each event based on these available factors.\n\nDo not include priority, timestamp, or image for any item.\n\n**ACTION LOGIC:**\n\nFor each item, add an additional action button labeled \"View Event Details\".\nDo NOT set an action at the item level.\nora.Invoke('viewEventDetails', {\\\"actionCode\\\":\\\"viewEventDetails\\\",\\\"EventNumber\\\": <EventNumber>}),\nsubstituting <EventNumber> with the current event's Event Number, so that this information is passed back for follow-up processing.\n\n### Time Zone Formatting Rule\nFor `items[].Subtitle`, display `StartDate - EndDate` but convert any time zone into a **standard short abbreviation**.\n\n- If the time zone is an **IANA zone** (e.g., `America/Los_Angeles`, `Asia/Kolkata`, `Europe/London`), convert it to the **correct local abbreviation for that date**, accounting for daylight saving time (e.g., `PST/PDT`, `CST/CDT`, `GMT/BST`, `IST`).\n- If the time zone is already an abbreviation (e.g., `PST`, `IST`, `JST`), keep it unchanged.\n- If the time zone cannot be resolved, fall back to a numeric UTC offset if available.\n- Do **not** modify the date or time values — only replace the time zone label.\n\n--------------------------------------------------------------------\nAUTHORITATIVE TIME INPUTS (IMMUTABLE — SINGLE SOURCE OF TRUTH)\n\nYou have TWO authoritative time inputs:\n\n1) Current time in UTC (system time):\n{{$context.$system.$currentDateTime}}\n\n2) User timezone (IANA format, e.g., \"America/Los_Angeles\"):\nDerive the timezone from the StartDate–EndDate values and use it consistently\n--------------------------------------------------------------------"
+            }
+          ],
+          "outputSpecification": "",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Data For Communication",
+            "returnType": "object",
+            "sourceCode": "//Prepare Data For Communication Agent \nreturn $context.$nodes.LOAD_OR_CACHE_CONTEXT.$output.output"
+          },
+          "outcomes": {
+            "success": "1765985063790"
+          },
+          "code": "PREPARE_DATA_FOR_COMMUNICATION",
+          "id": "1765230116849",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Agent Data",
+            "returnType": "object",
+            "sourceCode": "//construct the data oraHintMessage, userContext and other data needed for any downstream agent \nreturn null;"
+          },
+          "outcomes": {
+            "success": "1765224461108"
+          },
+          "code": "PREPARE_AGENT_DATA",
+          "id": "1765239497647",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "check_if_cache_exists"
+          },
+          "outcomes": {
+            "true": "1765250359458",
+            "false": "1765238435056"
+          },
+          "code": "CHECKIFCACHEEXISTS",
+          "convergenceTargetId": "1765239497647",
+          "id": "1765250282913",
+          "inputs": [
+            {
+              "id": "1765250282914_1",
+              "name": "condition",
+              "type": "string",
+              "value": "1 === 2"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "set_var in cache",
+            "returnType": "object",
+            "sourceCode": "//Set the variable after getting it from WF Agent \nreturn null;"
+          },
+          "outcomes": {
+            "success": "1765239497647"
+          },
+          "code": "SETVAR",
+          "id": "1765250303807",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "ICCInternalEventsAdvisorManagementWFAgent",
+            "workflowCode": "ORA_HCM_IRC_INTERNAL_EVENTS_ADVISOR"
+          },
+          "outcomes": {
+            "success": "1767771147500"
+          },
+          "code": "LOAD_OR_CACHE_CONTEXT",
+          "convergenceTargetId": "1765250303807",
+          "id": "1765238435056",
+          "inputs": [
+            {
+              "id": "1765554585814_1",
+              "name": "message",
+              "type": "string",
+              "value": "Load internal event context for the current employee."
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "set_var_2",
+            "returnType": "object",
+            "sourceCode": "//Set variable from cache return null;"
+          },
+          "outcomes": {
+            "success": "1765239497647"
+          },
+          "code": "SETVAR2",
+          "id": "1765250359458",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [],
+              "enableActions": true,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "ListActions"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "LISTACTIONS",
+          "id": "1765782741323",
+          "inputs": [
+            {
+              "id": "1765782741324_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are generating Agentic App actions from the provided employee event data.\nInput: {{$context.$nodes.FINDMATCHINGEVENTS.$output.output}}\n\nProduction rules:\n- Use only the input data. Do not invent events, titles, dates, ids, or statuses.\n- Generate an action only when an event has EventNumber and RespondentStatusCode is not ORA_REGISTERED.\n- Action code must be REGISTERFOREVENT.\n- Payload actionCode must be register.\n- actionText must be Register.\n- followUpCommand must be exactly: ora.Invoke(\"REGISTERFOREVENT\", {\"actionCode\":\"register\",\"EventNumber\":\"<EventNumber>\"})\n- Replace <EventNumber> with the event's EventNumber from input.\n- Sort actionable events by nearest StartDate when available.\n- Mark priority true only for the top 40 percent of actionable events, rounded up, with a maximum of 2 priority actions.\n- Non-priority actions may be returned for the remaining actionable events.\n- If no actionable event exists, return no actions.\n\nEach action must contain only title, shortDescription, actionText, followUpCommand, and priority."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Get Upcoming Registered Event Alert",
+            "workflowCode": "ORA_HCM_IRC_INTERNAL_EVENTS_ADVISOR_COMMUNICATION"
+          },
+          "outcomes": {
+            "success": "1770121828820"
+          },
+          "code": "GET_UPCOMING_REGISTERED_EVENT_ALERT",
+          "id": "1765985063790",
+          "inputs": [
+            {
+              "id": "1765985099417_1",
+              "name": "message",
+              "type": "string",
+              "value": "Find upcoming registered event alerts for the current employee."
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "GetActionDetails",
+            "returnType": "array",
+            "sourceCode": "var raw = $context.$triggers.REST.$input.OraAction;\nvar payload = {};\nif (raw && typeof raw === \"string\") {\n  try { payload = JSON.parse(raw); } catch (e) { payload = {}; }\n} else if (raw && typeof raw === \"object\") {\n  payload = raw;\n}\nif (payload && payload.payload && typeof payload.payload === \"object\") {\n  var nested = payload.payload;\n  for (var key in nested) {\n    if (nested.hasOwnProperty(key) && payload[key] == null) {\n      payload[key] = nested[key];\n    }\n  }\n}\nvar action = \"\";\nif (payload && payload.actionCode != null) { action = String(payload.actionCode); }\nelse if (payload && payload.ActionCode != null) { action = String(payload.ActionCode); }\nelse if (payload && payload.code != null) { action = String(payload.code); }\nvar upper = action.toUpperCase();\nif (upper === \"REGISTER\" || upper === \"REGISTERFOREVENT\") { action = \"REGISTERFOREVENT\"; }\nelse if (upper === \"VIEWEVENTDETAILS\" || upper === \"VIEWDETAILS\") { action = \"viewEventDetails\"; }\nelse if (upper === \"MARKFAV\" || upper === \"MARKFAVORITE\" || upper === \"MARKFAVOURITE\") { action = \"MARKFAV\"; }\nelse if (upper === \"APPLY\") { action = \"APPLY\"; }\nelse if (action) { action = upper; }\nreturn [action, payload];"
+          },
+          "outcomes": {
+            "success": "1767769692026"
+          },
+          "code": "GETACTIONDETAILS",
+          "id": "1767769610546",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "CheckAction"
+          },
+          "outcomes": {
+            "true": "1767769881697",
+            "false": "1765231803702"
+          },
+          "code": "CHECKACTION",
+          "convergenceTargetId": "end",
+          "id": "1767769692026",
+          "inputs": [
+            {
+              "id": "1767769692028_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.GETACTIONDETAILS.$output.result[0]=='viewEventDetails'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "ICCInternalEventsAdvisorActionAgent",
+            "workflowCode": "ORA_HCM_IRC_INTERNAL_EVENTS_ADVISOR_ACTIONS"
+          },
+          "outcomes": {
+            "success": "1765232069007"
+          },
+          "code": "INVOKE_ACTION_WF_AGENT",
+          "convergenceTargetId": "1767769757159",
+          "id": "1765231803702",
+          "inputs": [
+            {
+              "id": "1765555058438_1",
+              "name": "message",
+              "type": "string",
+              "value": "Process the requested internal event action using the provided OraAction and OraMessageHint."
+            },
+            {
+              "id": "1765555058440_2",
+              "name": "OraAction",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.OraAction}}"
+            },
+            {
+              "id": "1765555058443_3",
+              "name": "OraMessageHint",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.OraMessageHint}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_RECORD",
+                "ORA_LAYOUT_CARD"
+              ],
+              "enableActions": false,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "ResponseFormatterLLMWidget"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "INVOKE_USER_ACTIONS",
+          "convergenceTargetId": "1767769757159",
+          "id": "1765232069007",
+          "inputs": [
+            {
+              "id": "1765232069008_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Input: `{{$context.$nodes.INVOKE_ACTION_WF_AGENT.$output.output}}`\n\"You are generating an information display for an Agentic App. The action result will conform to one of two possible JSON schemas. Based on which schema is present, output exactly one escaped <oraInfoDisplay> element (no additional text, explanation, or markdown). Follow these instructions precisely:\n\n1) If the result matches the Schema (has 'message' and 'event_name'):\nOutput a single escaped <oraInfoDisplay> with key 'unique:registration{event_name}'.\nUse patternId 'cardWidget'.\nThe JSON payload properties must include:\ntitle: set to the event_name\npatternId: 'cardWidget'\ndescription: a one-line summary (use the 'message' value)\nproperties: an object matching the cardWidget schema:\nsubject: event_name\ntimestamp: Just now,\nbadgeText: SUCCESS,\nsummary: message\nvariant: 'info'\nExample output shape:\n<oraInfoDisplay key=\"unique:registration{eventname}\">\n{ \"title\": \"...\", \"patternId\":\"cardWidget\", \"description\":\"...\", \"properties\": { \"subject\":\"...\", \"summary\":\"...\", \"variant\":\"info\" } }\n</oraInfoDisplay>\n\n2) If the result matches the Event Schema (event_name, start_date, end_date, registrants, event_format, description, event_team, optionally meeting_link and meeting_details):\nOutput a single escaped <oraInfoDisplay> with key 'unique:event{eventname}'.\nUse patternId 'recordWidget'.\nMap the event fields into the recordWidget fields array. Use readOnly: true for display-only behavior unless the app requires editing.\nUse the following field mappings (field id, type, label, value):\nid: 'event_name', type: 'text', label: 'Event Name', value: eventname\nid: 'start_date', type: 'text', label: 'Start Date and Time', value: startdate\nid: 'end_date', type: 'text', label: 'End Date and Time', value: enddate\nid: 'registrants', type: 'text', label: 'Registrants', value: registrants\nid: 'event_format', type: 'text', label: 'Format', value: eventformat\nid: 'event_team', type: 'text', label: 'Event Team', value: eventteam\nid: 'meeting_link', type: 'text', label: 'Meeting Link', value: meetinglink (include only if present)\nid: 'meeting_details', type: 'textarea', label: 'Meeting Details', value: meetingdetails (include only if present)\nid: 'description', type: 'textarea', label: 'Description', value: description\nEnsure the recordWidget JSON follows the recordWidget schema: include id (use 'event_details{event_name}') and readOnly: true (or false if editable).\nExample output shape:\n<oraInfoDisplay key=\"unique:event{eventname}\">\n{\n\"title\":\"Event: {event_name}\",\n\"patternId\":\"recordWidget\",\n\"description\":\"Event details\",\n\"properties\": {\n\"id\":\"eventdetails{event_name}\",\n\"readOnly\": true,\n\"fields\":[ { \"id\":\"event_name\", \"type\":\"text\", \"label\":\"Event Name\", \"value\":\"...\" }, ... ]\n}\n}\n</oraInfoDisplay>\n\n4) General rules:\nOutput only one escaped <oraInfoDisplay> element (no surrounding text).\nUse the widget patternIds exactly: 'cardWidget', 'recordWidget', or 'multiRecordWidget'.\nFor recordWidget date/time fields we store the full ISO datetime string in a text or textarea field to preserve time zone info.\nFor recordWidget textarea field types, do not moit or trim the content. display full text \nKeep titles concise and descriptions short.\nDo not fabricate missing recipient or linking data. Omit optional fields if they are not present in the input.\nDo not include any XML that is not the single escaped <oraInfoDisplay> element.\"\n\n--------------------------------------------------------------------\nERROR HANDLING\n--------------------------------------------------------------------\nIf the output {{$context.$nodes.INVOKE_ACTION_WF_AGENT.$output.output}} has no data or contains the text \"Error occurred on this action\". Return the below as plain text\n\nThe action could not be completed. Please try again."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "InternalEventsActionAdvisorAgent",
+            "workflowCode": "ORA_HCM_IRC_INTERNAL_EVENTS_ADVISOR_ACTIONS"
+          },
+          "outcomes": {
+            "success": "1767770055615"
+          },
+          "code": "INTERNALEVENTSACTIONADVISORAGENT",
+          "id": "1767769881697",
+          "inputs": [
+            {
+              "id": "1767770005559_1",
+              "name": "message",
+              "type": "string",
+              "value": "Process the requested internal event action using the provided OraAction and OraMessageHint."
+            },
+            {
+              "id": "1767770005561_2",
+              "name": "OraAction",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.OraAction}}"
+            },
+            {
+              "id": "1767770005563_3",
+              "name": "OraMessageHint",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.OraMessageHint}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [
+                "ORA_LAYOUT_CARD"
+              ],
+              "enableActions": true,
+              "enableCommunications": false
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "FormatOutput"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FORMATOUTPUT",
+          "id": "1767770055615",
+          "inputs": [
+            {
+              "id": "1767770055617_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are provided with two inputs:\n\n**Input 1:**  \nA comma-separated list of an employee’s top skills. These skills are derived by analyzing the employee’s current position, department, job responsibilities, most recent gigs, job applications, and their documented skills profile.\n {{$context.$nodes.LOAD_OR_CACHE_CONTEXT.$output.output}} \n\n**Input 2:**  \nA JSON object containing detailed information about an event that has been recommended for the employee, based on the skills identified in Input 1.\n{{$context.$nodes.INTERNALEVENTSACTIONADVISORAGENT.$output.output}}\n\n**Your Task:**  \nCompose a concise, second-person explanation of why this event is an excellent match for the employee’s unique skill set, making explicit reference to how Input 1 was generated from various aspects of the employee’s background (current role, department, gigs, job applications, and skills). Clearly highlight how the event is relevant to their expertise and career trajectory. Summarize the primary benefits of attending, then extract and display the most important event details (including event name, date, location, format, topics/skills covered, prerequisites, and team/capacity details if available). Conclude with an encouraging prompt that motivates the employee to register for the event.\n**ACTION LOGIC for cardWidget:**\n\"link\": {\n\"text\": \"Register\",\n\"action\": \"ora.Invoke('REGISTERFOREVENT',{\\\"actionCode\\\":\\\"register\\\",\\\"EventNumber\\\":<EventNumber>})\"\n}\nreplace the <EventNumber> with actual event number from {{$context.$nodes.INTERNALEVENTSACTIONADVISORAGENT.$output.output}}\n**Instructions:**  \n- Start with an explanation of why the event is well matched, referencing the employee’s skills and how they were selected.\n- Do not list the input1 skills in the output\n- Summarize why the employee should register (emphasizing relevance, benefits, and growth opportunities).\n- Boldly present the event’s key details: event name, date, time, location, format, main topics/skills, prerequisites, and team/capacity if applicable.\n- End with an encouraging statement that motivates the employee to register for the event.\n- Write in a clear, structured, and second-person format appropriate for an internal employee recommendation.\n- Do not add any other explanations/ follow up questions\n\n\n--------------------------------------------------------------------\nERROR HANDLING\n--------------------------------------------------------------------\nIf the output {{$context.$nodes.INTERNALEVENTSACTIONADVISORAGENT.$output.output}} has no data or contains the text \"Error occurred on this action\". Return the below as plain text\n\nThe action could not be completed. Please try again."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "FindMatchingEvents",
+            "workflowCode": "ORA_HCM_IRC_INTERNAL_EVENTS_FINDER"
+          },
+          "outcomes": {
+            "success": "1770059198233"
+          },
+          "code": "FINDMATCHINGEVENTS",
+          "id": "1767771147500",
+          "inputs": [
+            {
+              "id": "1767771167114_1",
+              "name": "message",
+              "type": "string",
+              "value": "Find matching internal events using the provided SkillsList."
+            },
+            {
+              "id": "1767771167115_2",
+              "name": "SkillsList",
+              "type": "string",
+              "value": "{{$context.$nodes.LOAD_OR_CACHE_CONTEXT.$output.output}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"string\"\n    },\n    \"output\": {\n      \"type\": \"string\"\n    },\n    \"error\": {\n      \"type\": \"null\"\n    },\n    \"followUpQuestions\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"type\": \"string\"\n        }\n      ]\n    },\n    \"jobId\": {\n      \"type\": \"string\"\n    },\n    \"conversationId\": {\n      \"type\": \"string\"\n    },\n    \"traceId\": {\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"type\": \"string\"\n    },\n    \"supportingChunks\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"nodes\": {\n      \"type\": \"array\",\n      \"items\": {}\n    },\n    \"waitingToolCode\": {\n      \"type\": \"null\"\n    },\n    \"workflowCode\": {\n      \"type\": \"string\"\n    },\n    \"workflowVersion\": {\n      \"type\": \"integer\"\n    },\n    \"workflowStatus\": {\n      \"type\": \"string\"\n    },\n    \"startDate\": {\n      \"type\": \"integer\"\n    },\n    \"endTime\": {\n      \"type\": \"integer\"\n    },\n    \"createDate\": {\n      \"type\": \"string\"\n    },\n    \"endDate\": {\n      \"type\": \"string\"\n    },\n    \"timeTaken\": {\n      \"type\": \"integer\"\n    },\n    \"inputTokenCount\": {\n      \"type\": \"integer\"\n    },\n    \"outputTokenCount\": {\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": []\n}",
+          "type": "WORKFLOW"
+        },
+        {
+          "metadata": {
+            "name": "Check For Empty Data"
+          },
+          "outcomes": {
+            "true": "1770059216890",
+            "false": "add_false_1770059198233"
+          },
+          "code": "CHECK_FOR_EMPTY_DATA",
+          "convergenceTargetId": "1765250303807",
+          "id": "1770059198233",
+          "inputs": [
+            {
+              "id": "1770059198237_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FINDMATCHINGEVENTS.$output.output == null || $context.$nodes.FINDMATCHINGEVENTS.$output.output == \"\" || $context.$nodes.FINDMATCHINGEVENTS.$output.output == \"null\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1765250303807"
+          },
+          "id": "add_false_1770059198233",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Return No Data Message"
+          },
+          "outcomes": {},
+          "code": "RETURN_NO_DATA_MESSAGE",
+          "convergenceTargetId": "1765250303807",
+          "id": "1770059216890",
+          "inputs": [
+            {
+              "id": "1770059216891_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "No data available at the moment."
+            }
+          ],
+          "type": "RETURN"
+        },
+        {
+          "metadata": {
+            "name": "Check if Empty"
+          },
+          "outcomes": {
+            "true": "1770122095520",
+            "false": "1765226050287"
+          },
+          "code": "CHECK_IF_EMPTY",
+          "convergenceTargetId": "end",
+          "id": "1770119612190",
+          "inputs": [
+            {
+              "id": "1770119612191_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.UPCOMING_EVENT_AVAILABLE.$output.result}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Upcoming Event Available",
+            "returnType": "boolean",
+            "sourceCode": "return $context.$nodes.GET_UPCOMING_REGISTERED_EVENT_ALERT.$output.output == 'NO_EVENTS';"
+          },
+          "outcomes": {
+            "success": "1770119612190"
+          },
+          "code": "UPCOMING_EVENT_AVAILABLE",
+          "id": "1770121828820",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "layouts": [],
+              "enableActions": true,
+              "enableCommunications": true
+            }
+          },
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "name": "Draft Important Messages"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "DRAFT_IMPORTANT_MESSAGES",
+          "convergenceTargetId": "1770121919752",
+          "id": "1765226050287",
+          "inputs": [
+            {
+              "id": "1765226050288_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are given this data {{$context.$nodes.GET_UPCOMING_REGISTERED_EVENT_ALERT.$output.output}}. If it is not an empty object produce one communication suggestions with below details.\n\n###email###\n1.Using the contents in {{$context.$nodes.GET_UPCOMING_REGISTERED_EVENT_ALERT.$output.output}} create an \"email\" communication suggestion with the following:\ntitle: Share Event Details\nsubject: A one line description about the event\ncontent: Using first person tone, generate the email content mentioning why you think event is useful. Also mention the relevant event details as well. At the end add a new line and signature with name as {{$context.$app.$OraUserContext.fullName}}. Format the content in html rich text.\n\n### Time Zone Formatting Rule\nFor `items[].Subtitle`, display `StartDate - EndDate` but convert any time zone into a **standard short abbreviation**.\n\n- If the time zone is an **IANA zone** (e.g., `America/Los_Angeles`, `Asia/Kolkata`, `Europe/London`), convert it to the **correct local abbreviation for that date**, accounting for daylight saving time (e.g., `PST/PDT`, `CST/CDT`, `GMT/BST`, `IST`).\n- If the time zone is already an abbreviation (e.g., `PST`, `IST`, `JST`), keep it unchanged.\n- If the time zone cannot be resolved, fall back to a numeric UTC offset if available.\n- Do **not** modify the date or time values — only replace the time zone label.\n\nIf the data given to you is empty. Only return {} and nothing else"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "No Communications Available Message"
+          },
+          "outcomes": {},
+          "code": "NO_COMMUNICATIONS_AVAILABLE_MESSAGE",
+          "convergenceTargetId": "end",
+          "id": "1770122095520",
+          "inputs": [
+            {
+              "id": "1770122095522_1",
+              "name": "returnValue",
+              "type": "string",
+              "value": "No communications available at the moment"
+            }
+          ],
+          "type": "RETURN"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.75
+      },
+      "code": "ORA_LLM_PREMIUM",
+      "model": "OPEN_AI_GPT_4_1_MINI",
+      "modelName": "GPT-4.1 mini",
+      "provider": "CERT_PREMIUM"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1765563136356",
+            "name": "message",
+            "type": "string"
+          },
+          {
+            "id": "1765554851906",
+            "name": "OraAction",
+            "type": "string"
+          },
+          {
+            "id": "1765224893838",
+            "name": "OraMessageHint",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": [
+      "588893"
+    ]
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "RECRUITING",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": true,
+  "followupEnabledFlag": false,
+  "seededRoles": [
+    {
+      "role": "ORA_HCM_IRC_EMP_WF_AGENT_ACCESS",
+      "id": "300000326918733"
+    }
+  ],
+  "header": {
+    "ETag": "\"2\""
+  }
+}

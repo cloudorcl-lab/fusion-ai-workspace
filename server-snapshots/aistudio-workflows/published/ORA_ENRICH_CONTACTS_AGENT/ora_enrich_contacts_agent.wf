@@ -1,0 +1,278 @@
+{
+  "workflowId": "100002355226938",
+  "workflowCode": "ORA_ENRICH_CONTACTS_AGENT",
+  "name": "Enrich Contacts Agent",
+  "description": "Identifies contact information from email signatures in a given email conversation for specified email addresses. Automates the creation of new contacts not yet in Sales and the updating of existing Sales contacts with fields like first name, last name, account, job title, and phone numbers.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1765860334644"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Enrich Contact"
+          },
+          "outcomes": {
+            "success": "1765859742537"
+          },
+          "code": "ENRICH_CONTACT",
+          "id": "1765859429186",
+          "inputs": [
+            {
+              "id": "1765859429190_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "<!-- PURPOSE -->\n  <purpose>\n    Enrich a list of Sales?CRM contacts by extracting data from the\n    email signatures found in a full email conversation.\n    The system must return **pure RFC?8259 JSON** ? no extra text,\n    comments, or markup.\n  </purpose>\n\n  <!-- INPUTS -->\n  <inputs>\n    <contactEmailCsv>\n      <!-- A comma?separated list of contact e?mail addresses.\n           Example: john.doe@example.com, jane.smith@acme.co.uk -->\n    </contactEmailCsv>\n    <emailText>\n      <!-- The complete raw e?mail thread (including all replies,\n           forwards, and signatures). -->\n    </emailText>\n  </inputs>\n\n  <!-- INSTRUCTIONS -->\n  <instructions>\n    1. <match>For every e?mail address in <contactEmailCsv>, locate the\n       corresponding signature block inside <emailText>.  \n       If a signature cannot be found, treat the contact as \"no signature\" and proceed with fallback in point 3 below.</match>\n\n    2. <extract>From each identified signature extract, when present,\n       the following fields:</extract>\n       <field>FirstName</field>,\n       <field>LastName</field>,\n       <field>JobTitle</field>,\n       <field>AccountName</field>,\n       <field>MobilePhone</field>,\n       <field>WorkPhone</field>,\n       <field>WorkPhoneExtension</field>,\n       <field>PhysicalAddress</field>.\n\n    3. <fallback>\n       If no signature is found, at least infer <field>FirstName</field> and\n       <field>LastName</field> from the e?mail's display name or\n       from the local?part of the address (if available).  \n       Find related contact details- Job Title, Phone Number(s), Account Name, etc., from entire <emailText> as secondary source.\n       Else, these fields become \"not available\".\n    </fallback>\n\n    4. <phone_normalisation>\n       ? Strip every non?digit character from a phone number.  \n       ? Determine the country code (CC) and produce an E.164?style\n         representation: \"+&lt;CC&gt; &lt;Number&gt\".  \n       ? The extension (if present) is kept **only** in the\n         <field>WorkPhoneExtension</field> field.\n    </phone_normalisation>\n\n    5. <country_code_inference>\n       ? Primary source: a full postal address that contains a country\n         name.  \n       ? Secondary source: the numeric pattern of the phone number\n         (e.g., leading \"0\" for UK, 10?digit without leading zero for\n         India).  \n       ? Tertiary source: the e?mail domain's top?level?domain\n         (e.g., *.co.uk ? UK, *.in ? India).  \n       ? Record the confidence in <field>CountryCodeConfidence</field>:\n         \"High\" when the country is derived from an explicit address,\n         otherwise \"Low\".\n    </country_code_inference>\n\n    6. <phone_labeling>\n       ? Mobile numbers are identified by labels such as \"M\", \"Mobile\",\n         \"Cell\", \"Cellular\".  \n       ? Work numbers are identified by \"O\", \"Office\", \"P\", \"Phone\".  \n       ? If a label cannot be resolved, the number is ignored for that\n         category.\n    </phone_labeling>\n\n    7. <account_sharing>\n       All contacts whose e?mail addresses share the same domain must\n       receive the **same** <field>AccountName</field> value(s).  If the\n       signature supplies multiple possible legal names for the same\n       entity, list **up to five** variations as an array of strings. Also do a final check in the emailText \n       to check for other variations of the same accountName and append to the accountName array resolved.\n    </account_sharing>\n\n    8. <reasoning>\n       Every output object must contain a <field>Reasoning</field> string\n       that explains **exactly** how each field was obtained (signature,\n       inference, fallback, etc.).  If no data could be retrieved for a\n       contact, the reasoning must state why.\n    </reasoning>\n\n    9. <null_handling>\n       ? Do **not** emit keys whose value would be null.  \n       ? Omit any phone?country?code key if the corresponding phone\n         number is missing.\n    </null_handling>\n\n    10. <formatting_rules>\n        ? All country?code strings must start with a leading \"+\".  \n        ? Formatted numbers must **not** contain \"ext\", \"extn\", \"x\", or \"#\".\n          The extension appears only in <field>WorkPhoneExtension</field>.\n    </formatting_rules>\n  </instructions>\n\n  <!-- OUTPUT SCHEMA -->\n  <output_schema>\n    {\n      \"items\": [\n        {\n          \"EmailAddress\": \"<string>\",               <!-- always present -->\n          \"FirstName\": \"<string>\",                  <!-- optional -->\n          \"LastName\": \"<string>\",                   <!-- optional -->\n          \"JobTitle\": \"<string>\",                   <!-- optional -->\n          \"AccountName\": [\"<string>\", ...],         <!-- optional, array -->\n          \"MobileCountryCode\": \"<+CC>\",             <!-- optional -->\n          \"MobileNumber\": \"<digits>\",               <!-- optional -->\n          \"FormattedMobileNumber\": \"<+CC digits>\", <!-- optional -->\n          \"WorkPhoneCountryCode\": \"<+CC>\",          <!-- optional -->\n          \"WorkPhoneNumber\": \"<digits>\",            <!-- optional -->\n          \"WorkPhoneExtension\": \"<string>\",         <!-- optional -->\n          \"FormattedWorkPhoneNumber\": \"<+CC digits xExtension>\", <!-- optional -->\n          \"CountryCodeConfidence\": \"High|Low\",      <!-- optional -->\n          \"PhysicalAddress\": \"<string>\",            <!-- optional -->\n          \"Reasoning\": \"<string>\"                   <!-- always present -->\n        }\n        <!-- repeat for each e?mail in the CSV -->\n      ]\n    }\n  </output_schema>\n\n  <!-- SAMPLE USAGE -->\n  <samples>\n    <sample id=\"1\">\n      <description>Full signature with address ? high confidence</description>\n      <signature>\n        Michael Thompson\n        Senior Procurement Manager\n        Global Procure\n        Office: 020 7123 4567 ext 301\n        Mobile: 07912 345678\n        Address: 5th Floor, 120 Bishopsgate, London, United Kingdom\n      </signature>\n      <expected_output>\n        {\n          \"items\": [\n            {\n              \"EmailAddress\": \"michael.thompson@globalprocure.com\",\n              \"FirstName\": \"Michael\",\n              \"LastName\": \"Thompson\",\n              \"JobTitle\": \"Senior Procurement Manager\",\n              \"AccountName\": [\"Global Procure\"],\n              \"MobileCountryCode\": \"+44\",\n              \"MobileNumber\": \"7912345678\",\n              \"FormattedMobileNumber\": \"+44 7912345678\",\n              \"WorkPhoneCountryCode\": \"+44\",\n              \"WorkPhoneNumber\": \"2071234567\",\n              \"WorkPhoneExtension\": \"301\",\n              \"FormattedWorkPhoneNumber\": \"+44 2071234567 x301\",\n              \"CountryCodeConfidence\": \"High\",\n              \"PhysicalAddress\": \"5th Floor, 120 Bishopsgate, London, United Kingdom\",\n              \"Reasoning\": \"First name, last name, job title, Account name, Mobile Number and Work Phone number extracted directly from the signature. Country code derived from the explicit United Kingdom address, therefore confidence is High.\"\n            }\n          ]\n        }\n      </expected_output>\n    </sample>\n\n    <sample id=\"2\">\n      <description>Signature without address ? low confidence</description>\n      <signature>\n        Best Regards,\n        Rajiv Mehta\n        Indus Operations\n        M: 9820123456\n      </signature>\n      <expected_output>\n        {\n          \"items\": [\n            {\n              \"EmailAddress\": \"rajiv.mehta@indusoperations.in\",\n              \"FirstName\": \"Rajiv\",\n              \"LastName\": \"Mehta\",\n              \"AccountName\": [\"Indus Operations\"],\n              \"MobileCountryCode\": \"+91\",\n              \"MobileNumber\": \"9820123456\",\n              \"FormattedMobileNumber\": \"+91 9820123456\",\n              \"CountryCodeConfidence\": \"Low\",\n              \"Reasoning\": \"Mobile number extracted; country inferred from Indian number pattern, no explicit address, so confidence is Low. No work phone or address found.\"\n            }\n          ]\n        }\n      </expected_output>\n    </sample>\n  </samples>\n\n  <!-- EXECUTION -->\n  <execution>\n    <input>\n      <contactEmailCsv>{{$context.$nodes.PROCESS_PAYLOAD.$output.result.contactEmailCsv}}</contactEmailCsv>\n      <emailText>{{$context.$nodes.PROCESS_PAYLOAD.$output.result.emailText}}</emailText>\n    </input>\n    <output>/* Return ONLY the JSON object defined in <output_schema> */</output>\n  </execution>"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": [\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"EmailAddress\": {\n              \"type\": \"string\"\n            },\n            \"FirstName\": {\n              \"type\": \"string\"\n            },\n            \"LastName\": {\n              \"type\": \"string\"\n            },\n            \"JobTitle\": {\n              \"type\": \"string\"\n            },\n            \"AccountName\": {\n              \"type\": \"array\"\n            },\n            \"MobileCountryCode\": {\n              \"type\": \"string\"\n            },\n            \"MobileNumber\": {\n              \"type\": \"string\"\n            },\n            \"FormattedMobileNumber\": {\n              \"type\": \"string\"\n            },\n            \"WorkPhoneCountryCode\": {\n              \"type\": \"string\"\n            },\n            \"WorkPhoneNumber\": {\n              \"type\": \"string\"\n            },\n            \"WorkPhoneExtension\": {\n              \"type\": \"string\"\n            },\n            \"FormattedWorkPhoneNumber\": {\n              \"type\": \"string\"\n            },\n            \"CountryCodeConfidence\": {\n              \"type\": \"string\"\n            },\n            \"PhysicalAddress\": {\n              \"type\": \"string\"\n            },\n            \"Reasoning\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"EmailAddress\",\n            \"FirstName\",\n            \"LastName\"\n          ]\n        }\n      ]\n    }\n  },\n  \"required\": [\n    \"items\"\n  ]\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Accounts BO Search Payload",
+            "returnType": "string",
+            "sourceCode": "const input = $context.$nodes.ENRICH_CONTACT.$output\nconst accounts = new Set();\nfor (const item of input.items) {\n    if (item.AccountName) {\n        for (const account of item.AccountName) accounts.add(account);\n    }\n}\nconst obj = { op: \"$in\", attribute: \"OrganizationName\", values: Array.from(accounts)};\nreturn JSON.stringify(obj);"
+          },
+          "outcomes": {
+            "success": "1767899727790"
+          },
+          "code": "ACCOUNTS_BO_SEARCH_PAYLOAD",
+          "id": "1765859742537",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "EnrichContact Response Middleware",
+            "returnType": "object",
+            "sourceCode": "let output = $context.$nodes.ENRICH_CONTACT.$output.items;\nconst searchBoOutput = $context.$nodes.ACCOUNTS_BO_SEARCH.$output;\n\nif (searchBoOutput) {\n  // Step 1: build a count map for OrganizationName occurrences (lowercase)\n  const orgCount = searchBoOutput.reduce((acc, cur) => {\n    if (cur.OrganizationName) {\n      const name = cur.OrganizationName.toLowerCase();\n      acc[name] = (acc[name] || 0) + 1;\n    }\n    return acc;\n  }, {});\n\n  output = output.map(item => {\n    // Step 2: Ensure AccountName is an array and normalize to lowercase\n    // If it's already an array, we just map it to lowercase\n    const searchTerms = Array.isArray(item.AccountName)\n      ? item.AccountName.map(name => name.trim().toLowerCase())\n      : [];\n\n    // Step 3: Find matching account using case-insensitive comparison\n    const findAccount = searchBoOutput.find(item2 =>\n      item2.OrganizationName && searchTerms.includes(item2.OrganizationName.toLowerCase())\n    );\n\n    // Step 4: Assign AccountPartyId if exactly one matching OrganizationName exists\n    if (findAccount) {\n      const matchedNameLower = findAccount.OrganizationName.toLowerCase();\n\n      if (orgCount[matchedNameLower] === 1) {\n        item.AccountPartyId = findAccount.PartyId;\n        // Replace the array with the single string of the actual match\n        item.AccountName = findAccount.OrganizationName;\n      } else {\n        // Ambiguous match (multiple records with same name)\n        delete item.AccountName;\n        delete item.AccountPartyId;\n      }\n    } else {\n      // No match found\n      delete item.AccountName;\n      delete item.AccountPartyId;\n    }\n\n    return item;\n  });\n}\n\noutput = output.map(item => {\n// strip out unused fields\n  delete item.Reasoning;\n\n  if (!searchBoOutput) {\n    delete item.AccountName;\n    delete item.AccountPartyId;\n  }\n  return item;\n});\n\nconst response = {\n  status: \"Success\",\n  response: output\n};\n\nreturn response;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ENRICHCONTACT_RESPONSE_MIDDLEWARE",
+          "id": "1765859882787",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Process Payload",
+            "returnType": "object",
+            "sourceCode": "const parsed = $context.$triggers.REST.$input.data;\nif (!parsed.emailText || !parsed.contactEmailCsv) {\n  return 'The emailText and contactEmailCsv is required'\n} \nparsed.contactEmailCsv = [...new Set(parsed.contactEmailCsv.split(',').map(e => e.trim()))].join(', ');\nreturn parsed;"
+          },
+          "outcomes": {
+            "success": "1765859429186"
+          },
+          "code": "PROCESS_PAYLOAD",
+          "id": "1765860334644",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Account Empty Check"
+          },
+          "outcomes": {
+            "true": "1765859810459",
+            "false": "add_false_1767894955765"
+          },
+          "code": "ACCOUNT_EMPTY_CHECK",
+          "convergenceTargetId": "1765859882787",
+          "id": "1767894955765",
+          "inputs": [
+            {
+              "id": "1767894955766_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.BO_SEARCH_OBJECT_PAYLOAD.$output.result}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1765859882787"
+          },
+          "id": "add_false_1767894955765",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_CX_SALESFORCE_CXOBJECTSEARCHB",
+            "functionName": "SEARCH_OBJECTS",
+            "name": "Accounts BO Search"
+          },
+          "outcomes": {
+            "success": "1765859882787"
+          },
+          "code": "ACCOUNTS_BO_SEARCH",
+          "convergenceTargetId": "1767895319779",
+          "id": "1765859810459",
+          "inputs": [
+            {
+              "id": "1765859829820_1",
+              "name": "object",
+              "type": "string",
+              "value": "Account"
+            },
+            {
+              "id": "1765859829821_2",
+              "name": "q",
+              "type": "string",
+              "value": "{{$context.$nodes.ACCOUNTS_BO_SEARCH_PAYLOAD.$output.result}}"
+            },
+            {
+              "id": "1765859829821_3",
+              "name": "sort",
+              "type": "string"
+            },
+            {
+              "id": "1765859829822_4",
+              "name": "limit",
+              "type": "integer",
+              "value": "50"
+            },
+            {
+              "id": "1765859829823_5",
+              "name": "fields",
+              "type": "string",
+              "value": "PartyId,OrganizationName"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "BO Search Object Payload",
+            "returnType": "boolean",
+            "sourceCode": "const res = $context?.$nodes?.ACCOUNTS_BO_SEARCH_PAYLOAD?.$output?.result;\nif (res == null) return false;\n\nlet obj = res;\nif (typeof res === 'string') {\ntry { obj = JSON.parse(res); }\ncatch (e) { return false; }\n}\n\nconst values = obj?.values;\nreturn Array.isArray(values) && values.length > 0;"
+          },
+          "outcomes": {
+            "success": "1767894955765"
+          },
+          "code": "BO_SEARCH_OBJECT_PAYLOAD",
+          "id": "1767899727790",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 4000,
+        "p": 0.75
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "modelName": "GPT-OSS-120B",
+      "provider": "CERT_BASIC"
+    },
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1769137919114",
+            "name": "data",
+            "scope": "JOB",
+            "type": "object",
+            "typeSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"contactEmailCsv\": {\n      \"type\": \"string\"\n    },\n    \"emailText\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"contactEmailCsv\",\n    \"emailText\"\n  ]\n}"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "SALES_FORCE_AUTOMATION",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"2\""
+  }
+}

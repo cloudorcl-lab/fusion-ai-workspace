@@ -1,0 +1,523 @@
+{
+  "workflowId": "300000331058749",
+  "workflowCode": "ORA_SERVICE_SETUP_CREATION_PROCESSING",
+  "name": "Service Setup Creation Processing",
+  "description": "Routes uploaded form documents through extraction and validation, then creates a service setup record and related service characteristics.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1774801572478"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Process Uploaded Documents",
+            "toolCode": "ORA_MULTI_FILE_PROCESSOR_TOOL",
+            "parseFiles": true,
+            "makeRawFilesAvailable": false
+          },
+          "outcomes": {
+            "success": "1774801696233"
+          },
+          "code": "PROCESS_UPLOADED_DOCUMENTS",
+          "id": "1774801572478",
+          "inputs": [
+            {
+              "id": "1774801580252",
+              "name": "conversationId",
+              "type": "string",
+              "value": "{{$context.$workflow.$conversationId}}"
+            }
+          ],
+          "type": "TOOL"
+        },
+        {
+          "metadata": {
+            "name": "Request Service Creation Document Upload"
+          },
+          "outcomes": {
+            "success": "1774801725115"
+          },
+          "code": "REQUEST_SERVICE_CREATION_DOCUMENT_UPLOAD",
+          "id": "1774801696233",
+          "inputs": [
+            {
+              "id": "1774801696235_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a workflow gating step in Oracle AI Agent Studio. Return ONLY valid JSON. No markdown, no commentary.\n\nTask:\nDecide whether the workflow should proceed based on:\n\nThe latest user message text.\nWhether at least one file is attached/uploaded in the conversation, as evidenced by the output of the \"Process Uploaded Documents\" step.\nInputs:\nlatestUserMessage = {{$context.$system.$inputMessage}}\nprocessedDocuments = {{$context.$nodes.PROCESS_UPLOADED_DOCUMENTS.$output}}\n\nRules:\n\nProceed ONLY if latestUserMessage equals \"Uploaded\" case-insensitively (ignore leading/trailing whitespace) AND there is at least one uploaded file/document in processedDocuments.\nIf either condition fails, do not proceed.\nReturn this JSON shape exactly:\n{\n\"proceed\": <true|false>,\n\"failureReason\": <string or null>,\n\"userMessageToShow\": <string>\n}\n\nuserMessageToShow rules:\n\nIf proceed=true: set to \"Thanks—processing your document now.\"\nIf proceed=false: instruct the user to upload at least one file and then type \"Uploaded\".\nReturn only the JSON object."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Decide Proceed Service Creation"
+          },
+          "outcomes": {
+            "success": "1774801754045"
+          },
+          "code": "DECIDE_PROCEED_SERVICE_CREATION",
+          "id": "1774801725115",
+          "inputs": [
+            {
+              "id": "1774801725117_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a decision step in an Oracle AI Agent Studio workflow. Return ONLY valid JSON. No markdown, no commentary.\n\nInput:\nproceed = {{$context.$nodes.REQUEST_SERVICE_CREATION_DOCUMENT_UPLOAD.$output.proceed}}\n\nTask:\nNormalize the value of proceed and decide whether the workflow should continue.\n\nRules:\n\nIf proceed is the boolean true, or the string \"true\" (any casing, may contain leading/trailing spaces), then treat it as true.\nOtherwise treat it as false.\nReturn exactly this JSON shape:\n{\n\"proceed\": <true|false>\n}\n\nReturn only the JSON object."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Document Uploaded With Right Message"
+          },
+          "outcomes": {
+            "true": "1774801896772",
+            "false": "1774801833438"
+          },
+          "code": "DOCUMENT_UPLOADED_WITH_RIGHT_MESSAGE",
+          "convergenceTargetId": "end",
+          "id": "1774801754045",
+          "inputs": [
+            {
+              "id": "1774801754047_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.DECIDE_PROCEED_SERVICE_CREATION.$output.proceed}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "No Document Uploaded Or Wrong Message"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "NO_DOCUMENT_UPLOADED_OR_WRONG_MESSAGE",
+          "id": "1774801833438",
+          "inputs": [
+            {
+              "id": "1774801833440_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are a user-facing messaging step in an Oracle AI Agent Studio workflow. Your job is to display a single message to the user based on two upstream values. Return ONLY the message text to show in chat (no JSON, no markdown, no extra commentary).\n\nInputs:\nproceedFlag = {{$context.$nodes.REQUEST_SERVICE_CREATION_DOCUMENT_UPLOAD.$output.proceed}}\nfailureReason = {{$context.$nodes.REQUEST_SERVICE_CREATION_DOCUMENT_UPLOAD.$output.failureReason}}\nuserMessageToShow = {{$context.$nodes.REQUEST_SERVICE_CREATION_DOCUMENT_UPLOAD.$output.userMessageToShow}}\n\nRules:\n\nIf userMessageToShow is not null/empty, output userMessageToShow exactly.\nOtherwise, if failureReason is not null/empty, output: \"Unable to proceed: <failureReason>. Please upload the document (PDF/image) and then type 'Uploaded'.\"\nOtherwise output: \"Please upload the document (PDF/image) and then type 'Uploaded'.\"\nOutput only the final message text along with the value of proceedFlag."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_COM_OTHER_LOGGEDINUSERBUSINESSUNITS",
+            "functionName": "List_users_businessUnits",
+            "processJson": true,
+            "name": "Retrieve Business Units"
+          },
+          "outcomes": {
+            "success": "1774801936116"
+          },
+          "code": "RETRIEVE_BUSINESS_UNITS",
+          "id": "1774801896772",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_COM_OTHER_LOGGEDINUSERCATEGORIES",
+            "functionName": "List_categories_by_users_business_unit",
+            "processJson": true,
+            "name": "Retrieve Service Categories"
+          },
+          "outcomes": {
+            "success": "1774802030841"
+          },
+          "code": "RETRIEVE_SERVICE_CATEGORIES",
+          "id": "1774801936116",
+          "inputs": [
+            {
+              "id": "1774806319532_1",
+              "name": "businessUnitId",
+              "type": "string",
+              "value": "{{$context.$nodes.RETRIEVE_BUSINESS_UNITS.$output.items[0].businessUnits.items[0].businessUnit.id}}\n"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_COM_OTHER_LOOKUPS",
+            "functionName": "List_lookups_service_type",
+            "processJson": true,
+            "name": "Retrieve Service Type Lookups"
+          },
+          "outcomes": {
+            "success": "1774802063733"
+          },
+          "code": "RETRIEVE_SERVICE_TYPE_LOOKUPS",
+          "id": "1774802030841",
+          "inputs": [],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Extract Service Definition From Document"
+          },
+          "outcomes": {
+            "success": "1774802097402"
+          },
+          "code": "EXTRACT_SERVICE_DEFINITION_FROM_DOCUMENT",
+          "id": "1774802063733",
+          "inputs": [
+            {
+              "id": "1774802063735_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are extracting a digital government service definition from a physical document and returning API-ready JSON for service setup creation.\n\nGoal:\nFrom the provided form text and reference data, extract:\n1) the service definition for:\n   POST /api/boss/data/objects/ora/digitalGovCore/setup/v1/services\n2) the service characteristics for:\n   POST /api/boss/data/objects/ora/digitalGovCore/setup/v1/services/{services_id}/serviceCharacteristics\n   (one payload per characteristic)\n\nInput:\n- Form Text: {{raw_text}}\n- Physical Document Context: {{$context.$nodes.PROCESS_UPLOADED_DOCUMENTS.$output}}\n- Categories Reference JSON: {{$context.$nodes.RETRIEVE_SERVICE_CATEGORIES.$output}}\n- Business Units Reference JSON: {{$context.$nodes.RETRIEVE_BUSINESS_UNITS.$output}}\n- Lookups Reference JSON (Type): {{$context.$nodes.RETRIEVE_SERVICE_TYPE_LOOKUPS.$output}}\n\nRequired resolution flow before building payloads:\n1) Determine the best matching Business Unit from the provided Business Units reference.\n2) Determine the best matching Category from the provided Categories reference, limited to the selected Business Unit when applicable.\n3) Determine the best matching Service Type from the provided Type Lookups reference.\n\nGeneral rules:\n- Return only one valid JSON object.\n- Do not include markdown, commentary, or trailing commas.\n- Do not invent IDs, lookup codes, or values not supported by the provided inputs.\n- If a value cannot be confidently determined, set it to null.\n- Prefer exact or near-exact matches from the provided reference JSON inputs.\n- Keep only fields that are needed; do not include unknown or unsupported fields.\n\nService extraction rules:\n- name:\n  - Required.\n  - Convert the document title into a safe system identifier.\n  - Use UPPER_SNAKE_CASE consistently.\n  - Replace spaces and punctuation with underscores.\n  - Collapse multiple underscores.\n  - Remove leading/trailing underscores.\n- displayName:\n  - Required.\n  - Human-readable title case.\n- description:\n  - Required.\n  - Brief purpose statement based on the document.\n  - If not explicitly present, summarize only if clearly inferable.\n- internalRecordFlag:\n  - Set to true unless the document explicitly indicates it is external.\n  - If unclear, default to true.\n- businessUnit.id:\n  - Required.\n  - Select the single best business unit from the Business Units reference JSON.\n  - Prefer exact/near-exact match to names mentioned in the document header, department, or program.\n  - If no match is found, use 204.\n- type.lookupCode:\n  - Required.\n  - Select the single best lookup code from the Type Lookups reference JSON.\n  - Prefer exact/near-exact match.\n  - If no match is found, use ORA_DGV_CERTIFICATE.\n- category.id:\n  - Required.\n  - Select the single best category from the Categories reference JSON.\n  - Prefer exact/near-exact match.\n  - If multiple are plausible and cannot be disambiguated, use the category whose name is exactly \"Life Events\" if present.\n  - Otherwise choose the closest match.\n\nAdditional fields extraction rules:\n- Extract every fillable field needed to digitize the form.\n- Include:\n  - text blanks\n  - labeled lines\n  - colon fields\n  - checkboxes, yes/no, radio selections\n  - dates, amounts, counts, IDs\n  - signatures, printed name, and signature date as separate fields\n  - addresses split into separate lines if the form implies it\n- Do not include:\n  - section headers with no input\n  - boilerplate legal text unless it creates an explicit field\n  - duplicate repeats unless needed; if repeated, disambiguate with a suffix such as managerSignature or employeeSignature\n\nField rules for each additional field:\n- fieldName:\n  - Required.\n  - Unique, concise camelCase.\n- fieldDisplayName:\n  - Required.\n  - Exact label text as it appears after removing leading numeral/letter/bullet artifacts such as:\n    1., 1), (1), 1-, 1:, a., A), (b), I., ii), •, -, –, —, *, ►, ▪\n  - Trim the result.\n- fieldDataType:\n  - Required.\n  - Use one of: STRING, NUMBER, DATE, TIMESTAMP, BOOLEAN.\n\nOutput schema:\n{\n  \"name\": \"\",\n  \"displayName\": \"\",\n  \"description\": \"\",\n  \"internalRecordFlag\": true,\n  \"businessUnit\": {\n    \"id\": null\n  },\n  \"type\": {\n    \"lookupCode\": null\n  },\n  \"category\": {\n    \"id\": null\n  },\n  \"additionalFields\": [\n    {\n      \"fieldName\": \"\",\n      \"fieldDisplayName\": \"\",\n      \"fieldDataType\": \"\"\n    }\n  ]\n}\n\nReturn only the JSON object."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Validate Service Creation Payload"
+          },
+          "outcomes": {
+            "success": "1774802132429"
+          },
+          "code": "VALIDATE_SERVICE_CREATION_PAYLOAD",
+          "id": "1774802097402",
+          "inputs": [
+            {
+              "id": "1774802097403_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "System / Instruction:\nYou are a workflow debug step in Oracle AI Agent Studio. Return ONLY valid JSON. Do not include markdown or commentary. Your job is to output the resolved Create Service payload exactly as it should be sent to the Business Object POST call.\n\nTask:\nUsing the values from {{$context.$nodes.EXTRACT_SERVICE_DEFINITION_FROM_DOCUMENT.$output}}, produce the JSON payload for “Create Services” with this structure:\n\n{\n\"name\": <name>,\n\"displayName\": <displayName>,\n\"description\": <description>,\n\"internalRecordFlag\": <internalRecordFlag>,\n\"businessUnit\": { \"id\": <businessUnitId> },\n\"type\": { \"lookupCode\": <lookupCode> },\n\"category\": { \"id\": <categoryId> }\n}\n\nRules:\n\nOutput ONLY the JSON payload (single JSON object).\nPreserve correct JSON types:\ninternalRecordFlag must be boolean (true/false), not a string.\nbusinessUnit.id and category.id must be numbers if the input values are numbers.\nIf any required value is missing, set it to null (do not guess).\nInput values:\nname = {{$context.$nodes.EXTRACT_SERVICE_DEFINITION_FROM_DOCUMENT.$output.name}}  \ndisplayName = {{$context.$nodes.EXTRACT_SERVICE_DEFINITION_FROM_DOCUMENT.$output.displayName}}\ndescription = {{$context.$nodes.EXTRACT_SERVICE_DEFINITION_FROM_DOCUMENT.$output.description}}\ninternalRecordFlag = {{$context.$nodes.EXTRACT_SERVICE_DEFINITION_FROM_DOCUMENT.$output.internalRecordFlag}}\nbusinessUnitId = {{$context.$nodes.EXTRACT_SERVICE_DEFINITION_FROM_DOCUMENT.$output.businessUnit.id}}\nlookupCode = {{$context.$nodes.EXTRACT_SERVICE_DEFINITION_FROM_DOCUMENT.$output.type.lookupCode}}\ncategoryId = {{$context.$nodes.EXTRACT_SERVICE_DEFINITION_FROM_DOCUMENT.$output.category.id}}\n\nReturn the final JSON now."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_COM_OTHER_SERVICES",
+            "functionName": "Create_services",
+            "processJson": true,
+            "name": "Create Service Setup Record"
+          },
+          "outcomes": {
+            "success": "1774888541955"
+          },
+          "code": "CREATE_SERVICE_SETUP_RECORD",
+          "id": "1774802132429",
+          "inputs": [
+            {
+              "id": "1774888168295_1",
+              "name": "pName",
+              "type": "string",
+              "value": "{{$context.$nodes.VALIDATE_SERVICE_CREATION_PAYLOAD.$output.name}}"
+            },
+            {
+              "id": "1774888168296_2",
+              "name": "pDisplayName",
+              "type": "string",
+              "value": "{{$context.$nodes.VALIDATE_SERVICE_CREATION_PAYLOAD.$output.displayName}}"
+            },
+            {
+              "id": "1774888168297_3",
+              "name": "pDescription",
+              "type": "string",
+              "value": "{{$context.$nodes.VALIDATE_SERVICE_CREATION_PAYLOAD.$output.description}}"
+            },
+            {
+              "id": "1774888168298_4",
+              "name": "pInternalRecordFlag",
+              "type": "string",
+              "value": "{{$context.$nodes.VALIDATE_SERVICE_CREATION_PAYLOAD.$output.internalRecordFlag}}"
+            },
+            {
+              "id": "1774888168299_5",
+              "name": "pBusinessUnitId",
+              "type": "string",
+              "value": "{{$context.$nodes.VALIDATE_SERVICE_CREATION_PAYLOAD.$output.businessUnit.id}}"
+            },
+            {
+              "id": "1774888168300_6",
+              "name": "pLookupCode",
+              "type": "string",
+              "value": "{{$context.$nodes.VALIDATE_SERVICE_CREATION_PAYLOAD.$output.type.lookupCode}}"
+            },
+            {
+              "id": "1774888168302_7",
+              "name": "pCategoryId",
+              "type": "string",
+              "value": "{{$context.$nodes.VALIDATE_SERVICE_CREATION_PAYLOAD.$output.category.id}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"statusCode\": \"number\",\n  \"responseBody\": \"object\",\n  \"responseHeaders\": \"object\"\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_COM_OTHER_SERVICES",
+            "functionName": "List_services_by_name",
+            "processJson": true,
+            "name": "Retrieve Newly Created Service Details"
+          },
+          "outcomes": {
+            "success": "1774889501181"
+          },
+          "code": "RETRIEVE_NEWLY_CREATED_SERVICE_DETAILS",
+          "id": "1774888541955",
+          "inputs": [
+            {
+              "id": "1774888561704_1",
+              "name": "name",
+              "type": "string",
+              "value": "{{$context.$nodes.VALIDATE_SERVICE_CREATION_PAYLOAD.$output.name}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Prepare Service Characteristic Fields"
+          },
+          "outcomes": {
+            "success": "1774889580102"
+          },
+          "code": "PREPARE_SERVICE_CHARACTERISTIC_FIELDS",
+          "id": "1774889501181",
+          "inputs": [
+            {
+              "id": "1774889501182_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "System / Instruction:\nYou are a data transformation step in Oracle AI Agent Studio. Return ONLY valid JSON. No markdown, no commentary, no trailing commas.\n\nTask:\nRead the array at:\n{{$context.$nodes.EXTRACT_SERVICE_DEFINITION_FROM_DOCUMENT.$output.additionalFields}}\n\nTransform it into the output JSON shape shown below.\n\nAdditional rule (limit by fieldDataType):\n\nGroup items by fieldDataType.\nIf any fieldDataType group contains more than 10 items:\nInclude a warning message in the output JSON indicating that there are more than 10 items for that fieldDataType and only the top 10 (first 10 in original order) were considered.\nOnly include the first 10 items (in original input order) for that fieldDataType in the output fieldArray.\nIf a fieldDataType group contains 10 or fewer items, include all of them.\nPreserve the original order within each fieldDataType group when selecting the top 10.\nOutput must remain valid JSON.\n\nField inclusion rule:\n\nFor each field in the output:\nIf fieldType is \"AUTO_POPULATED\", include both fieldSourceAttribute and fieldSourceLookupCode.\nIf fieldType is \"USER_PROVIDED\", do not include fieldSourceAttribute or fieldSourceLookupCode in the JSON for that field; these keys should not appear at all.\nFor all other properties, include them as provided.\n\nInput example:\n\"additionalFields\": [\n{\n\"fieldName\": \"{pFieldName}\",\n\"fieldDisplayName\": \"{pFieldDisplayName}\",\n\"fieldDataType\": \"{pFieldDataType}\"\n}\n]\n\nOutput shape:\n{\n  \"fieldArray\": [\n    {\n      \"fieldName\": \"{pFieldName}\",\n      \"fieldDisplayName\": \"{pFieldDisplayName}\",\n      \"fieldDataType\": \"{pFieldDataType}\"\n    }\n  ],\n  \"warnings\": [\n    {\n      \"fieldDataType\": \"{pFieldDataType}\",\n      \"message\": \"More than 10 items found for this fieldDataType; only the top 10 (first 10 in input order) were included.\",\n      \"totalFound\": 11,\n      \"included\": 10\n    }\n  ]\n}\n\nNow perform the transformation on:\n{{$context.$nodes.EXTRACT_SERVICE_DEFINITION_FROM_DOCUMENT.$output.additionalFields}}\nApply all grouping, inclusion, and warning rules described above, and return ONLY the valid JSON output."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1774889614095"
+                  },
+                  "id": "start_1774889580102",
+                  "code": "START_1774889580102",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "id": "end_1774889580102",
+                  "code": "END_1774889580102",
+                  "type": "END"
+                },
+                {
+                  "metadata": {
+                    "name": "Validate Service Characteristics Creation Payload"
+                  },
+                  "outcomes": {
+                    "success": "1774889696897"
+                  },
+                  "code": "VALIDATE_SERVICE_CHARACTERISTICS_CREATION_PAYLOAD",
+                  "id": "1774889614095",
+                  "inputs": [
+                    {
+                      "id": "1774889614096_1",
+                      "name": "prompt",
+                      "type": "string",
+                      "value": "System / Instruction:\nYou are a workflow debug step in Oracle AI Agent Studio running inside a For-Each loop. Return ONLY valid JSON. Do not include markdown, comments, or extra text.\n\nTask:\nFor the current loop iteration item ( {{$context.$nodes.CREATE_SERVICE_CHARACTERISTIC_LOOP.$currentItem}} ), output the resolved JSON payload that will be used to call “Create Service Characteristics”.\n\nOutput schema (return only this JSON object):\n{\n  \"name\": <{{$context.$nodes.CREATE_SERVICE_CHARACTERISTIC_LOOP.$currentItem.fieldName}}>,\n  \"displayName\": <{{$context.$nodes.CREATE_SERVICE_CHARACTERISTIC_LOOP.$currentItem.fieldDisplayName}}>,\n  \"dataType\": <{{$context.$nodes.CREATE_SERVICE_CHARACTERISTIC_LOOP.$currentItem.fieldDataType}}>\n}\n"
+                    }
+                  ],
+                  "type": "LLM"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_COM_OTHER_SERVICES",
+                    "functionName": "Create_services_serviceCharacteristics",
+                    "processJson": true,
+                    "name": "Create Service Characteristics Record"
+                  },
+                  "outcomes": {
+                    "success": "end_1774889580102"
+                  },
+                  "code": "CREATE_SERVICE_CHARACTERISTICS_RECORD",
+                  "id": "1774889696897",
+                  "inputs": [
+                    {
+                      "id": "1774889723702_1",
+                      "name": "services_id",
+                      "type": "string",
+                      "value": "{{$context.$nodes.RETRIEVE_NEWLY_CREATED_SERVICE_DETAILS.$output.items[0].id}}"
+                    },
+                    {
+                      "id": "1774889723703_2",
+                      "name": "pName",
+                      "type": "string",
+                      "value": "{{$context.$nodes.CREATE_SERVICE_CHARACTERISTIC_LOOP.$currentItem.fieldName}}"
+                    },
+                    {
+                      "id": "1774889723704_3",
+                      "name": "pDisplayName",
+                      "type": "string",
+                      "value": "{{$context.$nodes.CREATE_SERVICE_CHARACTERISTIC_LOOP.$currentItem.fieldDisplayName}}"
+                    },
+                    {
+                      "id": "1774889723705_4",
+                      "name": "pDataType",
+                      "type": "string",
+                      "value": "{{$context.$nodes.CREATE_SERVICE_CHARACTERISTIC_LOOP.$currentItem.fieldDataType}}"
+                    }
+                  ],
+                  "outputSpecification": "{\n  \"statusCode\": \"number\",\n  \"responseBody\": \"object\",\n  \"responseHeaders\": \"map<string,string>\"\n}",
+                  "type": "BO_FUNCTION"
+                }
+              ],
+              "rootNode": "start_1774889580102"
+            },
+            "loopType": "SEQUENTIAL",
+            "name": "Create Service Characteristic Loop"
+          },
+          "outcomes": {
+            "success": "1774889826637"
+          },
+          "code": "CREATE_SERVICE_CHARACTERISTIC_LOOP",
+          "id": "1774889580102",
+          "inputs": [
+            {
+              "id": "1774889580103_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_SERVICE_CHARACTERISTIC_FIELDS.$output.fieldArray}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "name": "Service Creation Confirmation"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SERVICE_CREATION_CONFIRMATION",
+          "id": "1774889826637",
+          "inputs": [
+            {
+              "id": "1774889826638_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "System / Instruction:\nYou are the final confirmation step in an Oracle AI Agent Studio workflow. Return ONLY valid JSON. Do not include markdown, comments, or extra text.\n\nTask:\nGenerate a user-facing completion message confirming the service was created successfully. If a service id is available in {{$context.$nodes.RETRIEVE_NEWLY_CREATED_SERVICE_DETAILS.$output.items[0].id}}  use it in the message; otherwise omit the id. Output exactly one JSON object with keys \"status\" and \"message\". \"status\" must be the string \"success\".\n\nOutput (return only this JSON object):\n{\n\"status\": \"success\",\n\"message\": \"Service has been successfully created with {{$context.$nodes.RETRIEVE_NEWLY_CREATED_SERVICE_DETAILS.$output.items[0].id}}, {{$context.$nodes.RETRIEVE_NEWLY_CREATED_SERVICE_DETAILS.$output.items[0].name}}.\"\n}\n\nPrint only the message and not entire JSON object."
+            }
+          ],
+          "type": "LLM"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "chatExpLocalFileUploadEnabledFlag": true,
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "COMMON",
+  "product": "OTHER",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "firstStarterQuestion": "Create service after I attach a document and type \"Uploaded\"",
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

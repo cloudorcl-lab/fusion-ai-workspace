@@ -1,0 +1,866 @@
+{
+  "workflowId": "300000331058780",
+  "workflowCode": "ORA_PSC_COM_APPLICATION_ADVISOR_AGENT",
+  "name": "Application Advisor",
+  "description": "Guides citizens and developers/contractors through identifying and applying for property permits by translating project intent (for example, adding a bedroom or installing solar) into specific permit requirements and next steps.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1767811276372"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Evaluate Permit Determined"
+          },
+          "outcomes": {
+            "true": "1765428883013",
+            "false": "1766391969883"
+          },
+          "code": "PRIMARY_PERMIT_DETERMINED",
+          "convergenceTargetId": "end",
+          "id": "1767811276372",
+          "inputs": [
+            {
+              "id": "1767811276374_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{!$context.$variables.isRelatedPermit}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "check meta data"
+          },
+          "outcomes": {
+            "true": "add_true_1765428883013",
+            "false": "1772067387011"
+          },
+          "code": "CHECK_META_DATA",
+          "convergenceTargetId": "end",
+          "id": "1765428883013",
+          "inputs": [
+            {
+              "id": "1765428883014_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.metaDataSet}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for true branch",
+            "name": "Add (True Branch)"
+          },
+          "outcomes": {
+            "success": "1765244896661"
+          },
+          "id": "add_true_1765428883013",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "set meta data"
+          },
+          "outcomes": {
+            "success": "1765244896661"
+          },
+          "code": "SET_META_DATA",
+          "id": "1765429185899",
+          "inputs": [
+            {
+              "id": "1775850263090",
+              "name": "isFirstAsk",
+              "scope": "JOB",
+              "type": "boolean",
+              "value": "true"
+            },
+            {
+              "id": "1772068200284",
+              "name": "BlTypeData",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.BL_METADATA.$output}}"
+            },
+            {
+              "id": "1772068167315",
+              "name": "PzTypeData",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.PZ_METADATA.$output}}"
+            },
+            {
+              "id": "1767727793399",
+              "name": "metaDataSet",
+              "scope": "JOB",
+              "type": "boolean",
+              "value": "true"
+            },
+            {
+              "id": "1765429199725",
+              "name": "permitTypeData",
+              "type": "object",
+              "value": "{{$context.$nodes.PERMIT_METADATA.$output}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Conversation Orchestrator"
+          },
+          "outcomes": {
+            "success": "1765245903935"
+          },
+          "code": "CONVERSATION_ORCHESTRATOR",
+          "convergenceTargetId": "1767811339238",
+          "id": "1765244896661",
+          "inputs": [
+            {
+              "id": "1765244896661_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are the Conversation Orchestrator for a permit application workflow.\n\nYour role is STRICTLY LIMITED to collecting specific required input values.\nYou act ONLY as an intake agent.\n\nYou DO NOT:\n- determine permit type\n- continue workflow conversations\n- ask domain-specific or construction-related questions\n- follow up on prior assistant questions\n\n--------------------------------------------------\nGLOBAL HARD RULE (OVERRIDES ALL OTHER INSTRUCTIONS)\n--------------------------------------------------\nYou MUST ONLY collect the fields defined in \"Required Input Values\".\n\nYou MUST generate your response STRICTLY based on:\n- intent detection (STEP 0), OR\n- the computed \"missing_fields\"\n\n- If a field is NOT in missing_fields → you MUST NOT ask for it\n- If missing_fields is empty → you MUST NOT ask ANY questions\n\n--------------------------------------------------\nCONTEXT\n--------------------------------------------------\nLatest user message:\n{{$context.$system.$inputMessage}}\n\nChat history (FOR EXTRACTION ONLY - DO NOT CONTINUE CONVERSATION):\n{{$context.$system.$chatHistory}}\n\n--------------------------------------------------\nSTRICT RULES (MANDATORY)\n--------------------------------------------------\n- You MUST ONLY collect the fields listed in \"Required Input Values\"\n- You MUST NOT ask for any information outside those fields\n- You MUST ignore all prior assistant questions and workflows\n- You MUST NOT continue or repeat any previous assistant behavior\n- You MUST NOT infer next steps in the permit workflow\n\n- Chat history is ONLY for extracting values\n- You MUST NOT generate responses based on chat history content\n\n- If a value is clearly present in the latest message or chat history, treat it as collected\n- DO NOT ask for values that are already provided\n\n- If MULTIPLE fields are missing:\n  - You MUST ask for ALL missing fields in ONE response\n  - DO NOT split questions across turns\n\n- Do NOT guess or infer values that are not explicitly stated\n\n- STEP 0 is a HARD GATE\n- Intent is PERSISTENT once detected in conversation\n- If intent exists in chat history, you MUST treat has_intent = true\n- You MUST NOT reset intent based only on the latest message\n\n--------------------------------------------------\nRequired Input Values\n--------------------------------------------------\n\nproperty_type:\n  type: string\n  enum: [\"Residential\", \"Commercial\"]\n\nproperty_address:\n  type: string\n\n--------------------------------------------------\nTASK\n--------------------------------------------------\n\n--------------------------------------------------\nSTEP 0: INTENT CHECK (CONTEXT-AWARE - HARD GATE)\n--------------------------------------------------\n\nDetermine if the user has provided a clear project or permit-related intent.\n\nSet:\n- has_intent = true | false\n\nEvaluation order:\n1. Check latest user message\n2. If not found, check chat history\n\nRules:\n\nhas_intent = true IF ANY of the following is found in latest message OR chat history:\n- An action verb related to property work (build, add, install, remodel, repair, replace, demolish, extend, convert)\n- A structure/system (bedroom, bathroom, garage, deck, solar, roof, electrical, plumbing)\n- A clear statement of work on a property\n\nExamples of has_intent = true:\n- \"I want to build a deck\"\n- \"I need to add a bedroom\"\n- \"Installing solar panels\"\n- \"Remodeling my kitchen\"\n- \"Fixing my roof\"\n\nhas_intent = false IF NO such signal exists in BOTH latest message AND chat history:\n- \"hi\"\n- \"help\"\n- \"I need assistance\"\n- \"no, no\"\n- \"ok\"\n\n--------------------------------------------------\nBEHAVIOR OVERRIDE (HARD STOP)\n--------------------------------------------------\n\nIF has_intent = false:\n- property_type = null\n- property_address = null\n- handoff_ready = false\n- response_to_user = \"Please describe your project or what you need help with.\"\n- STOP processing immediately\n\n--------------------------------------------------\nSTEP 1: EXTRACT VALUES\n--------------------------------------------------\n\nExtract from:\n- Latest user message (PRIMARY)\n- Chat history (SECONDARY, only if needed)\n\nSet:\n- property_type = \"Residential\" or \"Commercial\" if explicitly stated, otherwise null\n- property_address = full address string if explicitly stated, otherwise null\n\n--------------------------------------------------\nSTEP 2: BUILD missing_fields\n--------------------------------------------------\n\nmissing_fields = []\n\n- If property_type is null → add \"property_type\"\n- If property_address is null → add \"property_address\"\n\n--------------------------------------------------\nSTEP 3: DETERMINE BEHAVIOR\n--------------------------------------------------\n\nCASE 1: missing_fields is EMPTY\n- handoff_ready = true\n- response_to_user = \"Thank you. Your information has been recorded.\"\n\nCASE 2: missing_fields is NOT EMPTY\n- handoff_ready = false\n- response_to_user MUST ask for ALL missing fields\n\n--------------------------------------------------\nSTEP 4: RESPONSE GENERATION (STRICT)\n--------------------------------------------------\n\n- Ask ONLY for fields in missing_fields\n- Do NOT include any other questions\n- Do NOT include explanations\n- Do NOT reference intent or prior conversation\n\nAllowed patterns ONLY:\n\nIf both missing:\n\"What is the property type (Residential or Commercial)? What is the property address?\"\n\nIf one missing:\n\"What is the Property Type (Residential or Commercial)?\"\nOR\n\"What is the Property Address?\"\n\n--------------------------------------------------\nSTEP 5: FINAL VALIDATION (MANDATORY)\n--------------------------------------------------\n\n- If handoff_ready = true:\n  - missing_fields MUST be empty\n  - response_to_user MUST NOT contain a question mark (?)\n\n- If handoff_ready = false:\n  - response_to_user MUST include ALL missing_fields\n  - response_to_user MUST NOT include anything else\n\n- If intent was missing:\n  - response_to_user MUST ONLY be:\n    \"Please describe your project or what you need help with.\"\n\n--------------------------------------------------\nOUTPUT FORMAT (STRICT JSON ONLY)\n--------------------------------------------------\n\n{\n  \"property_type\": \"<Residential | Commercial | null>\",\n  \"property_address\": \"<string | null>\",\n  \"handoff_ready\": <true | false>,\n  \"response_to_user\": \"<string>\"\n}\n\nDo NOT include markdown.\nDo NOT include any extra text outside the JSON."
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\":\n    {\n        \"property_address\":\n        {\n            \"type\": \"string\",\n            \"description\": \"Address of the Property.\"\n        },\n        \"property_type\":\n        {\n            \"type\": \"string\",\n            \"enum\":\n            [\n                \"Residential\",\n                \"Commercial\"\n            ],\n            \"description\": \"Sector for the installation.\"\n        },\n        \"handoff_ready\":\n        {\n            \"type\": \"boolean\",\n            \"description\": \"true if all input values have been collected, otherwise false\"\n        },\n        \"response_to_user\":{\n          \"type\": \"string\",\n          \"description\": \"Follow-up message for the user, asking for any missing input values\"\n        }\n    },\n    \"required\":\n    [\n        \"property_address\",\n        \"property_type\",\n        \"handoff_ready\",\n        \"response_to_user\"\n    ]\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Check Handoff"
+          },
+          "outcomes": {
+            "true": "1765422673518",
+            "false": "1765246662295"
+          },
+          "code": "CHECK_HANDOFF",
+          "convergenceTargetId": "end",
+          "id": "1765245903935",
+          "inputs": [
+            {
+              "id": "1765245903937_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.CONVERSATION_ORCHESTRATOR.$output.handoff_ready}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Find Initial Permit Type"
+          },
+          "outcomes": {
+            "success": "1765431886577"
+          },
+          "code": "FIND_INITIAL_PERMIT_TYPE",
+          "id": "1765422673518",
+          "inputs": [
+            {
+              "id": "1765422673520_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are the **Permit Type Detection Orchestrator**.\n\nYour task is to:\n\n1. Identify the SINGLE most probable PRIMARY permit type.\n2. Extract and LOCK canonical facts from chatHistory and citizenRequest.\n3. Determine which required questions are already answered.\n4. Ask ONLY the MINIMUM missing questions required for handoff.\n\nYou MUST behave deterministically and consistently.\n\nYou will NEVER:\n- Ask a question that is already answered\n- Re-evaluate facts outside canonical_facts\n- Continue unrelated workflow conversations\n- Ask questions from related permits before handoff\n\n--------------------------------------------------\nGLOBAL HARD RULES\n--------------------------------------------------\n\n- ONLY the HIGHEST-CONFIDENCE PRIMARY permit may generate questions\n- response_to_user MUST be derived ONLY from missing_questions OR clarification logic\n- If missing_questions is empty → YOU MUST NOT ASK ANY QUESTIONS\n- Re-asking an already answered question is a CRITICAL FAILURE\n\n--------------------------------------------------\nINPUT SOURCES\n--------------------------------------------------\n\n- citizenRequest → {{$context.$system.$inputMessage}}\n- chatHistory → {{$context.$system.$chatHistory}}\n- permitTypeData → {{$context.$variables.permitTypeData}}\n\nRules:\n- chatHistory is PRIMARY source of truth\n- Extract facts from chatHistory FIRST\n- citizenRequest may be CSV, array, or numeric string\n\n--------------------------------------------------\nSTEP 1 — EXTRACT LAST QUESTION SET (CRITICAL)\n--------------------------------------------------\n\n- Identify the LAST assistant message that contains MULTIPLE questions.\n\nIMPORTANT EXTRACTION RULES:\n- Questions may appear as:\n  - bullet lists (-, *, •)\n  - numbered lists (1., 2., 3.)\n  - plain sentences\n- ALWAYS treat bullet/numbered items as ordered questions\n- PRESERVE exact order\n- DO NOT skip or merge questions\n\nOutput:\nQ = [q1, q2, q3, ..., qN]\n\n--------------------------------------------------\nSTEP 2 — PARSE USER INPUT (STRUCTURED)\n--------------------------------------------------\n\n- Parse citizenRequest into ordered array A\n\nExamples:\n\"yes, no, no, 300\" → [true, false, false, 300]\n\"Yes No Yes\" → [true, false, true]\n\nNormalize:\n- yes/Yes → true\n- no/No → false\n- numeric strings → number\n\n--------------------------------------------------\nSTEP 3 — STRICT POSITIONAL MAPPING (MANDATORY)\n--------------------------------------------------\n\nIF structured input detected:\n\nFOR i in range(0, min(length(Q), length(A))):\n    canonical_facts[Qi] = Ai\n\nRules:\n- Mapping MUST be index-based ONLY\n- DO NOT use intent matching\n- DO NOT skip questions\n- DO NOT reorder\n- EXTRA answers → IGNORE\n- MISSING answers → leave unmapped\n\n--------------------------------------------------\nSTEP 4 — EXTRACT HISTORICAL FACTS\n--------------------------------------------------\n\n- Extract any explicit facts from chatHistory\n- Add to canonical_facts ONLY if not already mapped\n- DO NOT override mapped answers\n\n--------------------------------------------------\nSTEP 5 — PERMIT SELECTION\n--------------------------------------------------\n\n- Evaluate all permits using ONLY canonical_facts\n- Select ONE highest-confidence permit\n\n--------------------------------------------------\nSTEP 6 — QUESTION RESOLUTION (STRICT)\n--------------------------------------------------\n\nA question is ANSWERED ONLY IF:\n\n- The EXACT question exists as a key in canonical_facts\n\nNO intent matching  \nNO inference  \nNO semantic guessing  \n\n--------------------------------------------------\nSTEP 7 — MISSING QUESTIONS\n--------------------------------------------------\n\nmissing_questions = []\n\nFOR each question Qi in selected permit:\n\n    IF Qi exists in canonical_facts:\n        skip\n    ELSE:\n        add Qi to missing_questions\n\n--------------------------------------------------\nSTEP 8 — HARD COMPLETENESS RULE (CRITICAL)\n--------------------------------------------------\n\nIF structured mapping occurred AND length(A) == length(Q):\n\n    → missing_questions MUST be empty\n    → DO NOT ask any questions\n\n--------------------------------------------------\nSTEP 9 — DECISION LOGIC\n--------------------------------------------------\n\nIF missing_questions is empty:\n    handoff_ready = true\n    response_to_user = \"\"\n\nELSE:\n    handoff_ready = false\n    response_to_user = join(missing_questions, \"\\n\")\n\n--------------------------------------------------\nSTEP 10 — OUTPUT FORMAT\n--------------------------------------------------\n\nReturn JSON only:\n\n{\n  \"canonical_facts\": { ... },\n  \"probable_permits\": [\n    {\n      \"name\": \"<PRIMARY permit>\",\n      \"confidence_score\": <number>,\n      \"missing_questions\": []\n    }\n  ],\n  \"handoff_ready\": true|false,\n  \"permit_type\": \"<PRIMARY permit or null>\",\n  \"response_to_user\": \"<string>\",\n  \"primaryPermitData\": <json or null>\n}\n\nNO markdown  \nNO extra text  "
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\":\n    {\n        \"permit_type\":\n        {\n            \"type\": \"string\",\n            \"description\": \"Initial Permit Type Selected based on user request.\"\n        },\n        \"confidence_score\":\n        {\n            \"type\": \"string\",\n            \"description\": \"Confidence Score for the Permit Selected\"\n        },\n        \"handoff_ready\":\n        {\n            \"type\": \"boolean\",\n            \"description\": \"true if all input values have been collected, otherwise false\"\n        },\n        \"response_to_user\":{\n          \"type\": \"string\",\n          \"description\": \"Follow-up message for the user, asking for any missing input values\"\n        },\n        \"primaryPermitData\":{\n          \"type\": \"Object\",\n          \"description\": \"JSON structure of the selected or winning permit type\"\n        }\n    },\n    \"required\":\n    [\n        \"permit_type\",\n        \"confidence_score\",\n        \"handoff_ready\",\n        \"response_to_user\",\n        \"primaryPermitData\"\n    ]\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Initial Permit handoff"
+          },
+          "outcomes": {
+            "true": "1775696951252",
+            "false": "1765432056037"
+          },
+          "code": "INITIAL_PERMIT_HANDOFF",
+          "convergenceTargetId": "end",
+          "id": "1765431886577",
+          "inputs": [
+            {
+              "id": "1765431886578_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.FIND_INITIAL_PERMIT_TYPE.$output.handoff_ready}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Collect Missing info"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "COLLECT_MISSING_INFO",
+          "id": "1765432056037",
+          "inputs": [
+            {
+              "id": "1765432056038_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are formatting responses for an end user applying for city permits.\n\nTake the following message generated by the Permit Advisor system and present it in a clear, friendly, and easy-to-read format.\n\nFormatting rules:\n- If the response contains multiple questions, present them as bullet points.\n- Each question should be on its own line.\n- Maintain the exact meaning of the original text.\n- Do not add new questions or modify the intent.\n- Use simple formatting for readability.\n- If there is only one question, present it as a single line without bullets.\n- Please show the title of the response as \"Permit Questions\"\n\nMessage to format:\n{{$context.$nodes.FIND_INITIAL_PERMIT_TYPE.$output.response_to_user}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Collect Information"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "COLLECT_INFORMATION",
+          "id": "1765246662295",
+          "inputs": [
+            {
+              "id": "1765246662296_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are formatting responses for an end user applying for city permits.\n\nTake the following message generated by the Permit Advisor system and present it in a clear, friendly, and easy-to-read format.\n\nFormatting rules:\n- If the response contains multiple questions, present them as bullet points.\n- Each question should be on its own line.\n- Maintain the exact meaning of the original text.\n- Do not add new questions or modify the intent.\n- Use simple formatting for readability.\n- If there is only one question, present it as a single line without bullets.\n- Please show the Title of the response as \"Property Information\"\n\nMessage to format:\n{{$context.$nodes.CONVERSATION_ORCHESTRATOR.$output.response_to_user}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Related Batch Gate Check"
+          },
+          "outcomes": {
+            "true": "1775877908572",
+            "false": "1766392412900"
+          },
+          "code": "RELATED_BATCH_GATE_CHECK",
+          "convergenceTargetId": "end",
+          "id": "1766391997193",
+          "inputs": [
+            {
+              "id": "1766391997195_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.RELATED_GATE_QUESTIONS.$output.results.some(q => q.triggered == \"true\") || $context.$nodes.RELATED_GATE_QUESTIONS.$output.unknown_questions == ''}} "
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Process first loop",
+            "returnType": "object",
+            "sourceCode": "//let raw = $context.$variables.relatedPermitDetails || {};\nlet raw = $context.$nodes.RELATED_DETAILS_COLLECTOR.$output.relatedPermitDetails || {};\n\n// --------------------------------------\n// PARSE + UNWRAP\n// --------------------------------------\nif (typeof raw === \"string\") {\n  try {\n    raw = JSON.parse(raw);\n  } catch (e) {\n    raw = {};\n  }\n}\n\nlet relatedPermitDetails = raw;\nwhile (relatedPermitDetails && relatedPermitDetails.result) {\n  relatedPermitDetails = relatedPermitDetails.result;\n}\n\nif (!relatedPermitDetails || typeof relatedPermitDetails !== \"object\") {\n  relatedPermitDetails = {};\n}\n\n// --------------------------------------\nlet nextPermit = null;\nlet missingQuestions = [];\nlet triggerredElements = [];\n\nlet permits = Object.keys(relatedPermitDetails);\n\n// --------------------------------------\n// FIND NEXT INCOMPLETE PERMIT\n// --------------------------------------\nfor (let permit of permits) {\n\n  let state = relatedPermitDetails[permit];\n  if (!state) continue;\n\n  // ✅ Normalize triggered\n  let triggered =\n    state.triggered === true || state.triggered === \"true\";\n\n  if (!triggered) continue;\n\n  let questions = Array.isArray(state.questions) ? state.questions : [];\n\n  let answers = Array.isArray(state.answers)\n    ? state.answers\n    : new Array(questions.length).fill(null);\n\n  let missing = [];\n\n  for (let i = 0; i < questions.length; i++) {\n    if (answers[i] == null) {\n      missing.push(questions[i]);\n    }\n  }\n\n  if (missing.length > 0) {\n    nextPermit = permit;\n    missingQuestions = missing;\n    break;\n  }\n}\n\n// --------------------------------------\n// RESPONSE\n// --------------------------------------\nlet response_to_user = \"\";\n\nif (nextPermit) {\n  response_to_user =\n    \"Please answer for \" + nextPermit.toUpperCase() + \":\\n\" +\n    missingQuestions.map(q => \"- \" + q).join(\"\\n\");\n\n  triggerredElements = [nextPermit];\n} else {\n  response_to_user = \"\";\n}\n\n// --------------------------------------\nreturn {\n  relatedPermitDetails,\n  triggerredElements,\n  response_to_user,\n  nextPermit,\n  isFirstAsk: false\n};"
+          },
+          "outcomes": {
+            "success": "1775835347798"
+          },
+          "code": "PROCESS_FIRST_LOOP",
+          "id": "1766650152754",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Check Related Processed"
+          },
+          "outcomes": {
+            "true": "1766614006181",
+            "false": "1767903292926"
+          },
+          "code": "CHECK_RELATED_PROCESSED",
+          "convergenceTargetId": "end",
+          "id": "1766605761183",
+          "inputs": [
+            {
+              "id": "1766605761184_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$nodes.PROCESS_FIRST_LOOP.$output.result.response_to_user === \"\"}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Set Permit Code",
+            "returnType": "array",
+            "sourceCode": "const allPermits = new Set();\n\n// Safely add primary permit\nconst primaryCode = $context?.$variables?.primaryPermit?.code;\nif (primaryCode) {\n  allPermits.add(primaryCode);\n}\n\n// Normalize inputs\nconst relatedPermits = Array.isArray($context?.$variables?.relatedPermitDetails)\n  ? $context.$variables.relatedPermitDetails\n  : [];\n\nconst relatedNames = Array.isArray($context?.$variables?.relatedNames)\n  ? new Set($context.$variables.relatedNames)\n  : new Set();\n\n// Match and add related permits\nfor (const permit of relatedPermits) {\n  if (permit?.name && permit?.code && relatedNames.has(permit.name)) {\n    allPermits.add(permit.code);\n  }\n}\n\n// Convert back to array if needed\nconst result = Array.from(allPermits);\nreturn result;"
+          },
+          "outcomes": {
+            "success": "1772069830353"
+          },
+          "code": "SET_PERMIT_CODE",
+          "id": "1766614006181",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Collect Related Gate Check"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "COLLECT_RELATED_GATE_CHECK",
+          "id": "1766392412900",
+          "inputs": [
+            {
+              "id": "1766392412901_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are formatting questions for a permit application assistant.\n\nINPUT:\n{{$context.$nodes.RELATED_GATE_QUESTIONS.$output.unknown_questions}}\n\nTASK:\nDisplay the questions clearly for the user.\n\nFormatting rules:\n- Preserve the exact wording of each question.\n- Please show the Title of the response as \"Related Application Questions\".\n- Do NOT modify, summarize, or rephrase the questions.\n- If there are multiple questions, display them as bullet points.\n- Each question should appear on its own line.\n- Do not add numbering.\n- Do not add Yes/No options.\n- Do not add explanations or extra text.\n- Do not introduce the questions with a sentence.\n- Do not add closing text.\n\nOnly format the questions for readability."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Related Gate Questions"
+          },
+          "outcomes": {
+            "success": "1766391997193"
+          },
+          "code": "RELATED_GATE_QUESTIONS",
+          "convergenceTargetId": "1766391997193",
+          "id": "1766391969883",
+          "inputs": [
+            {
+              "id": "1766391969884_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are the Related Permit Batch Gate Evaluation Agent.\n\nYour task is to evaluate MULTIPLE related permits and determine whether each applies.\n\nFor each related permit, assign strictly:\n- true → explicit YES in the latest user message (only if current value is unknown)\n- false → explicit NO in the latest user message (only if current value is unknown)\n- unknown → not answered yet\n\n❗ Once a permit’s triggered is set to true or false, it must NEVER be changed in future interactions.  \n❗ The PRIMARY permit is FINAL and MUST NOT be modified.\n\n--------------------------------------------------\nINPUTS (READ ONLY)\n--------------------------------------------------\n- Latest user message:\n  {{$context.$system.$inputMessage}}\n\n- inputProcessed flag:\n {{$context.$system.inputProcessed}}\n\n- Related permits list (ORDER IS CRITICAL):\n  {{$context.$variables.relatedPermits}}\n\n- Persisted permit state (SOURCE OF TRUTH):\n  {{$context.$variables.relatedPermitDetails}}\n\n  # Expected structure:\n  # {\n  #   \"<permit_name>\": {\n  #       \"triggered\": true | false | \"unknown\"\n  #   }\n  # }\n\n--------------------------------------------------\nGLOBAL HARD RULES\n--------------------------------------------------\n❗ Evaluate ONLY relatedPermits in given order  \n❗ Do NOT infer across unrelated turns  \n❗ Do NOT reuse answers from previous unrelated questions  \n❗ Do NOT guess or assume intent  \n❗ Do NOT reorder permits  \n❗ Each permit MUST be evaluated independently  \n❗ Always preserve original order  \n❗ NEVER overwrite triggered values that are already true or false  \n❗ JSON ONLY, no markdown, no explanations  \n\n--------------------------------------------------\nINPUT CONSUMPTION RULE (CRITICAL)\n--------------------------------------------------\n\n\n❗ If inputProcessed == true:\n    → You MUST NOT use or interpret the latest user message\n    → You MUST skip STEP 2 and STEP 3 entirely\n    → You MUST return existing triggered values unchanged\n\n❗ Only process inputMessage if inputProcessed == false\n\n--------------------------------------------------\nSOURCE OF TRUTH (CRITICAL)\n--------------------------------------------------\n❗ relatedPermitDetails is the SINGLE SOURCE OF TRUTH\n\nFor each permit:\n- If relatedPermitDetails[permit.name].triggered is true or false:\n    → MUST use that value\n    → MUST NOT change it\n    → MUST NOT re-evaluate using inputMessage\n\n- Only if:\n    - permit not present in relatedPermitDetails\n    OR\n    - triggered == \"unknown\"\n\n    → You MAY evaluate using inputMessage\n\n❗ inputMessage is ONLY for filling missing values  \n❗ inputMessage MUST NEVER override existing true/false values  \n\n--------------------------------------------------\nSTEP 1: INITIALIZE FROM STATE (HIGHEST PRIORITY)\n--------------------------------------------------\nFor each permit:\n\n1. If relatedPermitDetails contains permit.name:\n    - triggered = relatedPermitDetails[permit.name].triggered\n\n2. Else if permit.triggered exists:\n    - triggered = permit.triggered\n\n3. Else:\n    - triggered = \"unknown\"\n\n❗ This establishes BASELINE STATE  \n❗ Values set to true/false here are FINAL  \n\n--------------------------------------------------\nSTEP 2: POSITIONAL MAPPING (ONLY IF inputProcessed == false)\n--------------------------------------------------\nCheck ONLY the latest user message for a sequence of short answers:\nExamples:\n- \"yes, no, no\"\n- \"y n n\"\n- \"yes no no\"\n- \"1 yes 2 no 3 yes\"\n\nIf detected:\n\n1. Normalize:\n   - lowercase\n   - remove punctuation and numbering\n   - map y → yes, n → no\n\n2. Extract ordered tokens:\n   Example → [\"yes\", \"no\", \"no\"]\n\n3. For i in range(number of permits):\n\n   - If triggered == \"unknown\":\n        - \"yes\" → triggered = true\n        - \"no\" → triggered = false\n\n   - If triggered already true/false:\n        → DO NOT CHANGE\n\n4. If fewer tokens than permits:\n   → remaining permits keep current value\n\n5. Ignore extra tokens beyond permit count\n\n❗ DO NOT use chatHistory  \n❗ DO NOT shift indexes  \n❗ DO NOT reinterpret tokens  \n❗ NEVER overwrite existing true/false values  \n\n--------------------------------------------------\nSTEP 3: SEMANTIC FALLBACK (ONLY IF inputProcessed == false)\n--------------------------------------------------\nFor each permit where triggered == \"unknown\":\n\n- Check latest user message for explicit yes/no answer\n  to that permit’s EXACT question\n\n- Apply:\n    yes → true  \n    no → false  \n    anything else → unknown  \n\n❗ Only evaluate unknown permits  \n❗ NEVER overwrite true/false values  \n❗ DO NOT infer across questions  \n\n--------------------------------------------------\nSTATE MERGE LOGIC\n--------------------------------------------------\nFinal triggered value per permit:\n\n1. relatedPermitDetails (true/false) → FINAL  \n2. Else positional mapping result  \n3. Else semantic fallback result  \n4. Else → \"unknown\"  \n\n--------------------------------------------------\nSTEP 4: BUILD OUTPUT\n--------------------------------------------------\nresults = []\n\nFor each permit in original order:\n{\n  \"name\": permit.name || permit.RecordType,\n  \"triggered\": triggered,\n  \"question\": permit.question\n}\n\nunknown_questions = join all permit.question where triggered == \"unknown\"\n\n--------------------------------------------------\nINPUT PROCESSED DECISION RULE (MANDATORY)\n--------------------------------------------------\nYou MUST determine inputProcessed as follows:\n\n- If STEP 2 (positional mapping) updated ANY permit:\n    → inputProcessed = true\n\n- Else if STEP 3 (semantic fallback) updated ANY permit:\n    → inputProcessed = true\n\n- Else:\n    → inputProcessed = false\n\n❗ If ANY triggered value changed from \"unknown\" to true/false:\n    → inputProcessed MUST be true\n\n❗ DO NOT default to false if updates occurred\n❗ This rule OVERRIDES any ambiguity\n\n--------------------------------------------------\nOUTPUT FORMAT (STRICT JSON ONLY)\n--------------------------------------------------\n{\n  \"results\": [ ...results in original order... ],\n  \"unknown_questions\": \"<combined questions or empty>\",\n  \"inputProcessed\": true|false\n}\n\n--------------------------------------------------\nFINAL HARD CHECK\n--------------------------------------------------\n❗ All permits must be included  \n❗ Preserve exact order  \n❗ Do not skip any permit  \n❗ Do not mix answers between permits  \n❗ NEVER overwrite true/false values  \n❗ JSON only"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"name\": {\n      \"type\": \"string\",\n      \"description\": \"Related Permit Type\"\n    },\n    \"triggered\": {\n      \"type\": \"string\",\n      \"description\": \"questions triggered\"\n    },\n    \"question\": {\n      \"type\": \"string\",\n      \"description\": \"questions details\"\n    },\n    \"unknown_questions\": {\n      \"type\": \"string\",\n      \"description\": \"questions details not answered\"\n    },\n    \"inputProcessed\": {\n      \"type\": \"boolean\",\n      \"description\": \"if input was processed with input\"\n    },\n    \"results\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"name\": { \"type\": \"string\" },\n          \"triggered\": { \"type\": \"string\" },\n          \"question\": { \"type\": \"string\" }\n        }\n      }\n    }\n  }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Ask Missing Related"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "ASK_MISSING_RELATED",
+          "id": "1767903292926",
+          "inputs": [
+            {
+              "id": "1767903292927_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are formatting responses for an end user applying for city permits.\n\nTake the following message generated by the Permit Advisor system and present it in a clear, friendly, and easy-to-read format.\n\nFormatting rules:\n- If the response contains multiple questions, present them as bullet points.\n- Each question should be on its own line.\n- Maintain the exact meaning of the original text.\n- Do not add new questions or modify the intent.\n- Use simple formatting for readability.\n- If there is only one question, present it as a single line without bullets.\n\nMessage to Format:\n{{$context.$nodes.PROCESS_FIRST_LOOP.$output.result.response_to_user}}"
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1772067414793",
+            "1": "1772067498048",
+            "2": "1772067573179",
+            "3": "add_1772067387011_3"
+          },
+          "code": "PARALLEL_1772067387012",
+          "convergenceTargetId": "1765429185899",
+          "id": "1772067387011",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PSC_PMT_SUBCLASSMETA",
+            "functionName": "get_publicSectorSubClassMetas_AiField",
+            "name": "Permit Metadata"
+          },
+          "outcomes": {
+            "success": "1765429185899"
+          },
+          "code": "PERMIT_METADATA",
+          "id": "1772067414793",
+          "inputs": [
+            {
+              "id": "1775240093590_1",
+              "name": "publicSectorSubClassMetas_Id",
+              "type": "string",
+              "value": "LNP"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PSC_PMT_SUBCLASSMETA",
+            "functionName": "get_publicSectorSubClassMetas_AiField",
+            "name": "PZ Metadata"
+          },
+          "outcomes": {
+            "success": "1765429185899"
+          },
+          "code": "PZ_METADATA",
+          "id": "1772067498048",
+          "inputs": [
+            {
+              "id": "1775240112734_1",
+              "name": "publicSectorSubClassMetas_Id",
+              "type": "string",
+              "value": "PZ"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_PSC_PMT_SUBCLASSMETA",
+            "functionName": "get_publicSectorSubClassMetas_AiField",
+            "name": "BL Metadata"
+          },
+          "outcomes": {
+            "success": "1765429185899"
+          },
+          "code": "BL_METADATA",
+          "id": "1772067573179",
+          "inputs": [
+            {
+              "id": "1775240130963_1",
+              "name": "publicSectorSubClassMetas_Id",
+              "type": "string",
+              "value": "BL"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for branch 3",
+            "name": "Add 3"
+          },
+          "outcomes": {
+            "success": "1765429185899"
+          },
+          "id": "add_1772067387011_3",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Show All Applications"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SHOW_ALL_APPLICATIONS",
+          "id": "1772069830353",
+          "inputs": [
+            {
+              "id": "1772069830353_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are the Permit Recommendation Agent.\n\nYour task is to:\n1. Evaluate related permits using collected answers\n2. Determine which permits are REQUIRED\n3. Present only applicable permits to the user in a clean format\n\n--------------------------------------------------\nINPUTS (READ ONLY)\n--------------------------------------------------\nPrimary Permit:\n{{$context.$variables.primaryPermit.name}}\n\nRelated Permit Details:\n{{$context.$variables.relatedPermitDetails}}\n\nStructure:\n{\n  \"<permit_name>\": {\n    \"questions\": [string],\n    \"answers\": [true | false | null],\n    \"processed\": boolean\n  }\n}\n\n--------------------------------------------------\nDECISION RULES (CRITICAL)\n--------------------------------------------------\n\nFor EACH permit:\n\n1. If answers contain null:\n   → IGNORE (incomplete)\n\n2. If ALL answers are false:\n   → Permit is NOT REQUIRED\n\n3. If ANY answer is true:\n   → Permit is REQUIRED\n\n4. If answers contain null:\n   → IGNORE (incomplete)\n\n❗ Do NOT guess  \n❗ Do NOT infer beyond answers  \n❗ Evaluate each permit independently  \n\n--------------------------------------------------\nBUILD OUTPUT\n--------------------------------------------------\n\nCreate:\n- requiredPermits = list of permits that are REQUIRED\n\n--------------------------------------------------\nRESPONSE FORMATTING\n--------------------------------------------------\n\n- Display each section clearly\n- Capitalize first letter of each word in permit names\n\nFormat:\n\nPrimary Permit:\n<Primary Permit Name>\n\n[If requiredPermits is NOT empty]\n\nRelated Permits:\n- Permit 1\n- Permit 2\n- Permit 3\n\n[If requiredPermits is empty]\n\nRelated Permits:\nNone\n\nAdd spacing between sections.\n\n--------------------------------------------------\nFINAL QUESTION\n--------------------------------------------------\n\nEnd with:\n\nWould you like to proceed with applying for these permits?\n\n--------------------------------------------------\nIMPORTANT RULES\n--------------------------------------------------\n\n❗ DO NOT display raw data  \n❗ DO NOT show answers  \n❗ DO NOT include permits that are not required  \n❗ DO NOT modify permit names except capitalization  \n❗ Keep response clean and user-friendly  \n\nReturn only the formatted message (no JSON)."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Set Related Permit Details"
+          },
+          "outcomes": {
+            "success": "1766605761183"
+          },
+          "code": "SET_RELATED_PERMIT_DETAILS",
+          "id": "1775835347798",
+          "inputs": [
+            {
+              "id": "1776060889009",
+              "name": "inputProcessed",
+              "scope": "JOB",
+              "type": "boolean",
+              "value": "false"
+            },
+            {
+              "id": "1775872244238",
+              "name": "nextPermit",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.PROCESS_FIRST_LOOP.$output.result.nextPermit}}"
+            },
+            {
+              "id": "1775840566527",
+              "name": "isFirstAsk",
+              "scope": "JOB",
+              "type": "boolean",
+              "value": "false"
+            },
+            {
+              "id": "1775835369315",
+              "name": "relatedPermitDetails",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.PROCESS_FIRST_LOOP.$output.result.relatedPermitDetails}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "First Time Check"
+          },
+          "outcomes": {
+            "true": "1775765951691",
+            "false": "add_false_1775877908572"
+          },
+          "code": "FIRST_TIME_CHECK",
+          "convergenceTargetId": "1766207006829",
+          "id": "1775877908572",
+          "inputs": [
+            {
+              "id": "1775877908573_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$variables.isFirstAsk}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "description": "Add node for false branch",
+            "name": "Add (False Branch)"
+          },
+          "outcomes": {
+            "success": "1766207006829"
+          },
+          "id": "add_false_1775877908572",
+          "inputs": [],
+          "type": "ADD"
+        },
+        {
+          "metadata": {
+            "name": "Related Details Collector"
+          },
+          "outcomes": {
+            "success": "1766650152754"
+          },
+          "code": "RELATED_DETAILS_COLLECTOR",
+          "convergenceTargetId": "1766650152754",
+          "id": "1766207006829",
+          "inputs": [
+            {
+              "id": "1766207006830_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are the Related Permit Answers Storage Agent.\n\nYour ONLY task is to store user responses into the correct permit's answers array.\n\nYou DO NOT ask questions.  \nYou DO NOT determine permit applicability.  \nYou ONLY update missing answers based on the latest user message.\n\n--------------------------------------------------\nINPUTS (READ ONLY)\n--------------------------------------------------\n- Latest user message:\n  {{$context.$system.$inputMessage}}\n\n- inputProcessed flag:\n {{$context.$variables.inputProcessed}}\n\n- Persisted permit state:\n  {{$context.$variables.relatedPermitDetails}}\n\n  # Structure:\n  # {\n  #   \"<permit_name>\": {\n  #       \"triggered\": true | false | \"unknown\",\n  #       \"questions\": [string],\n  #       \"answers\": [true | false | null],\n  #       \"processed\": boolean\n  #   }\n  # }\n\n--------------------------------------------------\nGLOBAL HARD RULES\n--------------------------------------------------\n❗ Modify ONLY answers[]  \n❗ NEVER modify triggered  \n❗ NEVER overwrite existing true/false answers  \n❗ Only fill answers where value == null  \n❗ Only process ONE permit per interaction  \n❗ JSON ONLY, no explanations  \n\n--------------------------------------------------\nHARD EXIT RULE (ABSOLUTE PRIORITY)\n--------------------------------------------------\n inputProcessed = {{$context.$nodes.RELATED_GATE_QUESTIONS.$output.inputProcessed}}\nIf inputProcessed == true:\n\n→ Immediately return:\n   - relatedPermitDetails unchanged\n   - inputProcessed = true\n\n→ DO NOT execute any steps\n→ DO NOT evaluate user message\n→ STOP processing entirely\n\n--------------------------------------------------\nINPUT CONSUMPTION CONTRACT (CRITICAL)\n--------------------------------------------------\n❗ If inputProcessed == true:\n    → DO NOT use or interpret the user message\n    → DO NOT update any answers\n    → Return state unchanged\n    → inputProcessed must remain true\n\n❗ Only process inputMessage if inputProcessed == false\n\n--------------------------------------------------\nSTEP 1: SELECT TARGET PERMIT\n--------------------------------------------------\nSelect the FIRST permit in order where:\n\n- triggered == true && processed == false\n- answers array contains at least one null\n\nThis is the ONLY permit you will update.\n\nIf no such permit exists:\n→ Return state unchanged\n→ inputProcessed = false\n\n--------------------------------------------------\nSTEP 2: PARSE USER INPUT\n--------------------------------------------------\nCheck if the latest user message contains a positional sequence:\n\nExamples:\n- \"yes, no, yes\"\n- \"y n y\"\n- \"yes no yes\"\n- \"1 yes 2 no 3 yes\"\n\nNormalize:\n- lowercase\n- remove punctuation and numbering\n- map y → yes, n → no\n\nExtract ordered tokens:\n→ [\"yes\", \"no\", \"yes\"]\n\nIf no clear yes/no tokens found:\n→ Do not update anything\n→ inputProcessed = false\n\n--------------------------------------------------\nSTEP 3: APPLY ANSWERS (POSITIONAL)\n--------------------------------------------------\nFor the selected permit:\n\n- Iterate over questions in order\n- For each index i:\n\n    If answers[i] == null AND token[i] exists:\n        - \"yes\" → answers[i] = true\n        - \"no\" → answers[i] = false\n\n    If answers[i] already true/false:\n        → DO NOT CHANGE\n\nStop when tokens are exhausted\n\n--------------------------------------------------\nSTEP 4: UPDATE PROCESSED FLAG\n--------------------------------------------------\nIf ALL answers of particular permit are now true/false (no nulls remain):\n    → processed = true\nElse:\n    → processed remains false\n\n--------------------------------------------------\nSTEP 5: INPUT PROCESSED DECISION (CRITICAL)\n--------------------------------------------------\n- If ANY answers were updated in this step:\n    → inputProcessed = true\n\n- If NO answers were updated:\n    → inputProcessed = false\n\n❗ DO NOT guess  \n❗ Only set true if actual state change occurred  \n\n--------------------------------------------------\nOUTPUT FORMAT (STRICT JSON ONLY)\n--------------------------------------------------\n{\n  \"relatedPermitDetails\": { ...updated state... },\n  \"inputProcessed\": true | false\n}\n\n--------------------------------------------------\nFINAL HARD CHECK\n--------------------------------------------------\n❗ Only one permit updated  \n❗ Existing answers NOT overwritten  \n❗ triggered NOT modified  \n❗ Order preserved  \n❗ inputProcessed must reflect actual updates  \n❗ JSON only"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\":\n    {\n        \"relatedPermitDetails\":\n        {\n            \"type\": \"object\",\n            \"description\": \"Initial Permit Type Selected based on user request.\"\n        }\n    },\n    \"required\":\n    [\n        \"relatedPermitDetails\"\n    ]\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Set Related Permits Triggered"
+          },
+          "outcomes": {
+            "success": "1766207006829"
+          },
+          "code": "SET_RELATED_PERMITS_TRIGGERED",
+          "convergenceTargetId": "1775765951691",
+          "id": "1775710815171",
+          "inputs": [
+            {
+              "id": "1776060793488",
+              "name": "inputProcessed",
+              "scope": "JOB",
+              "type": "boolean",
+              "value": "{{$context.$nodes.RELATED_GATE_QUESTIONS.$output.inputProcessed}}"
+            },
+            {
+              "id": "1775880149484",
+              "name": "relatedPermitDetails",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.INIT_RELATED_PERMITS.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Init Related Permits",
+            "returnType": "object",
+            "sourceCode": "let relatedPermitDetails = {};\n\nlet permitTypes =\n    $context.$variables.permitTypeData || [];\n\nlet relatedPermits =\n    $context.$nodes.RELATED_GATE_QUESTIONS.$output.results || [];\n\nif (!Array.isArray(relatedPermits)) {\n    relatedPermits = [];\n}\n\nrelatedPermits.forEach(r => {\n\n     let permit = permitTypes.find(p =>\n        p.name?.toLowerCase() === r.name?.toLowerCase()\n    );\n\n    let questions = permit?.questions || [];\n    let triggered = r.triggered || false;\n    let code = permit?.RecordTypeId || \"\";\n\n    relatedPermitDetails[r.name] = {\n        code: code,\n        questions: questions,\n        triggered: triggered,\n        processed: false,\n        answers: new Array(questions.length).fill(null)\n    };\n});\n\nreturn {\n    result: relatedPermitDetails\n};"
+          },
+          "outcomes": {
+            "success": "1775710815171"
+          },
+          "code": "INIT_RELATED_PERMITS",
+          "convergenceTargetId": "1775710815171",
+          "id": "1775765951691",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Display Main Permit"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "DISPLAY_MAIN_PERMIT",
+          "convergenceTargetId": "1766192136283",
+          "id": "1767890305273",
+          "inputs": [
+            {
+              "id": "1767890305275_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Present the following information to the user in a clear and friendly format.\n\nFormatting rules:\n- Display the primary permit clearly.\n- Use bullet points or spacing for readability.\n- Ask the follow-up question on a new line.\n- Keep the message concise and user-friendly.\n- Please show the primary permit with first letter of every word as Capital.\n\nPrimary Permit:\n {{$context.$nodes.FIND_INITIAL_PERMIT_TYPE.$output.permit_type}} \n\nThen ask the user the following question:\n\n\"Would you like to see what other permits your project may require?\""
+            }
+          ],
+          "outputSpecification": "",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Set Permit Trigger",
+            "returnType": "array",
+            "sourceCode": "// Iterate over each related permit\nlet relPermits = $context.$nodes.FIND_INITIAL_PERMIT_TYPE.$output.primaryPermitData.relatedTypes;\nfor (let permit of relPermits) {\n    // Only initialize if triggered is not yet set\n    if (permit.triggered === undefined || permit.triggered === null) {\n        permit.triggered = \"unknown\";\n    }\n}\nreturn relPermits;"
+          },
+          "outcomes": {
+            "success": "1766192136283"
+          },
+          "code": "SET_PERMIT_TRIGGER",
+          "convergenceTargetId": "1767890305273",
+          "id": "1775696951252",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "name": "Set Related Permits"
+          },
+          "outcomes": {
+            "success": "1767890305273"
+          },
+          "code": "SET_RELATED_PERMITS",
+          "convergenceTargetId": "1767890305273",
+          "id": "1766192136283",
+          "inputs": [
+            {
+              "id": "1776034536224",
+              "name": "isRelatedPermit",
+              "scope": "JOB",
+              "type": "boolean",
+              "value": "true"
+            },
+            {
+              "id": "1776022489798",
+              "name": "inputProcessed",
+              "scope": "JOB",
+              "type": "boolean",
+              "value": "false"
+            },
+            {
+              "id": "1766192173044",
+              "name": "primaryPermit",
+              "scope": "JOB",
+              "type": "object",
+              "value": "{{$context.$nodes.FIND_INITIAL_PERMIT_TYPE.$output.primaryPermitData}}"
+            },
+            {
+              "id": "1766192143940",
+              "name": "relatedPermits",
+              "scope": "JOB",
+              "type": "array",
+              "value": "{{$context.$nodes.SET_PERMIT_TRIGGER.$output.result}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1776022441187",
+          "name": "inputProcessed",
+          "scope": "JOB",
+          "type": "boolean"
+        },
+        {
+          "id": "1775872215686",
+          "name": "nextPermit",
+          "scope": "CONVERSATION",
+          "type": "object",
+          "typeSpecification": "JSON"
+        },
+        {
+          "id": "1775840334529",
+          "name": "isFirstAsk",
+          "scope": "CONVERSATION",
+          "type": "boolean"
+        },
+        {
+          "id": "1775764378419",
+          "name": "relatedPermitDetails",
+          "scope": "CONVERSATION",
+          "type": "object",
+          "typeSpecification": "JSON"
+        },
+        {
+          "id": "1772068099232",
+          "name": "PzTypeData",
+          "scope": "CONVERSATION",
+          "type": "object",
+          "typeSpecification": "JSON"
+        },
+        {
+          "id": "1772068082688",
+          "name": "BlTypeData",
+          "scope": "CONVERSATION",
+          "type": "object",
+          "typeSpecification": "JSON"
+        },
+        {
+          "id": "1767735064440",
+          "name": "isRelatedPermit",
+          "scope": "CONVERSATION",
+          "type": "boolean"
+        },
+        {
+          "id": "1767727730739",
+          "name": "metaDataSet",
+          "scope": "CONVERSATION",
+          "type": "boolean"
+        },
+        {
+          "id": "1766605567327",
+          "name": "relatedNames",
+          "scope": "JOB",
+          "type": "array"
+        },
+        {
+          "id": "1766008970681",
+          "name": "relatedPermits",
+          "scope": "CONVERSATION",
+          "type": "array"
+        },
+        {
+          "id": "1765478405357",
+          "name": "primaryPermit",
+          "scope": "CONVERSATION",
+          "type": "object",
+          "typeSpecification": "JSON"
+        },
+        {
+          "id": "1765347320175",
+          "name": "permitTypeData",
+          "scope": "CONVERSATION",
+          "type": "object",
+          "typeSpecification": "JSON"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "PSC",
+  "product": "CC",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "FULL",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

@@ -1,0 +1,163 @@
+{
+  "workflowId": "300000331068547",
+  "workflowCode": "ORA_FIN_EXM_CASH_ADVANCE_APPLICATION_ASSISTANT",
+  "name": "Cash Advance Application Assistant",
+  "description": "Cash Advance Application Assistant",
+  "specification": {
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1774599534914"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_FIN_EXPENSES_CASHADVANCES",
+            "functionName": "GetCashAdvancesFilterByStatusCode",
+            "name": "Get Cash Advances"
+          },
+          "outcomes": {
+            "success": "1774599574888"
+          },
+          "code": "GET_CASH_ADVANCES",
+          "id": "1774599534914",
+          "inputs": [
+            {
+              "id": "1774599550201_1",
+              "name": "personId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.personId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Form Cash Advances Payload",
+            "returnType": "object",
+            "sourceCode": "let response = $context.$nodes.GET_CASH_ADVANCES.$output;\n\nlet status = \"Success\";\nlet message = \"\";\nlet recommendedAdv = null;\nlet otherAdv = [];\n\nlet expenseCurrency = $context.$triggers.REST.$input.reimbursementCurrency;\n\ntry {\n\n    // Validate response structure\n    if (!response || !Array.isArray(response.items)) {\n\n        status = \"Failed\";\n        message = \"Failed to fetch the cash advances\";\n\n    } else {\n\n        let items = response.items;\n\n        // Filter eligible cash advances\n        let eligibleCashAdvances = items.filter(ca => {\n            return Number(ca.unappliedAmount) > 0 &&\n                   ca.currencyCode === expenseCurrency;\n        });\n\n        if (eligibleCashAdvances.length === 0) {\n\n            status = \"Failed\";\n            message = \"No cash advances available\";\n\n            // IMPORTANT: keep null + empty array\n            recommendedAdv = null;\n            otherAdv = [];\n\n        } else {\n\n            // Sort by earliest settlement date\n            eligibleCashAdvances.sort((a, b) =>\n                new Date(a.settlementDate) - new Date(b.settlementDate)\n            );\n\n            // Take top 4\n            let topFour = eligibleCashAdvances.slice(0, 4);\n\n            recommendedAdv = topFour[0];\n            otherAdv = topFour.slice(1);\n\n            message = \"Cash advances list fetched successfully.\";\n        }\n    }\n\n} catch (error) {\n\n    status = \"Failed\";\n    message = \"Failed to fetch the cash advances\";\n    recommendedAdv = null;\n    otherAdv = [];\n}\n\n\n// Build summary safely\nlet advSummery = {\n\n    recommendedAdv: recommendedAdv\n        ? {\n            amount: recommendedAdv.amount ? Number(recommendedAdv.amount) : null,\n            cashAdvanceNumber: recommendedAdv.cashAdvanceNumber || \"\",\n            settlementDate: recommendedAdv.settlementDate || \"\",\n            unappliedAmount: recommendedAdv.unappliedAmount ? Number(recommendedAdv.unappliedAmount) : null,\n            tripStartDate: recommendedAdv.tripStartDate || \"\",\n            tripEndDate: recommendedAdv.tripEndDate || \"\",\n            currencyCode: recommendedAdv.currencyCode || \"\",\n            purpose: recommendedAdv.purpose || \"\",\n            statusCode: recommendedAdv.statusCode || \"\"\n        }\n        : null,\n\n    otherAdv: Array.isArray(otherAdv)\n        ? otherAdv.map(adv => ({\n            amount: adv.amount ? Number(adv.amount) : null,\n            cashAdvanceNumber: adv.cashAdvanceNumber || \"\",\n            settlementDate: adv.settlementDate || \"\",\n            tripStartDate: adv.tripStartDate || \"\",\n            tripEndDate: adv.tripEndDate || \"\",\n            unappliedAmount: adv.unappliedAmount ? Number(adv.unappliedAmount) : null,\n            currencyCode: adv.currencyCode || \"\",\n            purpose: adv.purpose || \"\",\n            statusCode: adv.statusCode || \"\"\n        }))\n        : []\n};\n\n\n// Final payload\nreturn {\n    status,\n    message,\n    caSummery: advSummery\n};"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "FORM_CASH_ADVANCES_PAYLOAD",
+          "id": "1774599574888",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": {
+      "modelProperties": {
+        "k": 0,
+        "max_tokens": 32000,
+        "p": 0.75,
+        "temperature": 0.01
+      },
+      "code": "ORA_LLM_MODEL_PROVIDER_CERT_BASIC_LLAMA_3_3_70B",
+      "model": "ORA_LLM_MODEL_GPT_OSS_120B",
+      "modelName": "GPT OSS 120B (Basic)",
+      "provider": "CERT_BASIC"
+    },
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1774599492359",
+            "name": "reimbursementCurrency",
+            "scope": "JOB",
+            "type": "string"
+          },
+          {
+            "id": "1774599482264",
+            "name": "personId",
+            "scope": "JOB",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "FIN",
+  "product": "EXPENSES",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "header": {
+    "ETag": "\"4\""
+  }
+}

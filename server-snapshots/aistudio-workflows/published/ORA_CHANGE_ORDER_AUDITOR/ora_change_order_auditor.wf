@@ -1,0 +1,659 @@
+{
+  "workflowId": "100002355227150",
+  "workflowCode": "ORA_CHANGE_ORDER_AUDITOR",
+  "name": "Change Order Auditor",
+  "description": "An AI-powered, user-configurable audit system that parses human-defined rules (from Excel or Word), creates specialized validation agents, and orchestrates REST APIs to check for compliance issues in real time. When discrepancies are found, the system proposes or executes corrective actions with human review before advancing workflow stages.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1762580565657"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_PRODUCTMAN_GETCHANGEORDERD",
+            "functionName": "getChangeOrderDetails",
+            "name": "Get Change Order Details"
+          },
+          "outcomes": {
+            "success": "1769663816146"
+          },
+          "code": "GET_CHANGE_ORDER_DETAILS",
+          "id": "1762580565657",
+          "inputs": [
+            {
+              "id": "1769205079892_1",
+              "name": "ChangeNotice",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.ChangeNotice}}"
+            },
+            {
+              "id": "1769205079893_2",
+              "name": "OrganizationCode",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.OrgCode}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"ChangeId\": {\n      \"type\": \"integer\"\n    },\n    \"Description\": {\n      \"type\": \"string\"\n    },\n    \"ChangeTypeValue\": {\n      \"type\": \"string\"\n    },\n    \"ReasonCode\": {\n      \"type\": \"string\"\n    },\n    \"PriorityCodeValue\": {\n      \"type\": \"string\"\n    },\n    \"AssignedTo\": {\n      \"type\": \"string\"\n    },\n    \"OrganizationCode\": {\n      \"type\": \"string\"\n    },\n    \"OrganizationId\": {\n      \"type\": \"integer\"\n    },\n    \"NeedByDateTime\": {\n      \"type\": \"string\",\n      \"format\": \"date-time\"\n    },\n    \"StatusTypeValue\": {\n      \"type\": \"string\"\n    },\n    \"StatusCodeValue\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"ChangeId\",\n    \"Description\",\n    \"ChangeTypeValue\",\n    \"ReasonCode\",\n    \"PriorityCodeValue\",\n    \"AssignedTo\",\n    \"OrganizationCode\",\n    \"OrganizationId\",\n    \"NeedByDateTime\",\n    \"StatusTypeValue\",\n    \"StatusCodeValue\"\n  ]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Set Change Order Details Variables"
+          },
+          "outcomes": {
+            "success": "1764646080770"
+          },
+          "code": "SET_CHANGE_ORDER_DETAILS_VARIABLES",
+          "id": "1769663816146",
+          "inputs": [
+            {
+              "id": "1769663847194",
+              "name": "ChangeOrderStatus",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_CHANGE_ORDER_DETAILS.$output.items[0].StatusCodeValue}}"
+            },
+            {
+              "id": "1769663831813",
+              "name": "ChangeOrderType",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_CHANGE_ORDER_DETAILS.$output.items[0].ChangeTypeValue}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1762672970575",
+            "1": "1767735118637",
+            "2": "1769232193925",
+            "3": "1774932117104"
+          },
+          "code": "PARALLEL_1764646080770",
+          "convergenceTargetId": "1766125339886",
+          "id": "1764646080770",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "name": "Change Order Audit Violations Report"
+          },
+          "outcomes": {
+            "success": "1769232242891"
+          },
+          "code": "CHANGE_ORDER_AUDIT_VIOLATIONS_REPORT",
+          "id": "1766125339886",
+          "inputs": [
+            {
+              "id": "1766125339887_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "* Mark all ERROR values as FAIL and display them in red bold text.\n* Always print the \"Audit Violations Summary for Change Order\" section at the top\n  of the report only once; do not repeat it at the end.\n* Print all table column headers in black bold text, left aligned.\n\n1. Extract data from {{$context.$nodes.FORMAT_AUDIT_MESSAGE.$output.FormatedAuditViolations}}\n   and display it under the heading \"Change Order Rule Audit Violations Summary\" as an HTML\n   table sorted by Serial No.\n   - Use {{$context.$triggers.REST.$input.ChangeNotice}} as the Object if empty.\n   - If any row other than the first has Severity FAIL, override it to WARNING.\n   - If the data is empty, add a single row with the text \"No Violations\" and end the table.\n\n2. Extract data from {{$context.$nodes.GENERATE_CUSTOM_RULE_BASED_AUDIT_VIOLATIONS.$output.GenerateCustomRuleBasedAuditViolationsOutput}}\n   and display it under the heading \"Custom Validation Rules Audit Violations\" as an HTML\n   table with columns:\n   1. Objects <- Object Value\n   2. Attributes Value\n   3. Change Order Type from Rule\n   4. Conditions from Rule\n   5. Validation Status\n   - Reorder rows so that rows with Validation Status = FAIL appear first, followed by WARNING, then PASS.\n   - Use Times font for table rows.\n   - Do not print \"TOTAL VIOLATIONS\" at the end of this table.\n   - If the data is empty, add a single row with the text \"No Violations\" and end the table.\n3. Add a Serial number to the table \"Custom Validation Rules Audit Violations\" as SR#\n4. Audit Violations Summary:\n   - Combine data from both tables to produce an Executive Summary including totals of:\n     1. FAIL (sum of FAIL counts from both tables)\n     2. WARNINGS (sum of WARNINGS counts from both tables)\n     3. VIOLATIONS (sum of VIOLATIONS counts from both tables)\n     4. PASS (sum of PASS counts from both tables)\n     5. PASS percentage\n     6. Overall Validation Status: PASS or FAIL based on results\n     7. Disposition and Recommended Actions\n     8. \"Change Order Status: \" + {{$context.$variables.ChangeOrderStatus}} in bold blue\n     9. \"Change Order Type: \" + {{$context.$variables.ChangeOrderType}} in bold blue\n   - Display FAIL values in red bold, WARNINGS in orange bold, PASS and PASS % in green\n     bold, and TOTAL VIOLATIONS in bold, separated by \"|\".\n   - Summarize violations and disposition action items based on reported violations.\n   - Include a message instructing the user to rerun the report after fixing violations.\n   - Print this Executive Summary under the heading \"Audit Violations Summary for Change Order \"\n     + {{$context.$triggers.REST.$input.ChangeNotice}} before the first table.\n\n5. Extract the deep link from {{$context.$nodes.GENERATE_CHANGE_ORDER_DEEP_LINK.$output.deeplink}}\n   and print it as:\n   <span>To open Change Order click here: <a href='{deep link}' target='_blank'>\n   {{$context.$triggers.REST.$input.ChangeNotice}}</a></span>\n   below the \"Change Order Type:\" line.\n   - Do not print the label \"Deep Link\".\n\n6. Mandatory formatting and output rules:\n   - Print the full report in landscape format.\n   - Do not use background CSS or color table cells; only text color is allowed.\n   - Do not include any JSON conversion instructions.\n   - Do not print any additional details after the two tables.\n   - Ensure the tally of FAIL and WARNING counts from both tables matches the summary.\n   - Print the Executive Summary first, then \"Change Order Rule Audit Violations Summary\",\n     then \"Custom Validation Rules Audit Violations\".\n   - Do not print the Executive Summary at the bottom.\n   - Print \"Change Order Status\" and \"Change Order Type\" below Overall Validation Status,\n     separated by \"|\".\n\nFollow these instructions precisely to produce a clear, well-formatted HTML report\nwith correct sorting, coloring, and summary data as specified."
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"ChangeOrderAuditViolationsReportOutput\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "ExtractEmailAddress"
+          },
+          "outcomes": {
+            "success": "1763941551915"
+          },
+          "code": "EXTRACTEMAILADDRESS",
+          "id": "1769232242891",
+          "inputs": [
+            {
+              "id": "1769232242892_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Extract EmailAddress from {{$context.$nodes.GET_EMAIL_ADDRESS_FOR_GIVEN_USER_ID.$output}} and assign it to recipientEmail variable"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"EmailAddress\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Send Change Order Audit Violations Report",
+            "type": "GENERIC"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SEND_CHANGE_ORDER_AUDIT_VIOLATIONS_REPORT",
+          "id": "1763941551915",
+          "inputs": [
+            {
+              "id": "1763941551916_1",
+              "name": "toList",
+              "type": "string",
+              "value": "test@test.com"
+            },
+            {
+              "id": "1763941551916_2",
+              "name": "ccList",
+              "type": "string",
+              "value": "{{$context.$nodes.EXTRACTEMAILADDRESS.$output.EmailAddress}}"
+            },
+            {
+              "id": "1763941551917_3",
+              "name": "subject",
+              "type": "string",
+              "value": "Audit Violations Summary for Change Order {{$context.$triggers.REST.$input.ChangeNotice}}"
+            },
+            {
+              "id": "1763941551917_4",
+              "name": "body",
+              "type": "string",
+              "value": "{{$context.$nodes.CHANGE_ORDER_AUDIT_VIOLATIONS_REPORT.$output.ChangeOrderAuditViolationsReportOutput}}"
+            },
+            {
+              "id": "1763941551917_5",
+              "name": "attachments",
+              "type": "object"
+            }
+          ],
+          "type": "EMAIL"
+        },
+        {
+          "metadata": {
+            "agentCode": "ORA_WORKFLOW_DEEP_LINK_V3",
+            "name": "Generate Change Order Deep Link"
+          },
+          "outcomes": {
+            "success": "1766125339886"
+          },
+          "code": "GENERATE_CHANGE_ORDER_DEEP_LINK",
+          "id": "1762672970575",
+          "inputs": [
+            {
+              "id": "1762672985200_1",
+              "name": "message",
+              "type": "string",
+              "value": "{{\"ChangeNotice=\" + $context.$triggers.REST.$input.ChangeNotice + \";ItemNodeChangeId=\" + $context.$nodes.GET_CHANGE_ORDER_DETAILS.$output.items[0].ChangeId + \";ChangeId =\" + $context.$nodes.GET_CHANGE_ORDER_DETAILS.$output.items[0].ChangeId}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"deeplink\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "AGENT"
+        },
+        {
+          "metadata": {
+            "name": "Run in Parallel"
+          },
+          "outcomes": {
+            "0": "1767735134422",
+            "1": "1767735190615",
+            "2": "1767735235163",
+            "3": "1767734913918",
+            "4": "1769228019277"
+          },
+          "code": "PARALLEL_1767735118639",
+          "convergenceTargetId": "1767735097814",
+          "id": "1767735118637",
+          "inputs": [],
+          "type": "PARALLEL"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_GLOBALHUMA_GETEMAILADDRESSFORGIVENUSERID",
+            "functionName": "GetEmailAddressForGivenUserID",
+            "name": "Get Email Address For Given User Id"
+          },
+          "outcomes": {
+            "success": "1766125339886"
+          },
+          "code": "GET_EMAIL_ADDRESS_FOR_GIVEN_USER_ID",
+          "id": "1769232193925",
+          "inputs": [
+            {
+              "id": "1769704686819_1",
+              "name": "UserId",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.UserID}}"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"EmailAdress\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_PRODUCTMAN_CHANGEORDERAUDITANALYSIS",
+            "functionName": "GetChangeOrderAuditAnalysis",
+            "name": "Extract Audit Violations"
+          },
+          "outcomes": {
+            "success": "1774932342652"
+          },
+          "code": "EXTRACT_AUDIT_VIOLATIONS",
+          "id": "1774932117104",
+          "inputs": [
+            {
+              "id": "1776350253300_1",
+              "name": "ChangeId",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_CHANGE_ORDER_DETAILS.$output.items[0].ChangeId}}"
+            },
+            {
+              "id": "1776350253301_2",
+              "name": "StatusCode",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_CHANGE_ORDER_DETAILS.$output.StatusCodeValue}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Generate Custom Rule Based Audit Violations"
+          },
+          "outcomes": {
+            "success": "1766125339886"
+          },
+          "code": "GENERATE_CUSTOM_RULE_BASED_AUDIT_VIOLATIONS",
+          "id": "1767735097814",
+          "inputs": [
+            {
+              "id": "1767735097815_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "### IMPORTANT INSTRUCTION for Rule Evaluation:\n\n1. Extract data from {{$context.$nodes.UPLOAD_CUSTOM_CHANGE_ORDER_AUDIT_RULES.$output.value}} as a table.\n   For each row, perform the following steps:\n\n2. Rules for attribute extraction:\n  2.1 If AttributeGroup = Change Standard Attributes, apply rules to attributes from {{$context.$nodes.GET_CHANGE_ORDER_DETAILS.$output}}.\n  2.2 If AttributeGroup = Change DFF Attributes, apply rules to attributes from {{$context.$nodes.GET_CHANGE_ORDER_FLEX_FIELDS.$output}}.\n  2.3 If AttributeGroup = Change EFF Attributes, apply rules to attributes from {{$context.$nodes.GET_CHANGE_ORDER_FLEX_FIELDS.$output}}.\n  2.4 If AttributeGroup = Change Order Affected Object, apply rules to attributes from {{$context.$nodes.GET_AFFECTED_ITEM_ID_FOR_CHANGE_ORDER.$output}}.\n  2.5 If AttributeGroup = Change Line Attributes, apply rules to attributes from both {{$context.$nodes.GET_CHANGE_ORDER_LINE_ATTRIBUTES.$output}} and {{$context.$nodes.AFFECTED_ITEMS_PENDING_CHANGE_ORDERS.$output}}.\n  2.6 If AttributeGroup = Change Line DFF, apply rules to attributes from {{$context.$nodes.GET_CHANGE_ORDER_LINE_DESCRIPTIVE_FLEXFIELDS.$output}}.\n\n3. Task Instructions:\n  - For each Change Order Type and Attribute Group, read the list of attributes specified in the Attributes column for the given condition.\n  - Extract current attribute values only for those attributes.\n  - Do not split attributes from the same Attribute Set (from Rule) into multiple rows; evaluate and report them as a single row.\n  - Evaluate one condition at a time against the extracted attribute value(s).\n  - If NewLifecyclePhaseValue is null, set it to OldLifecyclePhaseValue.\n  - Evaluate the condition only when OldLifecyclePhaseValue and NewLifecyclePhaseValue differ.\n  - For each Object Value, attribute set, condition, and Change Order Type, determine the result as PASS, WARNING, or FAILURE based solely on whether the condition is satisfied.\n  - Do not combine or chain conditions during evaluation.\n  - Report each evaluated condition as a separate row.\n\n4. Output Requirements:\n  - Output results in a table titled **Custom Rules Audit Violations** as the table header.\n  - Print one audit violation row per rule violation.\n  - Set the Disposition column value based on PASS/FAIL/WARNING according to the rule outcome.\n\n5. Table Columns:\n  1. Objects (Attribute Group)\n  2. Object Value: If Objects = Change Notice, set to {{$context.$triggers.REST.$input.ChangeNotice}}; if Objects = Change Line, set to ItemNumber.\n  3. Attribute From Rule: Comma-separated attribute name and value pairs.\n  4. Change Order Type from Rule.\n  5. Conditions from Rule.\n  6. Validation Status.\n  7. Violation.\n\n6. Rules for Printing:\n  - Entity Printing:\n    - Use entity=ChangeNotice if Attribute Group is Change Standard Attributes, Change DFF Attributes, Change EFF Attributes, or Change Order Affected Object.\n    - Use entity=Change Line if Attribute Group is Change Line Attributes.\n  - Reorder table rows so that:\n    1. All rows with Disposition = FAIL appear first.\n    2. Followed by rows with Disposition = WARNING.\n    3. Followed by rows with Disposition = PASS.\n  - Color code Validation Status column:\n    - FAIL in bold red.\n    - WARNING in bold orange.\n    - PASS in bold green.\n    - TOTAL VIOLATIONS in bold.\n  - Use Times font for table rows.\n  - Do NOT print ChangeLineId.\n  - Do NOT wrap column headings.\n  - Use color coding only for the Validation Status column.\n\nDo NOT include any JSON conversion details in the output.\n"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"GenerateCustomRuleBasedAuditViolationsOutput\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "name": "Format Audit Message"
+          },
+          "outcomes": {
+            "success": "1766125339886"
+          },
+          "code": "FORMAT_AUDIT_MESSAGE",
+          "id": "1774932342652",
+          "inputs": [
+            {
+              "id": "1774932342653_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Extract data from {{$context.$nodes.EXTRACT_AUDIT_VIOLATIONS.$output.result}}. Include the\nfollowing columns: Status Name, Sequence Number, Status Code, Criteria Type (Entry / Exit /\nValidation), Category, Messages (bulleted list within the cell), Severity (color-coded using\n<span>), and Data Formatting Rules. Instructions:\n1. Sort rows by Sequence Number in ascending order.\n2. Group violations into one row as a bulleted list for the same Status and same object. If there are no\nviolations for a group, set Severity to PASS.\n3. Create a table titled \"REST Based Audit Violations\" with these columns:\n   - Status: use Status Name.\n   - Objects: use Category; if null or \"General Information\", replace with {{$context.$triggers.REST.$input.ChangeNotice}}.\n   - Violation: Messages as a bulleted list within the cell.\n   - Severity.\n4. Remove row from table if it has no violations.\n5. For Objects null, replace with {{$context.$triggers.REST.$input.ChangeNotice}}.\n6. For all rows except the first, set Severity to WARNING. This rule must be applied without exception. If any row other than the first has Severity other than WARNING, override it to WARNING.\n7. For repeated violations, list only the one with the smallest Sequence Number.\n8. Add a serial number column to the \"REST Based Audit Violations\" table as SR#.\n9. Above the table, print counts in this format: \"Fail Count: \" + Fail Count + \" Warning Count: \"\n   + Warning Count + \" Total Count: \" + Total Count.\nRecommended Action Items: Summarize under the heading \"Recommended Action\" before the\n\"REST Based Audit Violations\" table.\nReport formatting rules for the HTML table:\n- Display Fail severity in red and Warning in orange.\n- Display Fail Count in red, Warning Count in orange, and Total Count in blue.\n- Use Times font throughout.\n- Do NOT use any external style sheets.\nEnsure all instructions are followed precisely and output is clean, well-structured HTML.\n"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"FormatedAuditViolations\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "dataPipeline": {
+              "pipelineNodes": [
+                {
+                  "metadata": {
+                    "name": "Start",
+                    "description": "Start of data pipeline"
+                  },
+                  "outcomes": {
+                    "success": "1769228223612"
+                  },
+                  "diagram": {
+                    "x": 7069,
+                    "y": 6484
+                  },
+                  "id": "start_1769228161160",
+                  "code": "START_1769228161160",
+                  "type": "START"
+                },
+                {
+                  "metadata": {
+                    "businessObjectCode": "ORA_SCM_PRODUCTMAN_GETCHANGEORDERAFFECTEDITEMSPENDINGCHANGES",
+                    "functionName": "GetChangeOrderAffectedItemsPendingChanges",
+                    "name": "Get Change Order Affected Items Pending Changes"
+                  },
+                  "outcomes": {
+                    "success": "end_1769228161160"
+                  },
+                  "diagram": {
+                    "x": 6828,
+                    "y": 6635
+                  },
+                  "code": "GET_CHANGE_ORDER_AFFECTED_ITEMS_PENDING_CHANGES",
+                  "id": "1769228223612",
+                  "inputs": [
+                    {
+                      "id": "1769228232388_1",
+                      "name": "ItemId",
+                      "type": "string",
+                      "value": "{{$context.$nodes.GET_AFFECTED_ITEM_ID_FOR_CHANGE_ORDER.$output.items[0].changeOrderAffectedObject.items[$context.$nodes.CHANGE_ORDER_AFFECTED_ITEMS_PENDING_CHANGES_LOOP.$currentItemIndex].ItemId}}"
+                    }
+                  ],
+                  "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"array\",\n  \"items\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"ChangeLineId\": {\n        \"type\": \"number\",\n        \"description\": \"Unique identifier for the change line\"\n      },\n      \"ItemNumber\": {\n        \"type\": \"string\",\n        \"description\": \"Item number or code\"\n      },\n      \"ItemId\": {\n        \"type\": \"number\",\n        \"description\": \"Unique identifier for the item\"\n      }\n    },\n    \"required\": [\"ChangeLineId\", \"ItemNumber\", \"ItemId\"],\n    \"additionalProperties\": false\n  }\n}",
+                  "type": "BO_FUNCTION"
+                },
+                {
+                  "metadata": {
+                    "name": "End",
+                    "description": "End of data pipeline"
+                  },
+                  "outcomes": {},
+                  "id": "end_1769228161160",
+                  "code": "END",
+                  "type": "END",
+                  "inputs": []
+                }
+              ],
+              "rootNode": "start_1769228161160"
+            },
+            "loopType": "PARALLEL",
+            "name": "Change Order Affected Items Pending Changes Loop"
+          },
+          "outcomes": {
+            "success": "1769228269199"
+          },
+          "code": "CHANGE_ORDER_AFFECTED_ITEMS_PENDING_CHANGES_LOOP",
+          "id": "1769228161160",
+          "inputs": [
+            {
+              "id": "1769228161161_1",
+              "name": "collection",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_AFFECTED_ITEM_ID_FOR_CHANGE_ORDER.$output.items[0].changeOrderAffectedObject.items}}"
+            }
+          ],
+          "type": "LOOP"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_PRODUCTMAN_GETCHANGEFLEXFI",
+            "functionName": "GetChangeOrderFlexfields",
+            "name": "Get Change Order Flex Fields"
+          },
+          "outcomes": {
+            "success": "1767735097814"
+          },
+          "code": "GET_CHANGE_ORDER_FLEX_FIELDS",
+          "id": "1767735134422",
+          "inputs": [
+            {
+              "id": "1771620207572_1",
+              "name": "ChangeId",
+              "type": "integer",
+              "value": "{{$context.$nodes.GET_CHANGE_ORDER_DETAILS.$output.items[0].ChangeId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n\n          \"changeOrderAffectedObject\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"items\": {\n                \"type\": \"array\",\n                \"items\": {\n                  \"type\": \"object\",\n                  \"properties\": {\n                    \"ChangeLineId\": { \"type\": \"string\" },\n                    \"SequenceNumber\": { \"type\": \"number\" },\n                    \"NewItemRevision\": { \"type\": [\"string\", \"null\"] },\n                    \"ItemId\": { \"type\": \"string\" },\n                    \"EffectivityOnApprovalFlag\": { \"type\": \"boolean\" },\n                    \"OldRevision\": { \"type\": [\"string\", \"null\"] },\n                    \"NewRevisionReason\": { \"type\": [\"string\", \"null\"] },\n                    \"StatusTypeValue\": { \"type\": [\"string\", \"null\"] },\n                    \"StatusCodeValue\": { \"type\": [\"string\", \"null\"] },\n                    \"ItemNumber\": { \"type\": [\"string\", \"null\"] },\n                    \"ScheduledDateTime\": { \"type\": \"string\", \"format\": \"date-time\" },\n                    \"ImplementationDateTime\": { \"type\": [\"string\", \"null\"], \"format\": \"date-time\" },\n                    \"CancelationDateTime\": { \"type\": [\"string\", \"null\"], \"format\": \"date-time\" },\n                    \"OldRevisionId\": { \"type\": [\"string\", \"null\"] },\n                    \"@context\": {\n                      \"type\": \"object\",\n                      \"properties\": {\n                        \"key\": { \"type\": \"string\" },\n                        \"headers\": {\n                          \"type\": \"object\",\n                          \"properties\": {\n                            \"ETag\": { \"type\": \"string\" }\n                          },\n                          \"required\": [\"ETag\"]\n                        }\n                      },\n                      \"required\": [\"key\", \"headers\"]\n                    }\n                  },\n                  \"required\": [\n                    \"ChangeLineId\",\n                    \"SequenceNumber\",\n                    \"NewItemRevision\",\n                    \"ItemId\",\n                    \"EffectivityOnApprovalFlag\",\n                    \"OldRevision\",\n                    \"ItemNumber\",\n                    \"ScheduledDateTime\",\n                    \"OldRevisionId\",\n                    \"@context\"\n                  ]\n                }\n              }\n            },\n            \"required\": [\"items\"]\n          },\n\n          \"changeOrderDFF\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"items\": {\n                \"type\": \"array\",\n                \"items\": {\n                  \"type\": \"object\",\n                  \"properties\": {\n                    \"ChangeId\": { \"type\": \"string\" },\n                    \"BaseChangeMgmtTypeCode\": { \"type\": \"string\" },\n                    \"_CHHD_Glob_Seg_Char_1\": { \"type\": [\"string\", \"null\"] },\n                    \"_zBIACODFF\": { \"type\": [\"string\", \"null\"] },\n                    \"implementationReason\": { \"type\": [\"string\", \"null\"] },\n                    \"pcn\": { \"type\": [\"string\", \"null\"] },\n                    \"nci\": { \"type\": [\"string\", \"null\"] },\n                    \"dor\": { \"type\": [\"string\", \"null\"] },\n                    \"ts\": { \"type\": [\"string\", \"null\"] },\n                    \"text02\": { \"type\": [\"string\", \"null\"] },\n                    \"number02\": { \"type\": [\"string\", \"null\"] },\n                    \"date02\": { \"type\": [\"string\", \"null\"] },\n                    \"ucChangeFunction\": { \"type\": [\"string\", \"null\"] },\n                    \"ucChangecategory\": { \"type\": [\"string\", \"null\"] },\n                    \"ucConclusionsummary\": { \"type\": [\"string\", \"null\"] },\n                    \"acCoGlobalDff1\": { \"type\": [\"string\", \"null\"] },\n                    \"acCoGlobalDff2\": { \"type\": [\"string\", \"null\"] },\n                    \"biattribute26\": { \"type\": [\"string\", \"null\"] },\n                    \"ecolist00326472\": { \"type\": [\"string\", \"null\"] },\n                    \"__FLEX_Context\": { \"type\": [\"string\", \"null\"] },\n                    \"@context\": {\n                      \"type\": \"object\",\n                      \"properties\": {\n                        \"key\": { \"type\": \"string\" },\n                        \"headers\": {\n                          \"type\": \"object\",\n                          \"properties\": {\n                            \"ETag\": { \"type\": \"string\" }\n                          },\n                          \"required\": [\"ETag\"]\n                        }\n                      },\n                      \"required\": [\"key\", \"headers\"]\n                    }\n                  },\n                  \"required\": [\"ChangeId\", \"BaseChangeMgmtTypeCode\", \"@context\"]\n                }\n              }\n            },\n            \"required\": [\"items\"]\n          },\n\n          \"changeOrderEFF\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"items\": {\n                \"type\": \"array\",\n                \"items\": {\n                  \"type\": \"object\",\n                  \"properties\": {\n                    \"ObjectVersionNumber\": { \"type\": \"number\" },\n                    \"ChangeId\": { \"type\": \"string\" },\n                    \"CreatedBy\": { \"type\": \"string\" },\n                    \"CreationDate\": { \"type\": \"string\", \"format\": \"date-time\" },\n                    \"LastUpdateDate\": { \"type\": \"string\", \"format\": \"date-time\" },\n                    \"LastUpdateLogin\": { \"type\": \"string\" },\n                    \"LastUpdatedBy\": { \"type\": \"string\" },\n                    \"BaseChangeMgmtTypeCode\": { \"type\": \"string\" },\n                    \"CategoryCode\": { \"type\": \"string\" },\n                    \"EffContextPrivileges\": { \"type\": \"string\" },\n                    \"OrganizationId\": { \"type\": \"string\" },\n                    \"ChangeTypeId\": { \"type\": \"string\" },\n                    \"@context\": {\n                      \"type\": \"object\",\n                      \"properties\": {\n                        \"key\": { \"type\": \"string\" },\n                        \"headers\": {\n                          \"type\": \"object\",\n                          \"properties\": {\n                            \"ETag\": { \"type\": \"string\" }\n                          },\n                          \"required\": [\"ETag\"]\n                        }\n                      },\n                      \"required\": [\"key\", \"headers\"]\n                    }\n                  },\n                  \"required\": [\n                    \"ObjectVersionNumber\",\n                    \"ChangeId\",\n                    \"CreatedBy\",\n                    \"CreationDate\",\n                    \"LastUpdateDate\",\n                    \"LastUpdateLogin\",\n                    \"LastUpdatedBy\",\n                    \"BaseChangeMgmtTypeCode\",\n                    \"CategoryCode\",\n                    \"EffContextPrivileges\",\n                    \"OrganizationId\",\n                    \"ChangeTypeId\",\n                    \"@context\"\n                  ]\n                }\n              }\n            },\n            \"required\": [\"items\"]\n          },\n\n          \"@context\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"key\": { \"type\": \"string\" },\n              \"headers\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"ETag\": { \"type\": \"string\" }\n                },\n                \"required\": [\"ETag\"]\n              }\n            },\n            \"required\": [\"key\", \"headers\"]\n          }\n        },\n        \"required\": [\"changeOrderAffectedObject\", \"changeOrderDFF\", \"changeOrderEFF\", \"@context\"]\n      }\n    }\n  },\n  \"required\": [\"items\"]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_PRODUCTMAN_PRODUCTCHANGELINES",
+            "functionName": "GetChangeOrderLineAttributes",
+            "name": "Get Change Order Line Attributes"
+          },
+          "outcomes": {
+            "success": "1767735097814"
+          },
+          "code": "GET_CHANGE_ORDER_LINE_ATTRIBUTES",
+          "id": "1767735190615",
+          "inputs": [
+            {
+              "id": "1769235195883_1",
+              "name": "ChangeName",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.ChangeNotice}}"
+            },
+            {
+              "id": "1769235195884_2",
+              "name": "ChangeLineOrganizationId",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_CHANGE_ORDER_DETAILS.$output.items[0].OrganizationId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"ChangeLineId\": { \"type\": \"string\" },\n          \"ItemNumber\": { \"type\": \"string\" },\n          \"OldLifeyclePhaseValue\": {\n            \"type\": [\"string\", \"null\"]\n          },\n          \"NewLifecylePhaseValue\": {\n            \"type\": [\"string\", \"null\"]\n          },\n          \"OldItemRevision\": { \"type\": [\"string\", \"null\"] },\n          \"NewItemRevision\": { \"type\": [\"string\", \"null\"] },\n          \"NewItemClassId\": { \"type\": [\"string\", \"null\"] },\n\n          **\"ItemClassName\": { \"type\": [\"string\", \"null\"] },**\n\n          \"@context\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"key\": { \"type\": \"string\" }\n            },\n            \"required\": [\"key\"]\n          }\n        },\n        \"required\": [\n          \"ChangeLineId\",\n          \"ItemNumber\",\n          \"OldLifeyclePhaseValue\",\n          \"NewLifecylePhaseValue\",\n          \"OldItemRevision\",\n          \"NewItemRevision\",\n          \"NewItemClassId\",\n          \"ItemClassName\",\n          \"@context\"\n        ]\n      }\n    }\n  },\n  \"required\": [\"items\"]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_PRODUCTMAN_PRODUCTCHANGELINES",
+            "functionName": "GetChangeLineDescriptiveFlexfields",
+            "name": "Get Change Order Line Descriptive Flexfields"
+          },
+          "outcomes": {
+            "success": "1767735097814"
+          },
+          "code": "GET_CHANGE_ORDER_LINE_DESCRIPTIVE_FLEXFIELDS",
+          "id": "1767735235163",
+          "inputs": [
+            {
+              "id": "1771620379032_1",
+              "name": "ChangeName",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.ChangeNotice}}"
+            },
+            {
+              "id": "1771620379033_2",
+              "name": "ChangeLineOrganizationId",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_CHANGE_ORDER_DETAILS.$output.items[0].OrganizationId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"ChangeLineId\": { \"type\": \"string\" },\n          \"ItemNumber\": { \"type\": \"string\" },\n          \"OldLifeyclePhaseValue\": {\n            \"type\": [\"string\", \"null\"]\n          },\n          \"NewLifecylePhaseValue\": {\n            \"type\": [\"string\", \"null\"]\n          },\n          \"OldItemRevision\": { \"type\": [\"string\", \"null\"] },\n          \"NewItemRevision\": { \"type\": [\"string\", \"null\"] },\n          \"NewItemClassId\": { \"type\": [\"string\", \"null\"] },\n\n          **\"ItemClassName\": { \"type\": [\"string\", \"null\"] },**\n\n          \"@context\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"key\": { \"type\": \"string\" }\n            },\n            \"required\": [\"key\"]\n          }\n        },\n        \"required\": [\n          \"ChangeLineId\",\n          \"ItemNumber\",\n          \"OldLifeyclePhaseValue\",\n          \"NewLifecylePhaseValue\",\n          \"OldItemRevision\",\n          \"NewItemRevision\",\n          \"NewItemClassId\",\n          \"ItemClassName\",\n          \"@context\"\n        ]\n      }\n    }\n  },\n  \"required\": [\"items\"]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Upload Custom Change Order Audit Rules",
+            "toolCode": "ORA_UPLOAD_CUSTOM_CHANGE_ORDER_AUDIT_RULES"
+          },
+          "outcomes": {
+            "success": "1767735097814"
+          },
+          "code": "UPLOAD_CUSTOM_CHANGE_ORDER_AUDIT_RULES",
+          "id": "1767734913918",
+          "inputs": [
+            {
+              "id": "1767734913919_1",
+              "name": "question",
+              "type": "string",
+              "value": "Extract the data from file column by column without any content change"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"AnswerWithCitations\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"value\": {\n      \"type\": \"string\",\n      \"description\": \"The answer text.\"\n    },\n    \"citations\": {\n      \"type\": \"array\",\n      \"description\": \"List of citations relevant to the answer.\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"citedText\": {\n            \"type\": \"string\",\n            \"description\": \"The cited text.\"\n          }\n        },\n        \"required\": [\n          \"citedText\"\n        ],\n        \"additionalProperties\": false\n      }\n    }\n  },\n  \"required\": [\n    \"value\",\n    \"citations\"\n  ],\n  \"additionalProperties\": false\n}",
+          "type": "RAG_DOCUMENT_TOOL"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_SCM_PRODUCTMAN_GETCHANGEORDERFLEXFILEDSV2",
+            "functionName": "GetAffectedItemIdForChangeOrder",
+            "name": "Get Affected Item Id For Change Order"
+          },
+          "outcomes": {
+            "success": "1769228161160"
+          },
+          "code": "GET_AFFECTED_ITEM_ID_FOR_CHANGE_ORDER",
+          "id": "1769228019277",
+          "inputs": [
+            {
+              "id": "1769234488270_1",
+              "name": "ChangeId",
+              "type": "string",
+              "value": "{{$context.$nodes.GET_CHANGE_ORDER_DETAILS.$output.items[0].ChangeId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"changeOrderAffectedObject\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"items\": {\n                \"type\": \"array\",\n                \"items\": {\n                  \"type\": \"object\",\n                  \"properties\": {\n                    \"ItemId\": {\n                      \"type\": \"string\"\n                    },\n                    \"ItemNumber\": {\n                      \"type\": \"string\"\n                    },\n                    \"ChangeLineId\": {\n                      \"type\": \"string\"\n                    },\n                    \"@context\": {\n                      \"type\": \"object\",\n                      \"properties\": {\n                        \"key\": {\n                          \"type\": \"string\"\n                        },\n                        \"headers\": {\n                          \"type\": \"object\",\n                          \"properties\": {\n                            \"ETag\": {\n                              \"type\": \"string\"\n                            }\n                          },\n                          \"required\": [\"ETag\"]\n                        }\n                      },\n                      \"required\": [\"key\", \"headers\"]\n                    }\n                  },\n                  \"required\": [\"ItemId\", \"ItemNumber\", \"ChangeLineId\", \"@context\"]\n                }\n              },\n              \"count\": {\n                \"type\": \"number\"\n              },\n              \"hasMore\": {\n                \"type\": \"boolean\"\n              },\n              \"limit\": {\n                \"type\": \"number\"\n              },\n              \"offset\": {\n                \"type\": \"number\"\n              },\n              \"links\": {\n                \"type\": \"array\",\n                \"items\": {\n                  \"type\": \"object\",\n                  \"properties\": {\n                    \"rel\": {\n                      \"type\": \"string\"\n                    },\n                    \"href\": {\n                      \"type\": \"string\"\n                    },\n                    \"name\": {\n                      \"type\": \"string\"\n                    },\n                    \"kind\": {\n                      \"type\": \"string\"\n                    }\n                  },\n                  \"required\": [\"rel\", \"href\", \"name\", \"kind\"]\n                }\n              }\n            },\n            \"required\": [\"items\", \"count\", \"hasMore\", \"limit\", \"offset\", \"links\"]\n          },\n          \"@context\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"key\": {\n                \"type\": \"string\"\n              },\n              \"headers\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"ETag\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [\"ETag\"]\n              }\n            },\n            \"required\": [\"key\", \"headers\"]\n          }\n        },\n        \"required\": [\"changeOrderAffectedObject\", \"@context\"]\n      }\n    },\n    \"count\": {\n      \"type\": \"number\"\n    },\n    \"hasMore\": {\n      \"type\": \"boolean\"\n    },\n    \"limit\": {\n      \"type\": \"number\"\n    },\n    \"offset\": {\n      \"type\": \"number\"\n    },\n    \"links\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"rel\": {\n            \"type\": \"string\"\n          },\n          \"href\": {\n            \"type\": \"string\"\n          },\n          \"name\": {\n            \"type\": \"string\"\n          },\n          \"kind\": {\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\"rel\", \"href\", \"name\", \"kind\"]\n      }\n    }\n  },\n  \"required\": [\"items\", \"count\", \"hasMore\", \"limit\", \"offset\", \"links\"]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Affected Items Pending Change Orders"
+          },
+          "outcomes": {
+            "success": "1767735097814"
+          },
+          "code": "AFFECTED_ITEMS_PENDING_CHANGE_ORDERS",
+          "id": "1769228269199",
+          "inputs": [
+            {
+              "id": "1769228269201_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "Extract the data from {{$context.$nodes.CHANGE_ORDER_AFFECTED_ITEMS_PENDING_CHANGES_LOOP.$output}} and print it"
+            }
+          ],
+          "outputSpecification": "{\n    \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n    \"type\": \"object\",\n    \"properties\": {\n        \"AffectedItemsPendingChangeOrdersOutput\": {\n            \"type\": \"string\"\n        }\n    }\n}",
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1769663781693",
+          "name": "ChangeOrderType",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1769663758918",
+          "name": "ChangeOrderStatus",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1769303464223",
+          "name": "OrganizationId",
+          "scope": "JOB",
+          "type": "integer"
+        },
+        {
+          "id": "1769303452998",
+          "name": "ChangeId",
+          "scope": "JOB",
+          "type": "integer"
+        },
+        {
+          "id": "1769228115009",
+          "name": "recipientEmail",
+          "scope": "JOB",
+          "type": "string"
+        },
+        {
+          "id": "1769228106609",
+          "name": "ItemIdLoopIndex",
+          "scope": "JOB",
+          "type": "integer"
+        },
+        {
+          "id": "1762584529814",
+          "name": "StatusLoopIndex",
+          "scope": "JOB",
+          "type": "number"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": "test@test.com"
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": "error"
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": "NODE :  {{$context.$error.$errorNode}}\nMESSAGE : {{$context.$error.$errorMessage}}"
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1769228137721",
+            "name": "UserID",
+            "type": "integer"
+          },
+          {
+            "id": "1769205113728",
+            "name": "OrgCode",
+            "type": "string"
+          },
+          {
+            "id": "1762580548177",
+            "name": "ChangeNotice",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": []
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "SCM",
+  "product": "PRODUCT_MANAGEMENT",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": true,
+  "customizationPolicy": "NONE",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"4\""
+  }
+}

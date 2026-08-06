@@ -1,0 +1,456 @@
+{
+  "workflowId": "300000331068550",
+  "workflowCode": "ORA_SALES_PROGRAM_ADVISOR_WORKFLOW",
+  "name": "Sales Program Advisor Workflow",
+  "description": "This workflow supports the Sales Program Advisor application by retrieving and organizing data related to sales programs, including program details, associated accounts, eligibility criteria, and related activities. It processes and presents this information in a structured format for use within the application.",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1776328487388"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START",
+          "diagram": {
+            "x": 5777,
+            "y": 5000
+          }
+        },
+        {
+          "id": "1776328487388",
+          "code": "EXTRACT_PROGRAMID",
+          "type": "CODE",
+          "metadata": {
+            "name": "Extract ProgramId",
+            "sourceCode": "let result = \"\";\ntry {\n  const appContext = $context.$app?.$OraAppContext || \"\";\n  if (!appContext) {\n    result = \"\";\n  } else {\n    const pairs = appContext.split('&');\n    const obj = {};\n    pairs.forEach(pair => {\n      const [key, value] = pair.split('=');\n      if (key && value !== undefined) {\n        obj[key] = value;\n      }\n    });\n    // Extract programId from parsed object\n    // TODO: Inferred 'programId' from user text 'programId'\n    const programId = obj.programId || \"\";\n    result = programId;\n  }\n} catch (error) {\n  result = \"\";\n}\n\nreturn result;",
+            "returnType": "string"
+          },
+          "diagram": {
+            "x": 5675,
+            "y": 5246
+          },
+          "outcomes": {
+            "success": "1776328861599"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1776328861599",
+          "code": "GET_PROGRAM_DATA",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get Program Data",
+            "businessObjectCode": "ORA_CX_MARKETING_DATAOBJECTS",
+            "functionName": "getProgramById"
+          },
+          "diagram": {
+            "x": 5675,
+            "y": 5468
+          },
+          "outcomes": {
+            "success": "1776328933694"
+          },
+          "inputs": [
+            {
+              "id": "1776328861599_id",
+              "name": "id",
+              "value": "{{$context.$nodes.EXTRACT_PROGRAMID.$output.result}}",
+              "required": false,
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "id": "1776328933694",
+          "code": "PREPARE_PROGRAM_DATA",
+          "type": "CODE",
+          "metadata": {
+            "name": "Prepare Program Data",
+            "returnType": "object",
+            "sourceCode": "let result = {};\ntry {\n  // Safely access the single program item from upstream node output\n  const program = $context.$nodes.GET_PROGRAM_DATA?.$output?.items?.[0] || null;\n\n  if (program) {\n    // Find attribute with key 'product'\n    const targetProductAttr = program.programAttributes?.items?.find(attr => attr.key === \"product\");\n    // Find attribute with key 'ownedproduct'\n    const ownedProductAttr = program.programAttributes?.items?.find(attr => attr.key === \"ownedproduct\");\n    // Find attribute with key 'regions'\n    const regionsAttr = program.programAttributes?.items?.find(attr => attr.key === \"regions\");\n\n    const industriesAttr = program.programAttributes?.items?.find(attr => attr.key === \"industries\");\n\n    // Extract first 3 industries if available and separated by comma\n    let industriesShort = null;\n    if (industriesAttr?.displayValue) {\n      const industriesArray = industriesAttr.displayValue.split(\",\").map(s => s.trim()).filter(s => s.length > 0);\n      industriesShort = industriesArray.slice(0, 3).join(\", \");\n    }\n\n    result = {\n      ProgramId: program.id || null,\n      ProgramName: program.name || null,\n      Objective: program.objective || null,\n      TargetProductId: targetProductAttr ? targetProductAttr.value : null,\n      TargetProductName: targetProductAttr ? targetProductAttr.displayValue : null,\n      OwnedProductId: ownedProductAttr ? ownedProductAttr.value : null,\n      OwnedProductName: ownedProductAttr ? ownedProductAttr.displayValue : null,\n      Region: regionsAttr ? regionsAttr.displayValue : null,\n      Industries: industriesShort\n    };\n  } else {\n    // No program data found, return empty object\n    result = {};\n  }\n} catch (error) {\n  // In case of error, return empty object\n  result = {};\n}\n\nreturn result;"
+          },
+          "diagram": {
+            "x": 5675,
+            "y": 5690
+          },
+          "outcomes": {
+            "success": "1776359415460"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1776359415460",
+          "code": "GET_SALES_INTERSECTION_ACCOUNTS",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get Sales Intersection Accounts",
+            "businessObjectCode": "ORA_CX_SALESFORCE_ACCOUNTS",
+            "functionName": "getFavoriteAccounts"
+          },
+          "diagram": {
+            "x": 5655.5,
+            "y": 5912
+          },
+          "outcomes": {
+            "success": "1776329480383"
+          },
+          "inputs": []
+        },
+        {
+          "id": "1776329480383",
+          "code": "GET_ALL_ACCOUNTS",
+          "type": "BO_FUNCTION",
+          "metadata": {
+            "name": "Get All Accounts",
+            "businessObjectCode": "ORA_CX_SALESFORCE_SALESMARKETINGACCOUNTS",
+            "functionName": "getAllAccounts"
+          },
+          "diagram": {
+            "x": 5675,
+            "y": 6134
+          },
+          "outcomes": {
+            "success": "1776329532177"
+          },
+          "inputs": [
+            {
+              "id": "1776329480383_targetProductId",
+              "name": "targetProductId",
+              "value": "{{$context.$nodes.PREPARE_PROGRAM_DATA.$output.result.TargetProductId}}",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "id": "1776329480383_ownedProductId",
+              "name": "ownedProductId",
+              "value": "{{$context.$nodes.PREPARE_PROGRAM_DATA.$output.result.OwnedProductId}}",
+              "required": false,
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "id": "1776329532177",
+          "code": "GROUP_THE_ACCOUNTS",
+          "type": "CODE",
+          "metadata": {
+            "name": "Group the Accounts",
+            "sourceCode": "let result = { SalesReady: [], Awareness: [], Consideration: [] };\ntry {\n  const allAccounts = $context.$nodes?.GET_ALL_ACCOUNTS?.$output?.items || [];\n  const salesIntersectionAccounts = $context.$nodes?.GET_SALES_INTERSECTION_ACCOUNTS?.$output?.items || [];\n\n  // Create a Set of OrganizationName from sales intersection accounts for quick lookup\n  const salesOrgNamesSet = new Set(salesIntersectionAccounts.map(acc => acc.OrganizationName));\n\n  // Iterate over each account from all accounts and bucket into stages only if present in sales intersection\n  allAccounts.forEach(account => {\n    // TODO: Inferred 'OrganizationName' from user text 'accountName'\n    const accountName = account.OrganizationName || account.accountName; // fallback if OrganizationName missing\n    if (!accountName || !salesOrgNamesSet.has(accountName)) {\n      // Skip accounts not in sales intersection\n      return;\n    }\n\n    let stage = \"Consideration\";\n    const coverage = account.buyingGroupCoverage;\n    const engagement = account.buyingGroupEngagement;\n\n    if (coverage > 60 || engagement > 60) {\n      stage = \"SalesReady\"; // Note: property name in result object is SalesReady\n    } else if (coverage < 20 || engagement < 20) {\n      stage = \"Awareness\";\n    }\n\n    // Push account to appropriate stage array\n    if (stage === \"SalesReady\") {\n      result.SalesReady.push(account);\n    } else if (stage === \"Awareness\") {\n      result.Awareness.push(account);\n    } else {\n      result.Consideration.push(account);\n    }\n  });\n} catch (error) {\n  // On error, return empty arrays\n  result = { SalesReady: [], Awareness: [], Consideration: [] };\n}\n\nreturn result;\n",
+            "returnType": "object"
+          },
+          "diagram": {
+            "x": 5675,
+            "y": 6356
+          },
+          "outcomes": {
+            "success": "1776330043136"
+          },
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"additionalProperties\": false,\n  \"required\": [\n    \"result\",\n    \"timeout\",\n    \"error\"\n  ]\n}"
+        },
+        {
+          "id": "1776330043136",
+          "code": "AI_APP_DISPLAY_SWITCH",
+          "type": "SWITCH",
+          "convergenceTargetId": "end",
+          "metadata": {
+            "name": "Ai APp Display Switch"
+          },
+          "diagram": {
+            "x": 5675,
+            "y": 6578
+          },
+          "outcomes": {
+            "InitDisplay": "1776330250557",
+            "InitSubtitle": "1776330368448",
+            "Summary": "1776331842587",
+            "InvokeAction": "1776333570280",
+            "Query": ""
+          },
+          "inputs": [
+            {
+              "id": "1776330043136_caseExpression",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$app.$OraMessageHint}}"
+            }
+          ]
+        },
+        {
+          "id": "1776330250557",
+          "code": "DISPLAY_PANEL_SWITCH",
+          "type": "SWITCH",
+          "convergenceTargetId": "end",
+          "metadata": {
+            "name": "Display Panel Switch"
+          },
+          "diagram": {
+            "x": 5000,
+            "y": 6800
+          },
+          "outcomes": {
+            "OBJECTIVE": "1776330296388",
+            "AUDIENCE": "1776332040454"
+          },
+          "inputs": [
+            {
+              "id": "1776330250557_caseExpression",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$app.$OraAppDisplayDiscriminator}}"
+            }
+          ]
+        },
+        {
+          "id": "1776330368448",
+          "code": "RETURN_SUBTITLE",
+          "type": "RETURN",
+          "metadata": {
+            "name": "Return Subtitle"
+          },
+          "diagram": {
+            "x": 5450,
+            "y": 6800
+          },
+          "outcomes": {},
+          "inputs": [
+            {
+              "id": "1776330368448_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "Industries: {{$context.$nodes.PREPARE_PROGRAM_DATA.$output.result.Industries}}     Region: {{$context.$nodes.PREPARE_PROGRAM_DATA.$output.result.Region}} "
+            }
+          ]
+        },
+        {
+          "id": "1776331842587",
+          "code": "SUMMARY",
+          "type": "LLM",
+          "metadata": {
+            "name": "Summary"
+          },
+          "diagram": {
+            "x": 5900,
+            "y": 6800
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [
+            {
+              "id": "1776331842587_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "1776331842587_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Based on the program data {{$context.$nodes.PREPARE_PROGRAM_DATA.$output.result}} and the accounts grouped on the stage data {{$context.$nodes.GROUP_THE_ACCOUNTS.$output.result}}, generate a single-line summary sentence with less than 8 words formatted as a markdown h3 heading that encapsulates the program and accounts overview.\n\nAdditionally, provide 1-2 concise, professional sentences describing the stages of the accounts and how the program supports these stages or where improvements are needed.\n\nEnsure the summary is clear, informative, and uses professional language suitable for business reporting.\n\nDo not include any additional commentary or unrelated information.\n\nKeep the output focused strictly on the summary and analysis as specified.  "
+            }
+          ]
+        },
+        {
+          "id": "1776333570280",
+          "code": "GENERATE_ACCOUNTS_RESPONSE",
+          "type": "LLM",
+          "metadata": {
+            "name": "Generate Accounts Response"
+          },
+          "diagram": {
+            "x": 6350,
+            "y": 6800
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [
+            {
+              "id": "1776333570280_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": "Produce only the oraInfoDisplay widget JSON output exactly as specified, without any additional text, commentary, or explanation."
+            },
+            {
+              "id": "1776333570280_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Generate a MessageListWidget based on the current action stage and account data.\nDATA:\n- Current action stage: {{$context.$app.$OraAction}} (possible values: \"Awareness\", \"Consideration\", \"Sales Ready\")\n- Accounts: {{$context.$nodes.GROUP_THE_ACCOUNTS.$output.result}}\n\nTASK:\n- Select accounts matching the current {{$context.$app.$OraAction}} stage.\n- Format each account's ARR numeric value into Million (M), Billion (B), or Thousand (K) as appropriate.\n- For each selected account, create a message list item with the following fields:\n  - title: accountName\n  - subtitle: \"Potential Revenue - \" followed by the formatted ARR\n  - badgeText: fitCategory\n  - priority: \"medium\" if fitCategory is Moderate, \"Alert\" if fitCategory is Strong\n  - an action with followupCommand ora.Invoke(\"launchAccount\", {accountId:<accountId from the current row>, targetProductId: {{$context.$nodes.PREPARE_PROGRAM_DATA.$output.result.targetProductId}}, targetProductName: {{$context.$nodes.PREPARE_PROGRAM_DATA.$output.result.targetProductName}} })\n- Limit the output to a maximum of 7 or 8 accounts.\n\nOUTPUT:\n- Return only the MessageListWidget JSON with no extra text or explanation."
+            }
+          ],
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "enableActions": true,
+              "layouts": [
+                "ORA_LAYOUT_MESSAGES_LIST"
+              ]
+            }
+          }
+        },
+        {
+          "id": "1776330296388",
+          "code": "RETURN_OBJECTIVE",
+          "type": "RETURN",
+          "metadata": {
+            "name": "Return Objective"
+          },
+          "diagram": {
+            "x": 5450,
+            "y": 7022
+          },
+          "outcomes": {},
+          "inputs": [
+            {
+              "id": "1776330296388_returnValue",
+              "name": "returnValue",
+              "type": "string",
+              "value": "{{$context.$nodes.PREPARE_PROGRAM_DATA.$output.result.Objective}} "
+            }
+          ]
+        },
+        {
+          "id": "1776332040454",
+          "code": "AUDIENCE_WIDGET",
+          "type": "LLM",
+          "metadata": {
+            "name": "Audience Widget"
+          },
+          "diagram": {
+            "x": 5900,
+            "y": 7022
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "inputs": [
+            {
+              "id": "1776332040454_prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "Generate a multi-row widget display with the following columns: Number of Accounts, Demand Stage, Projected ARR, Accounts, and Account Insights.\n\n- Title: Provide a single short sentence summarizing the status of the accounts based on their demand stage within the territory.\n\n- Description: Offer a concise, professional summary of how the accounts are performing in each demand stage. Use the data from {{$context.$nodes.GROUP_THE_ACCOUNTS.$output.result}}.\n\nFor each demand stage (Awareness, Consideration, Sales Ready), include:\n\n- Number of Accounts: count of accounts in that stage.\n\n- Demand Stage: the name of the demand stage.\n\n- Projected ARR: sum the ARR values of accounts in that stage and format the total using appropriate units (Billion, Million, or Thousand with K).\n\n- Accounts: list the first 10 account names for that stage.\n\n- Account Insights: describe the typical characteristics and behaviors of accounts in that demand stage.\n\nFormat the output clearly and concisely as a multi-record widget, ensuring readability and professional presentation.\n\nAdditionally, generate 3 low priority actionable insights with the following texts and corresponding followupCommands:\n\n- Text: \"Review Awareness Accounts\"\n  followupCommand: ora.Invoke(\"reviewAwareness\", \"Awareness\")\n\n- Text: \"Review Consideration Accounts\"\n  followupCommand: ora.Invoke(\"reviewConsideration\", \"Consideration\")\n\n- Text: \"Review Sales Ready Accounts\"\n  followupCommand: ora.Invoke(\"reviewSalesReady\", \"Sales Ready\")\n\nEnsure these actionable insights are clearly separated from the main widget display and formatted professionally."
+            },
+            {
+              "id": "1776332040454_systemPrompt",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": "  Produce only the oraInfoDisplay widget output exactly as specified, without any additional text, commentary, or explanation."
+            }
+          ],
+          "aiAppOutputSpecification": {
+            "dataDisplay": {
+              "enableActions": true,
+              "layouts": [
+                "ORA_LAYOUT_MULTIRECORD"
+              ]
+            }
+          }
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": []
+      }
+    ],
+    "deletedTriggerTypes": [],
+    "costSavings": 0,
+    "timeSavings": 10,
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "diagram": {
+      "orientation": "vertical",
+      "commentNodes": []
+    },
+    "dtRunProfiles": {
+      "activeProfileId": "43746c62-b4b1-4bc8-982e-ef6fcffe86b1",
+      "profiles": [
+        {
+          "id": "43746c62-b4b1-4bc8-982e-ef6fcffe86b1",
+          "name": "Init Display",
+          "type": "agentic-app",
+          "agenticAppMode": "initDisplay",
+          "agenticAppAppContext": "programId=300100662743874"
+        }
+      ]
+    },
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI"
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "CX",
+  "product": "SALES_FORCE_AUTOMATION",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "customizationPolicy": "FULL",
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": true,
+  "followupEnabledFlag": false,
+  "followupPrompt": "Based on the following conversion: $param.system_context.chat_history generate $param.system_context.number_of_follow_up_questions\nfollow up questions only while strictly adhering to the JSON Schema format mentioned below. Remove the ```json markdown from the output.\nHere is the JSON Schema format the output should adhere to:\n[{\"question\": \"<put first question generated here>\"}, {\"question\": \"<put second question generated here>\"}, {\"question\": \"<put third question generated here>\"}",
+  "header": {
+    "ETag": "\"1\""
+  }
+}

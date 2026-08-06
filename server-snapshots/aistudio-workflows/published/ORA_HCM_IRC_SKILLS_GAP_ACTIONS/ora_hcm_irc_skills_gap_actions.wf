@@ -1,0 +1,392 @@
+{
+  "workflowId": "300000326918762",
+  "workflowCode": "ORA_HCM_IRC_SKILLS_GAP_ACTIONS",
+  "name": "Skills Gap Actions",
+  "description": "Executes skill-gap actions like registering for recommended learning and applying to gigs to close gaps",
+  "specification": {
+    "jsonSchemaName": "Workflow.spec",
+    "jsonSchemaVersion": "1",
+    "inputs": [],
+    "outputSpecification": " ",
+    "agentsValueMappings": [],
+    "dataPipeline": {
+      "pipelineNodes": [
+        {
+          "metadata": {
+            "description": "Start of data pipeline",
+            "name": "Start"
+          },
+          "outcomes": {
+            "success": "1765394883508"
+          },
+          "code": "START",
+          "id": "start",
+          "inputs": [],
+          "type": "START"
+        },
+        {
+          "metadata": {
+            "description": "End of data pipeline",
+            "name": "End"
+          },
+          "outcomes": {},
+          "code": "END",
+          "id": "end",
+          "inputs": [],
+          "type": "END"
+        },
+        {
+          "metadata": {
+            "name": "Check_Action"
+          },
+          "outcomes": {
+            "true": "1765585160622",
+            "false": "1765404114355"
+          },
+          "code": "CHECKACTION",
+          "convergenceTargetId": "end",
+          "id": "1765394883508",
+          "inputs": [
+            {
+              "id": "1765394883509_1",
+              "name": "condition",
+              "type": "string",
+              "value": "{{$context.$triggers.REST.$input.OraMessageHint == 'InitActions'}}"
+            }
+          ],
+          "type": "CONDITION"
+        },
+        {
+          "metadata": {
+            "name": "Invoke Action"
+          },
+          "outcomes": {
+            "APPLY": "1765651498173",
+            "VIEWCOURSE": "1768236090518",
+            "default": "1770069207483",
+            "ENROLL": "1765658899077"
+          },
+          "code": "INVOKE_ACTION",
+          "convergenceTargetId": "end",
+          "id": "1765400316231",
+          "inputs": [
+            {
+              "id": "1765400316233_1",
+              "name": "caseExpression",
+              "type": "string",
+              "value": "{{$context.$variables.invokeAction}}"
+            }
+          ],
+          "type": "SWITCH"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770069207483",
+            "name": "Parse_Action",
+            "returnType": "array",
+            "sourceCode": "const str = $context.$triggers.REST.$input.OraAction;\nconst payload = JSON.parse(str);\nconst action = payload. actionCode;\nlet array =[];\narray.push(action);\narray.push(payload);\nreturn array;"
+          },
+          "outcomes": {
+            "success": "1765651099665"
+          },
+          "code": "PARSEACTION",
+          "id": "1765404114355",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "errorNodeId": null,
+            "name": "PARSE_DATA",
+            "returnType": "object",
+            "sourceCode": "const data = $context.$triggers.REST.$input.data;\nconst json = JSON.parse(data);\n\nreturn json;"
+          },
+          "outcomes": {
+            "success": "1765590580504"
+          },
+          "code": "PARSEDATA",
+          "id": "1765585160622",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "modelConfiguration": {
+              "modelProperties": {
+                "k": 0,
+                "max_tokens": 32000,
+                "p": 0.75
+              },
+              "code": "ORA_LLM_PREMIUM",
+              "model": "OPEN_AI_GPT_4_1_MINI",
+              "modelName": "GPT-4.1 mini",
+              "provider": "CERT_PREMIUM"
+            },
+            "errorNodeId": null,
+            "name": "Create Actions"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "CREATE_ACTIONS",
+          "id": "1765590580504",
+          "inputs": [
+            {
+              "id": "1765590580506_1",
+              "name": "prompt",
+              "type": "string",
+              "value": "You are provided structured JSON user data containing:\n\n- Skill gaps: `{{$context.$nodes.PARSEDATA.$output.result.SkillGaps}}`\n- Recommended courses: `{{$context.$nodes.PARSEDATA.$output.result.RecommendedCourses}}`\n- Recommended gigs/opportunities: `{{$context.$nodes.PARSEDATA.$output.result.RecommendedGigs}}`\n\nAnalyze the recommendations and select up to 5 actionable items (combined, not per type) from both courses and gigs/opportunities that most directly address the user's skill gaps.\n\n- Order of priority for items\n\n    1. Direct match to a Skill Gap (title, description, or explanation must match a Skill Gap; do not infer loosely).\n    2. Earlier start date (if available and applicable).\n    3. Higher relevance score (if provided; otherwise, omit this criterion).\n\n- Available Actions \n    1. Action Name : Apply\n        - Applicable only for gigs\n        - Action Code: APPLY\n        - FollowUpCommandPayload:\n            ora.Invoke(\"APPLY\", {\"actionCode\": \"APPLY\", \"OpportunityId\": \"<OpportunityId>\", \"title\": <Title>})\n        - If priority = true:\n            - ActionText: \"Apply\"\n            - Title: Apply for <Gig Title> \n            - ShortDescription: 10 word description of the Gig\n        - If priority = false:\n            - ActionText: \"Apply for <Gig Title>\" \n            - Title: \"Apply for <Gig Title>\"\n\n    - Action Name : View Details\n        - Applicable only for Courses\n        - Action Code: \"VIEWCOURSE\"\n        - FollowUpCommandPayload : \n            ora.Invoke(\"VIEWCOURSE\", {\"actionCode\": \"VIEWCOURSE\", \"learningItemId\": \"<learningItemId>\", \"title\": <Course Title>})\n        - If priority = true:\n            - ActionText: \"Learn More\"\n            - Title: Learning Suggestion: <Course Title> \n            - ShortDescription: 10 word description of the Gig\n        - If priority = false:\n            - ActionText : \"Learning Suggestion: <Course Title>\"\n            - Title: \"Learning Suggestion: <Course Title>\"\n\n- Action Genration Directives\n\n    - For each selected item, provide exactly one of these actions based on user status\n    - Output a list (up to 5 items) of action objects that follow this schema\n\n{\n\"type\": \"object\",\n\"properties\": {\n\"title\": {\n\"type\": \"string\",\n\"description\": \"The main title of the notification. Must be a concise phrase, under 10 words.\"\n},\n\"shortDescription\": {\n\"type\": \"string\",\n\"description\": \"A brief description of the notification, written as a single, complete sentence.\"\n},\n\"actionText\": {\n\"type\": \"string\",\n\"description\": \"The text to display on the action button.\"\n},\n\"followUpCommand\": {\n\"type\": \"string\",\n\"description\": \"A command string to be executed. Must follow one of three standardized formats.\"\n},\n\"priority\": {\n\"type\": \"boolean\",\n\"description\": \"Optional. When true, the action is shown as a priority action.\"\n}\n},\n\"required\": [\"title\", \"shortDescription\", \"actionText\", \"followUpCommand\",priority],\n\"additionalProperties\": false\n}\n\n    - Refer to the Example Actions provided, do not take data from the example it it only for reference\n- Priority Distribution:\n    - Mark the top 2 actionable item as \"priority\": true.\n    - All other returned actions must have \"priority\": false`\n\n- Example Actions:\n\n[\n  {\n    \"actionText\": \"Learn More\",\n    \"followUpCommand\": \"ora.Invoke(\"VIEWCOURSE\", {\"actionCode\":\"VIEWCOURSE\",\"learningItemId\":<learningItemId>,\"title\":\"<Learning Item Title>\"})\",\n    \"shortDescription\": \"<Short Description>\",\n    \"title\": \"Learning Suggestion: <Learning Item Title>\",\n    \"priority\": true\n  },\n  {\n    \"actionText\": \"Apply\",\n    \"followUpCommand\": \"ora.Invoke(\\\"APPLY\\\", {\\\"actionCode\\\": \\\"APPLY\\\", \\\"OpportunityId\\\": \\\"<GigId>\\\", \\\"title\\\": \\\"<Gig Title>\\\"})\",\n    \"shortDescription\": \"<Short Description>.\",\n    \"title\": \"Apply for <Gig Title>\",\n    \"priority\": true\n  },\n  {\n    \"actionText\": \"Learning Suggestion: <Learning Item Title>\",\n    \"followUpCommand\": \"ora.Invoke(\\\"VIEWCOURSE\\\", {\\\"actionCode\\\":\\\"VIEWCOURSE\\\",\\\"learningItemId\\\":<learningItemId>,\\\"title\\\":\\\"<Learning Item Title>\\\"})\",\n    \"shortDescription\": \"Leverage techniques for optimizing deep learning models and implementing them using Python.\",\n    \"title\": \"Learning Suggestion: <Learning Item Title>\",\n    \"priority\": false\n  },\n  {\n    \"actionText\": \"Apply for <Gig Title>\",\n    \"followUpCommand\": \"ora.Invoke(\\\"APPLY\\\", {\\\"actionCode\\\": \\\"APPLY\\\", \\\"OpportunityId\\\": \\\"<GigId>\\\", \\\"title\\\": \\\"<Gig Title>\\\"})\",\n    \"shortDescription\": \"<Short Ddescription>.\",\n    \"title\": \"Apply for <Gig Title>\",\n    \"priority\": false\n  }\n]\n\n- Guidelines\n\n    - Only match recommendations that directly address a Skill Gap; do not infer indirect matches.\n    - Only present one action per recommendation.\n    - Do not include explanations, justifications, or extra commentary outside of what is defined in your instructions.\n    - Use only the specified action types and codes: `APPLY`, `VIEWCOURSE`.\n    - Ensure the payload for `followUpCommand` always contains actionCode as the first parameter, and always includes the <Title> field with the title of the selected course or gig.\n    - Use field names and values from the provided data.\n    - If fewer than 5 items qualify, return only those.\n    - Preserve all field order and naming as in the output schema.\n    - Title should always be in Title Case\n    - Truncate the Name of Course or Gig if the Action Text or Title exceed 20 characters in the actions with priority = false\n    - The Examples do not represent real data, DO NOT use the example action data to generate actions. Only use the format of from the examples."
+            }
+          ],
+          "type": "LLM"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770069207483",
+            "name": "Return_Message",
+            "returnType": "string",
+            "sourceCode": "return `Applied to gig \"${$context.$variables.payload.title}\" successfully.`;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURNMESSAGE",
+          "id": "1765642316124",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770069207483",
+            "name": "Returm_Message_Learning",
+            "returnType": "string",
+            "sourceCode": "return `Enrolled in course \"${$context.$variables.payload.title}\" successfully.`;"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "RETURMMESSAGELEARNING",
+          "id": "1765642434964",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        },
+        {
+          "metadata": {
+            "errorNodeId": "1770069207483",
+            "name": "Set Invoke Actions Variables"
+          },
+          "outcomes": {
+            "success": "1765400316231"
+          },
+          "code": "SET_INVOKE_ACTIONS_VARIABLES",
+          "id": "1765651099665",
+          "inputs": [
+            {
+              "id": "1765651162495",
+              "name": "payload",
+              "type": "object",
+              "value": "{{$context.$nodes.PARSEACTION.$output.result[1]}}"
+            },
+            {
+              "id": "1765651126139",
+              "name": "invokeAction",
+              "type": "string",
+              "value": "{{$context.$nodes.PARSEACTION.$output.result[0]}}"
+            }
+          ],
+          "type": "SET_FIELDS"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_RECRUITING_OMGIGACTIONS",
+            "errorNodeId": "1770069207483",
+            "functionName": "ApplyGig",
+            "name": "Apply for Gig"
+          },
+          "outcomes": {
+            "success": "1765642316124"
+          },
+          "code": "APPLY_FOR_GIG",
+          "id": "1765651498173",
+          "inputs": [
+            {
+              "id": "1765651534667_1",
+              "name": "GigId",
+              "type": "string",
+              "value": "{{$context.$variables.payload.OpportunityId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_RECRUITING_LEARNINGENROLLMENTICC",
+            "errorNodeId": "1770069207483",
+            "functionName": "EnrollCourse",
+            "name": "Enroll Learning"
+          },
+          "outcomes": {
+            "success": "1765642434964"
+          },
+          "code": "ENROLL_LEARNING",
+          "id": "1765658899077",
+          "inputs": [
+            {
+              "id": "1765659003660_1",
+              "name": "learningItemId",
+              "type": "string",
+              "value": "{{$context.$variables.payload.learningItemId}}"
+            },
+            {
+              "id": "1765659003662_2",
+              "name": "sourceId",
+              "type": "string",
+              "value": "{{$context.$variables.payload.learningItemId}}"
+            }
+          ],
+          "outputSpecification": "{}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "businessObjectCode": "ORA_HCM_LEARNING_ICCVIEWLEARNINGITEMDETAILS",
+            "errorNodeId": "1770069207483",
+            "functionName": "viewLearningCourseDetails",
+            "name": "Course Details"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "COURSE_DETAILS",
+          "id": "1768236090518",
+          "inputs": [
+            {
+              "id": "1768236547431_1",
+              "name": "learningItemId",
+              "type": "string",
+              "value": "{{$context.$variables.payload.learningItemId}}"
+            }
+          ],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"description\": \"\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"learningItemId\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemNumber\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemType\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemTypeMeaning\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemTitle\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemDescription\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"liShortDescription\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemRatingAverage\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemRatingCount\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemPublishedDate\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemPublishedSince\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemPublishedSinceUnits\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemMinimumPrice\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemMaximumPrice\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemPriceCurrency\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemLastModifiedDate\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemPublisherDisplayName\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemPublisherNumber\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemPublisherType\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemPublisherTypeMeaning\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemExpectedEffortInHours\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"featured\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"featuredMeaning\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"featuredOnDate\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemSubType\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemSubTypeMeaning\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"dataSecurityPrivilege\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"dataSecurityPrivilegeMeaning\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemProvider\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemProviderType\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemAuthorDisplayName\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemAuthorPersonNumber\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemAuthorType\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemAuthorEmailAddress\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemInstructorType\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemInstructorDisplayName\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemInstructorPersonNumber\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemInstructorEmailAddress\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemCoordEmailAddress\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemCoordDisplayName\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemBusinessDriver\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemLearningLevel\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemCoordPersonId\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemAuthorPersonId\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemInstructorPersonId\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemInstructorPhoneNumber\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemAuthorPhoneNumber\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemCoordPhoneNumber\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemSourcePublishedDate\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemAvailableCapacity\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"isWaitlistEnabled\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemStartDateUTC\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemEndDateUTC\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemTimezone\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemAvailableWaitlistCapacity\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemTrailerLink\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemCoverArtLink\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemDetailsDeepLink\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemDetailsEmbedLink\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemIsNewFlag\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemViewCount\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemThumbnailLink\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemPublishedSinceUnitsMeaning\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemTrailerThumbnailLink\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemSelfEnrollmentURL\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemProviderTypeMeaning\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemAuthorTypeMeaning\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemInstructorTypeMeaning\": {\n      \"type\": \"object\",\n      \"properties\": {},\n      \"required\": []\n    },\n    \"learningItemStatus\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"learningItemDFF\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"items\": {\n          \"type\": \"array\",\n          \"uniqueItems\": true,\n          \"minItems\": 1,\n          \"items\": {\n            \"required\": [\n              \"LearningItemId\",\n              \"EffectiveStartDate\",\n              \"EffectiveEndDate\",\n              \"LearningItemType\"\n            ],\n            \"properties\": {\n              \"LearningItemId\": {\n                \"type\": \"string\",\n                \"minLength\": 1\n              },\n              \"EffectiveStartDate\": {\n                \"type\": \"string\",\n                \"minLength\": 1\n              },\n              \"EffectiveEndDate\": {\n                \"type\": \"string\",\n                \"minLength\": 1\n              },\n              \"LearningItemType\": {\n                \"type\": \"string\",\n                \"minLength\": 1\n              },\n              \"learnDffLearnitemChrac\": {\n                \"type\": \"object\",\n                \"properties\": {},\n                \"required\": []\n              },\n              \"learnDffLearnitemNum\": {\n                \"type\": \"object\",\n                \"properties\": {},\n                \"required\": []\n              },\n              \"learnDffLearnitemDate\": {\n                \"type\": \"object\",\n                \"properties\": {},\n                \"required\": []\n              },\n              \"fawqaLearning\": {\n                \"type\": \"object\",\n                \"properties\": {},\n                \"required\": []\n              },\n              \"__FLEX_Context\": {\n                \"type\": \"object\",\n                \"properties\": {},\n                \"required\": []\n              },\n              \"__FLEX_Context_DisplayValue\": {\n                \"type\": \"object\",\n                \"properties\": {},\n                \"required\": []\n              },\n              \"@context\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"key\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"headers\": {\n                    \"type\": \"object\",\n                    \"properties\": {\n                      \"ETag\": {\n                        \"type\": \"string\",\n                        \"minLength\": 1\n                      }\n                    },\n                    \"required\": [\n                      \"ETag\"\n                    ]\n                  }\n                },\n                \"required\": [\n                  \"key\",\n                  \"headers\"\n                ]\n              }\n            }\n          }\n        },\n        \"count\": {\n          \"type\": \"number\"\n        },\n        \"hasMore\": {\n          \"type\": \"boolean\"\n        },\n        \"limit\": {\n          \"type\": \"number\"\n        },\n        \"offset\": {\n          \"type\": \"number\"\n        },\n        \"links\": {\n          \"type\": \"array\",\n          \"uniqueItems\": true,\n          \"minItems\": 1,\n          \"items\": {\n            \"required\": [\n              \"rel\",\n              \"href\",\n              \"name\",\n              \"kind\"\n            ],\n            \"properties\": {\n              \"rel\": {\n                \"type\": \"string\",\n                \"minLength\": 1\n              },\n              \"href\": {\n                \"type\": \"string\",\n                \"minLength\": 1\n              },\n              \"name\": {\n                \"type\": \"string\",\n                \"minLength\": 1\n              },\n              \"kind\": {\n                \"type\": \"string\",\n                \"minLength\": 1\n              }\n            }\n          }\n        }\n      },\n      \"required\": [\n        \"items\",\n        \"count\",\n        \"hasMore\",\n        \"limit\",\n        \"offset\",\n        \"links\"\n      ]\n    },\n    \"@context\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"key\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        }\n      },\n      \"required\": [\n        \"key\"\n      ]\n    }\n  },\n  \"required\": [\n    \"learningItemId\",\n    \"learningItemNumber\",\n    \"learningItemType\",\n    \"learningItemTypeMeaning\",\n    \"learningItemTitle\",\n    \"learningItemDescription\",\n    \"liShortDescription\",\n    \"learningItemRatingAverage\",\n    \"learningItemRatingCount\",\n    \"learningItemPublishedDate\",\n    \"learningItemPublishedSince\",\n    \"learningItemPublishedSinceUnits\",\n    \"learningItemMinimumPrice\",\n    \"learningItemMaximumPrice\",\n    \"learningItemPriceCurrency\",\n    \"learningItemLastModifiedDate\",\n    \"learningItemPublisherDisplayName\",\n    \"learningItemPublisherNumber\",\n    \"learningItemPublisherType\",\n    \"learningItemPublisherTypeMeaning\",\n    \"learningItemExpectedEffortInHours\",\n    \"featured\",\n    \"featuredMeaning\",\n    \"featuredOnDate\",\n    \"learningItemSubType\",\n    \"learningItemSubTypeMeaning\",\n    \"dataSecurityPrivilege\",\n    \"dataSecurityPrivilegeMeaning\",\n    \"learningItemProvider\",\n    \"learningItemProviderType\",\n    \"learningItemAuthorDisplayName\",\n    \"learningItemAuthorPersonNumber\",\n    \"learningItemAuthorType\",\n    \"learningItemAuthorEmailAddress\",\n    \"learningItemInstructorType\",\n    \"learningItemInstructorDisplayName\",\n    \"learningItemInstructorPersonNumber\",\n    \"learningItemInstructorEmailAddress\",\n    \"learningItemCoordEmailAddress\",\n    \"learningItemCoordDisplayName\",\n    \"learningItemBusinessDriver\",\n    \"learningItemLearningLevel\",\n    \"learningItemCoordPersonId\",\n    \"learningItemAuthorPersonId\",\n    \"learningItemInstructorPersonId\",\n    \"learningItemInstructorPhoneNumber\",\n    \"learningItemAuthorPhoneNumber\",\n    \"learningItemCoordPhoneNumber\",\n    \"learningItemSourcePublishedDate\",\n    \"learningItemAvailableCapacity\",\n    \"isWaitlistEnabled\",\n    \"learningItemStartDateUTC\",\n    \"learningItemEndDateUTC\",\n    \"learningItemTimezone\",\n    \"learningItemAvailableWaitlistCapacity\",\n    \"learningItemTrailerLink\",\n    \"learningItemCoverArtLink\",\n    \"learningItemDetailsDeepLink\",\n    \"learningItemDetailsEmbedLink\",\n    \"learningItemIsNewFlag\",\n    \"learningItemViewCount\",\n    \"learningItemThumbnailLink\",\n    \"learningItemPublishedSinceUnitsMeaning\",\n    \"learningItemTrailerThumbnailLink\",\n    \"learningItemSelfEnrollmentURL\",\n    \"learningItemProviderTypeMeaning\",\n    \"learningItemAuthorTypeMeaning\",\n    \"learningItemInstructorTypeMeaning\",\n    \"learningItemStatus\",\n    \"learningItemDFF\",\n    \"@context\"\n  ]\n}",
+          "type": "BO_FUNCTION"
+        },
+        {
+          "metadata": {
+            "name": "Skills Gap Action Error Handler",
+            "returnType": "string",
+            "sourceCode": "//This node acts as an error handler and will be executed when an error occurs, if it is configured as the error handler for any node in this agent.\nreturn \"Error occurred on this action\";"
+          },
+          "outcomes": {
+            "success": "end"
+          },
+          "code": "SKILLS_GAP_ACTION_ERROR_HANDLER",
+          "id": "1770069207483",
+          "inputs": [],
+          "outputSpecification": "{\n  \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"result\": {\n      \"type\": \"object\"\n    },\n    \"timeout\": {\n      \"type\": \"boolean\"\n    },\n    \"error\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"output\",\n    \"timeout\",\n    \"error\"\n  ]\n}",
+          "type": "CODE"
+        }
+      ],
+      "rootNode": "start",
+      "variables": [
+        {
+          "id": "1765650942435",
+          "name": "payload",
+          "scope": "JOB",
+          "type": "object"
+        },
+        {
+          "id": "1765650914376",
+          "name": "invokeAction",
+          "scope": "JOB",
+          "type": "string"
+        }
+      ],
+      "errorHandlers": [
+        {
+          "type": "EMAIL",
+          "inputs": [
+            {
+              "name": "toList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "ccList",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    },
+    "modelConfiguration": null,
+    "humanApprovalFlag": false,
+    "waitFlag": false,
+    "triggers": [
+      {
+        "type": "REST",
+        "inputs": [
+          {
+            "id": "1765584310450",
+            "name": "data",
+            "type": "string"
+          },
+          {
+            "id": "1765394777127",
+            "name": "OraAction",
+            "type": "string"
+          },
+          {
+            "id": "1765394745446",
+            "name": "OraMessageHint",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "chatExpTPFileUploadEnabledFlag": false,
+    "chatExpThirdPartyDetails": [],
+    "policyIds": [
+      "588885"
+    ],
+    "defaultModelConfiguration": "ORA_MODEL_CONFIG_PREMIUM_OPEN_AI_GPT_4_1_MINI"
+  },
+  "status": "DRAFT",
+  "version": 1,
+  "family": "HCM",
+  "product": "RECRUITING",
+  "ownerName": null,
+  "customFlag": false,
+  "seededFlag": true,
+  "isTemplate": false,
+  "hiddenFlag": false,
+  "useCaseId": "NA",
+  "accessModifier": "public",
+  "architecture": "data_pipeline",
+  "aiAppsCompatibleFlag": false,
+  "followupEnabledFlag": false,
+  "seededRoles": [
+    {
+      "role": "ORA_HCM_IRC_EMP_WF_AGENT_ACCESS",
+      "id": "300000326918763"
+    }
+  ],
+  "header": {
+    "ETag": "\"2\""
+  }
+}
