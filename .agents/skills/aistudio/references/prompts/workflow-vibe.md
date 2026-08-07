@@ -336,12 +336,15 @@ Dependency check before finishing any change involving expressions:
 
 Top-level workflow trigger inputs use the trigger namespace, not workflow metadata, reference-block input, or the chat message.
 
-- Any expression-capable field may reference declared trigger inputs through `$context.$triggers.<TYPE>.$input...`, including node inputs, prompts, templates, routing expressions, variable assignments, and Code node source.
+- Any expression-capable field may reference declared custom trigger inputs or documented predefined trigger fields through `$context.$triggers.<TYPE>.$input...`, including node inputs, prompts, templates, routing expressions, variable assignments, and Code node source.
+- Predefined EMAIL, CAPABILITY, and EVENTS fields remain structurally valid in reusable workflow templates even when the corresponding trigger is not currently configured. Preserve those known paths; do not add a trigger solely to satisfy expression validation.
 - REST trigger inputs come from `specification.triggers[]` entries where `type = "REST"`.
 - Reference REST trigger input `<inputName>` as `$context.$triggers.REST.$input.<inputName>`.
 - REST triggers also expose `$context.$triggers.REST.$input.additional_context`. If `additional_context` is declared in the workflow trigger inputs, use that declared input shape; otherwise it is available as a built-in REST input leaf.
 - For object or array REST inputs with a `typeSpecification`, nested fields stay under that input path, for example `$context.$triggers.REST.$input.payload.employeeId`.
 - EMAIL trigger fields use the fixed paths `$context.$triggers.EMAIL.$input.subject`, `$context.$triggers.EMAIL.$input.fromAddress`, `$context.$triggers.EMAIL.$input.content`, `$context.$triggers.EMAIL.$input.headers`, and `$context.$triggers.EMAIL.$input.attachments`.
+- CAPABILITY trigger fields use the fixed paths `$context.$triggers.CAPABILITY.$input.capabilityName` and `$context.$triggers.CAPABILITY.$input.capabilityPayload`.
+- EVENTS trigger fields use the documented metadata names `triggerType`, `eventCode`, `eventVersion`, `eventKey`, `correlationId`, `publisherType`, `publisherCode`, `publishedByUser`, `eventDeliveryId`, `eventMessageIdentifier`, `eventSubscriptionIdentifier`, `subscriberType`, `subscriberCode`, and `subscriberVersion`, plus the event body under `eventPayload`.
 - SCHEDULE trigger inputs are not exposed in the expression tree. Do not invent `$context.$triggers.SCHEDULE...` expressions unless expression-tree support is added later.
 - Do not use `$context.$workflow.<inputName>` for trigger parameters. `$context.$workflow.*` is workflow metadata only.
 - Do not use `$context.$input.<inputName>` for top-level workflow trigger parameters. `$context.$input.*` is only for reference-block input scope.
@@ -369,7 +372,7 @@ These built-ins are available across prompt templates, variables, and JavaScript
 - `$context.$system.$inputContext`
 - `$context.$system.$intent`
 
-Do not invent expression paths in any namespace. Use only documented built-ins, declared workflow variables, declared trigger inputs, documented app context fields, and real upstream node output fields grounded in the producer node's output specification. If a needed value is not listed, declared, or schema-backed, it is not in scope. For example, `$context.$system.$conversationHistory` is invalid.
+Do not invent expression paths in any namespace. Use only documented built-ins, declared workflow variables, declared custom trigger inputs, documented predefined trigger fields, documented app context fields, and real upstream node output fields grounded in the producer node's output specification. If a needed value is not listed, declared, or schema-backed, it is not in scope. For example, `$context.$system.$conversationHistory` is invalid.
 
 Do not read chat history directly through `$context.$system.$chatHistory` in generated workflow node prompts, templates, or Code node JavaScript. When an `LLM` or `AGENT` node needs prior chat turns, enable the node metadata flag instead: `metadata.chatHistoryEnabled = true`.
 

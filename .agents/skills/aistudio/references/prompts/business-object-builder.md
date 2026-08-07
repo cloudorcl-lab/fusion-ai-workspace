@@ -177,6 +177,7 @@ Use this reference for Business Object `.bo` artifact work. For workflow `BO_FUN
 
 - A "Business Object Tool" or "BO Tool" is a Tool artifact, not a Business Object file. Use `aistudio do-create-tool --tool-type business-object`.
 - A workflow "business object node" is workflow node work. Use workflow references and `workflow-node-prompts/bo-function.md`.
+- When a workflow request explicitly names an existing Business Object or function, preserve that identity and follow `workflow-node-prompts/bo-function.md`; do not create or substitute a different Business Object artifact because another search result has a similar description.
 - A Business Object source artifact lives under `src/businessObjects/*.bo`.
 
 ## Creation Flow

@@ -18,6 +18,7 @@
 #### Authoring rules
 
 - Do not guess `businessObjectCode` or `functionName`. Use the actual selected business object and the actual selected function for that object.
+- When the user explicitly names a Business Object or function, that identity takes precedence over similar search results. Match the selected result's name, `businessObjectCode`, and `functionName` to the request before creating the node. Do not substitute a related object or function merely because its description appears relevant; if the requested identity is unavailable or genuinely ambiguous, explain the mismatch and ask before substituting it.
 - Prefer existing reusable Business Objects for workflow `BO_FUNCTION` nodes. Search/select an existing BO before creating any new Business Object source artifact. Create a new `.bo` only when the user explicitly asks for a new source Business Object, or after search does not produce a suitable reusable candidate and the user confirms creation.
 - `search-business-objects` may already return the BO/function metadata needed to choose `functionName`. After selecting a search result, reuse that returned metadata first.
 - If a BO was selected from `search-business-objects` earlier in the same authoring turn, every later BO tool call you truly need for that BO must include `businessObjectHint` when the tool accepts it. This includes `get-business-object-functions`, `get-bo-function-output-specification`, `do-create-node`, and `do-modify-node`.
@@ -30,6 +31,7 @@
 - After changing `businessObjectCode`, reselect `functionName` for the new business object instead of carrying over a stale function from the previous one.
 - After changing `functionName`, do not retain stale inputs from the previous function. The node inputs should match the token parameters of the currently selected function only.
 - Do not invent extra input names that are not part of the selected function's token parameter definition.
+- Before creating the node, verify every authored input name exists in the selected function's token parameter definition. Before authoring downstream expressions, prompts, or mappings, verify each referenced output field exists in the effective output specification for that exact selected function.
 - Preserve the parameter type expected by the selected function when authoring each input.
 - When using `do-create-node` or `do-modify-node`, each `inputsPatch.<parameterName>` value must be the final parameter value itself, not a nested input-entry object with `id`, `name`, `type`, or `value`.
 - When using `do-create-node` or `do-modify-node`, `metadataPatch` must contain only persisted workflow node metadata such as `businessObjectCode`, `functionName`, and `processJson: false` when explicitly needed. Do not put lookup filters such as `family` or `product` in `metadataPatch`. Do not pass the whole selected `search-business-objects` result as `metadataPatch`; pass that selected result only as `businessObjectHint`.
@@ -75,6 +77,7 @@
 - Invalid: leaving stale parameter inputs from a previous function after the node's `functionName` changes
 - Invalid: inventing input names that are not real token parameters of the selected function
 - Invalid: referencing downstream `$output` fields that are not declared in the node's effective `outputSpecification`
+- Invalid: selecting a similarly described Business Object or function instead of the exact one named by the user without explaining the mismatch and obtaining confirmation
 
 #### Example
 

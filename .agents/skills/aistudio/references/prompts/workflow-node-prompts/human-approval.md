@@ -30,6 +30,7 @@
 - For approval-off CHAT conversational router loopbacks, do not include `maxIterations`; that field belongs to approval-enabled feedback/review loops.
 - The editor defaults new `HUMAN` nodes to `feedbackEnabledFlag = true`, `approvalEnabledFlag = true`, and `maxIterations = 3`.
 - `HUMAN` nodes continue through `outcomes.success` after resume. Do not invent `failure`, `reject`, or `timeout` outcomes for normal Human-node branching.
+- When a feedback loop returns to an LLM or other generation node, make the initial and feedback instructions mutually exclusive. State the initial-only behavior under an explicit absent-or-empty-feedback condition, and state the revision behavior under an explicit feedback-present condition. Revision metadata must explain what changed. Never append an unconditional initial-response requirement after the feedback-present instruction.
 - A `HUMAN` node must have a `success` outcome.
 - Do not place `HUMAN` nodes inside `LOOP`, `WHILE`, or `PARALLEL` containers.
 - Do not invent extra top-level HUMAN metadata fields.

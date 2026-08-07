@@ -5,6 +5,7 @@ Load only the prompt files relevant to the current task.
 The packaged CLI is `scripts/aistudio.js`; keep cwd at the project root and run commands by script path, for example `node .agents/skills/aistudio/scripts/aistudio.js <command> ...`. Treat `aistudio <command>` examples as shorthand, do not search PATH for a global executable, and run `init` only when the user explicitly asks to initialize or scaffold a blank project.
 For workflow node creation or modification, read `workflow-node-prompts/index.md` and then the relevant node prompt files.
 For workflow test authoring, read `workflow-test-authoring.md`.
+For scripted multi-turn workflow tests, also read `workflow-conversation-test-authoring.md`.
 For app test authoring after app creation or material app edits, read `app-test-authoring.md`.
 For app-backed workflow work, read the workflow references plus the app references needed for the app-stage contract.
 For Agentic App sample references, read `resources/app-samples/index.md` before opening individual sample files.
@@ -14,6 +15,7 @@ For Agentic App sample references, read `resources/app-samples/index.md` before 
 - `workflow-debug.md`: Workflow debugger system prompt plus CLI compatibility guidance.
 - `workflow-debug-plan.md`: Workflow debugger PLAN-mode prompt.
 - `workflow-test-authoring.md`: Workflow test generation, sync, recording, evaluation, reporting, and self-healing guidance.
+- `workflow-conversation-test-authoring.md`: Scripted multi-turn workflow test authoring, continuity, recording, replay, judging, and failure guidance.
 - `app-test-authoring.md`: App test generation, sync, recording, evaluation, reporting, widget validation, and self-healing guidance.
 - `workflow-cli-compat.md`: CLI/tool parity guidance for workflow prompts.
 - `business-object-builder.md`: Business Object builder system prompt plus CLI compatibility guidance.
