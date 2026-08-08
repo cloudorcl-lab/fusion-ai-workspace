@@ -251,3 +251,11 @@ The workspace owner configures policy and decides whether a record is `XDX-appro
 - The snapshot is incomplete by one expected workflow and can become stale until an explicitly authorized refresh occurs.
 
 Each phase requires passing schema/behavior tests, redaction verification, a documented recovery path, and an updated design decision for any discovered constraint. No phase authorizes remote save, publish, push, or live write testing by default.
+
+## Phase 0 implementation evidence
+
+Phase 0 was implemented locally on the `codex/xdx-learning-phase-0` branch. The `xdx-learn` CLI provides only the approved `init`, `capture`, and `find` operations. It initializes the redacted `.xdx-learning/` policy, catalog, manifest, ledger, and receipt layout; it seeds the knowledge catalog with this workspace's workflow testing framework; and it rejects candidate records containing deterministic secret patterns.
+
+The knowledge demonstration queried `test and debug the XDX supplier workflow with ATLAS`. It routed first to `documents/fusion-ai-studio-workflow-testing-framework.md`, with pointers to Required Inputs, authentication, ATLAS test generation, Failure Triage, and Reporting Template. A captured `observed` candidate then recorded the actual test result for `XDX_SUPPLIER_QUERY_TEAM` without copying raw output.
+
+The existing workflow testing framework was run through the bundled CLI. Both supplier scenarios passed their deterministic assertions (5/5 each). Local semantic judge results were reviewed and attached against the generated current requests, producing a canonical `passed` workflow suite: 2/2 passed, 0 failed, and 0 need judge. The final workflow summary also reported that AI-unit computation was unavailable because the runtime did not emit model names.
