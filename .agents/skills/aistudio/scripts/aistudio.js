@@ -55844,7 +55844,27 @@ async function Dge(e) {
   for (const I of p) {
     const R = await pi(v.resolve(t, I.testFile));
     if (R.defaults.dataSource === "file") {
-      if (y += 1, R.testData.status === "ready")
+      y += 1;
+      if (R.testData.status === "pending" && (R.testData.capturePolicy === "record-later" || R.testData.capturePolicy === "record-now"))
+        try {
+          await _ge({
+            cwd: t,
+            testFilePath: I.testFile,
+            ...e.workflowIndex ? { workflowIndex: e.workflowIndex } : {}
+          });
+          const $ = await pi(v.resolve(t, I.testFile));
+          TU($.testData), w += 1, n.push({ kind: "app", action: "record-app-test-data", status: "completed", testName: $.testName, file: I.testFile });
+          continue;
+        } catch ($) {
+          m.push({
+            testName: R.testName,
+            testFile: I.testFile,
+            recordCommand: `node .agents/skills/aistudio/scripts/aistudio.js do-record-app-test-data --test-file ${I.testFile}`,
+            reason: $ instanceof Error ? $.message : String($)
+          });
+          continue;
+        }
+      if (R.testData.status === "ready")
         try {
           TU(R.testData), w += 1;
           continue;
