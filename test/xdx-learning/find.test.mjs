@@ -38,3 +38,31 @@ test('findKnowledge includes matching candidate evidence with its observed statu
   assert.equal(candidate.title, 'XDX_QUERY_RENDERING');
   assert.equal(candidate.status, 'observed');
 });
+
+test('findKnowledge hides a candidate that has been superseded by a correction', async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), 'xdx-learning-superseded-find-'));
+  t.after(() => rm(rootDir, { recursive: true, force: true }));
+  await initializeWorkspace(rootDir);
+  await captureCandidate(rootDir, {
+    id: 'XDX_PENDING_TEST',
+    objectRef: 'src/workflows/xdx_supplier_query_team.wf',
+    claim: 'The workflow has pending semantic judge results.',
+    evidenceRef: 'test-reports/pending.json',
+    method: 'workflow test',
+    source: 'workspace test run',
+  });
+  await captureCandidate(rootDir, {
+    id: 'XDX_FINAL_TEST',
+    objectRef: 'src/workflows/xdx_supplier_query_team.wf',
+    claim: 'The final workflow suite passed 2/2 with no pending judges.',
+    evidenceRef: 'documents/final-summary.md',
+    method: 'workflow test final summary',
+    source: 'workspace test run',
+    supersedes: 'XDX_PENDING_TEST',
+  });
+
+  const matches = await findKnowledge(rootDir, 'workflow test judges');
+
+  assert.ok(matches.some((match) => match.title === 'XDX_FINAL_TEST'));
+  assert.equal(matches.some((match) => match.title === 'XDX_PENDING_TEST'), false);
+});

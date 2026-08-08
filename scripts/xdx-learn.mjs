@@ -27,7 +27,7 @@ function usage() {
     'Usage:',
     '  node scripts/xdx-learn.mjs init [--root <workspace>]',
     '  node scripts/xdx-learn.mjs find [--root <workspace>] [--json] <query>',
-    '  node scripts/xdx-learn.mjs capture [--root <workspace>] --id <id> --object-ref <path> --claim <claim> --evidence-ref <reference> --method <method> --source <source>',
+    '  node scripts/xdx-learn.mjs capture [--root <workspace>] --id <id> --object-ref <path> --claim <claim> --evidence-ref <reference> --method <method> --source <source> [--supersedes <candidate-id>]',
   ].join('\n');
 }
 
@@ -64,6 +64,7 @@ async function main() {
       evidenceRef: options.evidenceRef,
       method: options.method,
       source: options.source,
+      supersedes: options.supersedes,
     });
     process.stdout.write(`${JSON.stringify(record, null, 2)}\n`);
     return;

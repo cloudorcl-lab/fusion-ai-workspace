@@ -212,6 +212,12 @@ export async function captureCandidate(rootDir, input) {
     source: input.source.trim(),
     capturedAt: new Date().toISOString(),
   };
+  if (input.supersedes !== undefined) {
+    if (typeof input.supersedes !== 'string' || input.supersedes.trim() === '') {
+      throw new Error('Candidate field supersedes must be a non-empty string when provided.');
+    }
+    record.supersedes = input.supersedes.trim();
+  }
   await appendFile(paths.candidates, `${JSON.stringify(record)}\n`, 'utf8');
   return record;
 }
@@ -265,7 +271,11 @@ export async function findKnowledge(rootDir, query) {
     status: card.authority,
     summary: card.summary,
   }));
-  const candidates = (await readCandidateRecords(paths.candidates)).map((record) => ({
+  const candidateRecords = await readCandidateRecords(paths.candidates);
+  const supersededIds = new Set(candidateRecords.map((record) => record.supersedes).filter(Boolean));
+  const candidates = candidateRecords
+    .filter((record) => !supersededIds.has(record.id))
+    .map((record) => ({
     kind: 'candidate-evidence',
     score: scoreQuery(queryTokens, [
       [record.id, 4],
@@ -278,8 +288,8 @@ export async function findKnowledge(rootDir, query) {
     sourcePath: record.objectRef,
     readNext: [],
     status: record.status,
-    summary: record.claim,
-  }));
+      summary: record.claim,
+    }));
   return [...cards, ...candidates]
     .filter((match) => match.score > 0)
     .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title));
