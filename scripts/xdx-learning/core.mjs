@@ -10,11 +10,52 @@ export function resolveLearningPaths(rootDir) {
     learningRoot,
     policy: join(learningRoot, 'policy', 'policy.json'),
     catalog: join(learningRoot, 'catalog', 'knowledge-catalog.json'),
+    testingFrameworkIndex: join(learningRoot, 'catalog', 'sources', 'workflow-testing-framework.index.json'),
     manifest: join(learningRoot, 'manifests', 'seed-sources.json'),
     candidates: join(learningRoot, 'ledger', 'candidates.jsonl'),
     receiptsDirectory: join(learningRoot, 'receipts'),
     gitignore: join(learningRoot, '.gitignore'),
   };
+}
+
+function headingAnchor(heading) {
+  return `#${heading
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')}`;
+}
+
+async function buildHeadingIndex(rootDir, sourcePath) {
+  try {
+    const content = await readFile(join(rootDir, sourcePath), 'utf8');
+    const sections = content.split(/\r?\n/)
+      .map((line) => /^(#{1,6})\s+(.+?)\s*$/.exec(line))
+      .filter(Boolean)
+      .map((match) => ({
+        heading: match[2],
+        level: match[1].length,
+        anchor: headingAnchor(match[2]),
+      }));
+    return {
+      schemaVersion: XDX_SCHEMA_VERSION,
+      sourceId: 'workflow-testing-framework',
+      sourcePath,
+      sourceHash: createHash('sha256').update(content).digest('hex'),
+      sections,
+    };
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return {
+        schemaVersion: XDX_SCHEMA_VERSION,
+        sourceId: 'workflow-testing-framework',
+        sourcePath,
+        sourceHash: null,
+        sections: [],
+      };
+    }
+    throw error;
+  }
 }
 
 async function fileHash(filePath) {
@@ -51,6 +92,7 @@ export async function initializeWorkspace(rootDir) {
   await Promise.all([
     mkdir(join(paths.learningRoot, 'policy'), { recursive: true }),
     mkdir(join(paths.learningRoot, 'catalog'), { recursive: true }),
+    mkdir(join(paths.learningRoot, 'catalog', 'sources'), { recursive: true }),
     mkdir(join(paths.learningRoot, 'manifests'), { recursive: true }),
     mkdir(join(paths.learningRoot, 'ledger'), { recursive: true }),
     mkdir(paths.receiptsDirectory, { recursive: true }),
@@ -59,6 +101,7 @@ export async function initializeWorkspace(rootDir) {
   const testingFrameworkPath = 'documents/fusion-ai-studio-workflow-testing-framework.md';
   const snapshotIndexPath = 'server-snapshots/aistudio-workflows/workflow-index.json';
   const sourceHash = await fileHash(join(rootDir, testingFrameworkPath));
+  const testingFrameworkIndex = await buildHeadingIndex(rootDir, testingFrameworkPath);
   const snapshotIndex = await readJsonIfPresent(join(rootDir, snapshotIndexPath));
   const created = [];
   const initialFiles = [
@@ -68,6 +111,7 @@ export async function initializeWorkspace(rootDir) {
       trackedState: [
         'policy/policy.json',
         'catalog/knowledge-catalog.json',
+        'catalog/sources/workflow-testing-framework.index.json',
         'manifests/seed-sources.json',
         'ledger/candidates.jsonl',
         'receipts/',
@@ -81,6 +125,7 @@ export async function initializeWorkspace(rootDir) {
         title: 'Fusion AI Studio Workflow Testing Framework',
         sourcePath: testingFrameworkPath,
         sourceHash,
+        sectionIndexPath: '.xdx-learning/catalog/sources/workflow-testing-framework.index.json',
         authority: 'workspace-approved',
         phases: ['test', 'debug', 'handoff'],
         artifactTypes: ['workflow', 'workflow-backed-app'],
@@ -90,6 +135,7 @@ export async function initializeWorkspace(rootDir) {
         readNext: ['Required Inputs', 'Step 1: Confirm CLI and Authentication', 'Step 3: Generate an ATLAS Workflow Test', 'Failure Triage', 'Reporting Template'],
       }],
     }, null, 2) + '\n'],
+    [paths.testingFrameworkIndex, JSON.stringify(testingFrameworkIndex, null, 2) + '\n'],
     [paths.manifest, JSON.stringify({
       schemaVersion: XDX_SCHEMA_VERSION,
       sources: [{
@@ -113,6 +159,18 @@ export async function initializeWorkspace(rootDir) {
 
   for (const [filePath, content] of initialFiles) {
     if (await writeIfMissing(filePath, content)) created.push(filePath);
+  }
+
+  await writeFile(paths.testingFrameworkIndex, JSON.stringify(testingFrameworkIndex, null, 2) + '\n', 'utf8');
+  const catalog = await readJsonIfPresent(paths.catalog);
+  const frameworkCard = catalog?.cards?.find((card) => card.id === 'workflow-testing-framework');
+  if (frameworkCard !== undefined) {
+    const sectionIndexPath = '.xdx-learning/catalog/sources/workflow-testing-framework.index.json';
+    if (frameworkCard.sourceHash !== sourceHash || frameworkCard.sectionIndexPath !== sectionIndexPath) {
+      frameworkCard.sourceHash = sourceHash;
+      frameworkCard.sectionIndexPath = sectionIndexPath;
+      await writeFile(paths.catalog, JSON.stringify(catalog, null, 2) + '\n', 'utf8');
+    }
   }
   return { created };
 }

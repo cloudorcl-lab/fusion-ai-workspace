@@ -212,7 +212,7 @@ Phase 0 is intentionally small:
 1. Define the policy contract and versioned schemas for candidate evidence, durable test receipts, promotion records, and manifests.
 2. Implement schema validation plus redaction/secret-scanning tests.
 3. Implement only `xdx-learn capture` and `xdx-learn find`.
-4. Seed `find` from the existing workflow structural index, testing framework, and approved documents; do not build new extractors, a tracker, BM25, session commands, packets, or CI gates.
+4. Seed `find` from the existing workflow structural index, testing framework, and approved documents. A canonical document may have a compact heading-only source index for routing, but do not build broad extractors, a tracker, BM25, session commands, packets, or CI gates.
 5. Preserve Git portability through redacted candidate records and receipts. Keep raw transcripts, payloads, baseline observations, caches, and reports ignored.
 6. Add manually curated knowledge-catalog entries for existing approved sub-frameworks, beginning with the workflow testing framework; use heading anchors rather than copying full documents.
 
@@ -255,6 +255,8 @@ Each phase requires passing schema/behavior tests, redaction verification, a doc
 ## Phase 0 implementation evidence
 
 Phase 0 was implemented locally on the `codex/xdx-learning-phase-0` branch. The `xdx-learn` CLI provides only the approved `init`, `capture`, and `find` operations. It initializes the redacted `.xdx-learning/` policy, catalog, manifest, ledger, and receipt layout; it seeds the knowledge catalog with this workspace's workflow testing framework; and it rejects candidate records containing deterministic secret patterns.
+
+The testing framework is now a first-class knowledge source. `init` generates `.xdx-learning/catalog/sources/workflow-testing-framework.index.json` from the canonical Markdown file. The generated index contains only the source path, SHA-256, and heading/anchor metadata (29 headings in the current framework); it deliberately does not contain the document body. The routing card links to that index, so agents can select the right framework section before opening the original document.
 
 The knowledge demonstration queried `test and debug the XDX supplier workflow with ATLAS`. It routed first to `documents/fusion-ai-studio-workflow-testing-framework.md`, with pointers to Required Inputs, authentication, ATLAS test generation, Failure Triage, and Reporting Template. A captured `observed` candidate then recorded the actual test result for `XDX_SUPPLIER_QUERY_TEAM` without copying raw output.
 
